@@ -2,6 +2,8 @@
 
 Основа приложения для подготовки документов: Next.js, API Elysia и worker BullMQ на Bun. Продуктовый сценарий и границы MVP: [mvp.md](mvp.md). Архитектура и правила разработки: [docs/engineering/README.md](docs/engineering/README.md).
 
+Работы по шаблону, Mastra/RouterAI, SSE и генерация DOCX: [устройство и запуск pipeline](docs/engineering/work-pipeline.md). До получения утверждённого DOCX используется явно обозначенный технический бланк.
+
 ## Разработка каркаса
 
 Для воспроизводимого запуска используются Bun **1.4.4** и Node.js **26.13.0**. Bun — runtime приложений и менеджер workspace; Node используется инструментами, которым он необходим.

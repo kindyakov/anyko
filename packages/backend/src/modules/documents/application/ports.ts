@@ -68,6 +68,15 @@ export interface DocumentParser {
   eraseAttempt(attemptId: string): Promise<void>;
 }
 export interface DocumentStore {
+  source(
+    workspaceId: string,
+    documentId: string,
+  ): Promise<{
+    key: string;
+    size: number;
+    checksum: string;
+    filename: string;
+  } | null>;
   stageSource(key: string, workspaceId: string): Promise<void>;
   forgetSource(key: string): Promise<void>;
   register(input: {

@@ -6,6 +6,55 @@ import {
 import { ApiError, requestApi, type HttpFetch } from './client';
 import { proxyApiRequest } from './proxy';
 
+test('proxy uses configured public origin despite Next internal localhost URL and forwards SSE cursor', async () => {
+  let calls = 0;
+  const upstream: HttpFetch = (_url, init) => {
+    calls++;
+    const headers = new Headers(init?.headers);
+    expect(headers.get('origin')).toBe('http://127.0.0.1:3000');
+    expect(headers.get('last-event-id')).toBe('42');
+    return Promise.resolve(
+      new Response('id: 43\ndata: {}\n\n', {
+        headers: {
+          'content-type': 'text/event-stream',
+          'x-accel-buffering': 'no',
+        },
+      }),
+    );
+  };
+  const allowed = await proxyApiRequest(
+    new Request('http://localhost:3000/api/works', {
+      method: 'POST',
+      headers: { origin: 'http://127.0.0.1:3000', 'last-event-id': '42' },
+    }),
+    ['works'],
+    'http://127.0.0.1:3001',
+    1000,
+    upstream,
+    'http://127.0.0.1:3000',
+  );
+  expect(allowed.status).toBe(200);
+  expect(await allowed.text()).toContain('id: 43');
+  expect(allowed.headers.get('x-accel-buffering')).toBe('no');
+  const denied = await proxyApiRequest(
+    new Request('http://foreign.test/api/works', {
+      method: 'POST',
+      headers: {
+        origin: 'http://foreign.test',
+        host: 'foreign.test',
+        'x-forwarded-host': '127.0.0.1:3000',
+      },
+    }),
+    ['works'],
+    'http://127.0.0.1:3001',
+    1000,
+    upstream,
+    'http://127.0.0.1:3000',
+  );
+  expect(denied.status).toBe(403);
+  expect(calls).toBe(1);
+});
+
 test('client validates unknown data and retains request ID without leaking upstream bodies', async () => {
   const fake: HttpFetch = () =>
     Promise.resolve(

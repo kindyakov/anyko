@@ -6,6 +6,87 @@
   --accent: #971c35;
   --line: #e7dfe1;
 }
+.work-title {
+  margin-top: 28px;
+}
+.work-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: center;
+}
+.settings-form {
+  display: grid;
+  gap: 18px;
+  max-width: 640px;
+  margin-top: 22px;
+}
+.document-paper {
+  width: 100%;
+  max-width: 794px;
+  min-height: 850px;
+  padding: clamp(24px, 6vw, 68px);
+  margin: 32px auto;
+  background: white;
+  color: #171717;
+  border: 1px solid #ddd;
+  box-shadow: 0 6px 28px #28131b0a;
+  font:
+    18px/1.6 'Times New Roman',
+    serif;
+}
+.document-paper h2 {
+  text-align: center;
+  font:
+    bold 21px/1.6 'Times New Roman',
+    serif;
+}
+.fixture-label {
+  font:
+    13px/1.5 Arial,
+    sans-serif;
+  text-align: center;
+  color: #75646a;
+}
+.paper-field {
+  margin: 26px 0;
+}
+.paper-field > label {
+  font: inherit;
+  margin-bottom: 8px;
+}
+.paper-field input,
+.paper-field textarea {
+  width: 100%;
+  font: inherit;
+  border: 0;
+  border-bottom: 1px dashed #bca8ad;
+  border-radius: 0;
+  background: #fcf9fa;
+  padding: 6px;
+  color: inherit;
+}
+.paper-field textarea {
+  resize: vertical;
+}
+.evidence {
+  margin-top: 9px;
+  font:
+    13px/1.5 Arial,
+    sans-serif;
+}
+.evidence button {
+  white-space: pre-wrap;
+  text-align: left;
+}
+.evidence blockquote {
+  margin: 10px 0 20px 15px;
+  overflow-wrap: anywhere;
+}
+summary {
+  cursor: pointer;
+  padding: 8px 0;
+}
 * {
   box-sizing: border-box;
 }

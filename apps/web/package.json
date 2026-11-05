@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --bun next dev",
+    "dev": "bun --bun next dev --hostname 127.0.0.1",
     "build": "bun --bun next build",
     "start": "bun --bun next start",
     "typecheck": "tsc --noEmit",

@@ -1,0 +1,22 @@
+{
+  "name": "@anyko/llm",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.84",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@anyko/typescript-config": "workspace:*",
+    "@types/bun": "1.4.4",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "@typescript/native": "npm:typescript@7.0.2"
+  }
+}

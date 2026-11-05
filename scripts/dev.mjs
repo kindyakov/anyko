@@ -114,7 +114,7 @@ try {
     });
   }
   console.info(
-    'Anyko: http://localhost:3000 — local credentials are in the ignored root .env',
+    'Anyko: http://127.0.0.1:3000 — local credentials are in the ignored root .env',
   );
 } catch (error) {
   if (!stopping) {

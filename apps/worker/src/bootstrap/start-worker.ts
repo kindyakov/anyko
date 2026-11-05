@@ -4,12 +4,15 @@ import {
   createDocumentWorker,
   createS3Storage,
   createMineruParser,
+  createWorkWorker,
+  parseWorkConfig,
 } from '@anyko/backend/runtime';
 import { parseWorkerConfig } from './config';
 
 export async function startWorker() {
   try {
     const config = parseWorkerConfig(process.env);
+    const workConfig = parseWorkConfig(process.env);
     const logger = createLogger({
       service: 'worker',
       environment: config.NODE_ENV,
@@ -52,6 +55,27 @@ export async function startWorker() {
       }
     }
     let server;
+    let workWorker: Awaited<ReturnType<typeof createWorkWorker>> | undefined;
+    try {
+      if (workConfig && config.documents)
+        workWorker = await createWorkWorker({
+          databaseUrl: config.documents.DATABASE_URL,
+          encryptionKey: workConfig.encryptionKey,
+          redisUrl: config.REDIS_URL,
+          logger,
+          storage: createS3Storage({
+            endpoint: config.documents.S3_ENDPOINT,
+            bucket: config.documents.S3_BUCKET,
+            accessKeyId: config.documents.S3_ACCESS_KEY,
+            secretAccessKey: config.documents.S3_SECRET_KEY,
+          }),
+          shutdownTimeoutMs: config.SHUTDOWN_TIMEOUT_MS,
+        });
+    } catch (error) {
+      await documentWorker?.stop();
+      await runtime.stop();
+      throw error;
+    }
     try {
       server = Bun.serve({
         hostname: config.WORKER_HOST,
@@ -63,7 +87,9 @@ export async function startWorker() {
             const diagnosticState = runtime.state();
             const state =
               diagnosticState === 'ready'
-                ? (documentWorker?.state() ?? 'ready')
+                ? documentWorker?.state() === 'ready' || !documentWorker
+                  ? (workWorker?.state() ?? 'ready')
+                  : documentWorker.state()
                 : diagnosticState;
             return Response.json(
               { status: state },
@@ -75,6 +101,7 @@ export async function startWorker() {
       });
     } catch {
       await documentWorker?.stop();
+      await workWorker?.stop();
       await runtime.stop();
       throw new Error('WORKER_LISTEN_FAILED');
     }
@@ -83,7 +110,11 @@ export async function startWorker() {
       if (stopping) return;
       stopping = true;
       try {
-        await Promise.all([runtime.stop(), documentWorker?.stop()]);
+        await Promise.all([
+          runtime.stop(),
+          documentWorker?.stop(),
+          workWorker?.stop(),
+        ]);
         logger.info({ event: 'worker.stopped' });
       } catch {
         logger.error({ event: 'worker.shutdown_failed' });

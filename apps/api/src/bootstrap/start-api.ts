@@ -2,12 +2,18 @@ import { createApp } from '../http/app';
 import { createLogger } from '@anyko/logger';
 import { parseApiConfig } from './config';
 import { parseDocumentConfig } from './document-config';
-import { createDocumentRuntime, createS3Storage } from '@anyko/backend/runtime';
+import {
+  createDocumentRuntime,
+  createS3Storage,
+  createWorkRuntime,
+  parseWorkConfig,
+} from '@anyko/backend/runtime';
 import { createAccess } from '@anyko/backend/access';
 export async function startApi() {
   const startupResources: Array<() => Promise<void>> = [];
   try {
     const config = parseApiConfig(process.env);
+    const workConfig = parseWorkConfig(process.env);
     const logger = createLogger({
       service: 'api',
       environment: config.NODE_ENV,
@@ -40,10 +46,38 @@ export async function startApi() {
       : null;
     if (documents) startupResources.push(documents.stop);
     if (access) startupResources.push(access.stop);
+    const works =
+      workConfig && documentConfig
+        ? createWorkRuntime({
+            databaseUrl: documentConfig.DATABASE_URL,
+            encryptionKey: workConfig.encryptionKey,
+            logger,
+            storage: createS3Storage({
+              endpoint: documentConfig.S3_ENDPOINT,
+              bucket: documentConfig.S3_BUCKET,
+              accessKeyId: documentConfig.S3_ACCESS_KEY,
+              secretAccessKey: documentConfig.S3_SECRET_KEY,
+            }),
+          })
+        : null;
+    if (works) startupResources.push(() => works.stop());
     await documents?.ready();
+    await works?.ready();
     const app = createApp({
       logger,
       ready: () => ready,
+      ...(works && documents && access && documentConfig
+        ? {
+            workHttp: {
+              works: works.api,
+              settings: works.settings,
+              saveSettings: works.saveSettings,
+              documents,
+              access,
+              origin: documentConfig.APP_ORIGIN,
+            },
+          }
+        : {}),
       ...(documents && access && documentConfig
         ? {
             documentHttp: {
@@ -74,6 +108,7 @@ export async function startApi() {
       try {
         await app.stop();
         await documents?.stop();
+        await works?.stop();
         await access?.stop();
         logger.info({ event: 'process_stopped' });
       } catch {

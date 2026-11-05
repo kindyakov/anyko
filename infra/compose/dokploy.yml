@@ -16,6 +16,7 @@ services:
     environment:
       NODE_ENV: production
       API_ORIGIN: http://api:3001
+      APP_ORIGIN: ${APP_ORIGIN:?Specify public application origin}
       RELEASE: ${ANYKO_RELEASE:?Specify release}
       PORT: '3000'
     expose: ['3000']

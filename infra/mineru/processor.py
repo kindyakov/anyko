@@ -10,6 +10,36 @@ import tempfile
 import uuid
 import zipfile
 
+
+def visual_inputs(writer, data, extension):
+    """Explicit visual inputs, independent of the SDK's optional image export."""
+    from PIL import Image, ImageOps, ImageSequence
+
+    def add(name, payload):
+        with Image.open(io.BytesIO(payload)) as image:
+            if image.width * image.height > 25_000_000:
+                raise ValueError('IMAGE_TOO_LARGE')
+            if getattr(image, 'n_frames', 1) > 32:
+                raise ValueError('TOO_MANY_IMAGE_FRAMES')
+            for index, frame in enumerate(ImageSequence.Iterator(image)):
+                normalized = ImageOps.exif_transpose(frame).convert('RGB')
+                normalized.thumbnail((2400, 2400))
+                output = io.BytesIO()
+                normalized.save(output, format='JPEG', quality=88)
+                writer.write(f'{name}-{index:03d}.jpg', output.getvalue())
+
+    if extension in {'jpg', 'png', 'webp', 'tiff'}:
+        add('images/anyko-source', data)
+    elif extension == 'docx':
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            media = [entry for entry in archive.infolist() if entry.filename.startswith('word/media/') and not entry.is_dir()]
+            if len(media) > 32 or sum(entry.file_size for entry in media) > 16 * 1024 * 1024:
+                raise ValueError('DOCUMENT_VISUALS_TOO_LARGE')
+            for index, entry in enumerate(media):
+                if PurePosixPath(entry.filename).suffix.lower() not in {'.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.gif', '.bmp'}:
+                    raise ValueError('UNSUPPORTED_DOCUMENT_VISUAL')
+                add(f'images/anyko-docx-{index:03d}', archive.read(entry))
+
 from fastapi import FastAPI, HTTPException, Request, Response
 
 
@@ -112,6 +142,7 @@ class Processor:
                     result = await parse(source, tier='flash' if extension == 'docx' else 'basic', ocr_mode='auto', image_analysis=False)
                     writer = ZipWriter()
                     result.save(writer)
+                    visual_inputs(writer, data, extension)
                     return writer.archive()
                 finally:
                     tempfile.tempdir = previous_tempdir

@@ -5,6 +5,7 @@ await mock.module('server-only', () => ({}));
 
 test('actual Next DELETE handler relays an authenticated deletion request', async () => {
   const previousOrigin = process.env.API_ORIGIN;
+  const previousAppOrigin = process.env.APP_ORIGIN;
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port: 0,
@@ -18,6 +19,7 @@ test('actual Next DELETE handler relays an authenticated deletion request', asyn
     },
   });
   try {
+    process.env.APP_ORIGIN = 'http://localhost:3000';
     process.env.API_ORIGIN = `http://127.0.0.1:${String(server.port)}`;
     const { DELETE } = await import('../../app/api/[...path]/route');
     const response = await DELETE(
@@ -35,6 +37,8 @@ test('actual Next DELETE handler relays an authenticated deletion request', asyn
     expect(response.status).toBe(202);
     expect(await response.json()).toEqual({ status: 'deleting' });
   } finally {
+    if (previousAppOrigin === undefined) delete process.env.APP_ORIGIN;
+    else process.env.APP_ORIGIN = previousAppOrigin;
     if (previousOrigin === undefined) delete process.env.API_ORIGIN;
     else process.env.API_ORIGIN = previousOrigin;
     await server.stop(true);

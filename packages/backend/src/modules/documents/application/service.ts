@@ -48,6 +48,44 @@ export function createDocumentService(
     );
   }
   return {
+    async source(input: { workspaceId: string; documentId: string }) {
+      const row = await store.source(input.workspaceId, input.documentId);
+      if (!row) throw new DocumentError('NOT_FOUND');
+      const bytes = await storage.get(row.key);
+      if (bytes.length !== row.size || (await checksum(bytes)) !== row.checksum)
+        throw new Error('INVALID_SOURCE_ARTIFACT');
+      const format = sourceFormatFromKey(row.filename);
+      if (!format) throw new DocumentError('UNSUPPORTED_DOCUMENT_FORMAT');
+      return {
+        bytes,
+        filename: row.filename,
+        contentType: sourceContentTypes[format],
+      };
+    },
+    async analysis(input: { workspaceId: string; documentId: string }) {
+      const result = await artifact(input);
+      const images = [];
+      for (const image of result.images) {
+        const bytes = await storage.get(image.key);
+        if (
+          bytes.length !== image.size ||
+          (await checksum(bytes)) !== image.checksum
+        )
+          throw new Error('INVALID_IMAGE_ARTIFACT');
+        images.push({
+          path: image.path,
+          bytes,
+          contentType: image.contentType,
+        });
+      }
+      return {
+        text: result.markdown,
+        images,
+        sourceDigest: await checksum(
+          new TextEncoder().encode(JSON.stringify(result)),
+        ),
+      };
+    },
     async upload(input: {
       workspaceId: string;
       actorId: string;

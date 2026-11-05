@@ -2,6 +2,10 @@ import 'server-only';
 import { z } from 'zod';
 
 const schema = z.object({
+  APP_ORIGIN: z
+    .url()
+    .refine((value) => new URL(value).origin === value)
+    .default('http://127.0.0.1:3000'),
   API_ORIGIN: z
     .url()
     .refine((value) => ['http:', 'https:'].includes(new URL(value).protocol))
