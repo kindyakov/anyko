@@ -3,6 +3,31 @@ import type { ProcessingStore } from '../application/ports';
 
 export function createProcessingStore(db: Database): ProcessingStore {
   return {
+    async attemptIds(workspaceId, documentId) {
+      return (
+        await db.processorAttempt.findMany({
+          where: { workspaceId, documentId },
+          select: { id: true },
+        })
+      ).map((row) => row.id);
+    },
+    async documentId(workspaceId, runId) {
+      return (
+        (
+          await db.processingRun.findFirst({
+            where: { workspaceId, id: runId },
+            select: { documentId: true },
+          })
+        )?.documentId ?? null
+      );
+    },
+    async resultKeys(workspaceId, documentId) {
+      const runs = await db.processingRun.findMany({
+        where: { workspaceId, documentId, resultKey: { not: null } },
+        select: { resultKey: true },
+      });
+      return runs.flatMap((run) => (run.resultKey ? [run.resultKey] : []));
+    },
     async stageResult(key, workspaceId) {
       await db.resultUpload.create({ data: { key, workspaceId } });
     },
@@ -30,6 +55,7 @@ export function createProcessingStore(db: Database): ProcessingStore {
             id: runId,
             workspaceId,
             status: 'queued',
+            document: { deletedAt: null },
             attempts: { lt: 3 },
           },
           data: {
@@ -45,6 +71,9 @@ export function createProcessingStore(db: Database): ProcessingStore {
           where: { workspaceId_id: { workspaceId, id: runId } },
           include: { document: { select: { sourceKey: true } } },
         });
+        await tx.processorAttempt.create({
+          data: { id: attemptToken, workspaceId, documentId: run.documentId },
+        });
         return {
           runId,
           workspaceId,
@@ -57,6 +86,10 @@ export function createProcessingStore(db: Database): ProcessingStore {
     },
     async complete(claim, resultKey, processorVersion) {
       return db.$transaction(async (tx) => {
+        const documents = await tx.$queryRaw<
+          { id: string }[]
+        >`SELECT id FROM "SourceDocument" WHERE id=${claim.documentId} AND "workspaceId"=${claim.workspaceId} AND "deletedAt" IS NULL FOR UPDATE`;
+        if (documents.length !== 1) return false;
         const result = await tx.processingRun.updateMany({
           where: {
             id: claim.runId,

@@ -9,4 +9,4 @@ async function relay(
   const { path } = await context.params;
   return proxyApiRequest(request, path, readServerConfig().API_ORIGIN);
 }
-export { relay as GET, relay as HEAD, relay as POST };
+export { relay as GET, relay as HEAD, relay as POST, relay as DELETE };

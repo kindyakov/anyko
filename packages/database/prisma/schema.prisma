@@ -64,6 +64,10 @@ model AnykoWorkspace {
  runs ProcessingRun[]
  sourceUploads SourceUpload[]
  resultUploads ResultUpload[]
+ artifacts DocumentArtifact[]
+ processorAttempts ProcessorAttempt[]
+ deletions DocumentDeletion[]
+ documentIo DocumentIo[]
 }
 model Membership {
  workspaceId String
@@ -85,10 +89,13 @@ model SourceDocument {
  size Int
  createdBy String
  createdAt DateTime @default(now())
+ deletedAt DateTime?
+ purgedAt DateTime?
  runs ProcessingRun[]
  @@unique([workspaceId,id])
  @@unique([workspaceId,requestKey])
  @@index([workspaceId,createdAt])
+ @@index([deletedAt,purgedAt])
 }
 model SourceUpload {
  key String @id
@@ -139,4 +146,50 @@ model ResultUpload {
  workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
  createdAt DateTime @default(now())
  @@index([createdAt])
+}
+model DocumentArtifact {
+ key String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ documentId String
+ requestKey String?
+ manifestKey String?
+ kind String
+ position Int?
+ path String?
+ contentType String
+ size Int
+ checksum String
+ createdAt DateTime @default(now())
+ @@index([workspaceId,documentId])
+ @@index([workspaceId,requestKey])
+ @@index([manifestKey,position])
+}
+model ProcessorAttempt {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ documentId String
+ createdAt DateTime @default(now())
+ @@index([workspaceId,documentId])
+}
+model DocumentDeletion {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ requestKey String
+ completedAt DateTime?
+ createdAt DateTime @default(now())
+ @@unique([workspaceId,requestKey])
+}
+model DocumentIo {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ documentId String
+ requestKey String?
+ uncertain Boolean @default(false)
+ createdAt DateTime @default(now())
+ @@index([workspaceId,documentId])
+ @@index([workspaceId,requestKey])
 }

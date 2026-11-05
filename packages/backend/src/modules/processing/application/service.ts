@@ -1,6 +1,9 @@
 import type { ProcessingStore } from './ports';
 export function createProcessingService(store: ProcessingStore) {
   return {
+    attemptIds: store.attemptIds,
+    documentId: store.documentId,
+    resultKeys: store.resultKeys,
     stageResult: store.stageResult,
     orphanResults: store.orphanResults,
     forgetResult: store.forgetResult,

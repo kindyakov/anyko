@@ -11,3 +11,4 @@ export function createDatabase(url: string) {
   });
 }
 export type Database = ReturnType<typeof createDatabase>;
+export { createResourceLocks } from './resource-locks';

@@ -1,83 +1,84 @@
-# Локальный MinerU
+# Локальный stateless MinerU
 
-Для первой вертикали закреплён MinerU **4.1.7**, Python **3.12.15**.
-Python-пакеты устанавливаются в `work/mineru/.venv`, конфигурация, модели,
-кэш и временные исходники — в `work/mineru/`. Этот каталог исключён из Git.
-Документы обрабатываются локальным сервисом; удалённый VLM не настроен,
-телеметрия отключена до запуска.
-
-## Установка и запуск на Windows
-
-Из корня репозитория, с установленным uv:
+Закреплены MinerU **4.1.7** и Python **3.12.15**. Установка:
 
 ```powershell
 powershell -NoProfile -File infra/mineru/setup.ps1
 powershell -NoProfile -File infra/mineru/start.ps1
 ```
 
-Сервис слушает только `http://127.0.0.1:8000`, concurrency 1. По умолчанию
-доступны Flash и Basic; Basic выполняет OCR и анализ структуры локальными
-ONNX-моделями. Поддержку устройства выбирает MinerU. Первый модельный запуск
-загружает веса. На проверенной машине RTX 4060 распознавание и layout используют
-DirectML, детектор OCR — CPU. Установленный Python и другие проекты не меняются.
+Сервис слушает `127.0.0.1:8000`. `start.ps1` запускает Anyko-owned HTTP-адаптер
+`infra/mineru/processor.py` поверх поддержанного `mineru.parser.parse_async`.
+Tasks API, FileStore, document library и их retention-кэш не используются.
+В `work/mineru/home` остаются только настройки и веса моделей; телеметрия выключена.
 
-Параметр `-Tier standard` повышает доступный tier и может потребовать другие
-модели; качество и ресурсы этого режима пока не проверены. Flash с `ocr_mode=txt`
-читает текстовый слой и не доказывает работоспособность OCR сканов.
+PDF и JPEG/PNG/WebP/TIFF используют Basic с автоматическим OCR. DOCX использует
+нативный Flash с текстом, таблицами и формулами Word; OCR вложенных картинок не
+обещается. На проверенной машине RTX 4060 ONNX использует DirectML/CPU.
+Standard/Advanced и удалённые VLM в этой конфигурации не включены.
 
-Проверки сервиса: `GET /v1/health`, `GET /v1/tiers`, определения текущего
-контракта — `/openapi.json`. Без API-ключа этот сервис допустим только в
-локальной закрытой среде. Его нельзя публиковать в интернет.
+## Контракт процессора
 
-## Интерфейс адаптера
+- `GET /v1/health`: режим `stateless-sdk`.
+- `PUT /v1/attempts/:uuid?format=pdf|docx|jpg|png|webp|tiff`: raw bytes, до 20 MiB;
+  ответ ZIP с Markdown и изображениями, заголовок `x-mineru-version`.
+- `DELETE /v1/attempts/:uuid`: отменяет попытку, ждёт фактического завершения OCR,
+  удаляет временный каталог и только затем возвращает 204. Поздний PUT того же ID
+  получает 410. Повторный DELETE идемпотентен.
 
-`createMineruParser({baseUrl, timeoutMs, tier?, ocrMode?, pollIntervalMs?})`
-возвращает `parsePdf(bytes, signal?)`. Результат — Markdown и версия
-обработчика. Сценарий документов получает этот интерфейс; HTTP MinerU и ZIP
-остаются внутри infrastructure-адаптера.
+UUID назначает Anyko и сохраняет в ProcessorAttempt до отправки байтов. Поэтому
+таймаут и неизвестный исход HTTP не теряют связь с обрабатываемым исходником.
+TypeScript `createMineruParser` предоставляет `parseDocument(bytes,format,attemptId)`
+и `eraseAttempt(attemptId)`. Произвольные result/upload URL от провайдера отсутствуют.
+Redirect запрещён, ответы ограничены по размеру и deadline, ошибки статические.
 
-Используется официальный Tasks API 4.1:
+Исходник и SDK TEMP/TMP/TMPDIR находятся в одном управляемом каталоге попытки.
+Экспорт ZIP собирается в памяти; дополнительные JSON SDK не записываются на диск.
+Одновременно выполняется один parse, модели остаются тёплыми. Отмена SDK дренирует
+настоящий синхронный OCR thread: закрыть HTTP/asyncio-задачу недостаточно.
+При запуске эксклюзивный process lock исключает параллельный сервис, после чего
+оставшиеся job-каталоги очищаются до открытия HTTP. Junction/symlink roots отклоняются.
+Сохраняются только пустые ID-only cancelled markers, без содержимого документов.
 
-1. JSON `POST /v1/tasks` создаёт один task для одного PDF.
-2. Raw bytes отправляются один раз по возвращённому upload URL через PUT.
-3. Polling GET проверяет task ID и file ID до конечного состояния.
-4. ZIP результата скачивается по result URL; читается только `markdown.md`.
+## Хранение и полное удаление
 
-Пределы адаптера: исходник 20 MiB, JSON 1 MiB, ZIP 10 MiB, Markdown 4 MiB,
-общий deadline и интервал polling. Возвращённые URL должны находиться в том же
-origin и path-prefix; redirects и передача произвольных credentials запрещены.
-Ошибки имеют статические коды, provider body в исключения и логи не попадает.
-POST создания автоматически не повторяется. Таймаут означает неопределённый
-исход внешней операции: работа MinerU может продолжиться; lifecycle и принятие
-результата принадлежат сохранённому запуску Anyko.
+Адаптер извлекает `markdown.md` и проверенные JPEG/PNG/WebP из `images/`.
+Ограничения: ZIP 10 MiB, Markdown 4 MiB, 32 картинки, 3 MiB каждая и 8 MiB суммарно;
+проверяются объявленный и фактический размер, дубликаты путей, сигнатуры файлов.
+Изображения сохраняются отдельными S3-объектами, JSON — только manifest. Правила
+владения и подтверждаемого удаления: [вертикаль документов](document-vertical.md).
 
-Tasks MinerU и их индексы находятся в памяти и не гарантируют восстановление
-после рестарта. Локальные исходники/результаты удерживаются до 24 часов.
-Это временный кэш процессора, не долговременное хранилище Anyko. После приёмки
-результат сохраняется владельцем артефакта по правилам приложения.
+При переходе со старого Tasks API сначала останавливается старый Anyko-процесс,
+проверяется управляемый путь `work/mineru/uploads`, затем его кэш физически
+удаляется. Durable-исходники в S3 при этом сохраняются. Старые Base64-результаты
+переносятся командой `bun run artifacts:migrate --applications-stopped --storage-requests-drained`
+при подтверждённо остановленных API/worker и завершённых storage requests.
+Не допускается оставлять старый 24-часовой кэш как исключение из полного удаления.
 
-## Проверки
-
-Unit/HTTP-проверки адаптера выполняются без моделей:
+## Проверка
 
 ```sh
-bun test packages/backend/src/modules/documents/infrastructure/mineru.test.ts
+bun run test:mineru
+bun run test:processor
 ```
 
-Настоящий smoke создаёт только синтетические документы. Для Basic создаётся
-PDF из изображения без текстового слоя; Flash получает PDF с текстовым слоем:
+Processor tests используют FastAPI/httpx и настоящий SDK helper отмены без моделей.
+Локально команда выбирает подготовленный Python venv. CI устанавливает pinned
+MinerU wheel без модельных dependencies и малые зависимости из
+`tests/processor/requirements.txt`. Live OCR проверяется отдельно:
 
 ```powershell
-work/mineru/.venv/Scripts/python.exe infra/mineru/smoke.py --tier flash
-work/mineru/.venv/Scripts/python.exe infra/mineru/smoke.py --tier basic --timeout 600
+work/mineru/.venv/Scripts/python.exe infra/mineru/smoke.py --tier basic --format pdf
+work/mineru/.venv/Scripts/python.exe infra/mineru/smoke.py --format docx
+bun run smoke:document work/mineru/preview.docx
 ```
 
-5 ноября 2026 оба сценария прошли на MinerU 4.1.7, и TypeScript-адаптер
-дополнительно прошёл настоящий Flash round-trip. Изображение распознано с
-контрольным маркером `ANYKO`; результаты синтетических smoke сохраняются в
-`work/mineru/smoke-*.md`. Это доказывает связь с реальным процессором и работу
-OCR, но не качество на клиентском корпусе или production deployment.
+В smoke `--tier` управляет видом синтетической PDF-фикстуры (Basic — image-only,
+Flash — text layer), а реальный режим процессора выбирается по формату. Никакие
+клиентские документы в fixtures не включаются. Синтетический DOCX с таблицей,
+картинкой и Word OMML-формулой проверяет связь SDK → S3 → браузер, но не качество
+распознавания на реальном корпусе и не production deployment.
 
-Первичные источники: [установка](https://opendatalab.github.io/MinerU/quick_start/),
-[Tasks API](https://opendatalab.github.io/MinerU/usage/tasks/),
-[модели и конфигурация](https://opendatalab.github.io/MinerU/usage/model_source/).
+Первичный источник: [MinerU](https://github.com/opendatalab/MinerU), публичный Python
+SDK и stateless `mineru-kit parse` версии 4.1.7. Кэшируемый `mineru parse` и старый
+Tasks/FileStore server для этой схемы не используются.

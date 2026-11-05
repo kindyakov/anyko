@@ -76,6 +76,49 @@ modules/facts/
 
 Composition root в `backend/runtime` может импортировать `modules/<name>/infrastructure` для сборки конкретных адаптеров. Это единственное внешнее исключение из приватности модуля; private domain/application остаются закрыты. В HTTP-handler и worker-handler runtime не импортируется: сборка выполняется в entrypoint процесса или диагностической CLI.
 
+## Структура запуска приложений
+
+В корне `apps/api/src` и `apps/worker/src` остаётся `index.ts`, который вызывает
+именованный bootstrap. HTTP, конфигурация процесса, CLI и тесты имеют разные
+причины изменения и не складываются рядом с ним.
+
+```text
+apps/api/
+  src/index.ts
+  src/bootstrap/           start-api, env и конфигурация подключений
+  src/http/app.ts          сборка HTTP-приложения и общие HTTP hooks
+  src/http/routes/         auth, documents и будущие HTTP-адаптеры
+  tests/                   тесты конфигурации и HTTP
+apps/worker/
+  src/index.ts
+  src/bootstrap/           start-worker, env, ресурсы и остановка процесса
+  src/cli/                 диагностические команды
+  tests/                   тесты конфигурации процесса
+packages/backend/
+  src/runtime/index.ts     существующий публичный интерфейс сборки
+  src/runtime/documents/   API/worker сборки сценария и unit-of-work
+  src/runtime/diagnostics/ техническая диагностика очереди
+  tests/integration/       проверки PostgreSQL/Redis и нескольких модулей
+```
+
+Новый предметный код добавляется владельцу в `modules`, связывающий сценарий —
+в `workflows`, сборка конкретных реализаций — в соответствующую группу `runtime`.
+В корень runtime не добавляются файлы каждого нового сценария. Пустые группы
+для будущих billing/admin/agents заранее не создаются. Unit-тесты предметных
+модулей остаются рядом с реализацией; интеграционные проверки не являются runtime.
+Интеграционные `tests/integration/*.test.ts` могут собирать реальные infrastructure
+адаптеры модулей, но не импортируют private application/domain. Это отдельное
+проверяемое исключение для тестов, не расширение прав production-кода.
+
+Импорт `backend/runtime` разрешён только в `bootstrap/start-api.ts`,
+`bootstrap/start-worker.ts` и `worker/src/cli/diagnostic.ts`. Даже соседний
+bootstrap/config не получает это исключение. Архитектурные fixtures проверяют
+разрешённые точки сборки и запрещённые HTTP/config импорты.
+Dependency-cruiser разрешает workspace-алиасы через `package.json exports`;
+неразрешённый импорт `@anyko/*` является ошибкой. Контрольные примеры используют
+как относительные пути, так и настоящие workspace-ссылки, чтобы алиас не обходил
+правила доступа к runtime и database.
+
 ## Правила зависимостей
 
 | Откуда | Что разрешено |

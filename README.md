@@ -20,7 +20,7 @@ bun run build
 
 ## Запуск и диагностика
 
-Первая PDF/OCR-вертикаль и единый локальный запуск: [инструкция](docs/engineering/document-vertical.md).
+Обработка PDF, DOCX и фотографий с OCR и единый локальный запуск: [инструкция](docs/engineering/document-vertical.md).
 Общая локальная конфигурация теперь хранится в игнорируемом корневом `.env` по
 `.env.example`; app-specific `.env` может дополнять её. Для запуска используйте
 `bun run dev`. Для свежего checkout перед отдельными quality-командами выполните

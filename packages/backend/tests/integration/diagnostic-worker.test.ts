@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test';
 import { Queue, QueueEvents } from 'bullmq';
 import { Redis } from 'ioredis';
 import { createLogger } from '@anyko/logger';
-import { createWorkerRuntime } from './worker-runtime';
-import { runDiagnostic } from './diagnostic';
+import { createWorkerRuntime } from '../../src/runtime/diagnostics/worker';
+import { runDiagnostic } from '../../src/runtime/diagnostics/client';
 import { createServer, connect, type Socket } from 'node:net';
 
 const redisUrl = process.env.TEST_REDIS_URL;

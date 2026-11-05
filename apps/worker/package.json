@@ -6,8 +6,8 @@
     "dev": "bun ../../scripts/run-local.mjs worker dev",
     "start": "bun ../../scripts/run-local.mjs worker start",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src/config.test.ts",
-    "diagnostic": "bun src/diagnostic.ts"
+    "test": "bun test tests",
+    "diagnostic": "bun src/cli/diagnostic.ts"
   },
   "dependencies": {
     "@anyko/backend": "workspace:*",

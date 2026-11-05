@@ -4,6 +4,7 @@ import {
   sessionResponseSchema,
 } from '@anyko/contracts';
 import { z } from 'zod';
+import { basename } from 'node:path';
 const config = z
   .object({
     LOCAL_USER_EMAIL: z.email(),
@@ -48,16 +49,13 @@ try {
   const session = await request('/session');
   assert(session.ok, 'SESSION_FAILED');
   sessionResponseSchema.parse(await session.json());
-  const file = await Bun.file('work/mineru/smoke-basic.pdf').bytes();
+  const fixture = process.argv[2] ?? 'work/mineru/smoke-basic.pdf';
+  const filename = basename(fixture);
+  const file = await Bun.file(fixture).bytes();
   const key = crypto.randomUUID();
   const upload = async (bytes: Uint8Array) => {
     const form = new FormData();
-    form.append(
-      'file',
-      new File([Uint8Array.from(bytes)], 'ocr-smoke.pdf', {
-        type: 'application/pdf',
-      }),
-    );
+    form.append('file', new File([Uint8Array.from(bytes)], filename));
     return request('/documents', {
       method: 'POST',
       headers: { 'idempotency-key': key },
@@ -99,6 +97,7 @@ try {
       anonymousDenied: true,
       session: true,
       documentId: first.id,
+      filename,
       idempotency: true,
       conflictRejected: true,
       status,
@@ -107,7 +106,7 @@ try {
     }),
   );
   await Bun.write(
-    'work/document-smoke-result.json',
+    `work/document-smoke-${filename}.json`,
     JSON.stringify({
       documentId: first.id,
       status,

@@ -1,13 +1,18 @@
-import { createDatabase } from '@anyko/database';
+import { createDatabase, createResourceLocks } from '@anyko/database';
+import { createArtifactRegistry } from '../../modules/documents/infrastructure/artifact-store';
+import { finishDocumentDeletion } from './unit-of-work';
+import { createDocumentIo } from '../../modules/documents/infrastructure/document-io';
 import { Queue, Worker, UnrecoverableError } from 'bullmq';
 import { Redis } from 'ioredis';
 import { z } from 'zod';
 import type { Logger } from '@anyko/logger';
-import type { DocumentParser, SourceStorage } from '../modules/documents';
-import { createProcessingService } from '../modules/processing';
-import { createProcessingStore } from '../modules/processing/infrastructure/store';
-import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
-import { createSourceCleanup } from '../modules/documents/infrastructure/source-cleanup';
+import type { DocumentParser, SourceStorage } from '../../modules/documents';
+import { createProcessingService } from '../../modules/processing';
+import { createProcessingStore } from '../../modules/processing/infrastructure/store';
+import { createDocumentOcrWorkflow } from '../../workflows/document-ocr';
+import { createSourceCleanup } from '../../modules/documents/infrastructure/source-cleanup';
+import { createDeletionStore } from '../../modules/documents/infrastructure/deletion-store';
+import { createDocumentDeletionWorkflow } from '../../workflows/document-deletion';
 const envelope = z
   .object({
     version: z.literal(1),
@@ -25,9 +30,23 @@ export async function createDocumentWorker(options: {
   shutdownTimeoutMs?: number;
   leaseMs?: number;
 }) {
+  await options.storage.ready?.();
   const db = createDatabase(options.databaseUrl);
+  const locks = createResourceLocks(options.databaseUrl);
+  const io = createDocumentIo(db);
   const processing = createProcessingService(createProcessingStore(db));
   const cleanupSources = createSourceCleanup(db, options.storage);
+  const deleteDocuments = createDocumentDeletionWorkflow({
+    ...createDeletionStore(db),
+    resultKeys: processing.resultKeys,
+    attemptIds: processing.attemptIds,
+    eraseAttempt: (id) => options.parser.eraseAttempt(id),
+    finish: (workspaceId, documentId, keys) =>
+      finishDocumentDeletion(db, workspaceId, documentId, keys),
+    locks,
+    storage: options.storage,
+    logger: options.logger,
+  });
   const queueName = options.queueName ?? 'anyko-document-ocr';
   let state: 'starting' | 'ready' | 'degraded' | 'stopping' | 'stopped' =
     'starting';
@@ -45,6 +64,7 @@ export async function createDocumentWorker(options: {
   const queue = new Queue(queueName, { connection: producer });
   const execute = createDocumentOcrWorkflow({
     processing,
+    artifacts: createArtifactRegistry(db),
     storage: options.storage,
     parser: options.parser,
     logger: options.logger,
@@ -56,7 +76,18 @@ export async function createDocumentWorker(options: {
       const payload = envelope.safeParse(job.data);
       if (!payload.success || job.name !== 'document.ocr')
         throw new UnrecoverableError('INVALID_JOB_ENVELOPE');
-      await execute(payload.data);
+      const documentId = await processing.documentId(
+        payload.data.workspaceId,
+        payload.data.runId,
+      );
+      if (documentId)
+        await locks.run(
+          `document:${payload.data.workspaceId}:${documentId}`,
+          (signal) =>
+            io.run({ workspaceId: payload.data.workspaceId, documentId }, () =>
+              execute(payload.data, signal),
+            ),
+        );
     },
     { connection, concurrency: 1 },
   );
@@ -137,6 +168,7 @@ export async function createDocumentWorker(options: {
           worker.close(true),
           queue.close(),
           db.$disconnect(),
+          locks.stop(),
         ]);
         state = 'stopped';
       }
@@ -171,6 +203,7 @@ export async function createDocumentWorker(options: {
     while (!isStopping()) {
       try {
         await processing.reconcile();
+        await deleteDocuments();
         const before = new Date(Date.now() - 3600000);
         await cleanupSources(before);
         for (const artifact of await processing.orphanResults(before)) {

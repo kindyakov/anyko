@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
-import { createApp } from './app';
+import { createApp } from '../src/http/app';
 import { createLogger } from '@anyko/logger';
+import { DocumentError } from '@anyko/backend/documents';
 
 test('health responds over HTTP', async () => {
   const app = createApp().listen({ hostname: '127.0.0.1', port: 0 });
@@ -53,6 +54,33 @@ test('real HTTP carries request context, safe errors and readiness', async () =>
     expect(lines.join('')).toContain('http_failed');
     expect(lines.join('')).toContain(id ?? 'impossible-id');
     expect(lines.join('')).not.toContain('private-fixture');
+  } finally {
+    await app.stop();
+  }
+});
+
+test('invalid content and unsupported document formats produce actionable client errors', async () => {
+  const app = createApp()
+    .get('/invalid-document', () => {
+      throw new DocumentError('INVALID_DOCUMENT');
+    })
+    .get('/unsupported-format', () => {
+      throw new DocumentError('UNSUPPORTED_DOCUMENT_FORMAT');
+    })
+    .listen({ hostname: '127.0.0.1', port: 0 });
+  try {
+    const port = app.server?.port;
+    if (port === undefined) throw new Error('No listener');
+    for (const [path, code] of [
+      ['/invalid-document', 'INVALID_DOCUMENT'],
+      ['/unsupported-format', 'UNSUPPORTED_DOCUMENT_FORMAT'],
+    ] as const) {
+      const response = await fetch(`http://127.0.0.1:${String(port)}${path}`);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({
+        error: { code, requestId: response.headers.get('x-request-id') },
+      });
+    }
   } finally {
     await app.stop();
   }

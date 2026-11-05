@@ -21,6 +21,7 @@ export default [
     files: [
       'apps/**/*.{ts,tsx}',
       'packages/**/src/**/*.{ts,tsx}',
+      'packages/**/tests/**/*.{ts,tsx}',
       'tests/**/*.{ts,tsx}',
     ],
   })),

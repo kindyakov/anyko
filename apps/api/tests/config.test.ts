@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { parseApiConfig } from './config';
+import { parseApiConfig } from '../src/bootstrap/config';
 test('rejects invalid env without including values', () => {
   expect(() => parseApiConfig({ API_PORT: 'private-fixture' })).toThrow(
     'API_PORT',

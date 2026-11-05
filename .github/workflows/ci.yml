@@ -53,6 +53,12 @@ jobs:
         run: bun run verify:fast
       - name: Build applications
         run: bun run build
+      - name: Processor lifecycle without model dependencies
+        run: |
+          python -m venv work/processor-tests-venv
+          work/processor-tests-venv/bin/pip install --no-deps mineru==4.1.7
+          work/processor-tests-venv/bin/pip install -r tests/processor/requirements.txt
+          ANYKO_PROCESSOR_TEST_PYTHON=work/processor-tests-venv/bin/python bun run test:processor
       - name: Worker integration against Redis
         env:
           TEST_REDIS_URL: redis://127.0.0.1:16379

@@ -11,7 +11,10 @@ export function createSourceCleanup(db: Database, storage: SourceStorage) {
         where: { sourceKey: item.key },
         select: { id: true },
       });
-      if (!owner) await storage.delete(item.key);
+      if (!owner) {
+        await storage.delete(item.key);
+        await db.documentArtifact.deleteMany({ where: { key: item.key } });
+      }
       await db.sourceUpload.deleteMany({ where: { key: item.key } });
     }
   };

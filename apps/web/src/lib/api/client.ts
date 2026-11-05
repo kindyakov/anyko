@@ -20,7 +20,7 @@ export async function requestApi<T>(
   path: string,
   schema: z.ZodType<T>,
   options: {
-    method?: 'GET' | 'POST';
+    method?: 'GET' | 'POST' | 'DELETE';
     body?: BodyInit;
     headers?: HeadersInit;
     signal?: AbortSignal;

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "bun ../../scripts/run-local.mjs api dev",
     "start": "bun ../../scripts/run-local.mjs api start",
-    "test": "bun test src",
+    "test": "bun test tests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

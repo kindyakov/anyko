@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { parseWorkerConfig } from './config';
+import { parseWorkerConfig } from '../src/bootstrap/config';
 
 test('document consumer is explicit and validates all of its dependencies', () => {
   const disabled = parseWorkerConfig({ REDIS_URL: 'redis://127.0.0.1:16379' });

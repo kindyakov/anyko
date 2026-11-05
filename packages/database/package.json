@@ -11,15 +11,17 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@prisma/client": "7.10.1",
     "@prisma/adapter-pg": "7.10.1",
-    "@prisma/client-runtime-utils": "7.10.1"
+    "@prisma/client": "7.10.1",
+    "@prisma/client-runtime-utils": "7.10.1",
+    "pg": "8.23.1"
   },
   "devDependencies": {
-    "prisma": "7.10.1",
     "@anyko/typescript-config": "workspace:*",
     "@types/bun": "1.4.4",
-    "typescript": "npm:@typescript/typescript6@6.0.2",
-    "@typescript/native": "npm:typescript@7.0.2"
+    "@types/pg": "8.23.1",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "prisma": "7.10.1",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

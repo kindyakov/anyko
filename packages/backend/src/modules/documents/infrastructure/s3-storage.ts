@@ -1,4 +1,6 @@
 import type { SourceStorage } from '../application/ports';
+import { StorageWriteOutcomeUnknown } from '../application/ports';
+import { S3Client, GetBucketVersioningCommand } from '@aws-sdk/client-s3';
 export function createS3Storage(config: {
   endpoint: string;
   bucket: string;
@@ -21,11 +23,14 @@ export function createS3Storage(config: {
     method: 'PUT' | 'GET' | 'DELETE',
     bytes?: Uint8Array,
     contentType?: string,
+    signal?: AbortSignal,
   ) {
     const url = client.presign(key, { method, expiresIn: 60 });
     const response = await fetch(url, {
       method,
-      signal: AbortSignal.timeout(timeout),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeout)])
+        : AbortSignal.timeout(timeout),
       ...(bytes ? { body: Uint8Array.from(bytes) } : {}),
       ...(contentType ? { headers: { 'content-type': contentType } } : {}),
     });
@@ -36,12 +41,47 @@ export function createS3Storage(config: {
     return response;
   }
   return {
-    async put(key, bytes, contentType) {
-      const response = await request(key, 'PUT', bytes, contentType);
-      await response.body?.cancel();
+    async ready() {
+      const admin = new S3Client({
+        endpoint: config.endpoint,
+        region: config.region ?? 'us-east-1',
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId: config.accessKeyId,
+          secretAccessKey: config.secretAccessKey,
+        },
+      });
+      try {
+        const result = await admin.send(
+          new GetBucketVersioningCommand({ Bucket: config.bucket }),
+          { abortSignal: AbortSignal.timeout(timeout) },
+        );
+        if (result.Status)
+          throw new Error('VERSIONED_STORAGE_NOT_SUPPORTED_FOR_ERASURE');
+      } finally {
+        admin.destroy();
+      }
     },
-    async get(key) {
-      const response = await request(key, 'GET');
+    async exists(key) {
+      const response = await fetch(
+        client.presign(key, { method: 'HEAD', expiresIn: 60 }),
+        { method: 'HEAD', signal: AbortSignal.timeout(timeout) },
+      );
+      if (response.status === 404) return false;
+      if (!response.ok) throw new Error('STORAGE_ERASURE_UNVERIFIED');
+      return true;
+    },
+    async put(key, bytes, contentType, signal) {
+      signal?.throwIfAborted();
+      try {
+        const response = await request(key, 'PUT', bytes, contentType, signal);
+        await response.body?.cancel();
+      } catch {
+        throw new StorageWriteOutcomeUnknown();
+      }
+    },
+    async get(key, signal) {
+      const response = await request(key, 'GET', undefined, undefined, signal);
       const reader = response.body?.getReader();
       if (!reader) throw new Error('STORAGE_BODY_MISSING');
       const chunks: Uint8Array[] = [];
@@ -67,8 +107,14 @@ export function createS3Storage(config: {
       }
       return bytes;
     },
-    async delete(key) {
-      const response = await request(key, 'DELETE');
+    async delete(key, signal) {
+      const response = await request(
+        key,
+        'DELETE',
+        undefined,
+        undefined,
+        signal,
+      );
       await response.body?.cancel();
     },
   };

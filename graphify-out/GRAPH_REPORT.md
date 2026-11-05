@@ -1,24 +1,24 @@
 # Graph Report - anyko  (2026-11-05)
 
 ## Corpus Check
-- 153 files · ~70,133 words
+- 178 files · ~78,643 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 21 file(s) not represented in the graph (top: (none) 6, .example 4, .pb 3)
 
 ## Summary
-- 966 nodes · 1347 edges · 70 communities (59 shown, 11 thin omitted)
-- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 6 edges (avg confidence: 0.87)
+- 1118 nodes · 1711 edges · 92 communities (76 shown, 16 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 10 edges (avg confidence: 0.87)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `a461fc80`
+- Built from commit: `4cdbd9d0`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - web/package.json
 - package.json
-- agent-github.mjs
+- ref_bun_test
 - Anyko — брендбук
 - MVP: автоматизация подготовки заявления о банкротстве физического лица
 - Примеры v1
@@ -26,7 +26,7 @@
 - pull_request_template.md
 - Архитектура Anyko
 - Agent skills
-- logger/src/index.ts
+- dependencies
 - engineering/README.md
 - api/package.json
 - domain.md
@@ -40,7 +40,7 @@
 - architecture.js
 - exports
 - web/tsconfig.json
-- read-logs.py
+- logger/src/index.ts
 - Проверка качества
 - backend/package.json
 - Устройство репозитория
@@ -51,12 +51,12 @@
 - server.json
 - api/tsconfig.json
 - worker/tsconfig.json
-- Размещение и эксплуатация
+- Размещение основы в Dokploy
 - Runtime и диагностика
 - library.json
 - contracts/src/index.ts
-- worker.integration.test.ts
-- Размещение основы в Dokploy
+- processor.py
+- dependencies
 - architecture/tsconfig.json
 - review-cases/README.md
 - backend/tsconfig.json
@@ -65,13 +65,13 @@
 - database/package.json
 - database/src/index.ts
 - contracts/package.json
-- document-worker.ts
-- 0004-code-organization.md
-- document-runtime.ts
+- document-deletion.test.ts
+- logger/src/index.ts
+- source-format.ts
 - modules/documents/index.ts
-- documents.integration.test.ts
-- agent-workflow.md
-- DocumentStore
+- documents.test.ts
+- Issue tracker: GitHub
+- Первая вертикаль обработки документов
 - Инженерная основа Anyko
 - Язык Anyko
 - contracts/tsconfig.json
@@ -82,47 +82,68 @@
 - Anyko
 - web/AGENTS.md
 - database/README.md
+- Processor
+- devDependencies
+- result-preview.tsx
+- DocumentStore
+- scripts
+- Проверка тестов, написанных агентом
+- Feature-based web и модульный backend с ports/adapters
+- Logger
+- Работа агентов и независимая проверка
+- agent-github.mjs
+- ProcessorReview
+- boundaries.test.ts
+- store.ts
+- devDependencies
+- check-project.mjs
+- dev.mjs
+- ref_node_fs
+- exports
+- ref_node_path
+- Размещение и эксплуатация
+- layout.tsx
 
 ## God Nodes (most connected - your core abstractions)
-1. `scripts` - 32 edges
-2. `MVP: автоматизация подготовки заявления о банкротстве физического лица` - 14 edges
-3. `SourceStorage` - 12 edges
-4. `Logger` - 12 edges
-5. `DocumentStore` - 11 edges
-6. `createLogger()` - 11 edges
-7. `compilerOptions` - 11 edges
-8. `Anyko — брендбук` - 11 edges
-9. `requestApi()` - 10 edges
-10. `DocumentWorkspace()` - 9 edges
+1. `scripts` - 35 edges
+2. `DocumentStore` - 17 edges
+3. `createDocumentWorker()` - 17 edges
+4. `SourceStorage` - 15 edges
+5. `createLogger()` - 14 edges
+6. `MVP: автоматизация подготовки заявления о банкротстве физического лица` - 14 edges
+7. `createDocumentRuntime()` - 13 edges
+8. `Logger` - 13 edges
+9. `createDatabase()` - 12 edges
+10. `DocumentWorkspace()` - 11 edges
 
 ## Surprising Connections (you probably didn't know these)
+- `Контракт процессора` --references--> `createMineruParser()`  [INFERRED]
+  docs/engineering/mineru.md → packages/backend/src/modules/documents/infrastructure/mineru.ts
 - `GitHub App агента` --references--> `check()`  [INFERRED]
   docs/engineering/github-protection.md → tests/architecture/boundaries.test.ts
-- `createApp()` --calls--> `createLogger()`  [EXTRACTED]
-  apps/api/src/app.ts → packages/logger/src/index.ts
-- `DocumentHttpOptions` --references--> `createAccess()`  [EXTRACTED]
-  apps/api/src/documents.ts → packages/backend/src/modules/access/infrastructure/auth.ts
+- `startApi()` --calls--> `createDocumentRuntime()`  [EXTRACTED]
+  apps/api/src/bootstrap/start-api.ts → packages/backend/src/runtime/documents/api.ts
 - `DocumentHttpOptions` --references--> `createDocumentService()`  [EXTRACTED]
-  apps/api/src/documents.ts → packages/backend/src/modules/documents/application/service.ts
-- `upload()` --calls--> `requestApi()`  [EXTRACTED]
-  apps/web/src/features/documents/document-workspace.tsx → apps/web/src/lib/api/client.ts
+  apps/api/src/http/routes/documents.ts → packages/backend/src/modules/documents/application/service.ts
+- `startWorker()` --calls--> `createDocumentWorker()`  [EXTRACTED]
+  apps/worker/src/bootstrap/start-worker.ts → packages/backend/src/runtime/documents/worker.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (70 total, 11 thin omitted)
+## Communities (92 total, 16 thin omitted)
 
 ### Community 0 - "web/package.json"
-Cohesion: 0.05
-Nodes (37): dependencies, @anyko/contracts, @anyko/logger, next, react, react-dom, server-only, zod (+29 more)
+Cohesion: 0.13
+Nodes (14): @anyko/contracts, @anyko/logger, @anyko/typescript-config, @types/bun, typescript, @typescript/native, zod, name (+6 more)
 
 ### Community 1 - "package.json"
-Cohesion: 0.04
-Nodes (44): devDependencies, @anyko/backend, @anyko/contracts, @anyko/database, @anyko/eslint-config, @anyko/logger, @anyko/prettier-config, @anyko/typescript-config (+36 more)
-
-### Community 2 - "agent-github.mjs"
 Cohesion: 0.05
-Nodes (42): { existsSync, readdirSync }, knownModules, moduleEdges, GitHub App агента, Защита GitHub, Применение и проверка, Разделение полномочий, Состояние настройки (+34 more)
+Nodes (43): devDependencies, @anyko/backend, @anyko/contracts, @anyko/database, @anyko/eslint-config, @anyko/logger, @anyko/prettier-config, @anyko/typescript-config (+35 more)
+
+### Community 2 - "ref_bun_test"
+Cohesion: 0.22
+Nodes (8): createLogWriter(), main(), stop(), tee(), parseLaunchArgs(), root, directories, work
 
 ### Community 3 - "Anyko — брендбук"
 Cohesion: 0.12
@@ -152,12 +173,12 @@ Nodes (8): 1. Выбранная структура, 2. Компоненты и 
 Cohesion: 0.40
 Nodes (5): Agent skills, Domain docs, Engineering, Issue tracker, Triage labels
 
-### Community 10 - "logger/src/index.ts"
-Cohesion: 0.09
-Nodes (24): createApp(), parseApiConfig(), schema, parseDocumentConfig(), schema, DocumentHttpOptions, documentRoutes(), startupResources (+16 more)
+### Community 10 - "dependencies"
+Cohesion: 0.20
+Nodes (10): dependencies, @anyko/database, @anyko/logger, @aws-sdk/client-s3, better-auth, @better-auth/prisma-adapter, bullmq, fflate (+2 more)
 
 ### Community 11 - "engineering/README.md"
-Cohesion: 0.21
+Cohesion: 0.20
 Nodes (4): graphify, Один модульный монолит с отдельными процессами, Рабочая область является границей владения данными, PostgreSQL хранит намерение обработки, очередь доставляет работу
 
 ### Community 12 - "api/package.json"
@@ -174,7 +195,7 @@ Nodes (14): exports, ./base, ./frontend, ./server, eslint, @eslint/js, typescrip
 
 ### Community 17 - "scripts"
 Cohesion: 0.06
-Nodes (32): scripts, access:provision-local, agent:github, boundaries, build, check:project, db:generate, db:migrate (+24 more)
+Nodes (35): scripts, access:provision-local, agent:github, artifacts:migrate, boundaries, build, check:project, db:generate (+27 more)
 
 ### Community 18 - "compilerOptions"
 Cohesion: 0.17
@@ -200,24 +221,24 @@ Nodes (7): exports, ./base.json, ./library.json, ./next.json, ./server.json, nam
 Cohesion: 0.25
 Nodes (7): compilerOptions, plugins, types, exclude, extends, include, @anyko/typescript-config/next.json
 
-### Community 24 - "read-logs.py"
-Cohesion: 0.08
-Nodes (10): main(), InvalidQuery, journal_command(), main(), parse_time(), read_journal(), select_events(), validate_query() (+2 more)
+### Community 24 - "logger/src/index.ts"
+Cohesion: 0.17
+Nodes (6): resultSchema, envelope, State, logger, bullmq, ioredis
 
 ### Community 25 - "Проверка качества"
 Cohesion: 0.29
 Nodes (7): Границы тестовых сред, Доказательства, Инструменты и обязательность, Проверка качества, Проверка самого контроля и исключения, Три уровня проверки, Что тестируем
 
 ### Community 26 - "backend/package.json"
-Cohesion: 0.06
-Nodes (32): dependencies, @anyko/database, @anyko/logger, better-auth, @better-auth/prisma-adapter, bullmq, fflate, ioredis (+24 more)
+Cohesion: 0.12
+Nodes (15): @anyko/database, @anyko/logger, @anyko/typescript-config, @aws-sdk/client-s3, @types/bun, typescript, @typescript/native, zod (+7 more)
 
 ### Community 27 - "Устройство репозитория"
-Cohesion: 0.33
-Nodes (6): Frontend, Как добавлять новое, Правила зависимостей, Приложения и пакеты, Серверный пакет, Устройство репозитория
+Cohesion: 0.29
+Nodes (7): Frontend, Как добавлять новое, Правила зависимостей, Приложения и пакеты, Серверный пакет, Структура запуска приложений, Устройство репозитория
 
 ### Community 28 - "Направления развития Anyko"
-Cohesion: 0.33
+Cohesion: 0.29
 Nodes (6): Агентский слой продукта, Когда разделять дальше, Коммерческая модель, Направления развития Anyko, Расширения и точки подключения, Что закладывается в первую реализацию
 
 ### Community 29 - "logger/package.json"
@@ -244,9 +265,9 @@ Nodes (3): extends, include, @anyko/typescript-config/server.json
 Cohesion: 0.50
 Nodes (3): extends, include, @anyko/typescript-config/server.json
 
-### Community 37 - "Размещение и эксплуатация"
-Cohesion: 0.33
-Nodes (6): Восстановление и данные, Начальная топология, Порядок выпуска, Процесс и наблюдаемость, Размещение и эксплуатация, Рост без смены модели
+### Community 37 - "Размещение основы в Dokploy"
+Cohesion: 0.40
+Nodes (5): Образы и ресурсы, Ограниченное чтение агентом, Приёмка на реальном сервере, Размещение основы в Dokploy, Хранение логов
 
 ### Community 38 - "Runtime и диагностика"
 Cohesion: 0.33
@@ -254,23 +275,23 @@ Nodes (6): Dokploy и доказательства, Runtime и диагност�
 
 ### Community 40 - "contracts/src/index.ts"
 Cohesion: 0.07
-Nodes (32): dynamic, relay(), HomePage(), SignIn(), SignOut(), DocumentWorkspace(), open(), retry() (+24 more)
+Nodes (35): dynamic, relay(), HomePage(), SignIn(), SignOut(), DocumentWorkspace(), open(), remove() (+27 more)
 
-### Community 41 - "worker.integration.test.ts"
-Cohesion: 0.07
-Nodes (24): documentsSchema, parseWorkerConfig(), schema, createMineruParser(), json(), localUrl(), readLimited(), request() (+16 more)
+### Community 41 - "processor.py"
+Cohesion: 0.06
+Nodes (13): erase(), health(), parse(), main(), InvalidQuery, journal_command(), main(), parse_time() (+5 more)
 
-### Community 42 - "Размещение основы в Dokploy"
-Cohesion: 0.40
-Nodes (5): Образы и ресурсы, Ограниченное чтение агентом, Приёмка на реальном сервере, Размещение основы в Dokploy, Хранение логов
+### Community 42 - "dependencies"
+Cohesion: 0.13
+Nodes (15): dependencies, @anyko/contracts, @anyko/logger, katex, next, react, react-dom, react-markdown (+7 more)
 
 ### Community 43 - "architecture/tsconfig.json"
 Cohesion: 0.50
 Nodes (3): extends, include, ../../packages/typescript-config/server.json
 
 ### Community 44 - "review-cases/README.md"
-Cohesion: 0.21
-Nodes (8): Ключ v1, Контрольные примеры для reviewer, Пробный прогон v1 — 5 ноября 2026, Глубина проверки по риску, Как доказать способность обнаружить ошибку, Подсказки LLM, Проверка тестов, написанных агентом, Что reviewer устанавливает для каждого изменения
+Cohesion: 0.43
+Nodes (3): Ключ v1, Контрольные примеры для reviewer, Пробный прогон v1 — 5 ноября 2026
 
 ### Community 45 - "backend/tsconfig.json"
 Cohesion: 0.50
@@ -281,44 +302,48 @@ Cohesion: 0.50
 Nodes (3): extends, include, @anyko/typescript-config/server.json
 
 ### Community 47 - "202611050001_document_vertical/migration.sql"
-Cohesion: 0.12
-Nodes (31): "Account", Account_userId_idx, "AnykoWorkspace", "Membership", Membership_userId_idx, "ProcessingOutbox", ProcessingOutbox_deliveredAt_leaseUntil_idx, ProcessingOutbox_runId_key (+23 more)
+Cohesion: 0.08
+Nodes (43): "Account", Account_userId_idx, "AnykoWorkspace", "Membership", Membership_userId_idx, "ProcessingOutbox", ProcessingOutbox_deliveredAt_leaseUntil_idx, ProcessingOutbox_runId_key (+35 more)
 
 ### Community 48 - "database/package.json"
-Cohesion: 0.07
-Nodes (25): dependencies, @prisma/adapter-pg, @prisma/client, @prisma/client-runtime-utils, devDependencies, @anyko/typescript-config, prisma, @types/bun (+17 more)
+Cohesion: 0.06
+Nodes (30): dependencies, pg, @prisma/adapter-pg, @prisma/client, @prisma/client-runtime-utils, devDependencies, @anyko/typescript-config, prisma (+22 more)
 
 ### Community 49 - "database/src/index.ts"
 Cohesion: 0.16
-Nodes (11): Connection, createDocumentCommands(), Registration, createDocumentReadModel(), nextRunRevision(), Connection, createProcessingCommands(), Start (+3 more)
+Nodes (12): Connection, createDocumentCommands(), Registration, createDocumentReadModel(), statusSchema, nextRunRevision(), Connection, createProcessingCommands() (+4 more)
 
 ### Community 50 - "contracts/package.json"
 Cohesion: 0.11
 Nodes (18): dependencies, zod, devDependencies, @anyko/typescript-config, @types/bun, typescript, @typescript/native, exports (+10 more)
 
-### Community 51 - "document-worker.ts"
-Cohesion: 0.22
-Nodes (10): DocumentParser, createSourceCleanup(), ProcessingClaim, ProcessingStore, createProcessingService(), createProcessingStore(), createDocumentWorker(), envelope (+2 more)
-
-### Community 52 - "0004-code-organization.md"
-Cohesion: 0.12
-Nodes (13): API и worker, Backend, Feature-based web и модульный backend с ports/adapters, Web, Последствия, HTTP и данные, Запуск, Первая вертикаль обработки PDF (+5 more)
-
-### Community 53 - "document-runtime.ts"
+### Community 51 - "document-deletion.test.ts"
 Cohesion: 0.16
-Nodes (3): SourceStorage, createS3Storage(), Logger
+Nodes (14): SourceStorage, createArtifactRegistry(), createDeletionStore(), createDocumentIo(), createSourceCleanup(), createDocumentRuntime(), createDocumentWorker(), envelope (+6 more)
+
+### Community 52 - "logger/src/index.ts"
+Cohesion: 0.05
+Nodes (39): parseApiConfig(), schema, parseDocumentConfig(), schema, startApi(), createApp(), authRoutes(), DocumentHttpOptions (+31 more)
+
+### Community 53 - "source-format.ts"
+Cohesion: 0.25
+Nodes (10): formats, isDocx(), matchesSourceFormat(), sourceContentTypes, SourceFormat, startsWith(), contentTypes, docx (+2 more)
 
 ### Community 54 - "modules/documents/index.ts"
-Cohesion: 0.27
-Nodes (7): DocumentResult, DocumentStatus, DocumentView, documentResultSchema, DocumentError, DocumentService, statusSchema
+Cohesion: 0.14
+Nodes (18): checksum(), Artifact, ArtifactRegistry, DocumentIo, DocumentParser, DocumentResult, DocumentStatus, DocumentView (+10 more)
 
-### Community 55 - "documents.integration.test.ts"
-Cohesion: 0.15
-Nodes (8): db, files, logger, owned, pdf, runtime, storage, upload()
+### Community 55 - "documents.test.ts"
+Cohesion: 0.14
+Nodes (9): contentTypes, db, files, logger, owned, pdf, runtime, storage (+1 more)
 
-### Community 56 - "agent-workflow.md"
-Cohesion: 0.20
-Nodes (8): Issue tracker: GitHub, Operations, Pull requests as a triage surface, Skill instructions, Автор изменения, Изменение правил и инструкции, Проверяющий агент, Работа агентов и независимая проверка
+### Community 56 - "Issue tracker: GitHub"
+Cohesion: 0.40
+Nodes (4): Issue tracker: GitHub, Operations, Pull requests as a triage surface, Skill instructions
+
+### Community 57 - "Первая вертикаль обработки документов"
+Cohesion: 0.17
+Nodes (10): HTTP и данные, Артефакт и изображения, Запуск, Первая вертикаль обработки документов, Проверка, Удаление, Контракт процессора, Локальный stateless MinerU (+2 more)
 
 ### Community 58 - "Инженерная основа Anyko"
 Cohesion: 0.50
@@ -348,25 +373,89 @@ Nodes (3): extends, include, ../../packages/typescript-config/server.json
 Cohesion: 0.67
 Nodes (3): Anyko, Запуск и диагностика, Разработка каркаса
 
+### Community 71 - "devDependencies"
+Cohesion: 0.25
+Nodes (8): devDependencies, @anyko/typescript-config, @types/bun, @types/node, @types/react, @types/react-dom, typescript, @typescript/native
+
+### Community 72 - "result-preview.tsx"
+Cohesion: 0.20
+Nodes (8): schema, react-dom, react-markdown, rehype-katex, rehype-raw, rehype-sanitize, remark-gfm, remark-math
+
+### Community 74 - "scripts"
+Cohesion: 0.33
+Nodes (6): scripts, build, dev, start, test, typecheck
+
+### Community 75 - "Проверка тестов, написанных агентом"
+Cohesion: 0.40
+Nodes (5): Глубина проверки по риску, Как доказать способность обнаружить ошибку, Подсказки LLM, Проверка тестов, написанных агентом, Что reviewer устанавливает для каждого изменения
+
+### Community 76 - "Feature-based web и модульный backend с ports/adapters"
+Cohesion: 0.40
+Nodes (5): API и worker, Backend, Feature-based web и модульный backend с ports/adapters, Web, Последствия
+
+### Community 78 - "Работа агентов и независимая проверка"
+Cohesion: 0.50
+Nodes (4): Автор изменения, Изменение правил и инструкции, Проверяющий агент, Работа агентов и независимая проверка
+
+### Community 79 - "agent-github.mjs"
+Cohesion: 0.32
+Nodes (9): assertNoLocalAuthHeaders(), assertPermissions(), commandEnvironment(), main(), mintToken(), permissions, readResponse(), request() (+1 more)
+
+### Community 80 - "ProcessorReview"
+Cohesion: 0.19
+Nodes (4): ProcessorReview, fake_parse(), sync_parse(), Result
+
+### Community 81 - "boundaries.test.ts"
+Cohesion: 0.17
+Nodes (10): GitHub App агента, Защита GitHub, Применение и проверка, Разделение полномочий, Состояние настройки, cases, check(), cli (+2 more)
+
+### Community 82 - "store.ts"
+Cohesion: 0.36
+Nodes (4): ProcessingClaim, ProcessingStore, createProcessingService(), createProcessingStore()
+
+### Community 83 - "devDependencies"
+Cohesion: 0.40
+Nodes (5): devDependencies, @anyko/typescript-config, @types/bun, typescript, @typescript/native
+
+### Community 84 - "check-project.mjs"
+Cohesion: 0.25
+Nodes (5): documents, errors, manifests, markdownFiles(), root
+
+### Community 85 - "dev.mjs"
+Cohesion: 0.36
+Nodes (7): children, command(), launch(), probe(), root, stop(), wait()
+
+### Community 86 - "ref_node_fs"
+Cohesion: 0.25
+Nodes (4): { existsSync, readdirSync }, knownModules, moduleEdges, result
+
+### Community 87 - "exports"
+Cohesion: 0.50
+Nodes (4): exports, ./access, ./documents, ./runtime
+
+### Community 89 - "Размещение и эксплуатация"
+Cohesion: 0.33
+Nodes (6): Восстановление и данные, Начальная топология, Порядок выпуска, Процесс и наблюдаемость, Размещение и эксплуатация, Рост без смены модели
+
 ## Knowledge Gaps
-- **83 isolated node(s):** `@anyko/logger`, `zod`, `@anyko/backend`, `@anyko/typescript-config`, `@types/bun` (+78 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 601 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **11 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **85 isolated node(s):** `@anyko/logger`, `zod`, `@anyko/backend`, `@anyko/typescript-config`, `@types/bun` (+80 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 656 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **16 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `Защита GitHub` connect `agent-github.mjs` to `engineering/README.md`?**
-  _High betweenness centrality (0.185) - this node is a cross-community bridge._
+- **Why does `Защита GitHub` connect `boundaries.test.ts` to `engineering/README.md`?**
+  _High betweenness centrality (0.065) - this node is a cross-community bridge._
 - **What connects `@anyko/logger`, `zod`, `@anyko/backend` to the rest of the system?**
-  _83 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _85 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `web/package.json` be split into smaller, more focused modules?**
-  _Cohesion score 0.05263157894736842 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.13333333333333333 - nodes in this community are weakly interconnected._
 - **Should `package.json` be split into smaller, more focused modules?**
-  _Cohesion score 0.043478260869565216 - nodes in this community are weakly interconnected._
-- **Should `agent-github.mjs` be split into smaller, more focused modules?**
-  _Cohesion score 0.05129561078794289 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.045454545454545456 - nodes in this community are weakly interconnected._
 - **Should `Anyko — брендбук` be split into smaller, more focused modules?**
   _Cohesion score 0.11764705882352941 - nodes in this community are weakly interconnected._
 - **Should `MVP: автоматизация подготовки заявления о банкротстве физического лица` be split into smaller, more focused modules?**
   _Cohesion score 0.1111111111111111 - nodes in this community are weakly interconnected._
+- **Should `api/package.json` be split into smaller, more focused modules?**
+  _Cohesion score 0.07692307692307693 - nodes in this community are weakly interconnected._

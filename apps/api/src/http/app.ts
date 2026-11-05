@@ -1,7 +1,8 @@
 import { Elysia } from 'elysia';
 import { createLogger, type Logger } from '@anyko/logger';
 import { DocumentError } from '@anyko/backend/documents';
-import { documentRoutes, type DocumentHttpOptions } from './documents';
+import { documentRoutes, type DocumentHttpOptions } from './routes/documents';
+import { authRoutes } from './routes/auth';
 
 export function createApp(options?: {
   logger?: Logger;
@@ -36,7 +37,8 @@ export function createApp(options?: {
         error instanceof DocumentError
           ? error.code === 'NOT_FOUND'
             ? 404
-            : error.code === 'INVALID_PDF'
+            : error.code === 'INVALID_DOCUMENT' ||
+                error.code === 'UNSUPPORTED_DOCUMENT_FORMAT'
               ? 400
               : 409
           : code === 'NOT_FOUND'
@@ -72,7 +74,9 @@ export function createApp(options?: {
     })
     .use(
       options?.documentHttp
-        ? documentRoutes(options.documentHttp)
+        ? new Elysia()
+            .use(authRoutes(options.documentHttp.access))
+            .use(documentRoutes(options.documentHttp))
         : new Elysia(),
     )
     .get('/health', () => ({ status: 'ok' }))

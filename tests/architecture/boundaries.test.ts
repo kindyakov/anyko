@@ -1,5 +1,12 @@
 import { afterAll, expect, test } from 'bun:test';
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+  symlink,
+} from 'node:fs/promises';
 import { dirname, join, posix, resolve } from 'node:path';
 
 const root = resolve(import.meta.dir, '../..');
@@ -16,8 +23,17 @@ afterAll(async () => {
   await rm(temporary, { recursive: true, force: true });
 });
 
-async function check(files: Record<string, string>, withAllowedEdge = false) {
+async function check(
+  files: Record<string, string>,
+  withAllowedEdge = false,
+  workspaceLinks: string[] = [],
+) {
   const directory = join(temporary, String(count++));
+  await Promise.all(
+    ['apps', 'packages'].map((folder) =>
+      mkdir(join(directory, folder), { recursive: true }),
+    ),
+  );
   let fixtureConfig = config;
   if (withAllowedEdge) {
     const original = await readFile(config, 'utf8');
@@ -32,6 +48,15 @@ async function check(files: Record<string, string>, withAllowedEdge = false) {
     const destination = join(directory, path);
     await mkdir(dirname(destination), { recursive: true });
     await writeFile(destination, content);
+  }
+  for (const workspace of workspaceLinks) {
+    const link = join(directory, 'node_modules/@anyko', workspace);
+    await mkdir(dirname(link), { recursive: true });
+    await symlink(
+      join(directory, 'packages', workspace),
+      link,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
   }
   const subprocess = Bun.spawn(
     [
@@ -239,14 +264,21 @@ test('composition root may bind module adapters while application internals stay
   }
 });
 
-test('runtime imports are restricted to app entrypoints', async () => {
+test('runtime imports are restricted to named process composition and diagnostic CLI', async () => {
   for (const [file, forbidden] of [
-    ['index.ts', false],
-    ['documents.ts', true],
+    ['api/src/bootstrap/start-api.ts', false],
+    ['worker/src/bootstrap/start-worker.ts', false],
+    ['worker/src/cli/diagnostic.ts', false],
+    ['api/src/bootstrap/config.ts', true],
+    ['api/src/http/routes/documents.ts', true],
   ] as const) {
+    const source = `apps/${file}`;
+    const target = posix.relative(
+      posix.dirname(source),
+      'packages/backend/src/runtime/index.ts',
+    );
     const { result } = await check({
-      [`apps/api/src/${file}`]:
-        "import '../../../packages/backend/src/runtime/index.ts';",
+      [source]: `import '${target}';`,
       'packages/backend/src/runtime/index.ts': 'export {};',
     });
     expect(
@@ -256,6 +288,87 @@ test('runtime imports are restricted to app entrypoints', async () => {
     ).toBe(forbidden);
   }
 });
+
+test('integration tests may bind real adapters but cannot import private application rules', async () => {
+  for (const [target, forbidden] of [
+    ['infrastructure/store.ts', false],
+    ['application/private.ts', true],
+  ] as const) {
+    const { result } = await check({
+      'packages/backend/tests/integration/fixture.test.ts': `import '../../src/modules/documents/${target}';`,
+      [`packages/backend/src/modules/documents/${target}`]: 'export {};',
+    });
+    expect(
+      result.summary.violations.some(
+        (v) => v.rule.name === 'integration-only-module-adapters',
+      ),
+    ).toBe(forbidden);
+  }
+});
+
+test('resolves workspace exports before checking app and database restrictions', async () => {
+  for (const [source, dependency, rule, forbidden] of [
+    [
+      'apps/api/src/bootstrap/start-api.ts',
+      '@anyko/backend/runtime',
+      'app-runtime-only-bootstrap',
+      false,
+    ],
+    [
+      'apps/api/src/http/routes/documents.ts',
+      '@anyko/backend/runtime',
+      'app-runtime-only-bootstrap',
+      true,
+    ],
+    ['apps/web/src/page.ts', '@anyko/backend/runtime', 'web-no-server', true],
+    [
+      'packages/backend/tests/integration/fixture.test.ts',
+      '@anyko/database',
+      'database-private',
+      false,
+    ],
+    [
+      'apps/api/src/http/routes/documents.ts',
+      '@anyko/database',
+      'database-private',
+      true,
+    ],
+  ] as const) {
+    const { result } = await check(
+      {
+        [source]: `import '${dependency}';`,
+        'packages/backend/package.json': JSON.stringify({
+          name: '@anyko/backend',
+          exports: { './runtime': './src/runtime/index.ts' },
+        }),
+        'packages/backend/src/runtime/index.ts': 'export {};',
+        'packages/database/package.json': JSON.stringify({
+          name: '@anyko/database',
+          exports: { '.': './src/index.ts' },
+        }),
+        'packages/database/src/index.ts': 'export {};',
+      },
+      false,
+      ['backend', 'database'],
+    );
+    expect(
+      result.summary.violations.some(
+        (v) => v.rule.name === 'workspace-imports-must-resolve',
+      ),
+    ).toBe(false);
+    expect(result.summary.violations.some((v) => v.rule.name === rule)).toBe(
+      forbidden,
+    );
+  }
+  const missing = await check({
+    'apps/api/src/bootstrap/start-api.ts': "import '@anyko/missing';",
+  });
+  expect(
+    missing.result.summary.violations.some(
+      (v) => v.rule.name === 'workspace-imports-must-resolve',
+    ),
+  ).toBe(true);
+}, 30000);
 
 test('allows an owner to use its own private implementation', async () => {
   const { result } = await check({

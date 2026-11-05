@@ -42,7 +42,7 @@ test('client sends multipart bodies intact and does not invent a boundary', asyn
       body,
       fetch: fake,
     }),
-  ).toEqual({ markdown: 'text', processorVersion: '4.1' });
+  ).toEqual({ markdown: 'text', processorVersion: '4.1', images: [] });
 });
 test('client deadline aborts fetch and reports timeout', async () => {
   const fake: HttpFetch = (_url, init) =>

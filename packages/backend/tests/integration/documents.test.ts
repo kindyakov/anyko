@@ -1,13 +1,18 @@
 import { afterAll, expect, test } from 'bun:test';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
+import { strToU8, zipSync } from 'fflate';
 import { createDatabase } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
-import { createDocumentRuntime } from './document-runtime';
-import { createDocumentWorker } from './document-worker';
-import { createProcessingStore } from '../modules/processing/infrastructure/store';
-import { createSourceCleanup } from '../modules/documents/infrastructure/source-cleanup';
-import type { SourceStorage, DocumentView } from '../modules/documents';
+import { createDocumentRuntime } from '../../src/runtime/documents/api';
+import { createDocumentWorker } from '../../src/runtime/documents/worker';
+import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
+import { createSourceCleanup } from '../../src/modules/documents/infrastructure/source-cleanup';
+import type {
+  SourceStorage,
+  DocumentView,
+  SourceFormat,
+} from '../../src/modules/documents';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
@@ -22,9 +27,12 @@ const logger = createLogger({
   level: 'error',
 });
 const files = new Map<string, Uint8Array>();
+const contentTypes = new Map<string, string>();
 const storage: SourceStorage = {
-  put(key, bytes) {
+  exists: (key) => Promise.resolve(files.has(key)),
+  put(key, bytes, contentType) {
     files.set(key, bytes);
+    contentTypes.set(key, contentType);
     return Promise.resolve();
   },
   get(key) {
@@ -34,6 +42,7 @@ const storage: SourceStorage = {
   },
   delete(key) {
     files.delete(key);
+    contentTypes.delete(key);
     return Promise.resolve();
   },
 };
@@ -86,6 +95,16 @@ async function waitFor(
   throw new Error('DOCUMENT_STATUS_TIMEOUT');
 }
 afterAll(async () => {
+  await db.documentIo.deleteMany({ where: { workspaceId: { in: owned } } });
+  await db.documentArtifact.deleteMany({
+    where: { workspaceId: { in: owned } },
+  });
+  await db.processorAttempt.deleteMany({
+    where: { workspaceId: { in: owned } },
+  });
+  await db.documentDeletion.deleteMany({
+    where: { workspaceId: { in: owned } },
+  });
   await db.sourceUpload.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.resultUpload.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.processingRun.deleteMany({ where: { workspaceId: { in: owned } } });
@@ -169,7 +188,8 @@ test('outbox survives before worker start; real queue publishes result and retry
     logger,
     queueName: `document-test-${crypto.randomUUID()}`,
     parser: {
-      parsePdf(input) {
+      eraseAttempt: () => Promise.resolve(),
+      parseDocument(input) {
         expect(new TextDecoder().decode(input)).toContain('%PDF-');
         if (reject) throw new Error('controlled failure');
         return Promise.resolve({
@@ -195,6 +215,7 @@ test('outbox survives before worker start; real queue publishes result and retry
     ).toEqual({
       markdown: '# extracted fixture',
       processorVersion: 'test-parser-1',
+      images: [],
     });
     expect(
       await db.processingRun.count({
@@ -298,7 +319,8 @@ test('a lost Redis job is republished from the aged queued database intent', asy
       logger,
       queueName,
       parser: {
-        parsePdf() {
+        eraseAttempt: () => Promise.resolve(),
+        parseDocument() {
           executions++;
           return Promise.resolve({
             markdown: 'Recovered after Redis loss',
@@ -318,3 +340,118 @@ test('a lost Redis job is republished from the aged queued database intent', asy
     await queue.close();
   }
 });
+
+test('document formats survive source storage and queue delivery independently of display filename', async () => {
+  const own = await workspace();
+  for (const [filename, code] of [
+    ['fake.docx', 'INVALID_DOCUMENT'],
+    ['unsupported.heic', 'UNSUPPORTED_DOCUMENT_FORMAT'],
+  ] as const) {
+    await expectRejected(
+      runtime.upload({
+        workspaceId: own,
+        actorId: 'synthetic-actor',
+        filename,
+        bytes: pdf,
+        requestKey: crypto.randomUUID(),
+        correlationId: crypto.randomUUID(),
+      }),
+      code,
+    );
+  }
+  expect(await db.sourceDocument.count({ where: { workspaceId: own } })).toBe(
+    0,
+  );
+  expect(await db.sourceUpload.count({ where: { workspaceId: own } })).toBe(0);
+  expect(
+    [...files.keys()].some((key) => key.startsWith(`sources/${own}/`)),
+  ).toBe(false);
+  const cases: { filename: string; format: SourceFormat; bytes: Uint8Array }[] =
+    [
+      {
+        filename: 'photo.JPEG',
+        format: 'jpg',
+        bytes: new Uint8Array([255, 216, 255, 224, 0]),
+      },
+      {
+        filename: 'scan.png',
+        format: 'png',
+        bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+      },
+      {
+        filename: 'scan.webp',
+        format: 'webp',
+        bytes: strToU8('RIFFxxxxWEBPVP8 '),
+      },
+      {
+        filename: 'scan.tif',
+        format: 'tiff',
+        bytes: new Uint8Array([73, 73, 42, 0, 8]),
+      },
+      {
+        filename: 'source.docx',
+        format: 'docx',
+        bytes: zipSync({
+          '[Content_Types].xml': strToU8(
+            '<Types><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+          ),
+          'word/document.xml': strToU8('<w:document><w:body/></w:document>'),
+        }),
+      },
+    ];
+  const documents = [];
+  for (const item of cases) {
+    const document = await runtime.upload({
+      workspaceId: own,
+      actorId: 'synthetic-actor',
+      filename: item.filename,
+      bytes: item.bytes,
+      requestKey: crypto.randomUUID(),
+      correlationId: crypto.randomUUID(),
+    });
+    const source = await db.sourceDocument.findUniqueOrThrow({
+      where: { id: document.id },
+    });
+    expect(source.sourceKey.endsWith(`.${item.format}`)).toBe(true);
+    expect(files.get(source.sourceKey)).toEqual(item.bytes);
+    if (item.format === 'jpg')
+      expect(contentTypes.get(source.sourceKey)).toBe('image/jpeg');
+    if (item.format === 'docx')
+      expect(contentTypes.get(source.sourceKey)).toBe(
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      );
+    // Presentation metadata must never decide how a persisted source is parsed.
+    await db.sourceDocument.update({
+      where: { id: document.id },
+      data: { filename: 'renamed.pdf' },
+    });
+    documents.push({ document, format: item.format });
+  }
+  const worker = await createDocumentWorker({
+    databaseUrl,
+    redisUrl,
+    storage,
+    logger,
+    queueName: `document-formats-${crypto.randomUUID()}`,
+    parser: {
+      eraseAttempt: () => Promise.resolve(),
+      parseDocument(_bytes, format) {
+        return Promise.resolve({
+          markdown: `Extracted ${format}`,
+          processorVersion: 'test-format-parser',
+        });
+      },
+    },
+  });
+  try {
+    for (const { document, format } of documents) {
+      await waitFor(own, document.id, 'succeeded');
+      expect(
+        (await runtime.result({ workspaceId: own, documentId: document.id }))
+          .markdown,
+      ).toBe(`Extracted ${format}`);
+    }
+  } finally {
+    await worker.stop();
+  }
+}, 20000);

@@ -1,8 +1,8 @@
 import type { Database } from '@anyko/database';
-import type { DocumentStore } from '../modules/documents';
-import { createDocumentReadModel } from '../modules/documents/infrastructure/read-model';
-import { createDocumentCommands } from '../modules/documents/infrastructure/commands';
-import { createProcessingCommands } from '../modules/processing/infrastructure/commands';
+import type { DocumentStore } from '../../modules/documents';
+import { createDocumentReadModel } from '../../modules/documents/infrastructure/read-model';
+import { createDocumentCommands } from '../../modules/documents/infrastructure/commands';
+import { createProcessingCommands } from '../../modules/processing/infrastructure/commands';
 
 /** Binds module-owned commands to the same short database transaction. */
 export function createDocumentUnitOfWork(db: Database): DocumentStore {
@@ -10,7 +10,26 @@ export function createDocumentUnitOfWork(db: Database): DocumentStore {
   const documents = createDocumentCommands(db);
   return {
     ...reads,
+    assertUploadAllowed: (scope, key) =>
+      documents.assertUploadAllowed(scope, key),
+    forgetSource: (key) => documents.forgetSource(key),
     stageSource: (key, workspaceId) => documents.stageSource(key, workspaceId),
+    async remove(workspaceId, documentId) {
+      return db.$transaction(async (tx) => {
+        const commands = createDocumentCommands(tx);
+        const exists = await commands.lock(workspaceId, documentId);
+        if (!exists) {
+          // Repeat delete succeeds only for the same workspace's tombstone.
+          return commands.isDeleted(workspaceId, documentId);
+        }
+        await commands.markDeleted(workspaceId, documentId);
+        await createProcessingCommands(tx).cancelDocument(
+          workspaceId,
+          documentId,
+        );
+        return true;
+      });
+    },
     async register(input) {
       let documentId = input.id;
       try {
@@ -50,4 +69,23 @@ export function createDocumentUnitOfWork(db: Database): DocumentStore {
       return retried ? reads.get(workspaceId, documentId) : null;
     },
   };
+}
+export async function finishDocumentDeletion(
+  db: Database,
+  workspaceId: string,
+  documentId: string,
+  keys: string[],
+) {
+  await db.$transaction(async (tx) => {
+    await createProcessingCommands(tx).eraseDocument(
+      workspaceId,
+      documentId,
+      keys,
+    );
+    await createDocumentCommands(tx).finishDeletion(
+      workspaceId,
+      documentId,
+      keys,
+    );
+  });
 }

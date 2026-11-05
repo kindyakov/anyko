@@ -7,7 +7,13 @@ const requestHeaders = [
   'referer',
   'idempotency-key',
 ];
-const responseHeaders = ['content-type', 'content-disposition', 'x-request-id'];
+const responseHeaders = [
+  'content-type',
+  'content-disposition',
+  'x-request-id',
+  'x-content-type-options',
+  'content-security-policy',
+];
 const REQUEST_LIMIT = 21 * 1024 * 1024;
 const RESPONSE_LIMIT = 32 * 1024 * 1024;
 

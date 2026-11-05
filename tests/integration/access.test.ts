@@ -7,7 +7,7 @@ import {
   documentResponseSchema,
   documentsResponseSchema,
 } from '@anyko/contracts';
-import { createApp } from '../../apps/api/src/app';
+import { createApp } from '../../apps/api/src/http/app';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test') {
@@ -46,6 +46,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
       level: 'fatal',
     }),
     storage: {
+      exists: (key) => Promise.resolve(files.has(key)),
       put(key, bytes) {
         files.set(key, bytes);
         return Promise.resolve();
@@ -206,6 +207,73 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     expect(
       documentsResponseSchema.parse(await foreignList.json()).documents,
     ).toEqual([]);
+    const documentPath = `/api/documents/${uploaded.document.id}`;
+    expect(
+      (
+        await request(`${documentPath}/images/0`, {
+          headers: { cookie: secondCookie },
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await request(documentPath, {
+          method: 'DELETE',
+          headers: { cookie: ownerCookie },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(documentPath, {
+          method: 'DELETE',
+          headers: { cookie: secondCookie, origin },
+        })
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await request(documentPath, {
+          method: 'DELETE',
+          headers: { cookie: ownerCookie, origin },
+        })
+      ).status,
+    ).toBe(202);
+    expect(
+      (await request(documentPath, { headers: { cookie: ownerCookie } }))
+        .status,
+    ).toBe(404);
+    expect(
+      (
+        await request(`${documentPath}/images/0`, {
+          headers: { cookie: ownerCookie },
+        })
+      ).status,
+    ).toBe(404);
+    const ownerAfterDelete = documentsResponseSchema.parse(
+      await (
+        await request('/api/documents', {
+          headers: { cookie: ownerCookie },
+        })
+      ).json(),
+    );
+    expect(ownerAfterDelete.documents).toEqual([]);
+    expect(
+      ownerAfterDelete.deletions.map(({ id, status }) => ({ id, status })),
+    ).toEqual([
+      {
+        id: uploaded.document.id,
+        status: 'deleting',
+      },
+    ]);
+    const foreignAfterDelete = documentsResponseSchema.parse(
+      await (
+        await request('/api/documents', {
+          headers: { cookie: secondCookie },
+        })
+      ).json(),
+    );
+    expect(foreignAfterDelete.deletions).toEqual([]);
   } finally {
     if (listening) await app.stop();
     try {
@@ -219,6 +287,18 @@ test('real sessions enforce closed signup, mutation origin and document workspac
         select: { id: true },
       });
       const documentIds = ownedDocuments.map((document) => document.id);
+      await db.documentIo.deleteMany({
+        where: { documentId: { in: documentIds } },
+      });
+      await db.documentArtifact.deleteMany({
+        where: { documentId: { in: documentIds } },
+      });
+      await db.processorAttempt.deleteMany({
+        where: { documentId: { in: documentIds } },
+      });
+      await db.documentDeletion.deleteMany({
+        where: { id: { in: documentIds } },
+      });
       await db.processingRun.deleteMany({
         where: { documentId: { in: documentIds } },
       });
