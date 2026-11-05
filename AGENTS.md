@@ -12,6 +12,8 @@
 
 ### Issue tracker
 
+Для агентских команд GitHub и Git push в Anyko используйте `bun run agent:github` по [инструкции доступа](docs/engineering/github-protection.md). При ошибке App не переходите на обычный `gh` или пользовательские credentials. Административные изменения выполняются только по явному поручению пользователя; launcher не изолирует текущую среду от человеческого доступа.
+
 Задачи и спецификации ведутся в GitHub Issues репозитория kindyakov/anyko. См. `docs/agents/issue-tracker.md`.
 
 ### Triage labels

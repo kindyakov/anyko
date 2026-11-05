@@ -7,6 +7,7 @@
     "packages/*"
   ],
   "scripts": {
+    "agent:github": "bun scripts/agent-github.mjs",
     "dev:web": "bun --filter @anyko/web dev",
     "dev:api": "bun --filter @anyko/api dev",
     "dev:worker": "bun --filter @anyko/worker dev",
@@ -19,7 +20,8 @@
     "check:project": "bun scripts/check-project.mjs",
     "test:architecture": "bun test tests/architecture/boundaries.test.ts",
     "test:api": "bun --filter @anyko/api test",
-    "verify:fast": "bun run format:check && bun run typecheck && bun run lint && bun run boundaries && bun run test:architecture && bun run test:api && bun run knip && bun run check:project && bun run duplicates",
+    "test:agent-github": "bun test tests/tooling/agent-github.test.mjs",
+    "verify:fast": "bun run format:check && bun run typecheck && bun run lint && bun run boundaries && bun run test:architecture && bun run test:api && bun run test:agent-github && bun run knip && bun run check:project && bun run duplicates",
     "build": "bun --filter @anyko/web build"
   },
   "devDependencies": {

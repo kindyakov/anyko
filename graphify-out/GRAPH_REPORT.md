@@ -1,29 +1,29 @@
 # Graph Report - anyko  (2026-11-05)
 
 ## Corpus Check
-- 69 files · ~67,354 words
+- 71 files · ~47,631 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 10 file(s) not represented in the graph (top: (none) 3, .pb 3, .ttf 3)
 
 ## Summary
-- 404 nodes · 410 edges · 42 communities (32 shown, 10 thin omitted)
-- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
+- 421 nodes · 453 edges · 43 communities (36 shown, 7 thin omitted)
+- Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 1 edges (avg confidence: 0.95)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `07c97c1d`
+- Built from commit: `75988a20`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - web/package.json
 - package.json
-- brandbook-03.mjs
+- agent-github.mjs
 - Anyko — брендбук
 - MVP: автоматизация подготовки заявления о банкротстве физического лица
-- brandbook-01.mjs
-- brandbook-04.mjs
-- typography-02.mjs
+- Примеры v1
+- Проверка тестов, написанных агентом
+- pull_request_template.md
 - Архитектура Anyko
 - Agent skills
 - Issue tracker: GitHub
@@ -45,35 +45,37 @@
 - Размещение и эксплуатация
 - Устройство репозитория
 - Направления развития Anyko
+- Работа агентов и независимая проверка
 - Правила написания кода
 - knip.json
 - server.json
 - api/tsconfig.json
 - worker/tsconfig.json
 - Инженерная основа Anyko
+- Язык Anyko
 - library.json
-- boundaries.test.ts
 - architecture/tsconfig.json
 
 ## God Nodes (most connected - your core abstractions)
-1. `scripts` - 15 edges
+1. `scripts` - 17 edges
 2. `MVP: автоматизация подготовки заявления о банкротстве физического лица` - 14 edges
 3. `compilerOptions` - 11 edges
 4. `Anyko — брендбук` - 11 edges
 5. `compilerOptions` - 9 edges
 6. `Архитектура Anyko` - 8 edges
-7. `Данные, доступ и фоновые задания` - 7 edges
-8. `Проверка качества` - 7 edges
-9. `Размещение и эксплуатация` - 6 edges
-10. `Устройство репозитория` - 6 edges
+7. `Примеры v1` - 8 edges
+8. `Данные, доступ и фоновые задания` - 7 edges
+9. `Проверка качества` - 7 edges
+10. `Размещение и эксплуатация` - 6 edges
 
 ## Surprising Connections (you probably didn't know these)
-- None detected - all connections are within the same source files.
+- `GitHub App агента` --references--> `check()`  [INFERRED]
+  docs/engineering/github-protection.md → tests/architecture/boundaries.test.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (42 total, 10 thin omitted)
+## Communities (43 total, 7 thin omitted)
 
 ### Community 0 - "web/package.json"
 Cohesion: 0.07
@@ -83,9 +85,9 @@ Nodes (26): dependencies, next, react, react-dom, devDependencies, @anyko/typesc
 Cohesion: 0.07
 Nodes (27): devDependencies, @anyko/eslint-config, @anyko/prettier-config, dependency-cruiser, eslint, @eslint/js, jscpd, knip (+19 more)
 
-### Community 2 - "brandbook-03.mjs"
-Cohesion: 0.09
-Nodes (16): inner, page, evidence, files, lum(), page, pairs, src (+8 more)
+### Community 2 - "agent-github.mjs"
+Cohesion: 0.26
+Nodes (8): assertPermissions(), commandEnvironment(), main(), mintToken(), permissions, readResponse(), request(), verifyToken()
 
 ### Community 3 - "Anyko — брендбук"
 Cohesion: 0.12
@@ -94,6 +96,18 @@ Nodes (15): 10. Дальнейшее развитие, 1. Основа брен�
 ### Community 4 - "MVP: автоматизация подготовки заявления о банкротстве физического лица"
 Cohesion: 0.11
 Nodes (18): 10. Крупные задачи разработки, 11. Критерии готовности MVP, 12. Что остаётся определить и что отложено, 13. Технические ориентиры, 1. Цель и границы продукта, 2. Принятые решения, 3. Пользовательский сценарий, 4. Архитектура (+10 more)
+
+### Community 5 - "Примеры v1"
+Cohesion: 0.25
+Nodes (8): C1, C2, C3, C4, C5, C6, C7, Примеры v1
+
+### Community 6 - "Проверка тестов, написанных агентом"
+Cohesion: 0.40
+Nodes (5): Глубина проверки по риску, Как доказать способность обнаружить ошибку, Подсказки LLM, Проверка тестов, написанных агентом, Что reviewer устанавливает для каждого изменения
+
+### Community 7 - "pull_request_template.md"
+Cohesion: 0.40
+Nodes (4): Доказательства, Изменение контроля, Независимое рассмотрение, Поведение и источник требования
 
 ### Community 8 - "Архитектура Anyko"
 Cohesion: 0.25
@@ -108,12 +122,12 @@ Cohesion: 0.40
 Nodes (4): Issue tracker: GitHub, Operations, Pull requests as a triage surface, Skill instructions
 
 ### Community 11 - "engineering/README.md"
-Cohesion: 0.13
-Nodes (14): graphify, Один модульный монолит с отдельными процессами, Рабочая область является границей владения данными, PostgreSQL хранит намерение обработки, очередь доставляет работу, Автор изменения, Изменение правил и инструкции, Проверяющий агент, Работа агентов и независимая проверка (+6 more)
+Cohesion: 0.14
+Nodes (9): graphify, Один модульный монолит с отдельными процессами, Рабочая область является границей владения данными, PostgreSQL хранит намерение обработки, очередь доставляет работу, Ключ v1, Контрольные примеры для reviewer, Пробный прогон v1 — 5 ноября 2026, Anyko (+1 more)
 
 ### Community 12 - "api/package.json"
-Cohesion: 0.11
-Nodes (17): dependencies, elysia, devDependencies, @anyko/typescript-config, @types/bun, typescript, @anyko/typescript-config, @types/bun (+9 more)
+Cohesion: 0.09
+Nodes (20): dependencies, elysia, devDependencies, @anyko/typescript-config, @types/bun, typescript, @anyko/typescript-config, @types/bun (+12 more)
 
 ### Community 15 - "worker/package.json"
 Cohesion: 0.13
@@ -124,8 +138,8 @@ Cohesion: 0.13
 Nodes (14): exports, ./base, ./frontend, ./server, eslint, @eslint/js, typescript-eslint, name (+6 more)
 
 ### Community 17 - "scripts"
-Cohesion: 0.13
-Nodes (15): scripts, boundaries, build, check:project, dev:api, dev:web, dev:worker, duplicates (+7 more)
+Cohesion: 0.12
+Nodes (17): scripts, agent:github, boundaries, build, check:project, dev:api, dev:web, dev:worker (+9 more)
 
 ### Community 18 - "compilerOptions"
 Cohesion: 0.17
@@ -140,8 +154,8 @@ Cohesion: 0.18
 Nodes (10): exports, ./backend, ./base, ./frontend, prettier, name, peerDependencies, prettier (+2 more)
 
 ### Community 21 - "check-project.mjs"
-Cohesion: 0.11
-Nodes (8): architectureRules, ioGlobals, restrictedIoGlobals, documents, errors, manifests, markdownFiles(), root
+Cohesion: 0.06
+Nodes (21): { existsSync, readdirSync }, knownModules, moduleEdges, GitHub App агента, Защита GitHub, Применение и проверка, Разделение полномочий, Состояние настройки (+13 more)
 
 ### Community 22 - "exports"
 Cohesion: 0.25
@@ -171,6 +185,10 @@ Nodes (6): Frontend, Как добавлять новое, Правила зав
 Cohesion: 0.33
 Nodes (6): Агентский слой продукта, Когда разделять дальше, Коммерческая модель, Направления развития Anyko, Расширения и точки подключения, Что закладывается в первую реализацию
 
+### Community 29 - "Работа агентов и независимая проверка"
+Cohesion: 0.50
+Nodes (4): Автор изменения, Изменение правил и инструкции, Проверяющий агент, Работа агентов и независимая проверка
+
 ### Community 30 - "Правила написания кода"
 Cohesion: 0.40
 Nodes (5): Зависимости и читаемость, Ответственности и интерфейсы, Ошибки и побочные эффекты, Правила написания кода, Типы и границы данных
@@ -195,9 +213,9 @@ Nodes (3): extends, include, @anyko/typescript-config/server.json
 Cohesion: 0.50
 Nodes (4): Инженерная основа Anyko, Итог технических дебатов, Карта решений, Порядок первого воплощения
 
-### Community 42 - "boundaries.test.ts"
-Cohesion: 0.12
-Nodes (10): createApp(), app, { existsSync, readdirSync }, knownModules, moduleEdges, elysia, cases, cli (+2 more)
+### Community 38 - "Язык Anyko"
+Cohesion: 0.50
+Nodes (4): Документы и сведения, Обработка и подготовка результата, Участники и доступ, Язык Anyko
 
 ### Community 43 - "architecture/tsconfig.json"
 Cohesion: 0.50
@@ -205,23 +223,23 @@ Nodes (3): ../../packages/typescript-config/server.json, extends, include
 
 ## Knowledge Gaps
 - **35 isolated node(s):** `@anyko/typescript-config`, `@types/bun`, `typescript`, `@anyko/typescript-config/server.json`, `next` (+30 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 304 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 308 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **7 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `MVP: автоматизация подготовки заявления о банкротстве физического лица` connect `MVP: автоматизация подготовки заявления о банкротстве физического лица` to `engineering/README.md`?**
-  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+- **Why does `Защита GitHub` connect `check-project.mjs` to `engineering/README.md`?**
+  _High betweenness centrality (0.111) - this node is a cross-community bridge._
 - **What connects `@anyko/typescript-config`, `@types/bun`, `typescript` to the rest of the system?**
   _35 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `web/package.json` be split into smaller, more focused modules?**
   _Cohesion score 0.06896551724137931 - nodes in this community are weakly interconnected._
-- **Why does `Архитектура Anyko` connect `Архитектура Anyko` to `engineering/README.md`?**
-  _High betweenness centrality (0.009) - this node is a cross-community bridge._
 - **Should `package.json` be split into smaller, more focused modules?**
   _Cohesion score 0.07142857142857142 - nodes in this community are weakly interconnected._
-- **Why does `elysia` connect `boundaries.test.ts` to `api/package.json`?**
-  _High betweenness centrality (0.008) - this node is a cross-community bridge._
-- **Should `brandbook-03.mjs` be split into smaller, more focused modules?**
-  _Cohesion score 0.09057971014492754 - nodes in this community are weakly interconnected._
+- **Should `Anyko — брендбук` be split into smaller, more focused modules?**
+  _Cohesion score 0.11764705882352941 - nodes in this community are weakly interconnected._
+- **Should `MVP: автоматизация подготовки заявления о банкротстве физического лица` be split into smaller, more focused modules?**
+  _Cohesion score 0.1111111111111111 - nodes in this community are weakly interconnected._
+- **Should `engineering/README.md` be split into smaller, more focused modules?**
+  _Cohesion score 0.14408602150537633 - nodes in this community are weakly interconnected._

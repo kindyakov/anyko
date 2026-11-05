@@ -23,58 +23,10 @@
     "ast_hash": "1bd9d3d2acfd2c0b13ea105824306e98",
     "semantic_hash": "1bd9d3d2acfd2c0b13ea105824306e98"
   },
-  "work/brandbook-01.mjs": {
-    "mtime": 1793813266.5268912,
-    "seen": 1793836613.693431,
-    "ast_hash": "8c7b0725ea330cb1fa022139d7a7721c",
-    "semantic_hash": "8c7b0725ea330cb1fa022139d7a7721c"
-  },
-  "work/brandbook-02.mjs": {
-    "mtime": 1793813317.8935902,
-    "seen": 1793836613.6934323,
-    "ast_hash": "4045736071f952d28c93040ac4b7db53",
-    "semantic_hash": "4045736071f952d28c93040ac4b7db53"
-  },
-  "work/brandbook-03.mjs": {
-    "mtime": 1793813700.1611094,
-    "seen": 1793836613.6934335,
-    "ast_hash": "caf44742388c142bd7ac8e3d08745448",
-    "semantic_hash": "caf44742388c142bd7ac8e3d08745448"
-  },
-  "work/brandbook-04.mjs": {
-    "mtime": 1793813729.1224966,
-    "seen": 1793836613.693435,
-    "ast_hash": "a3f0e53fab9d27e4816b15b361504e02",
-    "semantic_hash": "a3f0e53fab9d27e4816b15b361504e02"
-  },
-  "work/brandbook-05.mjs": {
-    "mtime": 1793813771.960643,
-    "seen": 1793836613.6934369,
-    "ast_hash": "2e7f29f53c715d3c719667991a58a8a4",
-    "semantic_hash": "2e7f29f53c715d3c719667991a58a8a4"
-  },
-  "work/typography-01.mjs": {
-    "mtime": 1793814241.6751297,
-    "seen": 1793836613.6934383,
-    "ast_hash": "e689503eb4166a53ebfbf6598721bd75",
-    "semantic_hash": "e689503eb4166a53ebfbf6598721bd75"
-  },
-  "work/typography-02.mjs": {
-    "mtime": 1793814264.9061983,
-    "seen": 1793836613.6934397,
-    "ast_hash": "bcef89663c9ba233248f4d00ce7ff746",
-    "semantic_hash": "bcef89663c9ba233248f4d00ce7ff746"
-  },
-  "work/typography-03.mjs": {
-    "mtime": 1793814282.3185363,
-    "seen": 1793836613.6934414,
-    "ast_hash": "ccae9047a98c4bd7933283c1228873b0",
-    "semantic_hash": "ccae9047a98c4bd7933283c1228873b0"
-  },
   "AGENTS.md": {
-    "mtime": 1793838196.7538583,
-    "seen": 1793838371.390176,
-    "ast_hash": "1898f87e338868cfd2a0feee4b549173",
+    "mtime": 1793841130.511394,
+    "seen": 1793841176.1691217,
+    "ast_hash": "e35e26b3991f8750dbf5a4cf27b89455",
     "semantic_hash": ""
   },
   "docs/agents/domain.md": {
@@ -197,48 +149,6 @@
     "ast_hash": "ff0f23d3e6d1fe2138f4d478ca5052b9",
     "semantic_hash": ""
   },
-  "work/brandbook-desktop.png": {
-    "mtime": 1793813708.2486794,
-    "seen": 1793836680.5979722,
-    "ast_hash": "06bfeb5bf2d17961b8cedfc0d7a56214",
-    "semantic_hash": ""
-  },
-  "work/brandbook-mascots.png": {
-    "mtime": 1793813734.7222235,
-    "seen": 1793836680.5979736,
-    "ast_hash": "cadbae2640739f9b3b228ce71150912b",
-    "semantic_hash": ""
-  },
-  "work/brandbook-mobile.png": {
-    "mtime": 1793813735.085348,
-    "seen": 1793836680.597975,
-    "ast_hash": "4b7d040a12c25a9eac13333af7b87395",
-    "semantic_hash": ""
-  },
-  "work/brandbook-product.png": {
-    "mtime": 1793813734.887769,
-    "seen": 1793836680.5979762,
-    "ast_hash": "a3913cff0b0cf7f213a45bbcb66251e9",
-    "semantic_hash": ""
-  },
-  "work/typography-accent.png": {
-    "mtime": 1793814269.2007859,
-    "seen": 1793836680.5979776,
-    "ast_hash": "5c19cc446b3289820be1839be30759b4",
-    "semantic_hash": ""
-  },
-  "work/typography-desktop.png": {
-    "mtime": 1793814252.5796752,
-    "seen": 1793836680.5979788,
-    "ast_hash": "b2f6adb639115a8261637b756a494f1d",
-    "semantic_hash": ""
-  },
-  "work/typography-mobile.png": {
-    "mtime": 1793814269.3345153,
-    "seen": 1793836680.5979805,
-    "ast_hash": "95a7759fb1fd143ed978215890ef396c",
-    "semantic_hash": ""
-  },
   ".dependency-cruiser.cjs": {
     "mtime": 1793838618.1977496,
     "seen": 1793838808.334402,
@@ -330,9 +240,9 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1793838620.7701993,
-    "seen": 1793838808.3344407,
-    "ast_hash": "197d9e0150994ed19f9a9facfaf8e08f",
+    "mtime": 1793841076.795368,
+    "seen": 1793841176.1690693,
+    "ast_hash": "e4ca5813114361c561e5736c211ffd88",
     "semantic_hash": ""
   },
   "packages/eslint-config/base.js": {
@@ -462,15 +372,15 @@
     "semantic_hash": ""
   },
   "docs/engineering/README.md": {
-    "mtime": 1793838197.0363755,
-    "seen": 1793838371.3902047,
-    "ast_hash": "f30a00a9fc9f6ca4b5a74e846cb14c1b",
+    "mtime": 1793840002.1490548,
+    "seen": 1793840979.2534533,
+    "ast_hash": "1aa5860c6ce56c5b8e6f62bec6e725ce",
     "semantic_hash": ""
   },
   "docs/engineering/agent-workflow.md": {
-    "mtime": 1793837515.0812867,
-    "seen": 1793838183.3305845,
-    "ast_hash": "14f60c59d0865d94d6ad95b19a5612b9",
+    "mtime": 1793839695.6509755,
+    "seen": 1793840979.2534554,
+    "ast_hash": "49c6b35f6ac6ac9e1830f4e5e91cb571",
     "semantic_hash": ""
   },
   "docs/engineering/code-rules.md": {
@@ -492,9 +402,9 @@
     "semantic_hash": ""
   },
   "docs/engineering/quality.md": {
-    "mtime": 1793838197.2638757,
-    "seen": 1793838371.390214,
-    "ast_hash": "dca983ddc2c1fbfb8a744854547b81b2",
+    "mtime": 1793839695.8568296,
+    "seen": 1793840979.2534657,
+    "ast_hash": "5e5acdf61aaeda57e99ee36f16141d46",
     "semantic_hash": ""
   },
   "docs/engineering/repository.md": {
@@ -537,6 +447,66 @@
     "mtime": 1793838774.2458792,
     "seen": 1793838808.3344417,
     "ast_hash": "528b57449ed7200131008ede70203d9d",
+    "semantic_hash": ""
+  },
+  "docs/engineering/github-ruleset.json": {
+    "mtime": 1793840082.8953986,
+    "seen": 1793840979.2533662,
+    "ast_hash": "bfe0d23edf1b1bd4957509e64b62bb2f",
+    "semantic_hash": ""
+  },
+  "scripts/agent-github.mjs": {
+    "mtime": 1793841076.031718,
+    "seen": 1793841176.1691048,
+    "ast_hash": "b7f1403e74d541cb8eb27783047287bb",
+    "semantic_hash": ""
+  },
+  ".github/pull_request_template.md": {
+    "mtime": 1793839696.4892862,
+    "seen": 1793840979.2534156,
+    "ast_hash": "3a9a7b5b3a6312662f553b118c3648d5",
+    "semantic_hash": ""
+  },
+  "docs/engineering/github-protection.md": {
+    "mtime": 1793841130.288421,
+    "seen": 1793841176.169167,
+    "ast_hash": "2be553c9bab25e82bb9cf4e0066c88ba",
+    "semantic_hash": ""
+  },
+  "docs/engineering/review-cases/README.md": {
+    "mtime": 1793839810.4446545,
+    "seen": 1793840979.2534692,
+    "ast_hash": "330b9cef041ef35a8cc71ec01753e6c6",
+    "semantic_hash": ""
+  },
+  "docs/engineering/review-cases/cases.md": {
+    "mtime": 1793839743.4999077,
+    "seen": 1793840979.2534707,
+    "ast_hash": "3027c1fb880895b3f9236f506af0dabf",
+    "semantic_hash": ""
+  },
+  "docs/engineering/review-cases/expected.md": {
+    "mtime": 1793839743.686841,
+    "seen": 1793840979.2534723,
+    "ast_hash": "9d259a3af07e65d60a4e9a1f33dae1b8",
+    "semantic_hash": ""
+  },
+  "docs/engineering/review-cases/results-2026-11-05.md": {
+    "mtime": 1793839809.3765402,
+    "seen": 1793840979.2534738,
+    "ast_hash": "3d83948dbda7adc9c397098c26d13557",
+    "semantic_hash": ""
+  },
+  "docs/engineering/test-review.md": {
+    "mtime": 1793839696.2853017,
+    "seen": 1793840979.253476,
+    "ast_hash": "1aa83050076f2c9a030ba7b6d8c14b17",
+    "semantic_hash": ""
+  },
+  "tests/tooling/agent-github.test.mjs": {
+    "mtime": 1793841081.0415945,
+    "seen": 1793841176.169115,
+    "ast_hash": "555a2efbcd5ee5b6c486a80f31c6f723",
     "semantic_hash": ""
   }
 }
