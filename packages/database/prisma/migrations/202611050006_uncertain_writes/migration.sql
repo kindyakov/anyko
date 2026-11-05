@@ -1,0 +1,1 @@
+ALTER TABLE "DocumentIo" ADD COLUMN "uncertain" BOOLEAN NOT NULL DEFAULT false;

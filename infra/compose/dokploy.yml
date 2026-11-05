@@ -1,0 +1,94 @@
+name: anyko
+x-logging: &logging
+  driver: journald
+  options:
+    mode: non-blocking
+    max-buffer-size: '4m'
+x-runtime: &runtime
+  restart: unless-stopped
+  stop_grace_period: 40s
+  networks: [private]
+  security_opt: ['no-new-privileges:true']
+services:
+  web:
+    <<: *runtime
+    image: ${ANYKO_WEB_IMAGE:?Specify immutable web image}
+    environment:
+      NODE_ENV: production
+      API_ORIGIN: http://api:3001
+      RELEASE: ${ANYKO_RELEASE:?Specify release}
+      PORT: '3000'
+    expose: ['3000']
+    logging:
+      <<: *logging
+      options:
+        mode: non-blocking
+        max-buffer-size: '4m'
+        tag: anyko-production-web
+  api:
+    <<: *runtime
+    image: ${ANYKO_API_IMAGE:?Specify immutable API image}
+    environment:
+      NODE_ENV: production
+      API_HOST: 0.0.0.0
+      API_PORT: '3001'
+      LOG_LEVEL: info
+      RELEASE: ${ANYKO_RELEASE:?Specify release}
+    expose: ['3001']
+    logging:
+      <<: *logging
+      options:
+        mode: non-blocking
+        max-buffer-size: '4m'
+        tag: anyko-production-api
+  worker:
+    <<: *runtime
+    image: ${ANYKO_WORKER_IMAGE:?Specify immutable worker image}
+    environment:
+      NODE_ENV: production
+      WORKER_HOST: 0.0.0.0
+      WORKER_PORT: '3002'
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: info
+      RELEASE: ${ANYKO_RELEASE:?Specify release}
+    expose: ['3002']
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging:
+      <<: *logging
+      options:
+        mode: non-blocking
+        max-buffer-size: '4m'
+        tag: anyko-production-worker
+  redis:
+    <<: *runtime
+    image: redis:8.10.3-alpine
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--appendfsync',
+        'everysec',
+        '--maxmemory',
+        '256mb',
+        '--maxmemory-policy',
+        'noeviction',
+      ]
+    volumes: ['redis-data:/data']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 2s
+      retries: 10
+    logging:
+      <<: *logging
+      options:
+        mode: non-blocking
+        max-buffer-size: '4m'
+        tag: anyko-production-redis
+networks:
+  private:
+volumes:
+  redis-data:

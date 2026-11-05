@@ -3,17 +3,21 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts",
-    "test": "bun test src/health.test.ts",
+    "dev": "bun ../../scripts/run-local.mjs api dev",
+    "start": "bun ../../scripts/run-local.mjs api start",
+    "test": "bun test tests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "elysia": "^1.4.0"
+    "elysia": "1.4.31",
+    "@anyko/logger": "workspace:*",
+    "zod": "4.6.7",
+    "@anyko/backend": "workspace:*"
   },
   "devDependencies": {
     "@anyko/typescript-config": "workspace:*",
-    "@types/bun": "^1.3.0",
-    "typescript": "^5.9.0"
+    "@types/bun": "1.4.4",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "@typescript/native": "npm:typescript@7.0.2"
   }
 }

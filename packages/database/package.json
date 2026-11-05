@@ -1,0 +1,27 @@
+{
+  "name": "@anyko/database",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "bun --bun prisma generate",
+    "migrate": "bun --bun prisma migrate deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
+    "@prisma/client-runtime-utils": "7.10.1",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@anyko/typescript-config": "workspace:*",
+    "@types/bun": "1.4.4",
+    "@types/pg": "8.23.1",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "prisma": "7.10.1",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
+  }
+}

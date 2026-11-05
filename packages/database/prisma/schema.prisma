@@ -1,0 +1,195 @@
+generator client {
+  provider = "prisma-client-js"
+  output = "../generated/client"
+}
+datasource db {
+  provider = "postgresql"
+}
+model User {
+ id String @id
+ name String
+ email String @unique
+ emailVerified Boolean @default(false)
+ image String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ sessions Session[]
+ accounts Account[]
+ memberships Membership[]
+}
+model Session {
+ id String @id
+ expiresAt DateTime
+ token String @unique
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ ipAddress String?
+ userAgent String?
+ userId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ @@index([userId])
+}
+model Account {
+ id String @id
+ accountId String
+ providerId String
+ userId String
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ accessToken String?
+ refreshToken String?
+ idToken String?
+ accessTokenExpiresAt DateTime?
+ refreshTokenExpiresAt DateTime?
+ scope String?
+ password String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([userId])
+}
+model Verification {
+ id String @id
+ identifier String
+ value String
+ expiresAt DateTime
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([identifier])
+}
+model AnykoWorkspace {
+ id String @id
+ name String
+ createdAt DateTime @default(now())
+ memberships Membership[]
+ documents SourceDocument[]
+ runs ProcessingRun[]
+ sourceUploads SourceUpload[]
+ resultUploads ResultUpload[]
+ artifacts DocumentArtifact[]
+ processorAttempts ProcessorAttempt[]
+ deletions DocumentDeletion[]
+ documentIo DocumentIo[]
+}
+model Membership {
+ workspaceId String
+ userId String
+ role String @default("member")
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Cascade)
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ @@id([workspaceId,userId])
+ @@index([userId])
+}
+model SourceDocument {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ filename String
+ sourceKey String @unique
+ sourceChecksum String
+ requestKey String
+ size Int
+ createdBy String
+ createdAt DateTime @default(now())
+ deletedAt DateTime?
+ purgedAt DateTime?
+ runs ProcessingRun[]
+ @@unique([workspaceId,id])
+ @@unique([workspaceId,requestKey])
+ @@index([workspaceId,createdAt])
+ @@index([deletedAt,purgedAt])
+}
+model SourceUpload {
+ key String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ createdAt DateTime @default(now())
+ @@index([createdAt])
+}
+model ProcessingRun {
+ id String @id
+ workspaceId String
+ documentId String
+ revision Int @default(1)
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ document SourceDocument @relation(fields:[workspaceId,documentId],references:[workspaceId,id],onDelete:Restrict)
+ status String @default("queued")
+ correlationId String
+ initiatedBy String
+ attempts Int @default(0)
+ attemptToken String?
+ leaseUntil DateTime?
+ resultKey String? @unique
+ processorVersion String?
+ errorCode String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ outbox ProcessingOutbox?
+ @@unique([workspaceId,id])
+ @@unique([workspaceId,documentId,revision])
+ @@index([workspaceId,documentId,createdAt])
+ @@index([status,leaseUntil])
+}
+model ProcessingOutbox {
+ id String @id
+ workspaceId String
+ runId String @unique
+ run ProcessingRun @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade)
+ deliveredAt DateTime?
+ leaseUntil DateTime?
+ leaseToken String?
+ createdAt DateTime @default(now())
+ @@index([deliveredAt,leaseUntil])
+ @@unique([workspaceId,runId])
+}
+model ResultUpload {
+ key String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ createdAt DateTime @default(now())
+ @@index([createdAt])
+}
+model DocumentArtifact {
+ key String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ documentId String
+ requestKey String?
+ manifestKey String?
+ kind String
+ position Int?
+ path String?
+ contentType String
+ size Int
+ checksum String
+ createdAt DateTime @default(now())
+ @@index([workspaceId,documentId])
+ @@index([workspaceId,requestKey])
+ @@index([manifestKey,position])
+}
+model ProcessorAttempt {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ documentId String
+ createdAt DateTime @default(now())
+ @@index([workspaceId,documentId])
+}
+model DocumentDeletion {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ requestKey String
+ completedAt DateTime?
+ createdAt DateTime @default(now())
+ @@unique([workspaceId,requestKey])
+}
+model DocumentIo {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ documentId String
+ requestKey String?
+ uncertain Boolean @default(false)
+ createdAt DateTime @default(now())
+ @@index([workspaceId,documentId])
+ @@index([workspaceId,requestKey])
+}

@@ -20,6 +20,12 @@ const presentModules = existsSync(moduleRoot)
 
 module.exports = {
   forbidden: [
+    {
+      name: 'workspace-imports-must-resolve',
+      severity: 'error',
+      from: {},
+      to: { path: '^@anyko/', couldNotResolve: true },
+    },
     { name: 'no-cycles', severity: 'error', from: {}, to: { circular: true } },
     ...Object.entries(moduleEdges).map(([owner, allowed]) => ({
       name: `module-allowlist-${owner}`,
@@ -45,11 +51,39 @@ module.exports = {
     ...presentModules.map((owner) => ({
       name: `module-private-import-${owner}`,
       severity: 'error',
-      from: { pathNot: `^packages/backend/src/modules/${owner}/` },
+      from: {
+        pathNot: `^packages/backend/(?:src/(?:modules/${owner}/|runtime/)|tests/integration/[^/]+\\.test\\.ts$)`,
+      },
       to: {
         path: `^packages/backend/src/modules/${owner}/(?!index\\.[cm]?[jt]s$)`,
       },
     })),
+    {
+      name: 'runtime-only-module-adapters',
+      severity: 'error',
+      from: { path: '^packages/backend/src/runtime/' },
+      to: {
+        path: '^packages/backend/src/modules/[^/]+/(?!index\\.[cm]?[jt]s$|infrastructure/)',
+      },
+    },
+    {
+      name: 'integration-only-module-adapters',
+      severity: 'error',
+      from: { path: '^packages/backend/tests/integration/[^/]+\\.test\\.ts$' },
+      to: {
+        path: '^packages/backend/src/modules/[^/]+/(?!index\\.[cm]?[jt]s$|infrastructure/)',
+      },
+    },
+    {
+      name: 'app-runtime-only-bootstrap',
+      severity: 'error',
+      from: {
+        path: '^apps/(api|worker)/',
+        pathNot:
+          '^apps/(?:api/src/bootstrap/start-api|worker/src/bootstrap/start-worker|worker/src/cli/diagnostic)\\.ts$',
+      },
+      to: { path: '^packages/backend/src/runtime/' },
+    },
     {
       name: 'web-no-server',
       severity: 'error',
@@ -111,7 +145,7 @@ module.exports = {
       from: {
         path: '^(apps|packages/backend)/',
         pathNot:
-          '^packages/backend/src/(modules/[^/]+/infrastructure|runtime)/',
+          '^packages/backend/(?:src/(?:modules/[^/]+/infrastructure|runtime)/|tests/integration/[^/]+\\.test\\.ts$)',
       },
       to: { path: '^packages/database/' },
     },
@@ -131,7 +165,11 @@ module.exports = {
     },
   ],
   options: {
-    doNotFollow: { path: 'node_modules' },
+    enhancedResolveOptions: {
+      exportsFields: ['exports'],
+      conditionNames: ['import', 'require', 'node', 'default', 'types'],
+    },
+    doNotFollow: { path: 'node_modules|^packages/database/generated/' },
     tsPreCompilationDeps: true,
     combinedDependencies: true,
   },

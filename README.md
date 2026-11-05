@@ -1,10 +1,10 @@
 # Anyko
 
-Инженерный каркас приложения для подготовки документов. Продуктовый сценарий и границы MVP: [mvp.md](mvp.md). Архитектура и правила разработки: [docs/engineering/README.md](docs/engineering/README.md).
+Основа приложения для подготовки документов: Next.js, API Elysia и worker BullMQ на Bun. Продуктовый сценарий и границы MVP: [mvp.md](mvp.md). Архитектура и правила разработки: [docs/engineering/README.md](docs/engineering/README.md).
 
 ## Разработка каркаса
 
-Для воспроизводимого запуска используются Bun **1.4.4** и Node.js **24.21.0**. Bun — runtime приложений и менеджер workspace; Node используется инструментами, которым он необходим.
+Для воспроизводимого запуска используются Bun **1.4.4** и Node.js **26.13.0**. Bun — runtime приложений и менеджер workspace; Node используется инструментами, которым он необходим.
 
 ```sh
 bun install --frozen-lockfile
@@ -16,4 +16,46 @@ bun run build
 
 Проверки импортов контролируют циклы, приватные файлы, межмодульный allowlist и прямые обращения к чужому workspace. ESLint ограничивает типичные глобальные источники I/O в domain и profiles. Динамически вычисляемые импорты и доступ к I/O, а также смысловая чистота функций требуют Code review: статический анализ не доказывает их отсутствие. Prettier проверяет файлы каркаса; существующие документы и материалы сторонних навыков в эту область не включены.
 
-Это начальная проверка каркаса. Она не подтверждает работу PostgreSQL, Redis, S3, MinerU, LLM, миграций, взаимодействие приложений в браузере или production deployment. Полные `verify`, `verify:release` и `eval:documents` из [политики качества](docs/engineering/quality.md) требуют соответствующих компонентов и тестов; они не объявлены успешными данным workflow. Защита основной ветки и обязательные статусы настраиваются отдельно в GitHub.
+`verify:fast` включает unit/HTTP-проверки API, logger, env worker и ограниченного чтения журналов. Интеграция с настоящим Redis выполняется отдельно и включена в CI. Она не подтверждает PostgreSQL, S3, MinerU, LLM, браузерный сценарий или production deployment. Полные `verify`, `verify:release` и `eval:documents` из [политики качества](docs/engineering/quality.md) требуют соответствующих компонентов.
+
+## Запуск и диагностика
+
+Обработка PDF, DOCX и фотографий с OCR и единый локальный запуск: [инструкция](docs/engineering/document-vertical.md).
+Общая локальная конфигурация теперь хранится в игнорируемом корневом `.env` по
+`.env.example`; app-specific `.env` может дополнять её. Для запуска используйте
+`bun run dev`. Для свежего checkout перед отдельными quality-командами выполните
+`bun run db:generate`.
+
+Локальные launcher API и worker загружают корневой `.env` и, при наличии, `.env` приложения. Переменные процесса имеют приоритет. Секреты не нужны для сборки сайта. Следующие команды позволяют запускать процессы отдельно; для полной PDF/OCR-вертикали используйте `bun run dev` и инструкцию выше.
+
+```sh
+docker compose -p anyko-runtime-test -f infra/compose/local.yml up -d
+bun run dev:api
+bun run dev:web
+```
+
+В env worker задайте `REDIS_URL=redis://127.0.0.1:16379`, затем в отдельном терминале:
+
+```sh
+bun run dev:worker
+bun --filter @anyko/worker diagnostic
+```
+
+API слушает `127.0.0.1:3001`, web — `3000`, внутренние probes worker — `127.0.0.1:3002`. `/health/live` проверяет процесс; `/health/ready` — готовность. Диагностическая очередь не является API предметной обработки.
+
+Локальные команды `dev` и `start` API и worker сохраняют stdout/stderr в
+`apps/api/.logs/runtime.log` и `apps/worker/.logs/runtime.log`, одновременно
+показывая вывод в терминале. Файлы дописываются после перезапуска; при размере
+10 MiB создаются до трёх предыдущих файлов `.1`–`.3`. Каталоги `.logs`
+игнорируются Git. Запускайте один локальный процесс каждого приложения:
+параллельные launcher одного приложения не делят ротацию безопасно.
+Процессы Docker запускаются напрямую и используют серверное хранилище логов.
+
+Интеграционные тесты требуют явного `TEST_REDIS_URL` на изолированный тестовый Redis, например в PowerShell:
+
+```powershell
+$env:TEST_REDIS_URL = 'redis://127.0.0.1:16379'
+bun run test:worker:integration
+```
+
+Приложения пишут JSON в stdout. Для серверного хранения и доступа агента подготовлены [инструкция Dokploy](docs/engineering/deployment.md) и [контракт runtime](docs/engineering/runtime-foundation.md). История journald, SSH-ограничения и сохранение после перезагрузки требуют отдельной проверки на Linux-сервере. На Windows доступ к Docker и HTTP loopback может блокироваться песочницей инструмента: ошибка доступа не означает, что Engine или HTTP-handler сломан.

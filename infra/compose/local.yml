@@ -1,0 +1,32 @@
+name: anyko-foundation-local
+services:
+  redis:
+    image: redis:8.10.3-alpine
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--appendfsync',
+        'everysec',
+        '--maxmemory',
+        '128mb',
+        '--maxmemory-policy',
+        'noeviction',
+      ]
+    ports:
+      - '127.0.0.1:16379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 1s
+      retries: 15
+    logging:
+      driver: local
+      options:
+        max-size: '10m'
+        max-file: '3'
+volumes:
+  redis-data:

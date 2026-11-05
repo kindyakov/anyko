@@ -3,6 +3,18 @@
   "ignoreBinaries": ["dev"],
   "ignore": ["work/**"],
   "workspaces": {
-    ".": { "entry": ["tests/architecture/**/*.test.ts"] }
+    ".": {
+      "entry": [
+        "tests/architecture/**/*.test.ts",
+        "tests/processor/create-junction.mjs"
+      ]
+    },
+    "packages/backend": {
+      "entry": ["tests/integration/*.test.ts", "src/modules/**/*.test.ts"]
+    },
+    "packages/database": {
+      "ignore": ["generated/**"],
+      "ignoreDependencies": ["@prisma/client", "@prisma/client-runtime-utils"]
+    }
   }
 }
