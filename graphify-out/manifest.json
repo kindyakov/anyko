@@ -456,9 +456,9 @@
     "semantic_hash": ""
   },
   "scripts/agent-github.mjs": {
-    "mtime": 1793841076.031718,
-    "seen": 1793841176.1691048,
-    "ast_hash": "b7f1403e74d541cb8eb27783047287bb",
+    "mtime": 1793841724.0386176,
+    "seen": 1793841754.694215,
+    "ast_hash": "6286c64542bc0aa5fa9777a07fc0f5c6",
     "semantic_hash": ""
   },
   ".github/pull_request_template.md": {
@@ -468,9 +468,9 @@
     "semantic_hash": ""
   },
   "docs/engineering/github-protection.md": {
-    "mtime": 1793841130.288421,
-    "seen": 1793841176.169167,
-    "ast_hash": "2be553c9bab25e82bb9cf4e0066c88ba",
+    "mtime": 1793841746.114155,
+    "seen": 1793841754.6942768,
+    "ast_hash": "0abc3ea1e3feddf44fbd944341a53458",
     "semantic_hash": ""
   },
   "docs/engineering/review-cases/README.md": {
@@ -504,9 +504,9 @@
     "semantic_hash": ""
   },
   "tests/tooling/agent-github.test.mjs": {
-    "mtime": 1793841081.0415945,
-    "seen": 1793841176.169115,
-    "ast_hash": "555a2efbcd5ee5b6c486a80f31c6f723",
+    "mtime": 1793841724.0642872,
+    "seen": 1793841754.6942275,
+    "ast_hash": "c8282707a9af6084a40dfc8bff8529eb",
     "semantic_hash": ""
   }
 }

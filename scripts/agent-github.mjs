@@ -120,21 +120,64 @@ export function commandEnvironment(token, configDir) {
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null',
     GIT_ALLOW_PROTOCOL: 'https',
-    GIT_CONFIG_COUNT: '3',
+    GIT_CONFIG_COUNT: '4',
     GIT_CONFIG_KEY_0: 'credential.helper',
     GIT_CONFIG_VALUE_0: '',
-    GIT_CONFIG_KEY_1: `http.https://github.com/${repository}.extraHeader`,
-    GIT_CONFIG_VALUE_1: `Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`,
-    GIT_CONFIG_KEY_2: `http.https://github.com/${repository}.git.extraHeader`,
+    GIT_CONFIG_KEY_1: 'http.https://github.com/.extraHeader',
+    GIT_CONFIG_VALUE_1: '',
+    GIT_CONFIG_KEY_2: `http.https://github.com/${repository}.extraHeader`,
     GIT_CONFIG_VALUE_2: `Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`,
+    GIT_CONFIG_KEY_3: `http.https://github.com/${repository}.git.extraHeader`,
+    GIT_CONFIG_VALUE_3: `Authorization: Basic ${Buffer.from(`x-access-token:${token}`).toString('base64')}`,
   };
+}
+
+export function assertNoLocalAuthHeaders(cwd = process.cwd()) {
+  const result = spawnSync(
+    'git',
+    [
+      'config',
+      '--includes',
+      '--name-only',
+      '--get-regexp',
+      '^http\\.(.*\\.)?extraheader$',
+    ],
+    {
+      cwd,
+      encoding: 'utf8',
+      timeout: 10000,
+      env: {
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([name]) => !/^GIT_/i.test(name)),
+        ),
+        GIT_CONFIG_NOSYSTEM: '1',
+        GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null',
+      },
+    },
+  );
+  if (result.error || ![0, 1].includes(result.status))
+    throw new Error('Cannot inspect local Git configuration safely.');
+  if (result.status === 0)
+    throw new Error(
+      'Local Git extraHeader detected; remove it before using the app launcher.',
+    );
 }
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (
     !['check', 'gh', 'git'].includes(command) ||
-    (command === 'gh' && args[0] === 'auth')
+    (command === 'gh' && args[0] === 'auth') ||
+    (command === 'git' &&
+      args.some(
+        (arg) =>
+          arg === '-C' ||
+          arg.startsWith('-C') ||
+          arg.startsWith('--git-dir') ||
+          arg.startsWith('--work-tree') ||
+          arg === '-c' ||
+          arg.startsWith('-c'),
+      ))
   ) {
     throw new Error(
       'Usage: agent-github.mjs check | gh <args> | git <args>. gh auth is disabled.',
@@ -143,6 +186,7 @@ async function main() {
   let token;
   let configDir;
   try {
+    if (command === 'git' || command === 'gh') assertNoLocalAuthHeaders();
     token = await mintToken();
     await verifyToken(token);
     if (command === 'check') {
