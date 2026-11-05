@@ -5,11 +5,11 @@ const schema = z.object({
   APP_ORIGIN: z
     .url()
     .refine((value) => new URL(value).origin === value)
-    .default('http://127.0.0.1:3000'),
+    .default('http://127.0.0.1:3020'),
   API_ORIGIN: z
     .url()
     .refine((value) => ['http:', 'https:'].includes(new URL(value).protocol))
-    .default('http://127.0.0.1:3001'),
+    .default('http://127.0.0.1:3021'),
   RELEASE: z
     .string()
     .regex(/^[\w.-]{1,128}$/)

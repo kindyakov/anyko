@@ -1,6 +1,16 @@
 import type { FieldValues, WorkView } from '@anyko/contracts';
 export { generateDocument } from './render';
 
+interface GenerationFile {
+  id: string;
+  templateVersion: string;
+  title: string;
+  filename: string;
+  status: 'queued' | 'succeeded' | 'failed';
+  errorCode: string | null;
+  key: string | null;
+  checksum: string | null;
+}
 interface GenerationRecord {
   id: string;
   workspaceId: string;
@@ -8,12 +18,18 @@ interface GenerationRecord {
   revision: number;
   confirmed: boolean;
   values: FieldValues;
-  templateVersion: string;
-  key: string | null;
-  checksum: string | null;
+  packageVersion: string;
+  files: GenerationFile[];
 }
 export interface GenerationStore {
-  create(input: Omit<GenerationRecord, 'key' | 'checksum'>): Promise<void>;
+  create(
+    input: Omit<GenerationRecord, 'files'> & {
+      files: Pick<
+        GenerationFile,
+        'id' | 'templateVersion' | 'title' | 'filename'
+      >[];
+    },
+  ): Promise<void>;
   get(
     workspaceId: string,
     workId: string,
@@ -24,9 +40,20 @@ export interface GenerationStore {
     workspaceId: string;
     workId: string;
     id: string;
+    fileId: string;
     key: string;
     checksum: string;
   }): Promise<void>;
+  failFile(
+    workspaceId: string,
+    generationId: string,
+    fileId: string,
+  ): Promise<void>;
+  finish(
+    workspaceId: string,
+    generationId: string,
+    status: 'succeeded' | 'partial' | 'failed',
+  ): Promise<void>;
   fail(workspaceId: string, id: string): Promise<void>;
   stage(workspaceId: string, workId: string, key: string): Promise<void>;
   keys(workspaceId: string, workId: string): Promise<string[]>;

@@ -10,7 +10,11 @@
       ]
     },
     "packages/backend": {
-      "entry": ["tests/integration/*.test.ts", "src/modules/**/*.test.ts"]
+      "entry": [
+        "tests/integration/*.test.ts",
+        "tests/templates.test.ts",
+        "src/modules/**/*.test.ts"
+      ]
     },
     "packages/database": {
       "ignore": ["generated/**"],

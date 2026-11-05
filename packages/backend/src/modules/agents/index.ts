@@ -1,5 +1,5 @@
 import type { ModelConnection } from '@anyko/llm';
-import type { WorkFacts } from '@anyko/contracts';
+import type { WorkFacts, FieldDefinition } from '@anyko/contracts';
 
 interface AgentDocument {
   id: string;
@@ -22,6 +22,7 @@ export interface DocumentAgents {
     signal: AbortSignal;
   }): Promise<{ description: string; usage: AgentUsage }>;
   extract(input: {
+    fields?: FieldDefinition[];
     connection: ModelConnection;
     modelId: string;
     resource: string;

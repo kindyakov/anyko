@@ -16,6 +16,9 @@ import {
 } from '@anyko/contracts';
 import { ApiError, requestApi } from '../../lib/api/client';
 import { SourcePreview } from './source-preview';
+import { PackagePreview } from './package-preview';
+import { CandidateValue } from './work-fields';
+import { UploadFailure, uploadFailureMessage } from './upload-errors';
 
 const accepted = z.object({ status: z.string() });
 const statuses: Record<string, string> = {
@@ -114,9 +117,11 @@ export function WorkDetail({
         setError(
           failure instanceof ApiError && failure.code === 'REVISION_CONFLICT'
             ? 'Работа изменилась. Ваши правки сохранены в полях. Обновите основу правок перед повторным сохранением.'
-            : failure instanceof ApiError
-              ? `Операция не выполнена: ${failure.code}`
-              : 'Операция не выполнена. Повторите попытку.',
+            : failure instanceof UploadFailure
+              ? failure.message
+              : failure instanceof ApiError
+                ? `Операция не выполнена: ${failure.code}`
+                : 'Операция не выполнена. Повторите попытку.',
         );
     } finally {
       setPending(false);
@@ -127,7 +132,7 @@ export function WorkDetail({
     const form = event.currentTarget;
     const files = new FormData(form).getAll('files');
     await command(async () => {
-      const failed = [];
+      const failed: string[] = [];
       for (const file of files)
         if (file instanceof File && file.size) {
           const data = new FormData();
@@ -143,11 +148,13 @@ export function WorkDetail({
                 timeoutMs: 60000,
               },
             );
-          } catch {
-            failed.push(file.name);
+          } catch (failure) {
+            if (failure instanceof ApiError && failure.status === 401)
+              throw failure;
+            failed.push(uploadFailureMessage(file.name, failure));
           }
         }
-      if (failed.length) throw new Error('Некоторые файлы не загружены');
+      if (failed.length) throw new UploadFailure(failed.join(' '));
       form.reset();
     });
   }
@@ -380,94 +387,73 @@ export function WorkDetail({
           </div>
         </div>
       )}
-      <section
-        className="document-paper"
-        aria-label="Документ с редактируемыми полями"
-      >
-        <h2>{view.template.title}</h2>
-        {view.template.technical && (
-          <p className="fixture-label">
-            Технический бланк. Не является готовым юридическим документом.
+      <PackagePreview
+        pack={view.package}
+        values={values}
+        disabled={busy}
+        onChange={(key, value) => {
+          setDraft({
+            revision: draft?.revision ?? view.work.revision,
+            values: { ...values, [key]: value },
+          });
+        }}
+      />
+      <section className="panel">
+        <h2>Извлечённые варианты и источники</h2>
+        {!view.facts.candidates.length && (
+          <p className="muted">
+            После анализа здесь появятся сведения с подтверждающими фрагментами.
           </p>
         )}
-        {view.template.fields.map((field) => (
-          <div className="paper-field" key={field.key}>
-            <label htmlFor={`field-${field.key}`}>{field.label}</label>
-            {field.multiline ? (
-              <textarea
-                id={`field-${field.key}`}
-                disabled={busy}
-                rows={8}
-                value={values[field.key] ?? ''}
-                onChange={(event) => {
-                  setDraft({
-                    revision: draft?.revision ?? view.work.revision,
-                    values: {
-                      ...values,
-                      [field.key]: event.target.value || null,
-                    },
-                  });
-                }}
-              />
-            ) : (
-              <input
-                id={`field-${field.key}`}
-                disabled={busy}
-                value={values[field.key] ?? ''}
-                onChange={(event) => {
-                  setDraft({
-                    revision: draft?.revision ?? view.work.revision,
-                    values: {
-                      ...values,
-                      [field.key]: event.target.value || null,
-                    },
-                  });
-                }}
-              />
-            )}
-            {view.facts.candidates.some(
+        {view.package.fields
+          .filter((field) =>
+            view.facts.candidates.some(
               (candidate) => candidate.field === field.key,
-            ) && (
-              <details className="evidence">
-                <summary>Извлечённые варианты и источники</summary>
-                {view.facts.candidates
-                  .filter((candidate) => candidate.field === field.key)
-                  .map((candidate, index) => (
-                    <div key={index}>
-                      <button
-                        className="secondary"
-                        disabled={busy}
-                        onClick={() => {
-                          setDraft({
-                            revision: draft?.revision ?? view.work.revision,
-                            values: { ...values, [field.key]: candidate.value },
-                          });
-                        }}
-                      >
-                        {candidate.value}
-                      </button>
-                      {candidate.evidence.map((source, i) => (
-                        <blockquote key={i}>
-                          <a
-                            href={`/api/documents/${source.documentId}/source`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {view.documents.find(
-                              (doc) => doc.id === source.documentId,
-                            )?.filename ?? 'Источник'}
-                            {source.imagePath && ` · ${source.imagePath}`}
-                          </a>
-                          <p>{source.quote}</p>
-                        </blockquote>
-                      ))}
-                    </div>
-                  ))}
-              </details>
-            )}
-          </div>
-        ))}
+            ),
+          )
+          .map((field) => (
+            <details className="evidence" key={field.key}>
+              <summary>{field.label}</summary>
+              {view.facts.candidates
+                .filter((candidate) => candidate.field === field.key)
+                .map((candidate, index) => (
+                  <div key={index}>
+                    <CandidateValue value={candidate.value} />
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() => {
+                        setDraft({
+                          revision: draft?.revision ?? view.work.revision,
+                          values: { ...values, [field.key]: candidate.value },
+                        });
+                      }}
+                    >
+                      Использовать этот вариант
+                    </button>
+                    {candidate.evidence.map((source, i) => (
+                      <blockquote key={i}>
+                        <a
+                          href={
+                            '/api/documents/' + source.documentId + '/source'
+                          }
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {view.documents.find(
+                            (doc) => doc.id === source.documentId,
+                          )?.filename ?? 'Источник'}
+                          {source.imagePath && ' · ' + source.imagePath}
+                        </a>
+                        <p>{source.quote}</p>
+                      </blockquote>
+                    ))}
+                  </div>
+                ))}
+            </details>
+          ))}
       </section>
+
       <section className="panel">
         <p>
           {view.work.confirmedRevision === view.work.revision
@@ -498,7 +484,7 @@ export function WorkDetail({
               );
             }}
           >
-            Сформировать DOCX
+            Сформировать комплект DOCX
           </button>
         </div>
         <ul>
@@ -506,11 +492,33 @@ export function WorkDetail({
             <li key={generation.id}>
               {generation.confirmed ? 'Документ' : 'Черновик'} · версия{' '}
               {generation.revision} · {statuses[generation.status]}{' '}
-              {generation.status === 'succeeded' && (
-                <a href={`/api/works/${workId}/generations/${generation.id}`}>
-                  Скачать DOCX
-                </a>
-              )}
+              <ul>
+                {generation.files.map((file) => (
+                  <li key={file.id}>
+                    {file.title} · {statuses[file.status]}{' '}
+                    {file.status === 'succeeded' && (
+                      <a
+                        href={
+                          '/api/works/' +
+                          workId +
+                          '/generations/' +
+                          generation.id +
+                          '/files/' +
+                          file.id
+                        }
+                      >
+                        Скачать DOCX
+                      </a>
+                    )}
+                    {file.errorCode && (
+                      <span role="status">
+                        Не удалось сформировать этот документ. Можно создать
+                        комплект повторно.
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
             </li>
           ))}
         </ul>

@@ -15,11 +15,11 @@ services:
     image: ${ANYKO_WEB_IMAGE:?Specify immutable web image}
     environment:
       NODE_ENV: production
-      API_ORIGIN: http://api:3001
+      API_ORIGIN: http://api:3021
       APP_ORIGIN: ${APP_ORIGIN:?Specify public application origin}
       RELEASE: ${ANYKO_RELEASE:?Specify release}
-      PORT: '3000'
-    expose: ['3000']
+      PORT: '3020'
+    expose: ['3020']
     logging:
       <<: *logging
       options:
@@ -32,10 +32,10 @@ services:
     environment:
       NODE_ENV: production
       API_HOST: 0.0.0.0
-      API_PORT: '3001'
+      API_PORT: '3021'
       LOG_LEVEL: info
       RELEASE: ${ANYKO_RELEASE:?Specify release}
-    expose: ['3001']
+    expose: ['3021']
     logging:
       <<: *logging
       options:
@@ -48,11 +48,11 @@ services:
     environment:
       NODE_ENV: production
       WORKER_HOST: 0.0.0.0
-      WORKER_PORT: '3002'
+      WORKER_PORT: '3022'
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: info
       RELEASE: ${ANYKO_RELEASE:?Specify release}
-    expose: ['3002']
+    expose: ['3022']
     depends_on:
       redis:
         condition: service_healthy

@@ -105,7 +105,8 @@ model Work {
  id String @id
  workspaceId String
  workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
- templateVersion String
+ packageVersion String
+ documentPackage DocumentPackageVersion @relation(fields:[packageVersion],references:[version],onDelete:Restrict)
  title String
  revision Int @default(0)
  inputRevision Int @default(0)
@@ -217,12 +218,56 @@ model WorkGeneration {
  revision Int
  confirmed Boolean
  values Json
- templateVersion String
+ packageVersion String
+ documentPackage DocumentPackageVersion @relation(fields:[packageVersion],references:[version],onDelete:Restrict)
  status String @default("queued")
+ createdAt DateTime @default(now())
+ files WorkGenerationFile[]
+ @@unique([workspaceId,workId,id,packageVersion])
+ @@index([workspaceId,workId,createdAt])
+}
+model DocumentPackageVersion {
+ version String @id
+ packageId String
+ title String
+ documents PackageDocument[]
+ works Work[]
+ generations WorkGeneration[]
+}
+model DocumentTemplateVersion {
+ version String @id
+ templateId String
+ title String
+ checksum String
+ packages PackageDocument[]
+}
+model PackageDocument {
+ packageVersion String
+ documentPackage DocumentPackageVersion @relation(fields:[packageVersion],references:[version],onDelete:Restrict)
+ templateVersion String
+ template DocumentTemplateVersion @relation(fields:[templateVersion],references:[version],onDelete:Restrict)
+ position Int
+ files WorkGenerationFile[]
+ @@id([packageVersion,templateVersion])
+ @@unique([packageVersion,position])
+}
+model WorkGenerationFile {
+ id String @id
+ workspaceId String
+ workId String
+ generationId String
+ packageVersion String
+ generation WorkGeneration @relation(fields:[workspaceId,workId,generationId,packageVersion],references:[workspaceId,workId,id,packageVersion],onDelete:Cascade)
+ templateVersion String
+ packageDocument PackageDocument @relation(fields:[packageVersion,templateVersion],references:[packageVersion,templateVersion],onDelete:Restrict)
+ title String
+ filename String
+ status String @default("queued")
+ errorCode String?
  key String? @unique
  checksum String?
- createdAt DateTime @default(now())
- @@index([workspaceId,workId,createdAt])
+ @@unique([generationId,templateVersion])
+ @@index([workspaceId,workId,generationId])
 }
 model WorkArtifact {
  key String @id

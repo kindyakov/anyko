@@ -7,7 +7,7 @@ export function createWorkStore(db: Connection): WorkStore {
   const summary = (row: {
     id: string;
     title: string;
-    templateVersion: string;
+    packageVersion: string;
     revision: number;
     inputRevision: number;
     confirmedRevision: number | null;
@@ -40,7 +40,7 @@ export function createWorkStore(db: Connection): WorkStore {
           id: input.id,
           workspaceId: input.workspaceId,
           title: input.title,
-          templateVersion: input.templateVersion,
+          packageVersion: input.packageVersion,
           createdBy: input.actorId,
         },
       });

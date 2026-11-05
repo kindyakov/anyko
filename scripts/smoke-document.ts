@@ -9,9 +9,10 @@ const config = z
   .object({
     LOCAL_USER_EMAIL: z.email(),
     LOCAL_USER_PASSWORD: z.string().min(1),
+    APP_ORIGIN: z.url().default('http://anyko.localhost:3020'),
   })
   .parse(process.env);
-const origin = 'http://localhost:3000';
+const origin = config.APP_ORIGIN;
 let cookie = '';
 async function request(path: string, init: RequestInit = {}) {
   const headers = new Headers(init.headers);

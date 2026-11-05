@@ -15,7 +15,7 @@ export const stepOutputSchema = z
         }),
       )
       .max(32),
-    candidates: z.array(candidateSchema).max(100),
+    candidates: z.array(candidateSchema).max(500),
   })
   .strict();
 type StepOutput = z.infer<typeof stepOutputSchema>;

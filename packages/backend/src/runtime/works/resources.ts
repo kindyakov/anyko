@@ -26,6 +26,7 @@ type StoreConnection = Pick<
   | 'workEvent'
   | 'workFacts'
   | 'workGeneration'
+  | 'workGenerationFile'
   | 'workArtifact'
   | 'workRun'
   | 'workStep'

@@ -56,7 +56,7 @@ export function workRoutes(options: WorkHttpOptions) {
           };
         }
       })
-      .get('/templates', () => ({ templates: options.works.templates() }))
+      .get('/document-packages', () => ({ packages: options.works.packages() }))
       .get('/works', async ({ session, query }) => {
         if (!session) throw new WorkError('FORBIDDEN');
         return options.works.list(
@@ -191,13 +191,14 @@ export function workRoutes(options: WorkHttpOptions) {
         { parse: 'none' },
       )
       .get(
-        '/works/:id/generations/:generationId',
+        '/works/:id/generations/:generationId/files/:fileId',
         async ({ session, params }) => {
           if (!session) throw new WorkError('FORBIDDEN');
           const result = await options.works.download(
             session.workspace.id,
             id(params.id),
             id(params.generationId),
+            id(params.fileId),
           );
           return new Response(Uint8Array.from(result.bytes), {
             headers: {

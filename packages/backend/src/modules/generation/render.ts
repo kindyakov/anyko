@@ -1,12 +1,11 @@
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
-import { fieldValuesSchema, type FieldValues } from '@anyko/contracts';
+import type { FieldValues } from '@anyko/contracts';
 
 export function generateDocument(
   source: Uint8Array,
   values: FieldValues,
 ): Uint8Array {
-  const parsed = fieldValuesSchema.parse(values);
   const document = new Docxtemplater(new PizZip(source), {
     paragraphLoop: true,
     linebreaks: true,
@@ -14,7 +13,7 @@ export function generateDocument(
   });
   document.render(
     Object.fromEntries(
-      Object.entries(parsed).map(([key, value]) => [key, value ?? '']),
+      Object.entries(values).map(([key, value]) => [key, value ?? '']),
     ),
   );
   return document

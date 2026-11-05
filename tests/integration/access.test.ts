@@ -174,7 +174,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     expect((await request('/api/works')).status).toBe(401);
     const workBody = {
       title: 'Synthetic access work',
-      templateVersion: 'technical-document-v1',
+      packageVersion: 'technical-document-v1',
     };
     const headers = {
       cookie: ownerCookie,
@@ -201,7 +201,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     for (const path of [
       `/api/works/${work.work.id}`,
       `/api/works/${work.work.id}/events`,
-      `/api/works/${work.work.id}/generations/${crypto.randomUUID()}`,
+      `/api/works/${work.work.id}/generations/${crypto.randomUUID()}/files/${crypto.randomUUID()}`,
     ]) {
       expect(
         (await request(path, { headers: { cookie: secondCookie } })).status,

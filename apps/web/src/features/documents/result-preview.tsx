@@ -6,6 +6,7 @@ import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeKatex from 'rehype-katex';
+import { cyrillicMathMacros } from './cyrillic-math';
 const schema = {
   ...defaultSchema,
   attributes: {
@@ -65,6 +66,7 @@ export function ResultPreview({
                 rehypeKatex,
                 {
                   trust: false,
+                  macros: { ...cyrillicMathMacros },
                   throwOnError: false,
                   maxExpand: 1000,
                   maxSize: 20,

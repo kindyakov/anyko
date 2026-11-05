@@ -145,7 +145,7 @@ async function create() {
   const view = await runtime.api.create({
     workspaceId,
     actorId: 'fixture',
-    templateVersion: 'technical-document-v1',
+    packageVersion: 'technical-document-v1',
     title: 'Тестовая работа',
   });
   return { workspaceId, workId: view.work.id };
@@ -274,6 +274,94 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
   expect(
     [...files.keys()].some((key) =>
       key.includes(`generated/${input.workspaceId}/`),
+    ),
+  ).toBe(false);
+});
+
+test('a package generates three individually scoped DOCX files from one snapshot and source deletion erases the whole set', async () => {
+  const legacy = await create();
+  const created = await runtime.api.create({
+    workspaceId: legacy.workspaceId,
+    actorId: 'fixture',
+    packageVersion: 'bfl-bankruptcy-v3',
+    title: 'Синтетический комплект',
+  });
+  const input = { workspaceId: legacy.workspaceId, workId: created.work.id };
+  const doc = await upload(input);
+  const uploaded = await runtime.api.get(input.workspaceId, input.workId);
+  const saved = await runtime.api.edit({
+    ...input,
+    revision: uploaded.work.revision,
+    values: {
+      ...created.facts.values,
+      lastName: 'Тестовый',
+      firstName: 'Пётр',
+      middleName: 'Сергеевич',
+      debts: [
+        { name: 'Банк А', basis: 'Договор А', amount: '100.00' },
+        { name: 'Банк Б', basis: 'Договор Б', amount: '200.00' },
+      ],
+      requestsDetails: 'Ввести процедуру реструктуризации долгов',
+    },
+  });
+  await runtime.api.generate({
+    ...input,
+    actorId: 'fixture',
+    correlationId: crypto.randomUUID(),
+    revision: saved.work.revision,
+  });
+  const completed = await until(input, (state) =>
+    state.generations.some((generation) => generation.status === 'succeeded'),
+  );
+  const generation = completed.generations[0];
+  if (!generation) throw new Error('MISSING_GENERATION');
+  expect(generation.files).toHaveLength(3);
+  for (const file of generation.files) {
+    expect(file.status).toBe('succeeded');
+    const output = await runtime.api.download(
+      input.workspaceId,
+      input.workId,
+      generation.id,
+      file.id,
+    );
+    const xml = strFromU8(
+      unzipSync(output.bytes)['word/document.xml'] ?? new Uint8Array(),
+    );
+    expect(xml).toContain('Тестовый');
+    expect(xml).toContain('Пётр');
+    expect(xml).not.toMatch(/\{[#/a-zA-Z][^}]*\}/);
+    await rejects(
+      runtime.api.download(
+        crypto.randomUUID(),
+        input.workId,
+        generation.id,
+        file.id,
+      ),
+      'NOT_FOUND',
+    );
+  }
+  await rejects(
+    runtime.api.download(
+      input.workspaceId,
+      input.workId,
+      generation.id,
+      crypto.randomUUID(),
+    ),
+    'NOT_FOUND',
+  );
+  await runtime.api.removeDocument({ ...input, documentId: doc.id });
+  await until(
+    input,
+    (state) => !state.cleanupPending && !state.documents.length,
+  );
+  expect(
+    await db.workGenerationFile.count({
+      where: { workspaceId: input.workspaceId, workId: input.workId },
+    }),
+  ).toBe(0);
+  expect(
+    [...files.keys()].some((key) =>
+      key.includes(`generated/${input.workspaceId}/${input.workId}/`),
     ),
   ).toBe(false);
 });
@@ -485,7 +573,7 @@ test('all works remain reachable across stable cursor pages', async () => {
       id: crypto.randomUUID(),
       workspaceId: input.workspaceId,
       title: `Работа ${String(index)}`,
-      templateVersion: 'technical-document-v1',
+      packageVersion: 'technical-document-v1',
       createdBy: 'fixture',
     })),
   });

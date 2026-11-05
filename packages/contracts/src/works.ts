@@ -1,29 +1,19 @@
 import { z } from 'zod';
 import { documentSchema } from './documents';
+import {
+  fieldKeySchema,
+  fieldValuesSchema,
+  fieldValueSchema,
+  fieldValueIssue,
+  readFieldValues,
+} from './work-fields';
+import {
+  documentPackageSchema,
+  generationFileSchema,
+} from './document-packages';
+export * from './work-fields';
+export * from './document-packages';
 
-export const technicalFields = [
-  'personName',
-  'documentNumber',
-  'documentDate',
-  'observations',
-] as const;
-export const fieldKeySchema = z.enum(technicalFields);
-export const fieldValuesSchema = z
-  .object({
-    personName: z.string().max(4000).nullable(),
-    documentNumber: z.string().max(4000).nullable(),
-    documentDate: z.string().max(4000).nullable(),
-    observations: z.string().max(12000).nullable(),
-  })
-  .strict();
-export type FieldValues = z.infer<typeof fieldValuesSchema>;
-export type FieldKey = z.infer<typeof fieldKeySchema>;
-export const emptyFieldValues = (): FieldValues => ({
-  personName: null,
-  documentNumber: null,
-  documentDate: null,
-  observations: null,
-});
 export const evidenceSchema = z
   .object({
     documentId: z.uuid(),
@@ -34,41 +24,39 @@ export const evidenceSchema = z
 export const candidateSchema = z
   .object({
     field: fieldKeySchema,
-    value: z.string().min(1).max(12000),
+    value: fieldValueSchema.refine(
+      (value) =>
+        value !== null &&
+        (typeof value !== 'string' || value.trim().length > 0),
+    ),
     evidence: z.array(evidenceSchema).min(1).max(12),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    const issue = fieldValueIssue(value.field, value.value);
+    if (issue)
+      ctx.addIssue({ code: 'custom', path: ['value'], message: issue });
+  });
 export const factsSchema = z
   .object({
     version: z.literal(1),
-    values: fieldValuesSchema,
+    values: z.preprocess(
+      (input) =>
+        typeof input === 'object' && input !== null && !Array.isArray(input)
+          ? { ...readFieldValues({}), ...input }
+          : input,
+      fieldValuesSchema,
+    ),
     manual: z.array(fieldKeySchema),
     confirmed: z.array(fieldKeySchema).default([]),
-    candidates: z.array(candidateSchema).max(100),
+    candidates: z.array(candidateSchema).max(500),
   })
   .strict();
 export type WorkFacts = z.infer<typeof factsSchema>;
-export const templateSchema = z.object({
-  id: z.string(),
-  version: z.string(),
-  title: z.string(),
-  technical: z.boolean(),
-  fields: z.array(
-    z.object({
-      key: fieldKeySchema,
-      label: z.string(),
-      multiline: z.boolean(),
-    }),
-  ),
-});
-export const templatesResponseSchema = z.object({
-  templates: z.array(templateSchema),
-});
-export type Template = z.infer<typeof templateSchema>;
 export const workSummarySchema = z.object({
   id: z.uuid(),
   title: z.string(),
-  templateVersion: z.string(),
+  packageVersion: z.string(),
   revision: z.number().int(),
   inputRevision: z.number().int(),
   confirmedRevision: z.number().int().nullable(),
@@ -116,12 +104,13 @@ export const generationSchema = z.object({
   id: z.uuid(),
   revision: z.number().int(),
   confirmed: z.boolean(),
-  status: z.enum(['queued', 'succeeded', 'failed']),
+  status: z.enum(['queued', 'succeeded', 'partial', 'failed']),
+  files: z.array(generationFileSchema),
   createdAt: z.iso.datetime(),
 });
 export const workResponseSchema = z.object({
   work: workSummarySchema,
-  template: templateSchema,
+  package: documentPackageSchema,
   documents: z.array(documentSchema),
   facts: factsSchema,
   runs: z.array(workRunSchema),
@@ -137,7 +126,7 @@ export const worksResponseSchema = z.object({
 export type WorkPage = z.infer<typeof worksResponseSchema>;
 export const createWorkSchema = z
   .object({
-    templateVersion: z.string().max(100),
+    packageVersion: z.string().max(100),
     title: z.string().trim().min(1).max(200),
   })
   .strict();

@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun --bun next dev --hostname 127.0.0.1",
+    "dev": "bun --env-file=../../.env --bun next dev --hostname 127.0.0.1",
     "build": "bun --bun next build",
     "start": "bun --bun next start",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src/lib/api src/features/documents/result-preview.test.tsx"
+    "test": "bun test src/lib/api src/features/documents/result-preview.test.tsx src/features/works/package-preview.test.tsx src/features/works/upload-errors.test.ts"
   },
   "dependencies": {
     "@anyko/contracts": "workspace:*",

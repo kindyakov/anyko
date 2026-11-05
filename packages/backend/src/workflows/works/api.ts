@@ -1,7 +1,7 @@
 import { WorkError, type WorkApi } from '../../modules/works';
 import { emptyFacts, editFacts, confirmFacts } from '../../modules/facts';
 import { checksum } from '../../modules/documents';
-import { requireTemplate, technicalTemplate } from '../../modules/templates';
+import { requirePackage, availablePackages } from '../../modules/templates';
 import { workResponseSchema } from '@anyko/contracts';
 import type { WorkDependencies } from './ports';
 
@@ -42,7 +42,7 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
       }
     return workResponseSchema.parse({
       work,
-      template: requireTemplate(work.templateVersion),
+      package: requirePackage(work.packageVersion),
       documents,
       facts: cleanupPending
         ? emptyFacts()
@@ -80,7 +80,7 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
         );
       });
     },
-    templates: () => [technicalTemplate],
+    packages: availablePackages,
     async list(workspaceId, after) {
       if (after) await requireWork(workspaceId, after);
       const rows = await deps.works.list(workspaceId, after);
@@ -92,8 +92,11 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
     },
     get,
     async create(input) {
-      if (input.templateVersion !== technicalTemplate.version)
+      try {
+        requirePackage(input.packageVersion);
+      } catch {
         throw new WorkError('INVALID_WORK_INPUT');
+      }
       const id = crypto.randomUUID();
       await deps.transaction(async ({ works }) => {
         await works.create({ ...input, id });
@@ -221,7 +224,15 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
             revision: work.revision,
             confirmed: work.confirmedRevision === work.revision,
             values,
-            templateVersion: work.templateVersion,
+            packageVersion: work.packageVersion,
+            files: requirePackage(work.packageVersion).documents.map(
+              (template) => ({
+                id: crypto.randomUUID(),
+                templateVersion: template.version,
+                title: template.title,
+                filename: template.filename,
+              }),
+            ),
           });
           await processing.start({
             id: crypto.randomUUID(),
@@ -245,7 +256,7 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
         });
       });
     },
-    async download(workspaceId, workId, generationId) {
+    async download(workspaceId, workId, generationId, fileId) {
       await requireWork(workspaceId, workId);
       await requireClean(workspaceId, workId);
       const result = await deps.generation.get(
@@ -253,14 +264,20 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
         workId,
         generationId,
       );
-      if (!result?.key || !result.checksum) throw new WorkError('NOT_READY');
-      const bytes = await deps.storage.get(result.key);
-      if ((await checksum(bytes)) !== result.checksum)
+      if (!result) throw new WorkError('NOT_FOUND');
+      const file = fileId
+        ? result.files.find((entry) => entry.id === fileId)
+        : result.files[0];
+      if (!file) throw new WorkError('NOT_FOUND');
+      if (file.status !== 'succeeded' || !file.key || !file.checksum)
+        throw new WorkError('NOT_READY');
+      const bytes = await deps.storage.get(file.key);
+      if ((await checksum(bytes)) !== file.checksum)
         throw new Error('INVALID_GENERATED_DOCUMENT');
       await requireClean(workspaceId, workId);
       return {
         bytes,
-        filename: `${result.confirmed ? 'document' : 'draft'}-${result.id}.docx`,
+        filename: `${result.confirmed ? '' : 'draft-'}${file.filename}`,
       };
     },
     async events(workspaceId, workId, after) {

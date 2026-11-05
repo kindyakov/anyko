@@ -3,7 +3,7 @@ import type {
   FieldValues,
   WorkView,
   WorkFacts,
-  Template,
+  DocumentPackage,
 } from '@anyko/contracts';
 import type { DocumentView } from '../documents';
 
@@ -30,7 +30,7 @@ export interface WorkStore {
     id: string;
     workspaceId: string;
     title: string;
-    templateVersion: string;
+    packageVersion: string;
     actorId: string;
   }): Promise<void>;
   attach(
@@ -71,13 +71,13 @@ export interface WorkApi {
     workId: string;
     documentId: string;
   }): Promise<void>;
-  templates(): Template[];
+  packages(): DocumentPackage[];
   list(workspaceId: string, after?: string): Promise<WorkPage>;
   create(input: {
     workspaceId: string;
     actorId: string;
     title: string;
-    templateVersion: string;
+    packageVersion: string;
   }): Promise<WorkView>;
   get(workspaceId: string, workId: string): Promise<WorkView>;
   upload(input: {
@@ -117,6 +117,7 @@ export interface WorkApi {
     workspaceId: string,
     workId: string,
     generationId: string,
+    fileId?: string,
   ): Promise<{ bytes: Uint8Array; filename: string }>;
   events(
     workspaceId: string,

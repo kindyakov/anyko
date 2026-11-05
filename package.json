@@ -43,8 +43,8 @@
     "test:mineru": "bun test packages/backend/src/modules/documents/infrastructure/mineru.test.ts packages/backend/src/modules/documents/application/source-format.test.ts",
     "llm:provision": "bun scripts/provision-llm.ts",
     "test:llm": "bun run --filter @anyko/llm test",
-    "test:works": "bun test packages/backend/src/modules/facts/facts.test.ts",
-    "test:works:integration": "bun test --timeout 60000 packages/backend/tests/integration/works.test.ts"
+    "test:works": "bun test packages/backend/src/modules/facts/facts.test.ts packages/backend/tests/templates.test.ts packages/backend/src/modules/agents/infrastructure/vision-retry.test.ts",
+    "test:works:integration": "bun test --timeout 60000 packages/backend/tests/integration/works.test.ts packages/backend/tests/integration/vision-retry.test.ts"
   },
   "devDependencies": {
     "@anyko/eslint-config": "workspace:*",

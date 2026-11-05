@@ -1,6 +1,10 @@
 import { mergeCandidates } from '../../modules/facts';
 import { checksum, DocumentError } from '../../modules/documents';
-import { templateBytes } from '../../modules/templates';
+import {
+  templateBytes,
+  requirePackage,
+  templateData,
+} from '../../modules/templates';
 import { generateDocument } from '../../modules/generation';
 import { stepOutputSchema } from '../../modules/processing';
 import type {
@@ -90,6 +94,7 @@ export function createWorkExecution(deps: WorkDependencies) {
       run.workspaceId,
       run.settingsRevision,
     );
+    const pack = requirePackage((await current(run)).packageVersion);
     const candidates: WorkFacts['candidates'] = [];
     let failures = 0,
       completed = 0;
@@ -199,6 +204,7 @@ export function createWorkExecution(deps: WorkDependencies) {
                 deps.agents.extract({
                   connection: config.connection,
                   modelId: config.extractionModel,
+                  fields: pack.fields,
                   threadId,
                   resource: `${run.workspaceId}:${run.workId}`,
                   document: {
@@ -251,7 +257,7 @@ export function createWorkExecution(deps: WorkDependencies) {
     await deps.locks.run(`work:${run.workspaceId}:${run.workId}`, async () => {
       const work = await current(run);
       await deps.transaction(async ({ facts, works, processing }) => {
-        if (candidates.length > 100) throw new Error('CANDIDATE_LIMIT');
+        if (candidates.length > 500) throw new Error('CANDIDATE_LIMIT');
         const existing = await facts.get(run.workspaceId, run.workId);
         await facts.save(
           run.workspaceId,
@@ -283,49 +289,95 @@ export function createWorkExecution(deps: WorkDependencies) {
       run.generationId,
     );
     if (!record) throw new Error('GENERATION_MISSING');
+    const pack = requirePackage(record.packageVersion);
+    const data = templateData(record.values);
+    let completed = 0;
     await step(run, { stage: 'generation', status: 'running' });
-    const expected = templateBytes(record.templateVersion);
-    const templateKey = `templates/${record.templateVersion}/${await checksum(expected)}.docx`;
-    if (!(await deps.storage.exists(templateKey)))
+    for (const file of record.files) {
+      signal.throwIfAborted();
+      await current(run);
+      const template = pack.documents.find(
+        (entry) => entry.version === file.templateVersion,
+      );
+      if (!template) throw new Error('PACKAGE_TEMPLATE_MISMATCH');
+      const expected = templateBytes(template.version);
+      const templateKey = `templates/${template.version}/${template.checksum}.docx`;
+      if (!(await deps.storage.exists(templateKey)))
+        await deps.storage.put(
+          templateKey,
+          expected,
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          signal,
+        );
+      const source = await deps.storage.get(templateKey, signal);
+      if ((await checksum(source)) !== template.checksum)
+        throw new Error('TEMPLATE_CHECKSUM_MISMATCH');
+      let bytes: Uint8Array;
+      try {
+        bytes = generateDocument(source, data);
+      } catch {
+        await deps.generation.failFile(run.workspaceId, record.id, file.id);
+        await deps.works.event(
+          run.workspaceId,
+          run.workId,
+          'generation.file.failed',
+        );
+        continue;
+      }
+      const key = `generated/${run.workspaceId}/${run.workId}/${crypto.randomUUID()}.docx`;
+      await deps.generation.stage(run.workspaceId, run.workId, key);
+      // Storage errors propagate to the durable I/O barrier; never hide an unknown PUT outcome.
       await deps.storage.put(
-        templateKey,
-        expected,
+        key,
+        bytes,
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         signal,
       );
-    const source = await deps.storage.get(templateKey, signal);
-    if ((await checksum(source)) !== (await checksum(expected)))
-      throw new Error('TEMPLATE_CHECKSUM_MISMATCH');
-    const bytes = generateDocument(source, record.values);
-    const key = `generated/${run.workspaceId}/${run.workId}/${crypto.randomUUID()}.docx`;
-    await deps.generation.stage(run.workspaceId, run.workId, key);
-    await deps.storage.put(
-      key,
-      bytes,
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      signal,
-    );
+      await deps.locks.run(
+        `work:${run.workspaceId}:${run.workId}`,
+        async () => {
+          await current(run);
+          await deps.transaction(async ({ generation: store, works }) => {
+            await store.publish({
+              workspaceId: run.workspaceId,
+              workId: run.workId,
+              id: record.id,
+              fileId: file.id,
+              key,
+              checksum: await checksum(bytes),
+            });
+            await works.event(
+              run.workspaceId,
+              run.workId,
+              'generation.file.ready',
+            );
+          });
+        },
+      );
+      completed++;
+    }
+    const status =
+      completed === record.files.length
+        ? 'succeeded'
+        : completed
+          ? 'partial'
+          : 'failed';
     await deps.locks.run(`work:${run.workspaceId}:${run.workId}`, async () => {
       await current(run);
       await deps.transaction(
         async ({ generation: store, processing, works }) => {
-          await store.publish({
-            workspaceId: run.workspaceId,
-            workId: run.workId,
-            id: record.id,
-            key,
-            checksum: await checksum(bytes),
-          });
+          await store.finish(run.workspaceId, record.id, status);
           await processing.step(run, {
             stage: 'generation',
-            status: 'succeeded',
+            status: status === 'succeeded' ? 'succeeded' : 'failed',
           });
-          await processing.finish(run, 'succeeded');
+          await processing.finish(run, status);
           await works.event(run.workspaceId, run.workId, 'generation.ready');
         },
       );
     });
   };
+
   return async (workspaceId: string, runId: string, signal: AbortSignal) => {
     await deps.locks.run(
       `work-run:${workspaceId}:${runId}`,

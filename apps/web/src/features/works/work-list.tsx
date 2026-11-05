@@ -2,10 +2,10 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState, type SyntheticEvent } from 'react';
 import {
-  templatesResponseSchema,
+  packagesResponseSchema,
   worksResponseSchema,
   workResponseSchema,
-  type Template,
+  type DocumentPackage,
   type WorkView,
 } from '@anyko/contracts';
 import { ApiError, requestApi } from '../../lib/api/client';
@@ -13,7 +13,7 @@ import { LlmSettings } from './llm-settings';
 
 export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
   const [works, setWorks] = useState<WorkView['work'][]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
+  const [packages, setDocumentPackages] = useState<DocumentPackage[]>([]);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -21,11 +21,11 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
     try {
       const [list, catalog] = await Promise.all([
         requestApi('/works', worksResponseSchema),
-        requestApi('/templates', templatesResponseSchema),
+        requestApi('/document-packages', packagesResponseSchema),
       ]);
       setWorks(list.works);
       setNextCursor(list.nextCursor);
-      setTemplates(catalog.templates);
+      setDocumentPackages(catalog.packages);
       setError('');
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 401)
@@ -38,7 +38,7 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
   }, [load]);
   async function create(
     event: SyntheticEvent<HTMLFormElement>,
-    template: Template,
+    template: DocumentPackage,
   ) {
     event.preventDefault();
     setPending(true);
@@ -50,7 +50,7 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           title: data.get('title'),
-          templateVersion: template.version,
+          packageVersion: template.version,
         }),
       });
       window.location.assign(`/works/${result.work.id}`);
@@ -64,8 +64,8 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
       <p className="eyebrow">РАБОЧАЯ ОБЛАСТЬ</p>
       <h1>Ваши документы</h1>
       <p className="intro">
-        Выберите шаблон, добавьте исходные файлы и проверьте извлечённые
-        сведения.
+        Выберите пакет документов, добавьте исходные файлы и проверьте
+        извлечённые сведения.
       </p>
       {error && (
         <div className="error" role="alert">
@@ -82,7 +82,7 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
       )}
       <section className="panel">
         <h2>Новая работа</h2>
-        {templates.map((template) => (
+        {packages.map((template) => (
           <form
             className="settings-form"
             key={template.version}
@@ -91,9 +91,14 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
             }}
           >
             <strong>{template.title}</strong>
+            <ul>
+              {template.documents.map((document) => (
+                <li key={document.version}>{document.title}</li>
+              ))}
+            </ul>
             {template.technical && (
               <p className="muted">
-                Проверочный бланк для работы конвейера. Окончательный шаблон
+                Проверочный бланк для работы конвейера. Окончательный пакет
                 документа ещё не подключён.
               </p>
             )}
@@ -103,7 +108,7 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
                 name="title"
                 required
                 maxLength={200}
-                placeholder="Например, документы по объекту"
+                placeholder="Например, заявление клиента"
               />
             </label>
             <button disabled={pending}>Начать работу</button>
