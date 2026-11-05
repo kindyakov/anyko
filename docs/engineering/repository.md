@@ -13,6 +13,7 @@ apps/
   worker/                  Bun: очередь, dispatcher, восстановление заданий
 packages/
   backend/                 серверные бизнес-модули, сценарии и адаптеры
+  logger/                  общий серверный формат событий и безопасные поля
   contracts/               безопасные для браузера HTTP-схемы и DTO
   database/                Prisma schema, миграции, клиент и механизм транзакций
   ui/                      компоненты и токены интерфейса Anyko
@@ -52,7 +53,7 @@ packages/backend/src/
   workflows/               сценарии, связывающие публичные API модулей
   profiles/
     bfl/                   конкретные правила извлечения и проверки для БФЛ
-  platform/                технические config/logging/clock/storage/http адаптеры
+  platform/                технические clock/storage/http адаптеры
   runtime/                 сборка зависимостей для API и worker
 ```
 

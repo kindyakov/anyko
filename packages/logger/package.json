@@ -1,0 +1,21 @@
+{
+  "name": "@anyko/logger",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src"
+  },
+  "dependencies": {
+    "pino": "10.4.0"
+  },
+  "devDependencies": {
+    "@anyko/typescript-config": "workspace:*",
+    "@types/bun": "1.4.4",
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "@typescript/native": "npm:typescript@7.0.2"
+  }
+}
