@@ -1,6 +1,55 @@
+// Add an explicit edge here only after review. Values name modules whose public
+// index may be imported by the owning module.
+const moduleEdges = {
+  access: [],
+  cases: [],
+  documents: [],
+  processing: [],
+  facts: [],
+  templates: [],
+  generation: [],
+};
+const knownModules = Object.keys(moduleEdges).join('|');
+const { existsSync, readdirSync } = require('node:fs');
+const moduleRoot = 'packages/backend/src/modules';
+const presentModules = existsSync(moduleRoot)
+  ? readdirSync(moduleRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+  : [];
+
 module.exports = {
   forbidden: [
     { name: 'no-cycles', severity: 'error', from: {}, to: { circular: true } },
+    ...Object.entries(moduleEdges).map(([owner, allowed]) => ({
+      name: `module-allowlist-${owner}`,
+      severity: 'error',
+      from: { path: `^packages/backend/src/modules/${owner}/` },
+      to: {
+        path: '^packages/backend/src/modules/',
+        pathNot: `^packages/backend/src/modules/(?:${owner}/|(?:${allowed.length ? allowed.join('|') : '(?!)'})/index\\.[cm]?[jt]s$)`,
+      },
+    })),
+    {
+      name: 'unknown-module-no-cross-imports',
+      severity: 'error',
+      from: {
+        path: '^packages/backend/src/modules/([^/]+)/',
+        pathNot: `^packages/backend/src/modules/(?:${knownModules})/`,
+      },
+      to: {
+        path: '^packages/backend/src/modules/',
+        pathNot: '^packages/backend/src/modules/$1/',
+      },
+    },
+    ...presentModules.map((owner) => ({
+      name: `module-private-import-${owner}`,
+      severity: 'error',
+      from: { pathNot: `^packages/backend/src/modules/${owner}/` },
+      to: {
+        path: `^packages/backend/src/modules/${owner}/(?!index\\.[cm]?[jt]s$)`,
+      },
+    })),
     {
       name: 'web-no-server',
       severity: 'error',

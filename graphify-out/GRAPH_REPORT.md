@@ -1,17 +1,17 @@
 # Graph Report - anyko  (2026-11-05)
 
 ## Corpus Check
-- 66 files · ~66,442 words
+- 69 files · ~67,354 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 10 file(s) not represented in the graph (top: (none) 3, .pb 3, .ttf 3)
 
 ## Summary
-- 391 nodes · 390 edges · 44 communities (32 shown, 12 thin omitted)
+- 404 nodes · 410 edges · 42 communities (32 shown, 10 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `9694d675`
+- Built from commit: `07c97c1d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -51,12 +51,12 @@
 - api/tsconfig.json
 - worker/tsconfig.json
 - Инженерная основа Anyko
-- Работа агентов и независимая проверка
 - library.json
+- boundaries.test.ts
 - architecture/tsconfig.json
 
 ## God Nodes (most connected - your core abstractions)
-1. `scripts` - 14 edges
+1. `scripts` - 15 edges
 2. `MVP: автоматизация подготовки заявления о банкротстве физического лица` - 14 edges
 3. `compilerOptions` - 11 edges
 4. `Anyko — брендбук` - 11 edges
@@ -73,7 +73,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (44 total, 12 thin omitted)
+## Communities (42 total, 10 thin omitted)
 
 ### Community 0 - "web/package.json"
 Cohesion: 0.07
@@ -108,12 +108,12 @@ Cohesion: 0.40
 Nodes (4): Issue tracker: GitHub, Operations, Pull requests as a triage surface, Skill instructions
 
 ### Community 11 - "engineering/README.md"
-Cohesion: 0.16
-Nodes (10): graphify, Один модульный монолит с отдельными процессами, Рабочая область является границей владения данными, PostgreSQL хранит намерение обработки, очередь доставляет работу, Документы и сведения, Обработка и подготовка результата, Участники и доступ, Язык Anyko (+2 more)
+Cohesion: 0.13
+Nodes (14): graphify, Один модульный монолит с отдельными процессами, Рабочая область является границей владения данными, PostgreSQL хранит намерение обработки, очередь доставляет работу, Автор изменения, Изменение правил и инструкции, Проверяющий агент, Работа агентов и независимая проверка (+6 more)
 
 ### Community 12 - "api/package.json"
-Cohesion: 0.10
-Nodes (18): dependencies, elysia, devDependencies, @anyko/typescript-config, @types/bun, typescript, @anyko/typescript-config, @types/bun (+10 more)
+Cohesion: 0.11
+Nodes (17): dependencies, elysia, devDependencies, @anyko/typescript-config, @types/bun, typescript, @anyko/typescript-config, @types/bun (+9 more)
 
 ### Community 15 - "worker/package.json"
 Cohesion: 0.13
@@ -124,8 +124,8 @@ Cohesion: 0.13
 Nodes (14): exports, ./base, ./frontend, ./server, eslint, @eslint/js, typescript-eslint, name (+6 more)
 
 ### Community 17 - "scripts"
-Cohesion: 0.14
-Nodes (14): scripts, boundaries, build, check:project, dev:api, dev:web, dev:worker, duplicates (+6 more)
+Cohesion: 0.13
+Nodes (15): scripts, boundaries, build, check:project, dev:api, dev:web, dev:worker, duplicates (+7 more)
 
 ### Community 18 - "compilerOptions"
 Cohesion: 0.17
@@ -140,8 +140,8 @@ Cohesion: 0.18
 Nodes (10): exports, ./backend, ./base, ./frontend, prettier, name, peerDependencies, prettier (+2 more)
 
 ### Community 21 - "check-project.mjs"
-Cohesion: 0.12
-Nodes (9): documents, errors, manifests, markdownFiles(), root, cases, cli, config (+1 more)
+Cohesion: 0.11
+Nodes (8): architectureRules, ioGlobals, restrictedIoGlobals, documents, errors, manifests, markdownFiles(), root
 
 ### Community 22 - "exports"
 Cohesion: 0.25
@@ -195,9 +195,9 @@ Nodes (3): extends, include, @anyko/typescript-config/server.json
 Cohesion: 0.50
 Nodes (4): Инженерная основа Anyko, Итог технических дебатов, Карта решений, Порядок первого воплощения
 
-### Community 38 - "Работа агентов и независимая проверка"
-Cohesion: 0.50
-Nodes (4): Автор изменения, Изменение правил и инструкции, Проверяющий агент, Работа агентов и независимая проверка
+### Community 42 - "boundaries.test.ts"
+Cohesion: 0.12
+Nodes (10): createApp(), app, { existsSync, readdirSync }, knownModules, moduleEdges, elysia, cases, cli (+2 more)
 
 ### Community 43 - "architecture/tsconfig.json"
 Cohesion: 0.50
@@ -205,14 +205,14 @@ Nodes (3): ../../packages/typescript-config/server.json, extends, include
 
 ## Knowledge Gaps
 - **35 isolated node(s):** `@anyko/typescript-config`, `@types/bun`, `typescript`, `@anyko/typescript-config/server.json`, `next` (+30 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 300 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **12 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 304 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **10 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `MVP: автоматизация подготовки заявления о банкротстве физического лица` connect `MVP: автоматизация подготовки заявления о банкротстве физического лица` to `engineering/README.md`?**
-  _High betweenness centrality (0.022) - this node is a cross-community bridge._
+  _High betweenness centrality (0.020) - this node is a cross-community bridge._
 - **What connects `@anyko/typescript-config`, `@types/bun`, `typescript` to the rest of the system?**
   _35 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `web/package.json` be split into smaller, more focused modules?**
@@ -221,7 +221,7 @@ _Questions this graph is uniquely positioned to answer:_
   _High betweenness centrality (0.009) - this node is a cross-community bridge._
 - **Should `package.json` be split into smaller, more focused modules?**
   _Cohesion score 0.07142857142857142 - nodes in this community are weakly interconnected._
-- **Why does `Данные, доступ и фоновые задания` connect `Данные, доступ и фоновые задания` to `engineering/README.md`?**
+- **Why does `elysia` connect `boundaries.test.ts` to `api/package.json`?**
   _High betweenness centrality (0.008) - this node is a cross-community bridge._
 - **Should `brandbook-03.mjs` be split into smaller, more focused modules?**
   _Cohesion score 0.09057971014492754 - nodes in this community are weakly interconnected._

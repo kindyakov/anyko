@@ -28,7 +28,6 @@
   "26": "Размещение и эксплуатация",
   "27": "Устройство репозитория",
   "28": "Направления развития Anyko",
-  "29": "eslint-config/base.js",
   "30": "Правила написания кода",
   "31": "knip.json",
   "32": "prettier-config/base.js",
@@ -37,10 +36,9 @@
   "35": "next-env.d.ts",
   "36": "worker/tsconfig.json",
   "37": "Инженерная основа Anyko",
-  "38": "Работа агентов и независимая проверка",
   "39": "library.json",
   "40": "page.tsx",
   "41": "worker/src/index.ts",
-  "42": ".dependency-cruiser.cjs",
+  "42": "boundaries.test.ts",
   "43": "architecture/tsconfig.json"
 }

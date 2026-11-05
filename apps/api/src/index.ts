@@ -1,5 +1,5 @@
-import { Elysia } from 'elysia';
+import { createApp } from './app';
 
-const app = new Elysia().get('/health', () => ({ status: 'ok' })).listen(3001);
+const app = createApp().listen(3001);
 
 console.info('API listening', app.server?.port);
