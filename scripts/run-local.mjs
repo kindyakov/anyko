@@ -81,11 +81,14 @@ async function main(args) {
   const child = spawn(
     'bun',
     [
+      ...[resolve(root, '.env'), resolve(root, 'apps', config.app, '.env')]
+        .filter(existsSync)
+        .flatMap((file) => ['--env-file', file]),
       ...(config.mode === 'dev' ? ['--watch'] : []),
       resolve(root, 'apps', config.app, 'src', 'index.ts'),
     ],
     {
-      cwd: resolve(root, 'apps', config.app),
+      cwd: root,
       env: process.env,
       shell: false,
       stdio: ['inherit', 'pipe', 'pipe'],

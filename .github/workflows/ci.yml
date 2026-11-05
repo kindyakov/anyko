@@ -13,7 +13,22 @@ jobs:
     name: Scaffold checks (static and build)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://anyko_test:anyko_test@127.0.0.1:5432/anyko_test
+      TEST_DATABASE_URL: postgresql://anyko_test:anyko_test@127.0.0.1:5432/anyko_test
+      TEST_REDIS_URL: redis://127.0.0.1:16379
     services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_USER: anyko_test
+          POSTGRES_PASSWORD: anyko_test
+          POSTGRES_DB: anyko_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U anyko_test -d anyko_test"
+          --health-interval 2s --health-timeout 2s --health-retries 20
       redis:
         image: redis:8.10.3-alpine
         ports:
@@ -32,6 +47,9 @@ jobs:
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
       - name: Run available fast checks
+        # Generated code stays out of Git; build it from the committed schema.
+        run: bun run db:generate
+      - name: Run fast checks
         run: bun run verify:fast
       - name: Build applications
         run: bun run build
@@ -39,3 +57,7 @@ jobs:
         env:
           TEST_REDIS_URL: redis://127.0.0.1:16379
         run: bun run test:worker:integration
+      - name: Apply test migrations
+        run: bun run db:migrate
+      - name: Document and access integration
+        run: bun run test:documents:integration && bun run test:access:integration

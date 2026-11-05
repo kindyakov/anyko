@@ -220,6 +220,43 @@ test('blocks a private module import and an unapproved public module edge', asyn
   }
 });
 
+test('composition root may bind module adapters while application internals stay private', async () => {
+  for (const [target, forbidden] of [
+    ['infrastructure/store.ts', false],
+    ['application/command.ts', true],
+  ] as const) {
+    const { result } = await check({
+      'apps/placeholder.ts': 'export {};',
+      'packages/backend/src/runtime/index.ts': `import '../modules/documents/${target}';`,
+      [`packages/backend/src/modules/documents/${target}`]: 'export {};',
+    });
+    expect(
+      result.summary.violations.some(
+        (v) => v.rule.name === 'runtime-only-module-adapters',
+      ),
+    ).toBe(forbidden);
+    if (!forbidden) expect(result.summary.violations).toHaveLength(0);
+  }
+});
+
+test('runtime imports are restricted to app entrypoints', async () => {
+  for (const [file, forbidden] of [
+    ['index.ts', false],
+    ['documents.ts', true],
+  ] as const) {
+    const { result } = await check({
+      [`apps/api/src/${file}`]:
+        "import '../../../packages/backend/src/runtime/index.ts';",
+      'packages/backend/src/runtime/index.ts': 'export {};',
+    });
+    expect(
+      result.summary.violations.some(
+        (v) => v.rule.name === 'app-runtime-only-bootstrap',
+      ),
+    ).toBe(forbidden);
+  }
+});
+
 test('allows an owner to use its own private implementation', async () => {
   const { result } = await check({
     'packages/backend/src/modules/facts/index.ts':

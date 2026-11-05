@@ -1,7 +1,12 @@
 {
   "extends": "@anyko/typescript-config/next.json",
   "compilerOptions": {
-    "plugins": [{ "name": "next" }]
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "types": ["node", "bun"]
   },
   "include": [
     "next-env.d.ts",

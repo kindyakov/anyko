@@ -2,6 +2,8 @@
 
 ### Engineering
 
+При добавлении маршрута, feature, фонового обработчика или серверного модуля применяйте [выбранные архитектурные подходы](docs/adr/0004-code-organization.md): feature-based web; API/worker как адаптеры; модульный backend с ports/adapters. Код сценария принадлежит его владельцу, а не транспорту.
+
 Перед изменением кода прочитайте [карту инженерных правил](docs/engineering/README.md), [структуру и границы](docs/engineering/repository.md), [правила кода](docs/engineering/code-rules.md) и [процесс автора/reviewer](docs/engineering/agent-workflow.md).
 
 При работе с доступом, БД, файлами или очередью читайте [данные и задания](docs/engineering/data-and-jobs.md); с CI/тестами и перед отчётом о готовности — [проверку качества](docs/engineering/quality.md); с контейнерами, миграциями или размещением — [эксплуатацию](docs/engineering/operations.md).

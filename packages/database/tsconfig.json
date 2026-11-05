@@ -1,0 +1,4 @@
+{
+  "extends": "@anyko/typescript-config/server.json",
+  "include": ["src/**/*.ts", "prisma.config.ts"]
+}

@@ -1,5 +1,10 @@
 import { createLogger } from '@anyko/logger';
-import { createWorkerRuntime } from '@anyko/backend/runtime';
+import {
+  createWorkerRuntime,
+  createDocumentWorker,
+  createS3Storage,
+  createMineruParser,
+} from '@anyko/backend/runtime';
 import { parseWorkerConfig } from './config';
 
 try {
@@ -18,6 +23,33 @@ try {
     shutdownTimeoutMs: config.SHUTDOWN_TIMEOUT_MS,
     logger,
   });
+  let documentWorker:
+    Awaited<ReturnType<typeof createDocumentWorker>> | undefined;
+  if (config.documents) {
+    const documents = config.documents;
+    try {
+      documentWorker = await createDocumentWorker({
+        databaseUrl: documents.DATABASE_URL,
+        redisUrl: config.REDIS_URL,
+        logger,
+        storage: createS3Storage({
+          endpoint: documents.S3_ENDPOINT,
+          bucket: documents.S3_BUCKET,
+          accessKeyId: documents.S3_ACCESS_KEY,
+          secretAccessKey: documents.S3_SECRET_KEY,
+        }),
+        parser: createMineruParser({
+          baseUrl: documents.MINERU_BASE_URL,
+          timeoutMs: documents.MINERU_TIMEOUT_MS,
+        }),
+        leaseMs: documents.MINERU_TIMEOUT_MS + 60000,
+        shutdownTimeoutMs: config.SHUTDOWN_TIMEOUT_MS,
+      });
+    } catch (error) {
+      await runtime.stop();
+      throw error;
+    }
+  }
   let server;
   try {
     server = Bun.serve({
@@ -27,7 +59,11 @@ try {
         const path = new URL(request.url).pathname;
         if (path === '/health/live') return Response.json({ status: 'ok' });
         if (path === '/health/ready') {
-          const state = runtime.state();
+          const diagnosticState = runtime.state();
+          const state =
+            diagnosticState === 'ready'
+              ? (documentWorker?.state() ?? 'ready')
+              : diagnosticState;
           return Response.json(
             { status: state },
             { status: state === 'ready' ? 200 : 503 },
@@ -37,6 +73,7 @@ try {
       },
     });
   } catch {
+    await documentWorker?.stop();
     await runtime.stop();
     throw new Error('WORKER_LISTEN_FAILED');
   }
@@ -45,7 +82,7 @@ try {
     if (stopping) return;
     stopping = true;
     try {
-      await runtime.stop();
+      await Promise.all([runtime.stop(), documentWorker?.stop()]);
       logger.info({ event: 'worker.stopped' });
     } catch {
       logger.error({ event: 'worker.shutdown_failed' });

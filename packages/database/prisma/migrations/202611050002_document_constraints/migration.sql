@@ -1,0 +1,10 @@
+ALTER TABLE "ProcessingRun" ADD COLUMN "revision" INTEGER NOT NULL DEFAULT 1;
+CREATE UNIQUE INDEX "ProcessingRun_workspaceId_documentId_revision_key" ON "ProcessingRun"("workspaceId", "documentId", "revision");
+ALTER TABLE "SourceUpload" ADD CONSTRAINT "SourceUpload_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "AnykoWorkspace"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "ResultUpload" ADD CONSTRAINT "ResultUpload_workspaceId_fkey" FOREIGN KEY ("workspaceId") REFERENCES "AnykoWorkspace"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "ProcessingRun" ADD CONSTRAINT "ProcessingRun_status_check" CHECK (status IN ('queued','running','succeeded','failed'));
+ALTER TABLE "ProcessingRun" ADD CONSTRAINT "ProcessingRun_attempt_check" CHECK (attempts >= 0 AND attempts <= 3);
+ALTER TABLE "ProcessingRun" ADD CONSTRAINT "ProcessingRun_revision_check" CHECK (revision > 0);
+ALTER TABLE "ProcessingRun" ADD CONSTRAINT "ProcessingRun_lease_check" CHECK ((status='running' AND "attemptToken" IS NOT NULL AND "leaseUntil" IS NOT NULL) OR (status<>'running' AND "attemptToken" IS NULL AND "leaseUntil" IS NULL));
+ALTER TABLE "ProcessingRun" ADD CONSTRAINT "ProcessingRun_result_check" CHECK (status<>'succeeded' OR ("resultKey" IS NOT NULL AND "processorVersion" IS NOT NULL));
+ALTER TABLE "SourceDocument" ADD CONSTRAINT "SourceDocument_size_check" CHECK (size > 0 AND size <= 20971520);

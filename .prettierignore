@@ -2,6 +2,7 @@ node_modules/
 .next/
 dist/
 coverage/
+/packages/database/generated/
 graphify-out/
 work/
 docs/brand/

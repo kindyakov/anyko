@@ -1,9 +1,12 @@
 import { Elysia } from 'elysia';
 import { createLogger, type Logger } from '@anyko/logger';
+import { DocumentError } from '@anyko/backend/documents';
+import { documentRoutes, type DocumentHttpOptions } from './documents';
 
 export function createApp(options?: {
   logger?: Logger;
   ready?: () => boolean;
+  documentHttp?: DocumentHttpOptions;
 }) {
   const logger =
     options?.logger ??
@@ -26,22 +29,30 @@ export function createApp(options?: {
       contexts.set(request, context);
       set.headers['x-request-id'] = context.requestId;
     })
-    .onError(({ code, set, request }) => {
+    .onError(({ code, error, set, request }) => {
       const id = contexts.get(request)?.requestId ?? crypto.randomUUID();
       set.headers['x-request-id'] = id;
       const status =
-        code === 'NOT_FOUND'
-          ? 404
-          : code === 'VALIDATION' || code === 'PARSE'
-            ? 400
-            : 500;
+        error instanceof DocumentError
+          ? error.code === 'NOT_FOUND'
+            ? 404
+            : error.code === 'INVALID_PDF'
+              ? 400
+              : 409
+          : code === 'NOT_FOUND'
+            ? 404
+            : code === 'VALIDATION' || code === 'PARSE'
+              ? 400
+              : 500;
       set.status = status;
       const errorCode =
-        status === 404
-          ? 'NOT_FOUND'
-          : status === 400
-            ? 'INVALID_REQUEST'
-            : 'INTERNAL_ERROR';
+        error instanceof DocumentError
+          ? error.code
+          : status === 404
+            ? 'NOT_FOUND'
+            : status === 400
+              ? 'INVALID_REQUEST'
+              : 'INTERNAL_ERROR';
       if (status === 500)
         logger.error({ event: 'http_failed', requestId: id, errorCode });
       return { error: { code: errorCode, requestId: id } };
@@ -59,6 +70,11 @@ export function createApp(options?: {
         ),
       });
     })
+    .use(
+      options?.documentHttp
+        ? documentRoutes(options.documentHttp)
+        : new Elysia(),
+    )
     .get('/health', () => ({ status: 'ok' }))
     .get('/health/live', () => ({ status: 'ok' }))
     .get('/health/ready', ({ set }) => {

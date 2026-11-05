@@ -10,6 +10,7 @@ export default [
       '**/node_modules/**',
       '**/.next/**',
       '**/dist/**',
+      'packages/database/generated/**',
       'graphify-out/**',
       'work/**',
       'docs/brand/**',

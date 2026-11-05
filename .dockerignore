@@ -18,3 +18,4 @@ docs
 **/.env.*
 !**/.env.example
 coverage
+packages/database/generated

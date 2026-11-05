@@ -1,5 +1,9 @@
 import { z } from 'zod';
 const schema = z.object({
+  DOCUMENTS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),

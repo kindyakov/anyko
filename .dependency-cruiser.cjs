@@ -45,11 +45,28 @@ module.exports = {
     ...presentModules.map((owner) => ({
       name: `module-private-import-${owner}`,
       severity: 'error',
-      from: { pathNot: `^packages/backend/src/modules/${owner}/` },
+      from: { pathNot: `^packages/backend/src/(modules/${owner}/|runtime/)` },
       to: {
         path: `^packages/backend/src/modules/${owner}/(?!index\\.[cm]?[jt]s$)`,
       },
     })),
+    {
+      name: 'runtime-only-module-adapters',
+      severity: 'error',
+      from: { path: '^packages/backend/src/runtime/' },
+      to: {
+        path: '^packages/backend/src/modules/[^/]+/(?!index\\.[cm]?[jt]s$|infrastructure/)',
+      },
+    },
+    {
+      name: 'app-runtime-only-bootstrap',
+      severity: 'error',
+      from: {
+        path: '^apps/(api|worker)/',
+        pathNot: '^apps/(api|worker)/src/(index|diagnostic)\\.ts$',
+      },
+      to: { path: '^packages/backend/src/runtime/' },
+    },
     {
       name: 'web-no-server',
       severity: 'error',
@@ -131,7 +148,7 @@ module.exports = {
     },
   ],
   options: {
-    doNotFollow: { path: 'node_modules' },
+    doNotFollow: { path: 'node_modules|^packages/database/generated/' },
     tsPreCompilationDeps: true,
     combinedDependencies: true,
   },
