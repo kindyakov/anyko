@@ -6,7 +6,8 @@
     "dev": "bun --bun next dev",
     "build": "bun --bun next build",
     "start": "bun --bun next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:transport": "bun test src/lib/api"
   },
   "dependencies": {
     "next": "16.4.5",
@@ -14,7 +15,8 @@
     "react-dom": "19.3.1",
     "@anyko/logger": "workspace:*",
     "zod": "4.6.7",
-    "server-only": "0.0.1"
+    "server-only": "0.0.1",
+    "@anyko/contracts": "workspace:*"
   },
   "devDependencies": {
     "@anyko/typescript-config": "workspace:*",

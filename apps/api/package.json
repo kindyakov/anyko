@@ -11,7 +11,8 @@
   "dependencies": {
     "elysia": "1.4.31",
     "@anyko/logger": "workspace:*",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "@anyko/contracts": "workspace:*"
   },
   "devDependencies": {
     "@anyko/typescript-config": "workspace:*",
