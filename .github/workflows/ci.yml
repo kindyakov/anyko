@@ -1,0 +1,29 @@
+name: Scaffold CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scaffold:
+    name: Scaffold checks (static and build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Run available fast checks
+        run: bun run verify:fast
+      - name: Build applications
+        run: bun run build

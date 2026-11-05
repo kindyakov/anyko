@@ -1,0 +1,13 @@
+{
+  "name": "@anyko/prettier-config",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./base": "./base.js",
+    "./backend": "./backend.js",
+    "./frontend": "./frontend.js"
+  },
+  "peerDependencies": {
+    "prettier": "^3.0.0"
+  }
+}

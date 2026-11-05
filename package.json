@@ -1,0 +1,37 @@
+{
+  "name": "anyko",
+  "private": true,
+  "packageManager": "bun@1.4.4",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "bun --filter @anyko/web dev",
+    "dev:api": "bun --filter @anyko/api dev",
+    "dev:worker": "bun --filter @anyko/worker dev",
+    "format:check": "prettier --check apps packages scripts tests .github package.json prettier.config.mjs eslint.config.mjs knip.json .dependency-cruiser.cjs .jscpd.json",
+    "lint": "eslint apps packages tests",
+    "typecheck": "bun --filter '@anyko/*' typecheck && tsc -p tests/architecture/tsconfig.json",
+    "boundaries": "depcruise --config .dependency-cruiser.cjs apps packages",
+    "knip": "knip",
+    "duplicates": "jscpd apps packages",
+    "check:project": "bun scripts/check-project.mjs",
+    "test:architecture": "bun test tests/architecture/boundaries.test.ts",
+    "verify:fast": "bun run format:check && bun run typecheck && bun run lint && bun run boundaries && bun run test:architecture && bun run knip && bun run check:project && bun run duplicates",
+    "build": "bun --filter @anyko/web build"
+  },
+  "devDependencies": {
+    "@anyko/eslint-config": "workspace:*",
+    "@anyko/prettier-config": "workspace:*",
+    "@eslint/js": "^9",
+    "@types/bun": "^1.4.4",
+    "dependency-cruiser": "^18.7.2",
+    "eslint": "^9",
+    "jscpd": "^5.4.2",
+    "knip": "^6.44.1",
+    "prettier": "^3.9.10",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.72.1"
+  }
+}

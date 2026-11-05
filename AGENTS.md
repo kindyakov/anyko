@@ -1,5 +1,13 @@
 ## Agent skills
 
+### Engineering
+
+Перед изменением кода прочитайте [карту инженерных правил](docs/engineering/README.md), [структуру и границы](docs/engineering/repository.md), [правила кода](docs/engineering/code-rules.md) и [процесс автора/reviewer](docs/engineering/agent-workflow.md).
+
+При работе с доступом, БД, файлами или очередью читайте [данные и задания](docs/engineering/data-and-jobs.md); с CI/тестами и перед отчётом о готовности — [проверку качества](docs/engineering/quality.md); с контейнерами, миграциями или размещением — [эксплуатацию](docs/engineering/operations.md).
+
+Команды каркаса и текущие ограничения описаны в [README](README.md); пройденными считаются только фактически выполненные проверки. Новые локальные AGENTS добавляются вместе с реальными приложениями и содержат только их особенности.
+
 ### Issue tracker
 
 Задачи и спецификации ведутся в GitHub Issues репозитория kindyakov/anyko. См. `docs/agents/issue-tracker.md`.

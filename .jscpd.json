@@ -1,0 +1,12 @@
+{
+  "reporters": ["console"],
+  "ignore": [
+    "**/node_modules/**",
+    "**/.next/**",
+    "**/dist/**",
+    "graphify-out/**",
+    "work/**",
+    "docs/brand/**"
+  ],
+  "format": ["typescript", "tsx", "javascript"]
+}

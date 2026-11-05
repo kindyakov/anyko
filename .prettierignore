@@ -1,0 +1,9 @@
+node_modules/
+.next/
+dist/
+coverage/
+graphify-out/
+work/
+docs/brand/
+bun.lock
+apps/web/next-env.d.ts

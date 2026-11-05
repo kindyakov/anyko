@@ -1,0 +1,10 @@
+{
+  "name": "@anyko/typescript-config",
+  "private": true,
+  "exports": {
+    "./base.json": "./base.json",
+    "./server.json": "./server.json",
+    "./next.json": "./next.json",
+    "./library.json": "./library.json"
+  }
+}
