@@ -1,1 +1,0 @@
-{"extends":"@anyko/typescript-config/server.json","include":["src/**/*.ts"]}
