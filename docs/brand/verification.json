@@ -1,0 +1,107 @@
+{
+  "checked": "2026-11-04",
+  "sourceFiles": [
+    {
+      "file": "agent.png",
+      "bytes": 34664,
+      "sha256": "9050f96503b14bae1ca604e56e7afa15979e078cf7031c4feb4d16869767f4e6"
+    },
+    {
+      "file": "agent.svg",
+      "bytes": 17207,
+      "sha256": "2cdf3859932941f92963858a27338544c4d3deb127498876921008130a2b2606"
+    },
+    {
+      "file": "agent-2.svg",
+      "bytes": 18319,
+      "sha256": "cbff0750d42746cbeba8299f7ac47d181ca4c336a5f66b1ca6ab371247eef078"
+    }
+  ],
+  "contrast": [
+    {
+      "role": "button",
+      "foreground": "#FFFFFF",
+      "background": "#DB143C",
+      "ratio": 5.03,
+      "passesNormalText": true
+    },
+    {
+      "role": "body",
+      "foreground": "#18181B",
+      "background": "#FAF8F9",
+      "ratio": 16.75,
+      "passesNormalText": true
+    },
+    {
+      "role": "muted",
+      "foreground": "#65616A",
+      "background": "#FFFFFF",
+      "ratio": 6.05,
+      "passesNormalText": true
+    },
+    {
+      "role": "dark muted",
+      "foreground": "#A1A1AA",
+      "background": "#09090B",
+      "ratio": 7.76,
+      "passesNormalText": true
+    },
+    {
+      "role": "success",
+      "foreground": "#166534",
+      "background": "#ECFDF3",
+      "ratio": 6.76,
+      "passesNormalText": true
+    },
+    {
+      "role": "warning",
+      "foreground": "#854D0E",
+      "background": "#FFFBEB",
+      "ratio": 6.61,
+      "passesNormalText": true
+    },
+    {
+      "role": "error",
+      "foreground": "#991B1B",
+      "background": "#FEF2F2",
+      "ratio": 7.6,
+      "passesNormalText": true
+    },
+    {
+      "role": "info",
+      "foreground": "#1E40AF",
+      "background": "#EFF6FF",
+      "ratio": 8.01,
+      "passesNormalText": true
+    }
+  ],
+  "scope": "Token pairs only; not a full accessibility audit.",
+  "localLinksChecked": 20,
+  "ownerMainMatchesSitePaths": false,
+  "browser": {
+    "desktopWidth": 1920,
+    "mobileWidth": 390,
+    "mobileOverflow": false,
+    "brokenImages": 0,
+    "visualReview": [
+      "cover",
+      "mascot variants",
+      "product examples",
+      "mobile cover"
+    ]
+  },
+  "typography": {
+    "version": "1.1",
+    "fonts": [
+      "Onest",
+      "Manrope",
+      "Unbounded"
+    ],
+    "allLoaded": true,
+    "cyrillicInMetadata": true,
+    "desktopWidth": 1920,
+    "mobileWidth": 390,
+    "mobileOverflow": false,
+    "localFontFiles": true
+  }
+}

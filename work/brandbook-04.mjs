@@ -1,0 +1,10 @@
+const task=await taskSpace(2);const page=task.page('p1');
+await page.evaluate(()=>document.querySelector('#mascot').scrollIntoView({behavior:'instant'}));
+await page.screenshot({path:'E:/WORK/anyko/work/brandbook-mascots.png'});
+await page.evaluate(()=>document.querySelector('#product').scrollIntoView({behavior:'instant'}));
+await page.screenshot({path:'E:/WORK/anyko/work/brandbook-product.png'});
+await page.cdp('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+await page.screenshot({path:'E:/WORK/anyko/work/brandbook-mobile.png'});
+console.log(await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,brokenImages:[...document.images].filter(i=>!i.complete||!i.naturalWidth).length,overflow:[...document.querySelectorAll('section,.card,.demo,table')].filter(e=>e.getBoundingClientRect().right>innerWidth+1).map(e=>e.id||e.className)})));
+await page.cdp('Emulation.clearDeviceMetricsOverride',{});

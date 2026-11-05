@@ -1,0 +1,38 @@
+/* Anyko brand v1.1. Local variable fonts, with Cyrillic. */
+@font-face { font-family: 'Onest'; src: url('assets/fonts/Onest.ttf') format('truetype'); font-style: normal; font-weight: 100 900; font-display: swap; }
+@font-face { font-family: 'Manrope'; src: url('assets/fonts/Manrope.ttf') format('truetype'); font-style: normal; font-weight: 200 800; font-display: swap; }
+@font-face { font-family: 'Unbounded'; src: url('assets/fonts/Unbounded.ttf') format('truetype'); font-style: normal; font-weight: 200 900; font-display: swap; }
+:root {
+  --anyko-crimson: #DB143C;
+  --anyko-crimson-hover: #EC365B;
+  --anyko-wine: #201114;
+  --anyko-night: #09090B;
+  --anyko-card-dark: #18181B;
+  --anyko-border-dark: #27272A;
+  --anyko-text-dark: #FAFAFA;
+  --anyko-muted-dark: #A1A1AA;
+  --anyko-mascot-outline: #210106;
+  --anyko-mascot-shadow: #6D0C1F;
+  --anyko-mascot-red: #D82133;
+  --anyko-mascot-highlight: #F33647;
+  --anyko-paper: #FAF8F9;
+  --anyko-surface: #FFFFFF;
+  --anyko-ink: #18181B;
+  --anyko-muted: #65616A;
+  --anyko-border: #DED9DD;
+  --anyko-brand-tint: #FDECF0;
+  --anyko-success: #166534;
+  --anyko-success-bg: #ECFDF3;
+  --anyko-warning: #854D0E;
+  --anyko-warning-bg: #FFFBEB;
+  --anyko-error: #991B1B;
+  --anyko-error-bg: #FEF2F2;
+  --anyko-info: #1E40AF;
+  --anyko-info-bg: #EFF6FF;
+  --anyko-font: 'Onest', system-ui, sans-serif;
+  --anyko-font-heading: 'Manrope', 'Onest', sans-serif;
+  --anyko-font-display: 'Unbounded', 'Manrope', sans-serif;
+  --anyko-radius-control: 8px;
+  --anyko-radius-card: 16px;
+  --anyko-focus: #1E40AF;
+}

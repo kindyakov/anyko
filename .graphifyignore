@@ -1,0 +1,3 @@
+# Agent tooling is not part of the project's knowledge graph.
+.agents/
+.codex/

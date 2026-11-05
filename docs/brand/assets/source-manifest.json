@@ -1,0 +1,36 @@
+{
+  "source": "https://anyko.vercel.app/",
+  "captured": "2026-11-04",
+  "colors": {
+    "--color-accent-red": "#db143c",
+    "--color-accent-red-hover": "#ec365b",
+    "--background": "#201114",
+    "--color-card": "#18181b",
+    "--border": "#27272a",
+    "--color-foreground": "#fafafa",
+    "--muted-foreground": "#a1a1aa"
+  },
+  "font": "ui-sans-serif, system-ui, sans-serif, \"Apple Color Emoji\", \"Segoe UI Emoji\", \"Segoe UI Symbol\", \"Noto Color Emoji\"",
+  "markAndMascotPathsIdentical": true,
+  "notes": "Source SVG paths and fills preserved. Lockups assemble the original symbol with live system-ui text; text is not outlined. Dark/light refer to intended background.",
+  "ownerSupplied": {
+    "directory": "D:/Developer/Anyko/public/images/",
+    "files": [
+      {
+        "file": "agent.png",
+        "bytes": 34664,
+        "sha256": "9050f96503b14bae1ca604e56e7afa15979e078cf7031c4feb4d16869767f4e6"
+      },
+      {
+        "file": "agent.svg",
+        "bytes": 17207,
+        "sha256": "2cdf3859932941f92963858a27338544c4d3deb127498876921008130a2b2606"
+      },
+      {
+        "file": "agent-2.svg",
+        "bytes": 18319,
+        "sha256": "cbff0750d42746cbeba8299f7ac47d181ca4c336a5f66b1ca6ab371247eef078"
+      }
+    ]
+  }
+}

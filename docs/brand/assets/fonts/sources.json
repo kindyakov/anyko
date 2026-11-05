@@ -1,0 +1,26 @@
+{
+  "downloaded": "2026-11-04",
+  "fonts": [
+    {
+      "family": "Onest",
+      "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/onest/Onest%5Bwght%5D.ttf",
+      "bytes": 193056,
+      "sha256": "966c5c29b4755da84b6854d5c21dd4eaa2420225d0e9874de602de176d4a9f31",
+      "cyrillic": true
+    },
+    {
+      "family": "Manrope",
+      "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/manrope/Manrope%5Bwght%5D.ttf",
+      "bytes": 164700,
+      "sha256": "3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6",
+      "cyrillic": true
+    },
+    {
+      "family": "Unbounded",
+      "source": "https://raw.githubusercontent.com/google/fonts/main/ofl/unbounded/Unbounded%5Bwght%5D.ttf",
+      "bytes": 778272,
+      "sha256": "323b511be380c8d474ef030686b71aedde501f8d9cd46da558b7c40454372c3f",
+      "cyrillic": true
+    }
+  ]
+}
