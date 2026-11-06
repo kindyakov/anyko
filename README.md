@@ -2,6 +2,8 @@
 
 Основа приложения для подготовки документов: Next.js, API Elysia и worker BullMQ на Bun. Продуктовый сценарий и границы MVP: [mvp.md](mvp.md). Архитектура и правила разработки: [docs/engineering/README.md](docs/engineering/README.md).
 
+Работы по пакетам документов, Mastra/RouterAI, SSE и генерация отдельных DOCX: [устройство и запуск pipeline](docs/engineering/work-pipeline.md). Первый пакет содержит заявление о банкротстве, опись имущества и список кредиторов. [Подготовка бланков с сохранением OOXML](packages/backend/src/modules/templates/assets/README.md).
+
 ## Разработка каркаса
 
 Для воспроизводимого запуска используются Bun **1.4.4** и Node.js **26.13.0**. Bun — runtime приложений и менеджер workspace; Node используется инструментами, которым он необходим.
@@ -34,14 +36,14 @@ bun run dev:api
 bun run dev:web
 ```
 
-В env worker задайте `REDIS_URL=redis://127.0.0.1:16379`, затем в отдельном терминале:
+В env worker задайте `REDIS_URL=redis://127.0.0.1:16399`, затем в отдельном терминале:
 
 ```sh
 bun run dev:worker
 bun --filter @anyko/worker diagnostic
 ```
 
-API слушает `127.0.0.1:3001`, web — `3000`, внутренние probes worker — `127.0.0.1:3002`. `/health/live` проверяет процесс; `/health/ready` — готовность. Диагностическая очередь не является API предметной обработки.
+Локальный `bun run dev` использует настройки корневого `.env`. Сайт: `http://anyko.localhost:3020`; API слушает `127.0.0.1:3021`, web — `3020`, внутренние probes worker — `127.0.0.1:3022`. `/health/live` проверяет процесс; `/health/ready` — готовность. Диагностическая очередь не является API предметной обработки.
 
 Локальные команды `dev` и `start` API и worker сохраняют stdout/stderr в
 `apps/api/.logs/runtime.log` и `apps/worker/.logs/runtime.log`, одновременно
@@ -54,8 +56,10 @@ API слушает `127.0.0.1:3001`, web — `3000`, внутренние probes
 Интеграционные тесты требуют явного `TEST_REDIS_URL` на изолированный тестовый Redis, например в PowerShell:
 
 ```powershell
-$env:TEST_REDIS_URL = 'redis://127.0.0.1:16379'
+$env:TEST_REDIS_URL = 'redis://127.0.0.1:16399'
 bun run test:worker:integration
 ```
 
 Приложения пишут JSON в stdout. Для серверного хранения и доступа агента подготовлены [инструкция Dokploy](docs/engineering/deployment.md) и [контракт runtime](docs/engineering/runtime-foundation.md). История journald, SSH-ограничения и сохранение после перезагрузки требуют отдельной проверки на Linux-сервере. На Windows доступ к Docker и HTTP loopback может блокироваться песочницей инструмента: ошибка доступа не означает, что Engine или HTTP-handler сломан.
+
+Локальные порты Anyko: сайт3020, API3021, worker3022, MinerU8020, Redis16399, S319020. Общий PostgreSQL остаётся на5432; его данные и настройки не меняются.

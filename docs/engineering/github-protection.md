@@ -22,13 +22,15 @@ GitHub также включил дополнительное одобрение
 
 Создано и установлено 5 ноября 2026: [Anyko Coding Agent](https://github.com/settings/apps/anyko-coding-agent), App ID `5620461`, [installation `178751173`](https://github.com/settings/installations/178751173). Установка доступна только аккаунту владельца; выбрано `Only select repositories` → **только `kindyakov/anyko`**. Старые `anyko_client`, `anyko_server` и другие проекты не включены. Общая авторизация `gh`, Git credentials и настройки остальных проектов не менялись.
 
-| Разрешение | Уровень |
-| --- | --- |
-| Contents, Pull requests | Read and write |
-| Actions, Checks, Issues, Metadata | Read |
-| Administration, Workflows, Secrets, Commit statuses, остальные права | Нет |
+| Разрешение                                                           | Уровень        |
+| -------------------------------------------------------------------- | -------------- |
+| Contents, Pull requests, Issues                                      | Read and write |
+| Actions, Checks, Metadata                                            | Read           |
+| Administration, Workflows, Secrets, Commit statuses, остальные права | Нет            |
 
 OAuth от имени пользователя, device flow и webhook выключены. Приложение не может менять ruleset или записывать результат required check. Изменения `.github/workflows` публикует человек: права Workflows у приложения нет. Contents write позволяет merge при соблюдении правил ветки; это не запрет на любой merge после человеческого одобрения.
+
+5 ноября 2026 пользователь разрешил `Issues: Read and write` для редактирования задач и назначения меток в Anyko. Отдельного разрешения только на метки у GitHub нет. Launcher запрашивает это право и продолжает проверять точное совпадение остальных разрешений; Administration и Workflows не добавляются. Команды работы с задачами и метками выполняются через тот же `agent:github`, без перехода на пользовательский доступ.
 
 Приватный ключ хранится вне checkout: `%LOCALAPPDATA%\Anyko\agent-auth\github-app.pem`. Для самого файла ключа установлена и проверена ACL: наследование отключено, доступ только текущему Windows-пользователю. Это ограничение для других пользователей ОС, **не изоляция от агента под тем же пользователем**. Ключ не добавляется в `.env`, Git, CI или чат. Client secret не создавался.
 

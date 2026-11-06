@@ -11,7 +11,7 @@ const permissions = {
   actions: 'read',
   checks: 'read',
   contents: 'write',
-  issues: 'read',
+  issues: 'write',
   metadata: 'read',
   pull_requests: 'write',
 };
@@ -39,7 +39,7 @@ async function readResponse(response) {
   return response.json();
 }
 
-function assertPermissions(actual) {
+export function assertPermissions(actual) {
   if (
     !actual ||
     Object.keys(actual).length !== Object.keys(permissions).length ||

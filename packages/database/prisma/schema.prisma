@@ -68,6 +68,8 @@ model AnykoWorkspace {
  processorAttempts ProcessorAttempt[]
  deletions DocumentDeletion[]
  documentIo DocumentIo[]
+ works Work[]
+ llmSettings LlmSettings[]
 }
 model Membership {
  workspaceId String
@@ -92,10 +94,207 @@ model SourceDocument {
  deletedAt DateTime?
  purgedAt DateTime?
  runs ProcessingRun[]
+ workDocument WorkDocument?
  @@unique([workspaceId,id])
  @@unique([workspaceId,requestKey])
  @@index([workspaceId,createdAt])
  @@index([deletedAt,purgedAt])
+}
+
+model Work {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ packageVersion String
+ documentPackage DocumentPackageVersion @relation(fields:[packageVersion],references:[version],onDelete:Restrict)
+ title String
+ revision Int @default(0)
+ inputRevision Int @default(0)
+ confirmedRevision Int?
+ createdBy String
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ documents WorkDocument[]
+ runs WorkRun[]
+ facts WorkFacts?
+ generations WorkGeneration[]
+ events WorkEvent[]
+ artifacts WorkArtifact[]
+ agentSession WorkAgentSession?
+ agentThreads WorkAgentThread[]
+ io WorkIo[]
+ @@unique([workspaceId,id])
+ @@index([workspaceId,updatedAt])
+}
+model WorkDocument {
+ documentId String @id
+ workspaceId String
+ workId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
+ document SourceDocument @relation(fields:[workspaceId,documentId],references:[workspaceId,id],onDelete:Restrict)
+ @@index([workspaceId,workId])
+ @@unique([workspaceId,documentId])
+}
+model WorkFacts {
+ workId String @id
+ workspaceId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
+ payload Json
+ @@unique([workspaceId,workId])
+}
+model WorkRun {
+ id String @id
+ workspaceId String
+ workId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
+ kind String
+ status String @default("queued")
+ inputRevision Int
+ settingsRevision Int?
+ generationId String?
+ documentIds Json
+ modelSnapshot Json
+ initiatedBy String
+ correlationId String
+ attemptToken String?
+ leaseUntil DateTime?
+ errorCode String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ steps WorkStep[]
+ outbox WorkOutbox?
+ @@unique([workspaceId,id])
+ @@index([workspaceId,workId,createdAt])
+ @@index([status,leaseUntil])
+}
+model WorkStep {
+ id String @id
+ workspaceId String
+ runId String
+ run WorkRun @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade)
+ stage String
+ documentId String @default("")
+ status String
+ errorCode String?
+ usage Json?
+ output Json?
+ updatedAt DateTime @updatedAt
+ @@index([workspaceId,runId])
+ @@unique([workspaceId,runId,stage,documentId])
+}
+model WorkIo {
+ id String @id
+ workspaceId String
+ workId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Restrict)
+ uncertain Boolean @default(false)
+ createdAt DateTime @default(now())
+ @@index([workspaceId,workId])
+}
+model WorkOutbox {
+ id String @id
+ workspaceId String
+ runId String @unique
+ run WorkRun @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade)
+ deliveredAt DateTime?
+ leaseToken String?
+ leaseUntil DateTime?
+ @@index([deliveredAt,leaseUntil])
+ @@unique([workspaceId,runId])
+}
+model WorkEvent {
+ id BigInt @id @default(autoincrement())
+ workspaceId String
+ workId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
+ kind String
+ createdAt DateTime @default(now())
+ @@index([workspaceId,workId,id])
+}
+model WorkGeneration {
+ id String @id
+ workspaceId String
+ workId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
+ revision Int
+ confirmed Boolean
+ values Json
+ packageVersion String
+ documentPackage DocumentPackageVersion @relation(fields:[packageVersion],references:[version],onDelete:Restrict)
+ status String @default("queued")
+ createdAt DateTime @default(now())
+ files WorkGenerationFile[]
+ @@unique([workspaceId,workId,id,packageVersion])
+ @@index([workspaceId,workId,createdAt])
+}
+model DocumentPackageVersion {
+ version String @id
+ packageId String
+ title String
+ documents PackageDocument[]
+ works Work[]
+ generations WorkGeneration[]
+}
+model DocumentTemplateVersion {
+ version String @id
+ templateId String
+ title String
+ checksum String
+ packages PackageDocument[]
+}
+model PackageDocument {
+ packageVersion String
+ documentPackage DocumentPackageVersion @relation(fields:[packageVersion],references:[version],onDelete:Restrict)
+ templateVersion String
+ template DocumentTemplateVersion @relation(fields:[templateVersion],references:[version],onDelete:Restrict)
+ position Int
+ files WorkGenerationFile[]
+ @@id([packageVersion,templateVersion])
+ @@unique([packageVersion,position])
+}
+model WorkGenerationFile {
+ id String @id
+ workspaceId String
+ workId String
+ generationId String
+ packageVersion String
+ generation WorkGeneration @relation(fields:[workspaceId,workId,generationId,packageVersion],references:[workspaceId,workId,id,packageVersion],onDelete:Cascade)
+ templateVersion String
+ packageDocument PackageDocument @relation(fields:[packageVersion,templateVersion],references:[packageVersion,templateVersion],onDelete:Restrict)
+ title String
+ filename String
+ status String @default("queued")
+ errorCode String?
+ key String? @unique
+ checksum String?
+ @@unique([generationId,templateVersion])
+ @@index([workspaceId,workId,generationId])
+}
+model WorkArtifact {
+ key String @id
+ workspaceId String
+ workId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Restrict)
+ createdAt DateTime @default(now())
+ @@index([workspaceId,workId])
+}
+model WorkAgentThread {
+ id String @id
+ workspaceId String
+ workId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Restrict)
+ @@index([workspaceId,workId])
+}
+model LlmSettings {
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ revision Int
+ baseURL String
+ visionModel String
+ extractionModel String
+ encryptedKey String
+ createdAt DateTime @default(now())
+ @@id([workspaceId,revision])
 }
 model SourceUpload {
  key String @id
@@ -192,4 +391,34 @@ model DocumentIo {
  createdAt DateTime @default(now())
  @@index([workspaceId,documentId])
  @@index([workspaceId,requestKey])
+}
+
+model WorkAgentSession {
+ id String @id
+ workspaceId String
+ workId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade,map:"WorkAgentSession_work_fkey")
+ revision Int @default(0)
+ context Json?
+ updatedAt DateTime @updatedAt
+ turns WorkAgentTurn[]
+ @@unique([workspaceId,workId])
+ @@unique([workspaceId,workId,id])
+}
+model WorkAgentTurn {
+ id String @id
+ workspaceId String
+ workId String
+ sessionId String
+ session WorkAgentSession @relation(fields:[workspaceId,workId,sessionId],references:[workspaceId,workId,id],onDelete:Cascade,map:"WorkAgentTurn_session_fkey")
+ runId String
+ threadId String
+ revision Int
+ trigger String
+ context Json
+ output Json
+ createdAt DateTime @default(now())
+ @@unique([sessionId,runId])
+ @@unique([sessionId,revision])
+ @@index([workspaceId,workId])
 }

@@ -25,6 +25,7 @@ export async function requestApi<T>(
     headers?: HeadersInit;
     signal?: AbortSignal;
     timeoutMs?: number;
+    query?: Record<string, string>;
     fetch?: HttpFetch;
   } = {},
 ): Promise<T> {
@@ -53,15 +54,19 @@ export async function requestApi<T>(
   try {
     const headers = new Headers(options.headers);
     headers.set('accept', 'application/json');
-    const response = await (options.fetch ?? fetch)(`/api${path}`, {
-      method: options.method ?? 'GET',
-      ...(options.body === undefined ? {} : { body: options.body }),
-      headers,
-      signal: controller.signal,
-      credentials: 'same-origin',
-      cache: 'no-store',
-      redirect: 'error',
-    });
+    const query = new URLSearchParams(options.query).toString();
+    const response = await (options.fetch ?? fetch)(
+      `/api${path}${query ? `?${query}` : ''}`,
+      {
+        method: options.method ?? 'GET',
+        ...(options.body === undefined ? {} : { body: options.body }),
+        headers,
+        signal: controller.signal,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        redirect: 'error',
+      },
+    );
     status = response.status;
     requestId = response.headers.get('x-request-id') ?? undefined;
     const body: unknown = await response.json();

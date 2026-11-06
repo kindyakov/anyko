@@ -1,4 +1,4 @@
-param([int]$Port = 8000)
+param([int]$Port = 8020)
 $ErrorActionPreference = 'Stop'
 if ($Port -lt 1 -or $Port -gt 65535) { throw 'Invalid MinerU port' }
 $workspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))

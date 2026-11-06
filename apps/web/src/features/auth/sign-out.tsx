@@ -16,6 +16,8 @@ export function SignOut({ onSignedOut }: { onSignedOut: () => void }) {
     try {
       const response = await fetch('/api/auth/sign-out', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
         credentials: 'same-origin',
         signal: controller.signal,
       });

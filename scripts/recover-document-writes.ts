@@ -31,7 +31,14 @@ try {
       await parser.eraseAttempt(attempt.id);
     await db.documentIo.delete({ where: { id: operation.id } });
   }
-  console.info(JSON.stringify({ reconciled: operations.length }));
+  // Same operator gate: no API/worker or unsettled S3 writes may remain.
+  const workOperations = await db.workIo.deleteMany();
+  console.info(
+    JSON.stringify({
+      reconciled: operations.length,
+      workBarriers: workOperations.count,
+    }),
+  );
 } finally {
   await db.$disconnect();
 }

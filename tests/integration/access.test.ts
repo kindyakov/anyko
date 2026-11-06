@@ -1,11 +1,17 @@
 import { expect, test } from 'bun:test';
 import { createDatabase } from '@anyko/database';
 import { createAccess, provisionLocalAccess } from '@anyko/backend/access';
-import { createDocumentRuntime } from '@anyko/backend/runtime';
+import {
+  createDocumentRuntime,
+  createWorkRuntime,
+} from '@anyko/backend/runtime';
 import { createLogger } from '@anyko/logger';
 import {
   documentResponseSchema,
   documentsResponseSchema,
+  workResponseSchema,
+  emptyFieldValues,
+  llmSettingsResponseSchema,
 } from '@anyko/contracts';
 import { createApp } from '../../apps/api/src/http/app';
 
@@ -62,7 +68,36 @@ test('real sessions enforce closed signup, mutation origin and document workspac
       },
     },
   });
+  const works = createWorkRuntime({
+    databaseUrl,
+    encryptionKey: (crypto.randomUUID() + crypto.randomUUID()).replaceAll(
+      '-',
+      '',
+    ),
+    logger: createLogger({
+      service: 'api',
+      environment: 'test',
+      release: 'work-access',
+      level: 'fatal',
+    }),
+    storage: {
+      exists: () => Promise.resolve(false),
+      get: () => Promise.reject(new Error('UNEXPECTED_STORAGE_READ')),
+      put: () => Promise.reject(new Error('UNEXPECTED_STORAGE_WRITE')),
+      delete: () => Promise.reject(new Error('UNEXPECTED_STORAGE_DELETE')),
+    },
+  });
+  const ownedWorkIds: string[] = [];
+  let ownedSettingsRevision: number | undefined;
   const app = createApp({
+    workHttp: {
+      access,
+      documents,
+      origin,
+      works: works.api,
+      settings: works.settings,
+      saveSettings: works.saveSettings,
+    },
     documentHttp: { access, documents, origin },
     logger: createLogger({
       service: 'api',
@@ -136,6 +171,116 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     }
     const ownerCookie = await login(firstEmail);
     const secondCookie = await login(secondEmail);
+    expect((await request('/api/works')).status).toBe(401);
+    const workBody = {
+      title: 'Synthetic access work',
+      packageVersion: 'technical-document-v1',
+    };
+    const headers = {
+      cookie: ownerCookie,
+      origin,
+      'content-type': 'application/json',
+    };
+    expect(
+      (
+        await request('/api/works', {
+          method: 'POST',
+          headers: { ...headers, origin: 'https://foreign.invalid' },
+          body: JSON.stringify(workBody),
+        })
+      ).status,
+    ).toBe(403);
+    const created = await request('/api/works', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(workBody),
+    });
+    expect(created.status).toBe(201);
+    const work = workResponseSchema.parse(await created.json());
+    ownedWorkIds.push(work.work.id);
+    for (const path of [
+      `/api/works/${work.work.id}`,
+      `/api/works/${work.work.id}/events`,
+      `/api/works/${work.work.id}/generations/${crypto.randomUUID()}/files/${crypto.randomUUID()}`,
+    ]) {
+      expect(
+        (await request(path, { headers: { cookie: secondCookie } })).status,
+      ).toBe(404);
+    }
+    expect(
+      (
+        await request(`/api/works/${work.work.id}/fields`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ revision: 0 }),
+        })
+      ).status,
+    ).toBe(400);
+    const edit = {
+      revision: 0,
+      values: { ...emptyFieldValues(), personName: 'Manual fixture' },
+    };
+    expect(
+      (
+        await request(`/api/works/${work.work.id}/fields`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(edit),
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(`/api/works/${work.work.id}/fields`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(edit),
+        })
+      ).status,
+    ).toBe(409);
+    const providerKey = crypto.randomUUID();
+    const connection = {
+      baseURL: 'http://127.0.0.1:1/v1',
+      visionModel: 'fixture',
+      extractionModel: 'fixture',
+      apiKey: providerKey,
+    };
+    expect(
+      (
+        await request('/api/settings/llm', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(connection),
+        })
+      ).status,
+    ).toBe(200);
+    const settingsText = await (
+      await request('/api/settings/llm', { headers: { cookie: ownerCookie } })
+    ).text();
+    expect(settingsText).not.toContain(providerKey);
+    const settings = llmSettingsResponseSchema.parse(
+      JSON.parse(settingsText) as unknown,
+    );
+    expect(settings.canManage).toBe(true);
+    ownedSettingsRevision = settings.settings?.revision;
+    const firstUser = await db.user.findUniqueOrThrow({
+      where: { email: firstEmail },
+    });
+    await db.membership.update({
+      where: {
+        workspaceId_userId: { workspaceId: 'local', userId: firstUser.id },
+      },
+      data: { role: 'member' },
+    });
+    expect(
+      (
+        await request('/api/settings/llm', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(connection),
+        })
+      ).status,
+    ).toBe(403);
     expect(
       (await request('/api/session', { headers: { cookie: ownerCookie } }))
         .status,
@@ -282,6 +427,11 @@ test('real sessions enforce closed signup, mutation origin and document workspac
         select: { id: true },
       });
       const userIds = users.map((user) => user.id);
+      await db.work.deleteMany({ where: { id: { in: ownedWorkIds } } });
+      if (ownedSettingsRevision !== undefined)
+        await db.llmSettings.deleteMany({
+          where: { workspaceId: 'local', revision: ownedSettingsRevision },
+        });
       const ownedDocuments = await db.sourceDocument.findMany({
         where: { createdBy: { in: userIds } },
         select: { id: true },
@@ -311,7 +461,12 @@ test('real sessions enforce closed signup, mutation origin and document workspac
       await db.user.deleteMany({ where: { id: { in: userIds } } });
       await db.anykoWorkspace.deleteMany({ where: { id: foreignWorkspace } });
     } finally {
-      await Promise.all([documents.stop(), access.stop(), db.$disconnect()]);
+      await Promise.all([
+        works.stop(),
+        documents.stop(),
+        access.stop(),
+        db.$disconnect(),
+      ]);
     }
   }
 }, 30000);

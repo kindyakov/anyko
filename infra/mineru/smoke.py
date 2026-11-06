@@ -11,7 +11,7 @@ from pathlib import Path
 def main():
     args = argparse.ArgumentParser()
     args.add_argument('--tier', choices=['flash', 'basic'], default='basic', help='Synthetic PDF fixture kind; server chooses parser tier by format')
-    args.add_argument('--base-url', default='http://127.0.0.1:8000')
+    args.add_argument('--base-url', default='http://127.0.0.1:8020')
     args.add_argument('--timeout', type=int, default=300)
     args.add_argument('--format', choices=['pdf', 'docx', 'jpeg', 'png', 'webp', 'tiff'], default='pdf')
     args.add_argument('--fixtures-only', action='store_true')

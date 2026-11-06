@@ -31,6 +31,15 @@ export function createAccess(options: AccessOptions) {
   const { db, auth } = buildAuth(options);
   return {
     handle: (request: Request) => auth.handler(request),
+    async canManage(userId: string, workspaceId: string) {
+      return (
+        (
+          await db.membership.findUnique({
+            where: { workspaceId_userId: { workspaceId, userId } },
+          })
+        )?.role === 'owner'
+      );
+    },
     async session(headers: Headers) {
       const session = await auth.api.getSession({ headers });
       if (!session) return null;

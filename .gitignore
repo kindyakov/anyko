@@ -10,6 +10,9 @@ coverage/
 *.tsbuildinfo
 work
 
+# Private source documents stay local and must never be committed.
+/Заявление/
+
 # Share the graph and its portable update manifest; keep local state out of Git.
 /graphify-out/*
 !/graphify-out/graph.json

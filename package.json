@@ -21,7 +21,7 @@
     "test:architecture": "bun test --timeout 30000 tests/architecture/boundaries.test.ts",
     "test:api": "bun run --filter @anyko/api test",
     "test:agent-github": "bun test tests/tooling/agent-github.test.mjs",
-    "verify:fast": "bun run format:check && bun run typecheck && bun run lint && bun run boundaries && bun run test:architecture && bun run test:api && bun run test:agent-github && bun run test:mineru && bun run test:web && bun run test:logger && bun run test:worker && bun run test:diagnostics && bun run test:local-logs && bun run knip && bun run check:project && bun run duplicates",
+    "verify:fast": "bun run format:check && bun run typecheck && bun run lint && bun run boundaries && bun run test:architecture && bun run test:api && bun run test:agent-github && bun run test:mineru && bun run test:llm && bun run test:works && bun run test:web && bun run test:logger && bun run test:worker && bun run test:diagnostics && bun run test:local-logs && bun run knip && bun run check:project && bun run duplicates",
     "build": "bun run --filter @anyko/web build",
     "test:logger": "bun run --filter @anyko/logger test",
     "test:worker": "bun run --filter @anyko/worker test",
@@ -36,11 +36,15 @@
     "access:provision-local": "bun scripts/provision-local.ts",
     "test:web": "bun run --filter @anyko/web test",
     "storage:prepare": "bun scripts/prepare-storage.ts",
-    "dev": "bun scripts/dev.mjs",
+    "dev": "bun --env-file=.env scripts/dev.mjs",
     "smoke:document": "bun scripts/smoke-document.ts",
     "test:access:integration": "bun test tests/integration/access.test.ts",
     "test:documents:integration": "bun test packages/backend/tests/integration/documents.test.ts packages/backend/tests/integration/document-deletion.test.ts",
-    "test:mineru": "bun test packages/backend/src/modules/documents/infrastructure/mineru.test.ts packages/backend/src/modules/documents/application/source-format.test.ts"
+    "test:mineru": "bun test packages/backend/src/modules/documents/infrastructure/mineru.test.ts packages/backend/src/modules/documents/application/source-format.test.ts",
+    "llm:provision": "bun scripts/provision-llm.ts",
+    "test:llm": "bun run --filter @anyko/llm test",
+    "test:works": "bun test packages/backend/src/modules/facts/facts.test.ts packages/backend/tests/templates.test.ts packages/backend/src/modules/agents/infrastructure/vision-retry.test.ts packages/backend/src/modules/agents/session.test.ts",
+    "test:works:integration": "bun test --timeout 60000 packages/backend/tests/integration/works.test.ts packages/backend/tests/integration/vision-retry.test.ts packages/backend/tests/integration/session-agent.test.ts"
   },
   "devDependencies": {
     "@anyko/eslint-config": "workspace:*",

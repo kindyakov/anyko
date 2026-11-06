@@ -13,7 +13,7 @@ PostgreSQL metadata/run/outbox → BullMQ worker → MinerU → immutable result
 подготовленное окружение из [инструкции MinerU](mineru.md). Первичная установка
 MinerU выполняется отдельно по этой инструкции.
 
-Откройте `http://localhost:3000`. Локальные email/password берутся из `.env`;
+Откройте `http://anyko.localhost:3020`. Локальные email/password берутся из `.env`;
 в репозиторий и журналы они не попадают. Повторное provisioning не меняет пароль
 существующего пользователя. Публичная регистрация отключена. Сессии Better Auth
 хранятся в PostgreSQL; membership проверяется при каждом обращении к данным.

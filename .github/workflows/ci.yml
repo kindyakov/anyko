@@ -66,4 +66,4 @@ jobs:
       - name: Apply test migrations
         run: bun run db:migrate
       - name: Document and access integration
-        run: bun run test:documents:integration && bun run test:access:integration
+        run: bun run test:documents:integration && bun run test:access:integration && bun run test:works:integration
