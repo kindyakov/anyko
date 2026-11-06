@@ -1,18 +1,21 @@
 import { Agent } from '@mastra/core/agent';
-import { createTool } from '@mastra/core/tools';
 import { Mastra } from '@mastra/core/mastra';
+import { createTool } from '@mastra/core/tools';
 import { Memory } from '@mastra/memory';
 import { PostgresStore } from '@mastra/pg';
-import { createModelGateway, llmError } from '@anyko/llm';
+import { z } from 'zod';
+
 import {
   candidateSchema,
   fieldDefinitions,
   legacyFieldKeys,
 } from '@anyko/contracts';
-import { z } from 'zod';
+import { createModelGateway, llmError } from '@anyko/llm';
+
 import type { DocumentAgents } from '..';
-import { retryVisionResponse } from './vision-retry';
+
 import { createReconciliationAgent } from './reconcile';
+import { retryVisionResponse } from './vision-retry';
 
 const descriptionSchema = z
   .object({ description: z.string().min(1).max(12000) })

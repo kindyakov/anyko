@@ -1,7 +1,13 @@
-import { findFactConflicts } from './index';
 import { expect, test } from 'bun:test';
-import { emptyFacts, editFacts, mergeCandidates } from './index';
+
 import type { WorkFacts } from '@anyko/contracts';
+
+import {
+  editFacts,
+  emptyFacts,
+  findFactConflicts,
+  mergeCandidates,
+} from './index';
 
 const candidate = (value: string): WorkFacts['candidates'][number] => ({
   field: 'personName',

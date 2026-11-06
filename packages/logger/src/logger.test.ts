@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+
 import { createLogger } from './index';
 test('structured context excludes arbitrary request and error properties', () => {
   const lines: string[] = [];

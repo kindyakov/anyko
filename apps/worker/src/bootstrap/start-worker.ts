@@ -1,12 +1,13 @@
-import { createLogger } from '@anyko/logger';
 import {
-  createWorkerRuntime,
   createDocumentWorker,
-  createS3Storage,
   createMineruParser,
+  createS3Storage,
+  createWorkerRuntime,
   createWorkWorker,
   parseWorkConfig,
 } from '@anyko/backend/runtime';
+import { createLogger } from '@anyko/logger';
+
 import { parseWorkerConfig } from './config';
 
 export async function startWorker() {

@@ -1,10 +1,13 @@
-import { test, expect, spyOn } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 import { inspect } from 'node:util';
+
 import { z } from 'zod';
-import { emptyFacts } from '../../src/modules/facts';
+
 import { fieldDefinitions } from '@anyko/contracts';
-import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 import { llmError } from '@anyko/llm';
+
+import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
+import { emptyFacts } from '../../src/modules/facts';
 
 test('real coordinator validates source evidence, keeps its scope, and removes persisted attempt messages', async () => {
   const databaseUrl = z

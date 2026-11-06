@@ -1,17 +1,19 @@
+import type {
+  AgentSessionContext,
+  FieldDefinition,
+  WorkFacts,
+} from '@anyko/contracts';
+
 import {
   combineCandidates,
   selectSessionCandidates,
 } from '../../modules/agents';
-import { mergeCandidates, findFactConflicts } from '../../modules/facts';
+import { findFactConflicts, mergeCandidates } from '../../modules/facts';
 import type { WorkRunRecord } from '../../modules/processing';
-import type {
-  FieldDefinition,
-  WorkFacts,
-  AgentSessionContext,
-} from '@anyko/contracts';
 import type { WorkSummary } from '../../modules/works';
-import type { WorkDependencies } from './ports';
+
 import { callModel } from './model-call';
+import type { WorkDependencies } from './ports';
 
 export interface ContinuationSource {
   id: string;

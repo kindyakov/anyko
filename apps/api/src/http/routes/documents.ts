@@ -1,7 +1,8 @@
 import { Elysia } from 'elysia';
-import { createDocumentService } from '@anyko/backend/documents';
-import { createAccess } from '@anyko/backend/access';
 import { z } from 'zod';
+
+import { createAccess } from '@anyko/backend/access';
+import { createDocumentService } from '@anyko/backend/documents';
 
 export interface DocumentHttpOptions {
   documents: ReturnType<typeof createDocumentService>;

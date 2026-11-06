@@ -1,6 +1,7 @@
 'use client';
 import { useLayoutEffect, useRef } from 'react';
-import type { FieldDefinition, FieldValue, FieldRow } from '@anyko/contracts';
+
+import type { FieldDefinition, FieldRow, FieldValue } from '@anyko/contracts';
 
 export function TextSlot({
   label,

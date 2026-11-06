@@ -10,7 +10,6 @@
         "@anyko/database": "workspace:*",
         "@anyko/eslint-config": "workspace:*",
         "@anyko/logger": "workspace:*",
-        "@anyko/prettier-config": "workspace:*",
         "@anyko/typescript-config": "workspace:*",
         "@aws-sdk/client-s3": "3.1162.0",
         "@eslint/js": "10.0.1",
@@ -20,7 +19,6 @@
         "eslint": "10.14.0",
         "jscpd": "5.4.2",
         "knip": "6.44.1",
-        "prettier": "3.9.10",
         "typescript": "npm:@typescript/typescript6@6.0.2",
         "typescript-eslint": "8.72.1",
         "zod": "4.6.7",
@@ -172,12 +170,6 @@
         "typescript": "npm:@typescript/typescript6@6.0.2",
       },
     },
-    "packages/prettier-config": {
-      "name": "@anyko/prettier-config",
-      "peerDependencies": {
-        "prettier": "^3.0.0",
-      },
-    },
     "packages/typescript-config": {
       "name": "@anyko/typescript-config",
     },
@@ -216,8 +208,6 @@
     "@anyko/llm": ["@anyko/llm@workspace:packages/llm"],
 
     "@anyko/logger": ["@anyko/logger@workspace:packages/logger"],
-
-    "@anyko/prettier-config": ["@anyko/prettier-config@workspace:packages/prettier-config"],
 
     "@anyko/typescript-config": ["@anyko/typescript-config@workspace:packages/typescript-config"],
 
@@ -1352,8 +1342,6 @@
     "posthog-node": ["posthog-node@5.62.0", "", { "dependencies": { "@posthog/core": "^1.63.2" }, "peerDependencies": { "@opentelemetry/api": "^1.2.0", "rxjs": "^7.0.0" }, "optionalPeers": ["@opentelemetry/api", "rxjs"] }, "sha512-hXKw6m4juSNZMd6FQHhPwrLpnHqmshh0PPUtNfqXNezZF4eG38h2yykfB1PNwDDk7E7tGRvJgiJyq/XWuDXB5A=="],
 
     "prelude-ls": ["prelude-ls@1.2.1", "", {}, "sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g=="],
-
-    "prettier": ["prettier@3.9.10", "", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-skGHTH1Yb9QvaTC4hWnRTzEYtCpApF0UMBPz+t/0ZPzP8ihefo/btKd+QA7pUE0fEwA1SbS/NmhyEcstdXOIdA=="],
 
     "pretty-ms": ["pretty-ms@9.3.1", "", { "dependencies": { "parse-ms": "^4.0.0" } }, "sha512-HzMy3Geq23nVALD/M2LliU+F+M+gVNsvkQWWqeBZ8HDiCgzo6YPJ/Omrmtq24EFrIsk0a3EkQGEd7bDOo+IhGA=="],
 

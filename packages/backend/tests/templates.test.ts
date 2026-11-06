@@ -1,18 +1,21 @@
 import { expect, test } from 'bun:test';
-import PizZip from 'pizzip';
 import { createHash } from 'node:crypto';
+
+import PizZip from 'pizzip';
+
 import {
-  emptyFieldValues,
   candidateSchema,
+  emptyFieldValues,
   fieldValuesSchema,
 } from '@anyko/contracts';
+
+import { generateDocument } from '../src/modules/generation';
 import {
   availablePackages,
   requirePackage,
   templateBytes,
   templateData,
 } from '../src/modules/templates';
-import { generateDocument } from '../src/modules/generation';
 
 test('the selectable package contains three real versioned templates; archived single-document works still resolve', () => {
   const packages = availablePackages();

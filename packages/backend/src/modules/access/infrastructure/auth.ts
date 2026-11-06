@@ -1,5 +1,6 @@
-import { betterAuth } from 'better-auth';
 import { prismaAdapter } from '@better-auth/prisma-adapter';
+import { betterAuth } from 'better-auth';
+
 import { createDatabase } from '@anyko/database';
 
 export interface AccessOptions {

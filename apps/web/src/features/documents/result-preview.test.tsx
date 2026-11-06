@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
+
 import { renderToStaticMarkup } from 'react-dom/server';
+
 import { ResultPreview } from './result-preview';
 
 test('renders DOCX Cyrillic math symbols without unknown command errors', () => {

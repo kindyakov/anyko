@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test';
-import { combineCandidates, selectSessionCandidates } from './session';
+
 import { agentSessionContextSchema } from '@anyko/contracts';
+
+import { combineCandidates, selectSessionCandidates } from './session';
 
 test('context additions cannot erase contradictory document proposals and duplicate evidence is bounded', () => {
   const id = crypto.randomUUID();

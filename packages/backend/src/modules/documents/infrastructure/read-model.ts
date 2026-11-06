@@ -1,5 +1,7 @@
-import type { Database } from '@anyko/database';
 import { z } from 'zod';
+
+import type { Database } from '@anyko/database';
+
 import type { DocumentView } from '../application/ports';
 const statusSchema = z.enum(['queued', 'running', 'succeeded', 'failed']);
 /** Explicit document screen read model: source metadata + latest processing summary. */

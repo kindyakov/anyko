@@ -1,5 +1,5 @@
-import type { WorkApi } from '@anyko/backend/works';
 import type { createAccess } from '@anyko/backend/access';
+import type { WorkApi } from '@anyko/backend/works';
 
 const connections = new Map<string, number>();
 export function workEventStream(input: {

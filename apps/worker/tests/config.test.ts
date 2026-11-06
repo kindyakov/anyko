@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+
 import { parseWorkerConfig } from '../src/bootstrap/config';
 
 test('document consumer is explicit and validates all of its dependencies', () => {

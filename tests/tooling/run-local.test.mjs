@@ -8,6 +8,7 @@ import {
   rmSync,
 } from 'node:fs';
 import { resolve, sep } from 'node:path';
+
 import { createLogWriter, parseLaunchArgs } from '../../scripts/run-local.mjs';
 
 const work = resolve('work');

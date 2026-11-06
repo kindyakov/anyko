@@ -4,17 +4,17 @@
 Прямые зависимости закрепляются точными версиями; workspace использует один
 lockfile. Обновления проходят полный контроль качества, включая интеграцию.
 
-| Назначение | Версия |
-| --- | --- |
-| Bun | 1.4.4 |
-| Node для инструментов, актуальный LTS | 26.13.0 |
-| TypeScript compiler (`tsc`) | 7.0.2 |
-| Elysia / Next.js | 1.4.31 / 16.4.5 |
-| React / React DOM | 19.3.1 |
-| Zod / Pino | 4.6.7 / 10.4.0 |
-| BullMQ / ioredis / Redis | 6.7.0 / 6.0.0 / 8.10.3 |
-| ESLint / typescript-eslint | 10.14.0 / 8.72.1 |
-| Prettier / Knip / dependency-cruiser | 3.9.10 / 6.44.1 / 18.7.2 |
+| Назначение                            | Версия                  |
+| ------------------------------------- | ----------------------- |
+| Bun                                   | 1.4.4                   |
+| Node для инструментов, актуальный LTS | 26.13.0                 |
+| TypeScript compiler (`tsc`)           | 7.0.2                   |
+| Elysia / Next.js                      | 1.4.31 / 16.4.5         |
+| React / React DOM                     | 19.3.1                  |
+| Zod / Pino                            | 4.6.7 / 10.4.0          |
+| BullMQ / ioredis / Redis              | 6.7.0 / 6.0.0 / 8.10.3  |
+| ESLint / typescript-eslint            | 10.14.0 / 8.72.1        |
+| Bun fmt / Knip / dependency-cruiser   | 1.4.4 / 6.44.1 / 18.7.2 |
 
 ## TypeScript 7 и программный API
 

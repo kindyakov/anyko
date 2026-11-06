@@ -1,18 +1,19 @@
-import type { WorkStore } from '../../modules/works';
+import type { Logger } from '@anyko/logger';
+
+import type { AgentSessionStore, DocumentAgents } from '../../modules/agents';
+import type {
+  DocumentIo,
+  DocumentService,
+  ResourceLocks,
+  SourceStorage,
+} from '../../modules/documents';
 import type { FactsStore } from '../../modules/facts';
 import type { GenerationStore } from '../../modules/generation';
 import type {
   LlmSettingsStore,
   WorkProcessingStore,
 } from '../../modules/processing';
-import type {
-  DocumentService,
-  DocumentIo,
-  ResourceLocks,
-  SourceStorage,
-} from '../../modules/documents';
-import type { DocumentAgents, AgentSessionStore } from '../../modules/agents';
-import type { Logger } from '@anyko/logger';
+import type { WorkStore } from '../../modules/works';
 
 export interface WorkStores {
   sessions: AgentSessionStore;

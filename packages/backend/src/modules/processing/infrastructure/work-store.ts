@@ -1,6 +1,8 @@
-import type { Database } from '@anyko/database';
-import { workRunSchema } from '@anyko/contracts';
 import { z } from 'zod';
+
+import { workRunSchema } from '@anyko/contracts';
+import type { Database } from '@anyko/database';
+
 import type { WorkProcessingStore } from '..';
 import { stepOutputSchema } from '../application/work-ports';
 

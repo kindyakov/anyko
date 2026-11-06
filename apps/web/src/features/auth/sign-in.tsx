@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type SyntheticEvent } from 'react';
+import { type SyntheticEvent, useState } from 'react';
 
 export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [pending, setPending] = useState(false);

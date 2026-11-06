@@ -1,13 +1,13 @@
 import {
-  factsSchema,
   emptyFieldValues,
+  factsSchema,
   fieldDefinitions,
   fieldIdentity,
-  readFieldValues,
-  type WorkFacts,
-  type FieldValues,
   type FieldRow,
   type FieldValue,
+  type FieldValues,
+  readFieldValues,
+  type WorkFacts,
 } from '@anyko/contracts';
 
 export function emptyFacts(): WorkFacts {

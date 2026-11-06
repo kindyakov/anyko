@@ -1,4 +1,5 @@
 import base from '@anyko/eslint-config/base';
+
 import {
   architectureRules,
   restrictedIoGlobals,

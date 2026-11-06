@@ -1,23 +1,25 @@
+import type { WorkFacts } from '@anyko/contracts';
+import { LlmError } from '@anyko/llm';
+
 import { checksum, DocumentError } from '../../modules/documents';
-import {
-  templateBytes,
-  requirePackage,
-  templateData,
-} from '../../modules/templates';
 import { generateDocument } from '../../modules/generation';
 import { stepOutputSchema } from '../../modules/processing';
 import type {
-  WorkRunRecord,
   WorkProcessingStore,
+  WorkRunRecord,
 } from '../../modules/processing';
-import type { WorkFacts } from '@anyko/contracts';
-import { LlmError } from '@anyko/llm';
-import type { WorkDependencies } from './ports';
-import { addUsage, callModel } from './model-call';
 import {
-  createWorkContinuation,
+  requirePackage,
+  templateBytes,
+  templateData,
+} from '../../modules/templates';
+
+import {
   type ContinuationSource,
+  createWorkContinuation,
 } from './continue-session';
+import { addUsage, callModel } from './model-call';
+import type { WorkDependencies } from './ports';
 
 type StepInput = Parameters<WorkProcessingStore['step']>[1];
 const delay = (signal: AbortSignal) =>

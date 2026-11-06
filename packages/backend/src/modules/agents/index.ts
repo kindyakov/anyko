@@ -1,9 +1,9 @@
-import type { ModelConnection } from '@anyko/llm';
 import type {
-  WorkFacts,
-  FieldDefinition,
   AgentSessionContext,
+  FieldDefinition,
+  WorkFacts,
 } from '@anyko/contracts';
+import type { ModelConnection } from '@anyko/llm';
 
 interface AgentDocument {
   id: string;

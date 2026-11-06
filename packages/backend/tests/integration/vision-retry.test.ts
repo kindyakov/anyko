@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
+
 import { z } from 'zod';
+
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 test('real Mastra adapter retries a malformed OpenAI-compatible response', async () => {
   let calls = 0;

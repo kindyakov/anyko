@@ -1,4 +1,5 @@
 import type { Database } from '@anyko/database';
+
 import type { DocumentStore } from '../application/ports';
 import { DocumentError } from '../application/service';
 type Connection = Pick<

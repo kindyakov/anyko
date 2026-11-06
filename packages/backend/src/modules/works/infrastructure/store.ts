@@ -1,5 +1,6 @@
-import type { Database } from '@anyko/database';
 import { workSummarySchema } from '@anyko/contracts';
+import type { Database } from '@anyko/database';
+
 import type { WorkStore } from '..';
 
 type Connection = Pick<Database, 'work' | 'workDocument' | 'workEvent'>;

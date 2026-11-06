@@ -1,25 +1,28 @@
 'use client';
 import Link from 'next/link';
 import {
+  type SyntheticEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type SyntheticEvent,
 } from 'react';
 import { z } from 'zod';
+
 import {
   documentResponseSchema,
-  workResponseSchema,
   type FieldValues,
+  workResponseSchema,
   type WorkView,
 } from '@anyko/contracts';
+
 import { ApiError, requestApi } from '../../lib/api/client';
+
+import { PackagePreview } from './package-preview';
 import { SessionContext } from './session-context';
 import { SourcePreview } from './source-preview';
-import { PackagePreview } from './package-preview';
-import { CandidateValue } from './work-fields';
 import { UploadFailure, uploadFailureMessage } from './upload-errors';
+import { CandidateValue } from './work-fields';
 
 const accepted = z.object({ status: z.string() });
 const statuses: Record<string, string> = {

@@ -1,6 +1,8 @@
 import { setTimeout as delay } from 'node:timers/promises';
-import { llmError } from '@anyko/llm';
+
 import { z } from 'zod';
+
+import { llmError } from '@anyko/llm';
 
 function invalidResponse(error: unknown, depth = 0): boolean {
   if (depth > 5) return false;

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const children = new Set();

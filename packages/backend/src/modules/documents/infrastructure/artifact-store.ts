@@ -1,4 +1,5 @@
 import type { Database } from '@anyko/database';
+
 import type { ArtifactRegistry } from '../application/ports';
 export function createArtifactRegistry(db: Database): ArtifactRegistry {
   return {

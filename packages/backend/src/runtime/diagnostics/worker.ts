@@ -1,6 +1,7 @@
-import { Worker, UnrecoverableError } from 'bullmq';
+import { UnrecoverableError, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { z } from 'zod';
+
 import type { Logger } from '@anyko/logger';
 
 const envelope = z

@@ -1,7 +1,6 @@
 {
   "name": "anyko",
   "private": true,
-  "packageManager": "bun@1.4.4",
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -11,7 +10,7 @@
     "dev:web": "bun run --filter @anyko/web dev",
     "dev:api": "bun run --filter @anyko/api dev",
     "dev:worker": "bun run --filter @anyko/worker dev",
-    "format:check": "prettier --check apps packages scripts tests .github package.json prettier.config.mjs eslint.config.mjs knip.json .dependency-cruiser.cjs .jscpd.json",
+    "format:check": "bun fmt --check apps packages scripts tests .github package.json eslint.config.mjs knip.json .dependency-cruiser.cjs .jscpd.json",
     "lint": "eslint apps packages tests",
     "typecheck": "bun run --filter '@anyko/*' typecheck && tsc -p tests/architecture/tsconfig.json && tsc -p scripts/tsconfig.json && tsc -p tests/integration/tsconfig.json",
     "boundaries": "depcruise --config .dependency-cruiser.cjs apps packages",
@@ -44,27 +43,28 @@
     "llm:provision": "bun scripts/provision-llm.ts",
     "test:llm": "bun run --filter @anyko/llm test",
     "test:works": "bun test packages/backend/src/modules/facts/facts.test.ts packages/backend/tests/templates.test.ts packages/backend/src/modules/agents/infrastructure/vision-retry.test.ts packages/backend/src/modules/agents/session.test.ts",
-    "test:works:integration": "bun test --timeout 60000 packages/backend/tests/integration/works.test.ts packages/backend/tests/integration/vision-retry.test.ts packages/backend/tests/integration/session-agent.test.ts"
+    "test:works:integration": "bun test --timeout 60000 packages/backend/tests/integration/works.test.ts packages/backend/tests/integration/vision-retry.test.ts packages/backend/tests/integration/session-agent.test.ts",
+    "format": "bun fmt apps packages scripts tests .github package.json eslint.config.mjs knip.json .dependency-cruiser.cjs .jscpd.json",
+    "hooks:install": "bun scripts/install-format-hook.mjs"
   },
   "devDependencies": {
+    "@anyko/backend": "workspace:*",
+    "@anyko/contracts": "workspace:*",
+    "@anyko/database": "workspace:*",
     "@anyko/eslint-config": "workspace:*",
-    "@anyko/prettier-config": "workspace:*",
+    "@anyko/logger": "workspace:*",
+    "@anyko/typescript-config": "workspace:*",
+    "@aws-sdk/client-s3": "3.1162.0",
     "@eslint/js": "10.0.1",
     "@types/bun": "1.4.4",
+    "@typescript/native": "npm:typescript@7.0.2",
     "dependency-cruiser": "18.7.2",
     "eslint": "10.14.0",
     "jscpd": "5.4.2",
     "knip": "6.44.1",
-    "prettier": "3.9.10",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "typescript-eslint": "8.72.1",
-    "@typescript/native": "npm:typescript@7.0.2",
-    "@anyko/backend": "workspace:*",
-    "zod": "4.6.7",
-    "@aws-sdk/client-s3": "3.1162.0",
-    "@anyko/contracts": "workspace:*",
-    "@anyko/typescript-config": "workspace:*",
-    "@anyko/database": "workspace:*",
-    "@anyko/logger": "workspace:*"
-  }
+    "zod": "4.6.7"
+  },
+  "packageManager": "bun@1.4.4"
 }

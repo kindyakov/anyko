@@ -1,5 +1,5 @@
-import type { Logger } from '@anyko/logger';
 import { LlmError } from '@anyko/llm';
+import type { Logger } from '@anyko/logger';
 
 interface Usage {
   inputTokens: number | null;

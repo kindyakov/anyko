@@ -1,6 +1,8 @@
 import { expect, test } from 'bun:test';
-import { createModelGateway, llmError } from './index';
+
 import { z } from 'zod';
+
+import { createModelGateway, llmError } from './index';
 
 test('ready SDK sends OpenAI-compatible request to the selected endpoint and model', async () => {
   const key = crypto.randomUUID();

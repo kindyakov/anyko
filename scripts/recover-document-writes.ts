@@ -1,6 +1,7 @@
-import { createDatabase } from '@anyko/database';
-import { createMineruParser } from '@anyko/backend/runtime';
 import { z } from 'zod';
+
+import { createMineruParser } from '@anyko/backend/runtime';
+import { createDatabase } from '@anyko/database';
 if (
   !process.argv.includes('--applications-stopped') ||
   !process.argv.includes('--storage-requests-drained')

@@ -1,5 +1,6 @@
-import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
+import PizZip from 'pizzip';
+
 import type { FieldValues } from '@anyko/contracts';
 
 export function generateDocument(

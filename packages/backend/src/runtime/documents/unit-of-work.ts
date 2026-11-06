@@ -1,7 +1,8 @@
 import type { Database } from '@anyko/database';
+
 import type { DocumentStore } from '../../modules/documents';
-import { createDocumentReadModel } from '../../modules/documents/infrastructure/read-model';
 import { createDocumentCommands } from '../../modules/documents/infrastructure/commands';
+import { createDocumentReadModel } from '../../modules/documents/infrastructure/read-model';
 import { createProcessingCommands } from '../../modules/processing/infrastructure/commands';
 
 /** Binds module-owned commands to the same short database transaction. */

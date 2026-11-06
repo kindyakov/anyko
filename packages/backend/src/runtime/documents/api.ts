@@ -1,12 +1,14 @@
 import { createDatabase, createResourceLocks } from '@anyko/database';
-import { createArtifactRegistry } from '../../modules/documents/infrastructure/artifact-store';
-import { createDocumentIo } from '../../modules/documents/infrastructure/document-io';
+import type { Logger } from '@anyko/logger';
+
 import {
   createDocumentService,
   type SourceStorage,
 } from '../../modules/documents';
+import { createArtifactRegistry } from '../../modules/documents/infrastructure/artifact-store';
+import { createDocumentIo } from '../../modules/documents/infrastructure/document-io';
+
 import { createDocumentUnitOfWork } from './unit-of-work';
-import type { Logger } from '@anyko/logger';
 
 export function createDocumentRuntime(options: {
   databaseUrl: string;

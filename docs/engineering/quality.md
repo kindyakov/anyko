@@ -4,20 +4,20 @@
 
 ## Инструменты и обязательность
 
-| Проверка | Инструмент | Условие принятия |
-| --- | --- | --- |
-| Форматирование | Prettier, общий пакет конфигурации | Нет расхождений |
-| Типы | TypeScript `tsc` | Нет ошибок в production и тестовом коде |
-| Локальные правила | ESLint flat config + typescript-eslint `strictTypeChecked` | Нет необработанных нарушений |
-| Мёртвые файлы/экспорты/зависимости | Knip по workspace | Нет необоснованных находок |
-| Границы и циклы | dependency-cruiser | Нет запрещённых рёбер, в том числе type-only обходов |
-| Копирование | jscpd | Отчёт для Code review; каждая новая содержательная копия оценена |
-| Backend unit/integration | Bun test | Ожидаемое поведение на выбранном runtime |
-| React component tests | Vitest + React Testing Library | Поведение компонентов через публичный интерфейс |
-| Сквозные проверки | Playwright | Основные сценарии на запущенных приложениях |
-| Инструкции и конфиги | Небольшая проверка ссылок/manifests/scripts | Нет битых указателей и выдуманных команд |
+| Проверка                           | Инструмент                                                 | Условие принятия                                                 |
+| ---------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------- |
+| Форматирование                     | Bun fmt, общая конфигурация                                | Нет расхождений                                                  |
+| Типы                               | TypeScript `tsc`                                           | Нет ошибок в production и тестовом коде                          |
+| Локальные правила                  | ESLint flat config + typescript-eslint `strictTypeChecked` | Нет необработанных нарушений                                     |
+| Мёртвые файлы/экспорты/зависимости | Knip по workspace                                          | Нет необоснованных находок                                       |
+| Границы и циклы                    | dependency-cruiser                                         | Нет запрещённых рёбер, в том числе type-only обходов             |
+| Копирование                        | jscpd                                                      | Отчёт для Code review; каждая новая содержательная копия оценена |
+| Backend unit/integration           | Bun test                                                   | Ожидаемое поведение на выбранном runtime                         |
+| React component tests              | Vitest + React Testing Library                             | Поведение компонентов через публичный интерфейс                  |
+| Сквозные проверки                  | Playwright                                                 | Основные сценарии на запущенных приложениях                      |
+| Инструкции и конфиги               | Небольшая проверка ссылок/manifests/scripts                | Нет битых указателей и выдуманных команд                         |
 
-Prettier не заменяет lint; Knip не доказывает, что каждая исполняемая ветка нужна; dependency-cruiser не понимает бизнес-смысл. jscpd не блокирует сборку одним процентом совпадений и не требует объединять независимые модели. Его отчёт обязателен при изменениях кода, выводы фиксируются в review.
+Bun fmt не заменяет lint; Knip не доказывает, что каждая исполняемая ветка нужна; dependency-cruiser не понимает бизнес-смысл. jscpd не блокирует сборку одним процентом совпадений и не требует объединять независимые модели. Его отчёт обязателен при изменениях кода, выводы фиксируются в review.
 
 Используются штатные возможности инструментов. Собственная система политик с DSL, подписанными attestations и универсальным runner для MVP не нужна. Маленькие scripts допустимы для связывания команд и проверки конкретного инварианта.
 
@@ -25,12 +25,12 @@ Prettier не заменяет lint; Knip не доказывает, что ка
 
 ## Три уровня проверки
 
-| Целевая команда | Содержание | Когда обязательна |
-| --- | --- | --- |
-| `verify:fast` | format, typecheck, lint, boundaries, Knip, docs/config checks, unit/component; отчёт копий для review | Для каждого изменения кода; сначала весь небольшой workspace |
-| `verify` | fast + integration с PostgreSQL/Redis/S3, сборки, E2E; контролируемые OCR/LLM fixtures | Для принятия изменений приложения в основную ветку |
-| `verify:release` | production images, миграции, startup/readiness, smoke на Bun, проверка совместимости старой/новой версии заданий | Перед выпуском соответствующего релиза |
-| `eval:documents` | Реальные MinerU/LLM и представительный разрешённый корпус | Перед пилотом и при изменении parser/model/prompt/extraction schema |
+| Целевая команда  | Содержание                                                                                                       | Когда обязательна                                                   |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `verify:fast`    | format, typecheck, lint, boundaries, Knip, docs/config checks, unit/component; отчёт копий для review            | Для каждого изменения кода; сначала весь небольшой workspace        |
+| `verify`         | fast + integration с PostgreSQL/Redis/S3, сборки, E2E; контролируемые OCR/LLM fixtures                           | Для принятия изменений приложения в основную ветку                  |
+| `verify:release` | production images, миграции, startup/readiness, smoke на Bun, проверка совместимости старой/новой версии заданий | Перед выпуском соответствующего релиза                              |
+| `eval:documents` | Реальные MinerU/LLM и представительный разрешённый корпус                                                        | Перед пилотом и при изменении parser/model/prompt/extraction schema |
 
 CI — GitHub Actions. Основная ветка получает required checks после реализации workflows и настройки репозитория; локальные hooks лишь ускоряют обратную связь. Эта документация не включает branch protection автоматически. Проверки не выполняют тихих автоисправлений: исправление — отдельный diff с повторной проверкой.
 
@@ -71,4 +71,4 @@ Async Server Components проверяются через реально зап�
 
 Отчёт различает: static, unit, integration, build, browser, live extraction, release smoke и production. Для каждого — `passed`, `failed`, `not run` или обоснованное `not applicable`. Отсутствующий инструмент/сервис и пропущенный обязательный job не считаются успехом. Локальный зелёный тест не означает успешное размещение.
 
-Дополнительные первичные источники: [dependency-cruiser](https://github.com/sverweij/dependency-cruiser), [jscpd](https://github.com/kucherenko/jscpd), [Bun test](https://bun.sh/docs/test), [Playwright](https://playwright.dev/docs/best-practices), [Prettier shared configs](https://prettier.io/docs/sharing-configurations).
+Дополнительные первичные источники: [dependency-cruiser](https://github.com/sverweij/dependency-cruiser), [jscpd](https://github.com/kucherenko/jscpd), [Bun test](https://bun.sh/docs/test), [Playwright](https://playwright.dev/docs/best-practices), [Bun formatter](https://bun.com/docs/format).

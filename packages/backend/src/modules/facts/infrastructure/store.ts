@@ -1,5 +1,6 @@
-import type { Database } from '@anyko/database';
 import { factsSchema } from '@anyko/contracts';
+import type { Database } from '@anyko/database';
+
 import { emptyFacts, type FactsStore } from '..';
 
 export function createFactsStore(db: Pick<Database, 'workFacts'>): FactsStore {

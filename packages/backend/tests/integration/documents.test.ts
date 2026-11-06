@@ -1,18 +1,21 @@
 import { afterAll, expect, test } from 'bun:test';
+
 import { Queue } from 'bullmq';
-import { Redis } from 'ioredis';
 import { strToU8, zipSync } from 'fflate';
+import { Redis } from 'ioredis';
+
 import { createDatabase } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
-import { createDocumentRuntime } from '../../src/runtime/documents/api';
-import { createDocumentWorker } from '../../src/runtime/documents/worker';
-import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
-import { createSourceCleanup } from '../../src/modules/documents/infrastructure/source-cleanup';
+
 import type {
-  SourceStorage,
   DocumentView,
   SourceFormat,
+  SourceStorage,
 } from '../../src/modules/documents';
+import { createSourceCleanup } from '../../src/modules/documents/infrastructure/source-cleanup';
+import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
+import { createDocumentRuntime } from '../../src/runtime/documents/api';
+import { createDocumentWorker } from '../../src/runtime/documents/worker';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')

@@ -1,4 +1,5 @@
 import { Elysia } from 'elysia';
+
 import type { createAccess } from '@anyko/backend/access';
 
 export function authRoutes(access: ReturnType<typeof createAccess>) {

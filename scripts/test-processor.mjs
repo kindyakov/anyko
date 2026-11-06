@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 const python =
   process.env.ANYKO_PROCESSOR_TEST_PYTHON ??
   ['work/mineru/.venv/Scripts/python.exe', 'work/mineru/.venv/bin/python'].find(

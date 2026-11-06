@@ -4,21 +4,22 @@ import {
   type Database,
 } from '@anyko/database';
 import type { Logger } from '@anyko/logger';
-import type { SourceStorage } from '../../modules/documents';
+
 import type { DocumentAgents } from '../../modules/agents';
 import { createDocumentAgents } from '../../modules/agents/infrastructure/mastra';
-import { createDocumentRuntime } from '../documents/api';
-import { createDocumentIo } from '../../modules/documents/infrastructure/document-io';
-import { createDeletionStore } from '../../modules/documents/infrastructure/deletion-store';
 import { createAgentSessionStore } from '../../modules/agents/infrastructure/session-store';
-import { createWorkStore } from '../../modules/works/infrastructure/store';
-import { createWorkIo } from '../../modules/works/infrastructure/work-io';
+import type { SourceStorage } from '../../modules/documents';
+import { createDeletionStore } from '../../modules/documents/infrastructure/deletion-store';
+import { createDocumentIo } from '../../modules/documents/infrastructure/document-io';
 import { createFactsStore } from '../../modules/facts/infrastructure/store';
 import { createGenerationStore } from '../../modules/generation/infrastructure/store';
-import { createWorkProcessingStore } from '../../modules/processing/infrastructure/work-store';
 import { createLlmSettingsStore } from '../../modules/processing/infrastructure/settings-store';
+import { createWorkProcessingStore } from '../../modules/processing/infrastructure/work-store';
+import { createWorkStore } from '../../modules/works/infrastructure/store';
+import { createWorkIo } from '../../modules/works/infrastructure/work-io';
 import { createWorkApi } from '../../workflows/works/api';
-import type { WorkStores, WorkDependencies } from '../../workflows/works/ports';
+import type { WorkDependencies, WorkStores } from '../../workflows/works/ports';
+import { createDocumentRuntime } from '../documents/api';
 
 type StoreConnection = Pick<
   Database,

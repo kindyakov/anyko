@@ -1,5 +1,7 @@
-import { test, expect } from 'bun:test';
+import { expect, test } from 'bun:test';
+
 import { ApiError } from '../../lib/api/client';
+
 import { uploadFailureMessage } from './upload-errors';
 
 test('upload feedback identifies file and actionable reason without exposing raw errors', () => {

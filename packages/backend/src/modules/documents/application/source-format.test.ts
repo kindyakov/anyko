@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
+
 import { strToU8, zipSync } from 'fflate';
+
 import { matchesSourceFormat, sourceFormatFromKey } from './source-format';
 
 const contentTypes = strToU8(

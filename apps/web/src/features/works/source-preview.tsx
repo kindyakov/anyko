@@ -1,9 +1,11 @@
 'use client';
 import { useState } from 'react';
+import type { z } from 'zod';
+
 import { documentResultSchema } from '@anyko/contracts';
+
 import { requestApi } from '../../lib/api/client';
 import { ResultPreview } from '../documents';
-import type { z } from 'zod';
 
 export function SourcePreview({ documentId }: { documentId: string }) {
   const [result, setResult] = useState<z.infer<typeof documentResultSchema>>();

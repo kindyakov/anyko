@@ -1,14 +1,16 @@
-import { createApp } from '../http/app';
-import { createLogger } from '@anyko/logger';
-import { parseApiConfig } from './config';
-import { parseDocumentConfig } from './document-config';
+import { createAccess } from '@anyko/backend/access';
 import {
   createDocumentRuntime,
   createS3Storage,
   createWorkRuntime,
   parseWorkConfig,
 } from '@anyko/backend/runtime';
-import { createAccess } from '@anyko/backend/access';
+import { createLogger } from '@anyko/logger';
+
+import { createApp } from '../http/app';
+
+import { parseApiConfig } from './config';
+import { parseDocumentConfig } from './document-config';
 export async function startApi() {
   const startupResources: Array<() => Promise<void>> = [];
   try {

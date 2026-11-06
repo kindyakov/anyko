@@ -1,21 +1,24 @@
 'use client';
 
 import {
+  type SyntheticEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
-  type SyntheticEvent,
 } from 'react';
+import { z } from 'zod';
+
 import {
   documentResponseSchema,
-  documentsResponseSchema,
   documentResultSchema,
+  documentsResponseSchema,
   type DocumentSummary,
 } from '@anyko/contracts';
+
 import { ApiError, requestApi } from '../../lib/api/client';
+
 import { ResultPreview } from './result-preview';
-import { z } from 'zod';
 
 const labels: Record<DocumentSummary['status'], string> = {
   queued: 'В очереди',

@@ -1,9 +1,11 @@
 import { expect, test } from 'bun:test';
+
 import {
   documentResultSchema,
   documentsResponseSchema,
 } from '@anyko/contracts';
-import { ApiError, requestApi, type HttpFetch } from './client';
+
+import { ApiError, type HttpFetch, requestApi } from './client';
 import { proxyApiRequest } from './proxy';
 
 test('proxy uses configured public origin despite Next internal localhost URL and forwards SSE cursor', async () => {

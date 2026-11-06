@@ -1,6 +1,7 @@
+import { GetBucketVersioningCommand, S3Client } from '@aws-sdk/client-s3';
+
 import type { SourceStorage } from '../application/ports';
 import { StorageWriteOutcomeUnknown } from '../application/ports';
-import { S3Client, GetBucketVersioningCommand } from '@aws-sdk/client-s3';
 export function createS3Storage(config: {
   endpoint: string;
   bucket: string;

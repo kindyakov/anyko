@@ -1,10 +1,13 @@
 import { expect, test } from 'bun:test';
+
 import { renderToStaticMarkup } from 'react-dom/server';
+
 import {
   documentPackageSchema,
   emptyFieldValues,
   fieldDefinitions,
 } from '@anyko/contracts';
+
 import { PackagePreview } from './package-preview';
 
 const paragraph = (text: string) => ({

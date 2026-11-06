@@ -1,4 +1,5 @@
 import type { Database } from '@anyko/database';
+
 import { StorageWriteOutcomeUnknown } from '../../documents';
 
 /** Durable write barrier; uncertain PUT outcomes require operator recovery. */

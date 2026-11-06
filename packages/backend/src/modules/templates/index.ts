@@ -1,12 +1,14 @@
-import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+
 import {
+  type DocumentPackage,
   documentPackageSchema,
   fieldDefinitions,
-  type DocumentPackage,
 } from '@anyko/contracts';
+
 import manifest from './assets/package.json';
-import { technicalPackage, technicalBytes } from './technical';
+import { technicalBytes, technicalPackage } from './technical';
 export { templateData } from './render-data';
 
 const historicalPackage: DocumentPackage = documentPackageSchema.parse({

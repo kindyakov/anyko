@@ -1,18 +1,21 @@
-import { createDatabase, createResourceLocks } from '@anyko/database';
-import { createArtifactRegistry } from '../../modules/documents/infrastructure/artifact-store';
-import { finishDocumentDeletion } from './unit-of-work';
-import { createDocumentIo } from '../../modules/documents/infrastructure/document-io';
-import { Queue, Worker, UnrecoverableError } from 'bullmq';
+import { Queue, UnrecoverableError, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { z } from 'zod';
+
+import { createDatabase, createResourceLocks } from '@anyko/database';
 import type { Logger } from '@anyko/logger';
+
 import type { DocumentParser, SourceStorage } from '../../modules/documents';
+import { createArtifactRegistry } from '../../modules/documents/infrastructure/artifact-store';
+import { createDeletionStore } from '../../modules/documents/infrastructure/deletion-store';
+import { createDocumentIo } from '../../modules/documents/infrastructure/document-io';
+import { createSourceCleanup } from '../../modules/documents/infrastructure/source-cleanup';
 import { createProcessingService } from '../../modules/processing';
 import { createProcessingStore } from '../../modules/processing/infrastructure/store';
-import { createDocumentOcrWorkflow } from '../../workflows/document-ocr';
-import { createSourceCleanup } from '../../modules/documents/infrastructure/source-cleanup';
-import { createDeletionStore } from '../../modules/documents/infrastructure/deletion-store';
 import { createDocumentDeletionWorkflow } from '../../workflows/document-deletion';
+import { createDocumentOcrWorkflow } from '../../workflows/document-ocr';
+
+import { finishDocumentDeletion } from './unit-of-work';
 const envelope = z
   .object({
     version: z.literal(1),

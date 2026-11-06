@@ -1,7 +1,9 @@
 'use client';
-import { useEffect, useState, type SyntheticEvent } from 'react';
+import { type SyntheticEvent, useEffect, useState } from 'react';
 import { z } from 'zod';
+
 import { llmSettingsResponseSchema } from '@anyko/contracts';
+
 import { requestApi } from '../../lib/api/client';
 
 export function LlmSettings() {

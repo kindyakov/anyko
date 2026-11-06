@@ -14,26 +14,26 @@
   },
   "dependencies": {
     "@anyko/contracts": "workspace:*",
-    "@anyko/llm": "workspace:*",
-    "@mastra/core": "1.82.0",
-    "@mastra/memory": "1.41.0",
-    "@mastra/pg": "1.35.0",
-    "docxtemplater": "3.71.1",
-    "pizzip": "3.3.0",
     "@anyko/database": "workspace:*",
+    "@anyko/llm": "workspace:*",
     "@anyko/logger": "workspace:*",
     "@aws-sdk/client-s3": "3.1162.0",
     "@better-auth/prisma-adapter": "1.7.17",
+    "@mastra/core": "1.82.0",
+    "@mastra/memory": "1.41.0",
+    "@mastra/pg": "1.35.0",
     "better-auth": "1.7.17",
     "bullmq": "6.7.0",
+    "docxtemplater": "3.71.1",
     "fflate": "0.8.3",
     "ioredis": "6.0.0",
+    "pizzip": "3.3.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@anyko/typescript-config": "workspace:*",
     "@types/bun": "1.4.4",
-    "typescript": "npm:@typescript/typescript6@6.0.2",
-    "@typescript/native": "npm:typescript@7.0.2"
+    "@typescript/native": "npm:typescript@7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

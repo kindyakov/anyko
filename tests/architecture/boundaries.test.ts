@@ -1,11 +1,11 @@
 import { afterAll, expect, test } from 'bun:test';
 import {
-  mkdtemp,
   mkdir,
+  mkdtemp,
   readFile,
   rm,
-  writeFile,
   symlink,
+  writeFile,
 } from 'node:fs/promises';
 import { dirname, join, posix, resolve } from 'node:path';
 

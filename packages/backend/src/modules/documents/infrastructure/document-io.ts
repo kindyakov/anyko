@@ -1,4 +1,5 @@
 import type { Database } from '@anyko/database';
+
 import type { DocumentIo } from '../application/ports';
 import { StorageWriteOutcomeUnknown } from '../application/ports';
 export function createDocumentIo(db: Database): DocumentIo {

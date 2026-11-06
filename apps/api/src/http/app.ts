@@ -1,10 +1,12 @@
 import { Elysia } from 'elysia';
-import { createLogger, type Logger } from '@anyko/logger';
+
 import { DocumentError } from '@anyko/backend/documents';
-import { documentRoutes, type DocumentHttpOptions } from './routes/documents';
-import { authRoutes } from './routes/auth';
 import { WorkError } from '@anyko/backend/works';
-import { workRoutes, type WorkHttpOptions } from './routes/works';
+import { createLogger, type Logger } from '@anyko/logger';
+
+import { authRoutes } from './routes/auth';
+import { type DocumentHttpOptions, documentRoutes } from './routes/documents';
+import { type WorkHttpOptions, workRoutes } from './routes/works';
 
 export function createApp(options?: {
   logger?: Logger;

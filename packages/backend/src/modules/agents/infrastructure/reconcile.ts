@@ -2,9 +2,11 @@ import { Agent } from '@mastra/core/agent';
 import type { Mastra } from '@mastra/core/mastra';
 import { createTool } from '@mastra/core/tools';
 import type { Memory } from '@mastra/memory';
-import { createModelGateway, llmError } from '@anyko/llm';
-import { fieldKeySchema } from '@anyko/contracts';
 import { z } from 'zod';
+
+import { fieldKeySchema } from '@anyko/contracts';
+import { createModelGateway, llmError } from '@anyko/llm';
+
 import type { DocumentAgents } from '..';
 import { reconciliationSchema } from '../session';
 

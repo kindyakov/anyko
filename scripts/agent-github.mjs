@@ -1,8 +1,8 @@
+import { spawnSync } from 'node:child_process';
 import { sign } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 
 const appId = 5620461;
 const installationId = 178751173;

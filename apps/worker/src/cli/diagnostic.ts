@@ -1,4 +1,5 @@
 import { runDiagnostic } from '@anyko/backend/runtime';
+
 import { parseWorkerConfig } from '../bootstrap/config';
 try {
   const config = parseWorkerConfig(process.env);

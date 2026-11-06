@@ -1,6 +1,8 @@
-import PizZip from 'pizzip';
-import { fieldDefinitions, type DocumentPackage } from '@anyko/contracts';
 import { createHash } from 'node:crypto';
+
+import PizZip from 'pizzip';
+
+import { type DocumentPackage, fieldDefinitions } from '@anyko/contracts';
 
 const technicalTemplate = {
   id: 'technical-document',

@@ -1,19 +1,22 @@
 import { afterAll, expect, test } from 'bun:test';
-import { createDatabase } from '@anyko/database';
-import { createLogger } from '@anyko/logger';
-import { emptyFieldValues, type WorkView } from '@anyko/contracts';
-import { unzipSync, strFromU8 } from 'fflate';
 import { randomBytes } from 'node:crypto';
+
+import { PostgresStore } from '@mastra/pg';
+import { strFromU8, unzipSync } from 'fflate';
+import { z } from 'zod';
+
+import { emptyFieldValues, type WorkView } from '@anyko/contracts';
+import { createDatabase } from '@anyko/database';
+import { LlmError } from '@anyko/llm';
+import { createLogger } from '@anyko/logger';
+
+import type { DocumentAgents } from '../../src/modules/agents';
+import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
+import type { SourceStorage } from '../../src/modules/documents';
+import { createWorkProcessingStore } from '../../src/modules/processing/infrastructure/work-store';
+import { createDocumentWorker } from '../../src/runtime/documents/worker';
 import { createWorkRuntime } from '../../src/runtime/works/resources';
 import { createWorkWorker } from '../../src/runtime/works/worker';
-import { createDocumentWorker } from '../../src/runtime/documents/worker';
-import type { SourceStorage } from '../../src/modules/documents';
-import type { DocumentAgents } from '../../src/modules/agents';
-import { LlmError } from '@anyko/llm';
-import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
-import { createWorkProcessingStore } from '../../src/modules/processing/infrastructure/work-store';
-import { PostgresStore } from '@mastra/pg';
-import { z } from 'zod';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')

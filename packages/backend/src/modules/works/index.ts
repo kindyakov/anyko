@@ -1,10 +1,11 @@
 import type {
-  WorkPage,
-  FieldValues,
-  WorkView,
-  WorkFacts,
   DocumentPackage,
+  FieldValues,
+  WorkFacts,
+  WorkPage,
+  WorkView,
 } from '@anyko/contracts';
+
 import type { DocumentView } from '../documents';
 
 export type WorkSummary = WorkView['work'];

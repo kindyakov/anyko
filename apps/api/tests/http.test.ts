@@ -1,7 +1,9 @@
 import { expect, test } from 'bun:test';
-import { createApp } from '../src/http/app';
-import { createLogger } from '@anyko/logger';
+
 import { DocumentError } from '@anyko/backend/documents';
+import { createLogger } from '@anyko/logger';
+
+import { createApp } from '../src/http/app';
 
 test('health responds over HTTP', async () => {
   const app = createApp().listen({ hostname: '127.0.0.1', port: 0 });

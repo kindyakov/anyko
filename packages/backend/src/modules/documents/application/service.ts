@@ -1,19 +1,20 @@
-import { documentResultSchema } from './result-schema';
+import type { Logger } from '@anyko/logger';
+
 import { checksum } from './checksum';
+import type {
+  ArtifactRegistry,
+  DocumentIo,
+  DocumentStore,
+  DocumentView,
+  ResourceLocks,
+  SourceStorage,
+} from './ports';
+import { documentResultSchema } from './result-schema';
 import {
   matchesSourceFormat,
   sourceContentTypes,
   sourceFormatFromKey,
 } from './source-format';
-import type {
-  DocumentStore,
-  SourceStorage,
-  DocumentView,
-  ArtifactRegistry,
-  ResourceLocks,
-  DocumentIo,
-} from './ports';
-import type { Logger } from '@anyko/logger';
 export class DocumentError extends Error {
   constructor(
     public readonly code:
