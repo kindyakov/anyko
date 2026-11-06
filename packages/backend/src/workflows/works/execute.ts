@@ -1,4 +1,3 @@
-import { mergeCandidates } from '../../modules/facts';
 import { checksum, DocumentError } from '../../modules/documents';
 import {
   templateBytes,
@@ -15,6 +14,10 @@ import type { WorkFacts } from '@anyko/contracts';
 import { LlmError } from '@anyko/llm';
 import type { WorkDependencies } from './ports';
 import { addUsage, callModel } from './model-call';
+import {
+  createWorkContinuation,
+  type ContinuationSource,
+} from './continue-session';
 
 type StepInput = Parameters<WorkProcessingStore['step']>[1];
 const delay = (signal: AbortSignal) =>
@@ -32,6 +35,7 @@ const delay = (signal: AbortSignal) =>
   });
 
 export function createWorkExecution(deps: WorkDependencies) {
+  const continueSession = createWorkContinuation(deps);
   const current = async (run: WorkRunRecord) => {
     const work = await deps.works.get(run.workspaceId, run.workId);
     const docs = await deps.works.documents(run.workspaceId, run.workId);
@@ -96,6 +100,7 @@ export function createWorkExecution(deps: WorkDependencies) {
     );
     const pack = requirePackage((await current(run)).packageVersion);
     const candidates: WorkFacts['candidates'] = [];
+    const sources: ContinuationSource[] = [];
     let failures = 0,
       completed = 0;
     for (const documentId of run.documentIds) {
@@ -233,6 +238,16 @@ export function createWorkExecution(deps: WorkDependencies) {
             usage,
           });
         }
+        sources.push({
+          id: documentId,
+          filename:
+            (await deps.works.documents(run.workspaceId, run.workId)).find(
+              (d) => d.id === documentId,
+            )?.filename ?? documentId,
+          digest: source.sourceDigest,
+          text: source.text,
+          visuals: output.visuals,
+        });
         candidates.push(...extracted.candidates);
         completed++;
       } catch (error) {
@@ -254,31 +269,16 @@ export function createWorkExecution(deps: WorkDependencies) {
         });
       }
     }
-    await deps.locks.run(`work:${run.workspaceId}:${run.workId}`, async () => {
-      const work = await current(run);
-      await deps.transaction(async ({ facts, works, processing }) => {
-        if (candidates.length > 500) throw new Error('CANDIDATE_LIMIT');
-        const existing = await facts.get(run.workspaceId, run.workId);
-        await facts.save(
-          run.workspaceId,
-          run.workId,
-          mergeCandidates(
-            existing,
-            candidates,
-            work.confirmedRevision === work.revision,
-          ),
-        );
-        await processing.step(run, {
-          stage: 'reconciliation',
-          status: 'succeeded',
-        });
-        await works.touch(run.workspaceId, run.workId, {});
-        await processing.finish(
-          run,
-          completed === 0 ? 'failed' : failures ? 'partial' : 'succeeded',
-        );
-        await works.event(run.workspaceId, run.workId, 'facts.changed');
-      });
+    await continueSession({
+      run,
+      config,
+      fields: pack.fields,
+      candidates,
+      sources,
+      failures,
+      completed,
+      signal,
+      current: () => current(run),
     });
   };
   const generation = async (run: WorkRunRecord, signal: AbortSignal) => {

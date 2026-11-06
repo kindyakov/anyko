@@ -41,6 +41,7 @@ const storage: SourceStorage = {
   },
 };
 const threads = new Set<string>();
+let reconcileHook: DocumentAgents['reconcile'] | undefined;
 let extractionCount = 0;
 let failExtraction = false;
 let failDocument: string | undefined;
@@ -54,6 +55,16 @@ let waitForExtraction: (() => Promise<void>) | undefined;
 const agents: DocumentAgents = {
   ready: () => Promise.resolve(),
   stop: () => Promise.resolve(),
+  async reconcile(input) {
+    if (actualAgents) return actualAgents.reconcile(input);
+    threads.add(input.threadId);
+    if (reconcileHook) return reconcileHook(input);
+    return {
+      summary: 'Сохранён контекст работы',
+      candidates: [],
+      usage: { inputTokens: 5, outputTokens: 3 },
+    };
+  },
   async describe(input) {
     describeCount++;
     if (actualAgents) return actualAgents.describe(input);
@@ -652,26 +663,33 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
     async fetch(request) {
       const value: unknown = await request.json();
       const body = requestSchema.parse(value);
+      const coordinator = JSON.stringify(body.messages).includes(
+        'documents.analyzed',
+      );
       const visual = JSON.stringify(body.messages).includes('image_url');
       sawImage ||= visual;
       sawStructured ||= body.response_format !== undefined;
       const toolName =
-        !visual && !body.messages.some((message) => message.role === 'tool')
+        !coordinator &&
+        !visual &&
+        !body.messages.some((message) => message.role === 'tool')
           ? body.tools?.[0]?.function.name
           : undefined;
       sawTool ||= body.messages.some((message) => message.role === 'tool');
       const text = JSON.stringify(
-        visual
-          ? { description: 'Белый шкаф.' }
-          : {
-              candidates: [
-                {
-                  field: 'personName',
-                  value: 'Анна',
-                  evidence: [{ documentId, imagePath: null, quote: 'Анна' }],
-                },
-              ],
-            },
+        coordinator
+          ? { summary: 'Сохранён контекст SDK', candidates: [] }
+          : visual
+            ? { description: 'Белый шкаф.' }
+            : {
+                candidates: [
+                  {
+                    field: 'personName',
+                    value: 'Анна',
+                    evidence: [{ documentId, imagePath: null, quote: 'Анна' }],
+                  },
+                ],
+              },
       );
       const calls = toolName
         ? [
@@ -796,4 +814,200 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
     await inspection.close();
     await server.stop(true);
   }
+});
+
+test('logical session survives reopening, extends context with a new source, and keeps extraction cached', async () => {
+  const input = await create();
+  const first = await upload(input);
+  await analyze(input);
+  const initial = await until(input, terminal);
+  const sessionId = initial.session?.id;
+  if (!sessionId) throw Error('Expected saved session');
+  expect(initial.session?.revision).toBe(1);
+  const reopened = createWorkRuntime(options);
+  try {
+    expect(
+      (await reopened.api.get(input.workspaceId, input.workId)).session?.id,
+    ).toBe(sessionId);
+  } finally {
+    await reopened.stop();
+  }
+  const previousCalls = extractionCount;
+  const second = await upload(input);
+  reconcileHook = async (request) => {
+    expect(request.sessionId).toBe(sessionId);
+    expect(request.previousContext?.summary).toBe('Сохранён контекст работы');
+    expect(request.documents.map((d) => d.id).sort()).toEqual(
+      [first.id, second.id].sort(),
+    );
+    expect(await request.readSource(second.id, null)).toContain('42');
+    await rejects(
+      request.readSource(crypto.randomUUID(), null),
+      'SOURCE_NOT_ALLOWED',
+    );
+    return {
+      summary: 'Новый документ дополнил сохранённый контекст',
+      candidates: [
+        {
+          origin: 'context',
+          field: 'documentNumber',
+          value: '42',
+          evidence: [{ documentId: second.id, imagePath: null, quote: '42' }],
+        },
+      ],
+      usage: { inputTokens: 2, outputTokens: 3 },
+    };
+  };
+  try {
+    await analyze(input);
+    const next = await until(input, terminal);
+    expect(next.session?.id).toBe(sessionId);
+    expect(next.session?.revision).toBe(2);
+    expect(next.session?.context?.summary).toContain('Новый документ');
+    expect(next.facts.values.documentNumber).toBe('42');
+    expect(next.facts.candidates.some((c) => c.origin === 'context')).toBe(
+      true,
+    );
+    expect(extractionCount - previousCalls).toBe(1);
+    expect(
+      await db.workAgentTurn.count({ where: { workId: input.workId } }),
+    ).toBe(2);
+  } finally {
+    reconcileHook = undefined;
+  }
+});
+
+test('failed context continuation preserves previous facts and marks its old summary stale', async () => {
+  const input = await create();
+  await upload(input);
+  await analyze(input);
+  const before = await until(input, terminal);
+  reconcileHook = () => Promise.reject(new LlmError('LLM_UNAVAILABLE'));
+  try {
+    await upload(input);
+    await analyze(input);
+    const next = await until(input, terminal);
+    expect(next.runs[0]?.status).toBe('partial');
+    expect(next.facts.values.personName).toBe('Анна');
+    expect(next.session?.revision).toBe(before.session?.revision);
+    expect(next.session?.context?.workRevision).not.toBe(next.work.revision);
+  } finally {
+    reconcileHook = undefined;
+  }
+});
+
+test('manual edit during contextual reasoning retries from fresh facts and fences the stale summary', async () => {
+  const input = await create();
+  await upload(input);
+  let calls = 0;
+  reconcileHook = async (request) => {
+    calls++;
+    if (calls === 1) {
+      const state = await runtime.api.get(input.workspaceId, input.workId);
+      await runtime.api.edit({
+        ...input,
+        revision: state.work.revision,
+        values: { ...state.facts.values, personName: 'Ручное имя' },
+      });
+    } else expect(request.facts.values.personName).toBe('Ручное имя');
+    return {
+      summary:
+        calls === 1 ? 'Устаревшая сводка' : 'Сводка с актуальным решением',
+      candidates: [],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    };
+  };
+  try {
+    await analyze(input);
+    const state = await until(input, terminal);
+    expect(calls).toBe(2);
+    expect(state.facts.values.personName).toBe('Ручное имя');
+    expect(state.session?.context?.summary).toBe(
+      'Сводка с актуальным решением',
+    );
+    expect(
+      await db.workAgentTurn.count({ where: { workId: input.workId } }),
+    ).toBe(1);
+  } finally {
+    reconcileHook = undefined;
+  }
+});
+
+test('deleting during contextual reasoning removes its session, turns, and all registered threads', async () => {
+  const input = await create();
+  const doc = await upload(input);
+  let release = () => {};
+  let signalStarted = () => {};
+  const started = new Promise<void>((resolve) => {
+    signalStarted = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  reconcileHook = async () => {
+    signalStarted();
+    await held;
+    return {
+      summary: 'Ответ удалённого исходника',
+      candidates: [],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    };
+  };
+  try {
+    await analyze(input);
+    await started;
+    await runtime.api.removeDocument({ ...input, documentId: doc.id });
+    release();
+    const state = await until(
+      input,
+      (s) => !s.cleanupPending && !s.documents.length,
+    );
+    expect(state.session).toBeNull();
+    expect(
+      await db.workAgentSession.count({ where: { workId: input.workId } }),
+    ).toBe(0);
+    expect(
+      await db.workAgentTurn.count({ where: { workId: input.workId } }),
+    ).toBe(0);
+    expect(
+      await runtime.deps.processing.threads(input.workspaceId, input.workId),
+    ).toEqual([]);
+  } finally {
+    release();
+    reconcileHook = undefined;
+  }
+});
+
+test('superseded attempt cannot commit a session checkpoint or facts', async () => {
+  const input = await create();
+  const runId = crypto.randomUUID();
+  await runtime.deps.processing.start({
+    id: runId,
+    ...input,
+    kind: 'analysis',
+    inputRevision: 0,
+    documentIds: [],
+    settingsRevision: 1,
+    generationId: null,
+    correlationId: crypto.randomUUID(),
+    attemptToken: null,
+    actorId: 'fixture',
+    modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
+  });
+  const old = await runtime.deps.processing.claim(input.workspaceId, runId);
+  if (!old) throw Error('claim');
+  await db.workRun.update({
+    where: { id: runId },
+    data: { attemptToken: crypto.randomUUID() },
+  });
+  await rejects(
+    runtime.deps.transaction(async (stores) => {
+      await stores.processing.fence(old);
+      await stores.works.touch(input.workspaceId, input.workId, {});
+    }),
+    'STALE_WORK_ATTEMPT',
+  );
+  expect(
+    (await runtime.api.get(input.workspaceId, input.workId)).work.revision,
+  ).toBe(0);
 });

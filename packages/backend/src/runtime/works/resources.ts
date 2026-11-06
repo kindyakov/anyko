@@ -10,6 +10,7 @@ import { createDocumentAgents } from '../../modules/agents/infrastructure/mastra
 import { createDocumentRuntime } from '../documents/api';
 import { createDocumentIo } from '../../modules/documents/infrastructure/document-io';
 import { createDeletionStore } from '../../modules/documents/infrastructure/deletion-store';
+import { createAgentSessionStore } from '../../modules/agents/infrastructure/session-store';
 import { createWorkStore } from '../../modules/works/infrastructure/store';
 import { createWorkIo } from '../../modules/works/infrastructure/work-io';
 import { createFactsStore } from '../../modules/facts/infrastructure/store';
@@ -32,10 +33,13 @@ type StoreConnection = Pick<
   | 'workStep'
   | 'workOutbox'
   | 'workAgentThread'
+  | 'workAgentSession'
+  | 'workAgentTurn'
   | '$executeRaw'
 >;
 function stores(db: StoreConnection): WorkStores {
   return {
+    sessions: createAgentSessionStore(db),
     works: createWorkStore(db),
     facts: createFactsStore(db),
     generation: createGenerationStore(db),
@@ -74,6 +78,7 @@ export function createWorkRuntime(options: WorkRuntimeOptions) {
       ready: () => agents().ready(),
       describe: (input) => agents().describe(input),
       extract: (input) => agents().extract(input),
+      reconcile: (input) => agents().reconcile(input),
       eraseThread: (id) => agents().eraseThread(id),
       stop: async () => {
         await delegate?.stop();

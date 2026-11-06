@@ -20,7 +20,7 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
       throw new WorkError('CLEANUP_PENDING');
     return docs;
   };
-  const get: WorkApi['get'] = async (workspaceId, workId) => {
+  const read: WorkApi['get'] = async (workspaceId, workId) => {
     // Read cursor first: concurrent changes may be delivered twice, never skipped.
     const cursor = await deps.works.cursor(workspaceId, workId);
     const work = await requireWork(workspaceId, workId);
@@ -42,6 +42,9 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
       }
     return workResponseSchema.parse({
       work,
+      session: cleanupPending
+        ? null
+        : await deps.sessions.get(workspaceId, workId),
       package: requirePackage(work.packageVersion),
       documents,
       facts: cleanupPending
@@ -57,6 +60,10 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
       cleanupPending,
     });
   };
+  const get: WorkApi['get'] = (workspaceId, workId) =>
+    deps.locks.run(`work:${workspaceId}:${workId}`, () =>
+      read(workspaceId, workId),
+    );
   const locked = <T>(
     workspaceId: string,
     workId: string,
@@ -98,8 +105,9 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
         throw new WorkError('INVALID_WORK_INPUT');
       }
       const id = crypto.randomUUID();
-      await deps.transaction(async ({ works }) => {
+      await deps.transaction(async ({ works, sessions }) => {
         await works.create({ ...input, id });
+        await sessions.ensure(input.workspaceId, id);
         await works.event(input.workspaceId, id, 'work.created');
       });
       return get(input.workspaceId, id);

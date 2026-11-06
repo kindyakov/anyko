@@ -1,3 +1,4 @@
+import { findFactConflicts } from './index';
 import { expect, test } from 'bun:test';
 import { emptyFacts, editFacts, mergeCandidates } from './index';
 import type { WorkFacts } from '@anyko/contracts';
@@ -66,4 +67,33 @@ test('table candidates merge distinct obligations but retain conflicting amounts
   expect(
     mergeCandidates(manual, [table('Договор В', '300.00')], false).values.debts,
   ).toEqual([]);
+});
+
+test('context status distinguishes complementary obligations from contradictory amounts', () => {
+  const documentId = crypto.randomUUID();
+  const evidence = [{ documentId, imagePath: null, quote: 'fixture' }];
+  const first = {
+    field: 'debts' as const,
+    value: [{ name: 'Bank A', basis: 'Contract A', amount: '100' }],
+    evidence,
+  };
+  const second = {
+    field: 'debts' as const,
+    value: [{ name: 'Bank B', basis: 'Contract B', amount: '200' }],
+    evidence,
+  };
+  const combined = mergeCandidates(emptyFacts(), [first, second], false);
+  expect(findFactConflicts(combined)).not.toContain('debts');
+  const conflicting = mergeCandidates(
+    emptyFacts(),
+    [
+      first,
+      {
+        ...first,
+        value: [{ name: 'Bank A', basis: 'Contract A', amount: '300' }],
+      },
+    ],
+    false,
+  );
+  expect(findFactConflicts(conflicting)).toContain('debts');
 });

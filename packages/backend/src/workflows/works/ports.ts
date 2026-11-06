@@ -11,10 +11,11 @@ import type {
   ResourceLocks,
   SourceStorage,
 } from '../../modules/documents';
-import type { DocumentAgents } from '../../modules/agents';
+import type { DocumentAgents, AgentSessionStore } from '../../modules/agents';
 import type { Logger } from '@anyko/logger';
 
 export interface WorkStores {
+  sessions: AgentSessionStore;
   works: WorkStore;
   facts: FactsStore;
   processing: WorkProcessingStore;

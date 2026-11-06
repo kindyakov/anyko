@@ -15,6 +15,7 @@ import {
   type WorkView,
 } from '@anyko/contracts';
 import { ApiError, requestApi } from '../../lib/api/client';
+import { SessionContext } from './session-context';
 import { SourcePreview } from './source-preview';
 import { PackagePreview } from './package-preview';
 import { CandidateValue } from './work-fields';
@@ -387,6 +388,11 @@ export function WorkDetail({
           </div>
         </div>
       )}
+      <SessionContext
+        session={view.session ?? null}
+        revision={view.work.revision}
+        fields={view.package.fields}
+      />
       <PackagePreview
         pack={view.package}
         values={values}
@@ -418,6 +424,11 @@ export function WorkDetail({
                 .filter((candidate) => candidate.field === field.key)
                 .map((candidate, index) => (
                   <div key={index}>
+                    {candidate.origin === 'context' && (
+                      <p className="muted">
+                        Предложено при сопоставлении документов
+                      </p>
+                    )}
                     <CandidateValue value={candidate.value} />
                     <button
                       className="secondary"

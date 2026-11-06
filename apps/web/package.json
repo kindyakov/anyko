@@ -7,7 +7,7 @@
     "build": "bun --bun next build",
     "start": "bun --bun next start",
     "typecheck": "tsc --noEmit",
-    "test": "bun test src/lib/api src/features/documents/result-preview.test.tsx src/features/works/package-preview.test.tsx src/features/works/upload-errors.test.ts"
+    "test": "bun test src/lib/api src/features/documents/result-preview.test.tsx src/features/works/package-preview.test.tsx src/features/works/upload-errors.test.ts src/features/works/session-context.test.tsx"
   },
   "dependencies": {
     "@anyko/contracts": "workspace:*",

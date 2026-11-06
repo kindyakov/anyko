@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { agentSessionSchema } from './agent-session';
+export * from './agent-session';
 import { documentSchema } from './documents';
 import {
   fieldKeySchema,
@@ -23,6 +25,7 @@ export const evidenceSchema = z
   .strict();
 export const candidateSchema = z
   .object({
+    origin: z.enum(['document', 'context']).optional(),
     field: fieldKeySchema,
     value: fieldValueSchema.refine(
       (value) =>
@@ -110,6 +113,7 @@ export const generationSchema = z.object({
 });
 export const workResponseSchema = z.object({
   work: workSummarySchema,
+  session: agentSessionSchema.nullable().optional(),
   package: documentPackageSchema,
   documents: z.array(documentSchema),
   facts: factsSchema,

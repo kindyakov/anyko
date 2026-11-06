@@ -41,6 +41,25 @@ export function mergeCandidates(
   return factsSchema.parse({ ...current, values, candidates });
 }
 
+/** Use the same field/row reconciliation rules for status as for values. */
+export function findFactConflicts(current: WorkFacts) {
+  return fieldDefinitions
+    .filter(({ key }) => {
+      const proposals = current.candidates
+        .filter((c) => c.field === key)
+        .map((c) => c.value);
+      if (!proposals.length) return false;
+      const protectedValue = current.values[key];
+      if (
+        (current.manual.includes(key) || current.confirmed.includes(key)) &&
+        protectedValue !== null
+      )
+        proposals.push(protectedValue);
+      return reconcile(key, proposals) === null;
+    })
+    .map(({ key }) => key);
+}
+
 export function editFacts(current: WorkFacts, values: FieldValues): WorkFacts {
   const manual = new Set(current.manual);
   const next = readFieldValues(values);

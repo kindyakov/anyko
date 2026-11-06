@@ -32,7 +32,8 @@ export function createWorkCleanup(deps: WorkDependencies) {
             ))
               await deps.agents.eraseThread(thread);
             await deps.transaction(
-              async ({ works, facts, processing, generation }) => {
+              async ({ works, facts, processing, generation, sessions }) => {
+                await sessions.erase(item.workspaceId, item.workId);
                 await facts.erase(item.workspaceId, item.workId);
                 await generation.erase(item.workspaceId, item.workId);
                 await processing.erase(item.workspaceId, item.workId);

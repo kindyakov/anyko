@@ -67,6 +67,18 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
         })) > 0
       );
     },
+    async fence(run) {
+      const changed = await db.workRun.updateMany({
+        where: {
+          workspaceId: run.workspaceId,
+          id: run.id,
+          attemptToken: run.attemptToken,
+          status: 'running',
+        },
+        data: { updatedAt: new Date() },
+      });
+      if (changed.count !== 1) throw new Error('STALE_WORK_ATTEMPT');
+    },
     async valid(run) {
       return (
         (await db.workRun.count({

@@ -120,6 +120,7 @@ model Work {
  generations WorkGeneration[]
  events WorkEvent[]
  artifacts WorkArtifact[]
+ agentSession WorkAgentSession?
  agentThreads WorkAgentThread[]
  io WorkIo[]
  @@unique([workspaceId,id])
@@ -390,4 +391,34 @@ model DocumentIo {
  createdAt DateTime @default(now())
  @@index([workspaceId,documentId])
  @@index([workspaceId,requestKey])
+}
+
+model WorkAgentSession {
+ id String @id
+ workspaceId String
+ workId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade,map:"WorkAgentSession_work_fkey")
+ revision Int @default(0)
+ context Json?
+ updatedAt DateTime @updatedAt
+ turns WorkAgentTurn[]
+ @@unique([workspaceId,workId])
+ @@unique([workspaceId,workId,id])
+}
+model WorkAgentTurn {
+ id String @id
+ workspaceId String
+ workId String
+ sessionId String
+ session WorkAgentSession @relation(fields:[workspaceId,workId,sessionId],references:[workspaceId,workId,id],onDelete:Cascade,map:"WorkAgentTurn_session_fkey")
+ runId String
+ threadId String
+ revision Int
+ trigger String
+ context Json
+ output Json
+ createdAt DateTime @default(now())
+ @@unique([sessionId,runId])
+ @@unique([sessionId,revision])
+ @@index([workspaceId,workId])
 }

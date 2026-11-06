@@ -42,6 +42,7 @@ export interface WorkProcessingStore {
   claim(workspaceId: string, runId: string): Promise<WorkRunRecord | null>;
   active(workspaceId: string, workId: string): Promise<boolean>;
   valid(run: WorkRunRecord): Promise<boolean>;
+  fence(run: WorkRunRecord): Promise<void>;
   finish(
     run: WorkRunRecord,
     status: 'succeeded' | 'partial' | 'failed' | 'cancelled',
