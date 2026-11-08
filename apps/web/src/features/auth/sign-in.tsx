@@ -6,7 +6,6 @@ import { type SyntheticEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { OrbitLoader } from '@/components/ui/orbit-loader';
 
 export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [showPassword, setShowPassword] = useState(false);
@@ -48,7 +47,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   return (
     <section
       aria-labelledby="sign-in-title"
-      className="relative w-full max-w-[440px] rounded-3xl border border-white/10 bg-black/65 p-7 shadow-[-12px_0_60px_-24px_#db143c70,0_24px_80px_#0008] backdrop-blur-xl sm:p-10 lg:bg-black/55"
+      className="animate-rise relative w-full max-w-[440px] rounded-3xl border border-white/10 bg-black/65 p-7 shadow-[-12px_0_60px_-24px_#db143c70,0_24px_80px_#0008] backdrop-blur-xl sm:p-10 lg:bg-black/55"
     >
       <div
         aria-hidden
@@ -71,7 +70,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
       >
         <FormField label="Почта">
           <Input
-            className="min-h-12 rounded-xl border-white/20 bg-white/[.025] px-4 text-white placeholder:text-zinc-500 hover:border-white/35 focus-visible:border-rose-400 focus-visible:outline-rose-400"
+            className="min-h-12 px-4"
             name="email"
             type="email"
             autoComplete="username"
@@ -83,7 +82,7 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
         <FormField label="Пароль">
           <div className="relative">
             <Input
-              className="min-h-12 rounded-xl border-white/20 bg-white/[.025] px-4 pr-14 text-white placeholder:text-zinc-500 hover:border-white/35 focus-visible:border-rose-400 focus-visible:outline-rose-400"
+              className="min-h-12 px-4 pr-14"
               name="password"
               type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
@@ -91,18 +90,20 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
               required
               disabled={pending}
             />
-            <Button
-              variant="secondary"
-              className="absolute top-0.5 right-1 min-h-11 border-transparent bg-transparent px-3 text-zinc-400 hover:bg-white/5 hover:text-white"
-              aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
-              aria-pressed={showPassword}
-              disabled={pending}
-              onClick={() => {
-                setShowPassword(!showPassword);
-              }}
-            >
-              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-            </Button>
+            <span className="absolute top-1.5 right-1.5">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
+                aria-pressed={showPassword}
+                disabled={pending}
+                onClick={() => {
+                  setShowPassword(!showPassword);
+                }}
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </Button>
+            </span>
           </div>
         </FormField>
         {error && (
@@ -114,19 +115,16 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
           </p>
         )}
         <Button
-          disabled={pending}
+          loading={pending}
           type="submit"
-          className="mt-1 min-h-12 w-full rounded-xl border-rose-400/30 bg-linear-to-b from-[#ee1643] to-[#cf0b34] text-white shadow-[0_0_24px_#db143c30,inset_0_1px_0_#ffffff20] transition duration-200 hover:shadow-[0_0_32px_#db143c55] active:scale-[.99] motion-reduce:transition-none"
+          size="lg"
+          className="mt-1 w-full"
         >
-          {pending ? (
-            <>
-              <OrbitLoader compact label="Выполняется вход" /> Входим…
-            </>
-          ) : (
-            <>
-              Войти <ArrowRight size={17} />
-            </>
-          )}
+          Войти
+          <ArrowRight
+            size={17}
+            className="transition-transform duration-300 group-hover/button:translate-x-1"
+          />
         </Button>
       </Form>
       <p className="mt-8 max-w-xs text-xs leading-6 text-zinc-500">

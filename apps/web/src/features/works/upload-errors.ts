@@ -1,7 +1,5 @@
 import { ApiError } from '@/lib/api/client';
 
-export class UploadFailure extends Error {}
-
 export function uploadFailureMessage(
   filename: string,
   failure: unknown,

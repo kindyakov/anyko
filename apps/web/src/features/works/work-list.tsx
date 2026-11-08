@@ -1,19 +1,22 @@
 'use client';
-import { Dialog } from '@base-ui/react/dialog';
 import { Field } from '@base-ui/react/field';
 import { Form } from '@base-ui/react/form';
+import { Radio } from '@base-ui/react/radio';
+import { RadioGroup } from '@base-ui/react/radio-group';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
-  Check,
-  FileText,
-  FolderOpen,
+  ArrowUpRight,
+  FileStack,
+  FolderKanban,
   Plus,
+  RotateCw,
   Search,
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useId, useState } from 'react';
 
 import {
   packagesResponseSchema,
@@ -21,16 +24,44 @@ import {
   worksResponseSchema,
 } from '@anyko/contracts';
 
+import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';
 import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
-import { OrbitLoader } from '@/components/ui/orbit-loader';
+import { Modal } from '@/components/ui/modal';
+import { RelativeTime } from '@/components/ui/relative-time';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { Select } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
+import { stagger } from '@/components/ui/stagger';
+import { Notice, StatusPill } from '@/components/ui/status';
+import { journeySteps } from '@/features/works/journey';
 import { useListPreferences } from '@/features/works/list-preferences';
 import { ApiError, requestApi } from '@/lib/api/client';
 
+function Journey({ compact = false }: { compact?: boolean }) {
+  return (
+    <ol
+      className={`grid gap-2 ${compact ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-4'}`}
+    >
+      {journeySteps.map((step, index) => (
+        <li
+          key={step.key}
+          className={`animate-rise relative rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3.5 ${stagger(index * 2)}`}
+        >
+          <span className="font-heading text-brand-hot text-xs font-bold">
+            0{index + 1}
+          </span>
+          <p className="mt-1 text-sm font-medium">{step.title}</p>
+          <p className="text-muted mt-0.5 text-xs leading-5">{step.caption}</p>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
+  const router = useRouter();
+  const packageLabel = useId();
   const [creating, setCreating] = useState(false);
   const { search, filter, setSearch, setFilter } = useListPreferences();
   const list = useInfiniteQuery({
@@ -60,7 +91,7 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
         }),
       }),
     onSuccess: (result) => {
-      window.location.assign(`/works/${result.work.id}`);
+      router.push(`/works/${result.work.id}`);
     },
   });
   const error = list.error ?? catalog.error ?? create.error;
@@ -78,354 +109,349 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
           ? filter === 'confirmed'
           : filter === 'draft')),
   );
+  const packages = catalog.data?.packages ?? [];
+  const openCreate = () => {
+    create.reset();
+    setCreating(true);
+  };
   return (
     <>
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-5 sm:mb-10">
+      <header className="animate-rise mb-8 flex flex-wrap items-end justify-between gap-5 sm:mb-10">
         <div>
-          <p className="text-muted mb-3 flex items-center gap-2 text-xs font-medium">
-            <span className="bg-brand size-1.5 rounded-full" aria-hidden />
-            Рабочая область
-          </p>
-          <h1 className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">
             Работы
           </h1>
-          <p className="text-muted mt-3 max-w-lg text-sm leading-6">
-            От исходных файлов до готового комплекта документов.
+          <p className="text-muted mt-3 max-w-xl leading-7">
+            Каждая работа — путь от файлов клиента к готовому комплекту
+            документов. Загрузите файлы, проверьте сведения и скачайте DOCX.
           </p>
         </div>
-        <Button
-          className="w-full rounded-xl shadow-[0_4px_24px_-8px_#db143c70] sm:w-auto"
-          onClick={() => {
-            setCreating(true);
-          }}
-        >
-          <Plus size={17} />
+        <Button size="lg" className="w-full sm:w-auto" onClick={openCreate}>
+          <Plus
+            size={18}
+            className="transition-transform duration-300 group-hover/button:rotate-90"
+          />
           Новая работа
         </Button>
-      </div>
-      <section
-        className="border-line bg-surface overflow-hidden rounded-2xl border shadow-xs"
-        aria-label="Список работ"
-      >
-        <div className="border-line flex flex-wrap items-center justify-between gap-4 border-b p-4 sm:p-5">
+      </header>
+      {(list.isPending || works.length > 0) && (
+        <div className="animate-rise mb-6 flex flex-wrap items-center justify-between gap-3 [animation-delay:80ms]">
           <SegmentedControl
             label="Статус работы"
             value={filter}
             onValueChange={setFilter}
             items={[
               { value: 'all', label: 'Все', accessibleLabel: 'Все работы' },
-              { value: 'draft', label: 'Черновики' },
+              { value: 'draft', label: 'В работе' },
               { value: 'confirmed', label: 'Подтверждённые' },
             ]}
           />
-          <Field.Root className="relative w-full min-w-0 xl:w-72">
+          <Field.Root className="relative w-full min-w-0 sm:w-80">
             <Search
               size={16}
-              className="text-muted pointer-events-none absolute top-3.5 left-3.5"
+              className="text-muted pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2"
             />
             <Input
               aria-label="Поиск по загруженным работам"
-              placeholder="Найти работу…"
-              className="w-full rounded-xl pr-12 pl-10"
+              placeholder="Найти работу"
+              className="pr-11 pl-10"
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
               }}
             />
             {search && (
-              <Button
-                variant="secondary"
-                aria-label="Очистить поиск"
-                className="absolute top-0 right-0 min-h-11 border-transparent bg-transparent px-3"
-                onClick={() => {
-                  setSearch('');
-                }}
-              >
-                <X size={15} />
-              </Button>
+              <span className="absolute top-1 right-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Очистить поиск"
+                  onClick={() => {
+                    setSearch('');
+                  }}
+                >
+                  <X size={15} />
+                </Button>
+              </span>
             )}
           </Field.Root>
         </div>
-        {list.isPending ? (
-          <div className="py-20">
-            <OrbitLoader label="Загружаем работы…" />
-          </div>
-        ) : list.isError ? (
-          <div
-            role="alert"
-            className="flex flex-col items-center px-6 py-16 text-center"
-          >
-            <FolderOpen size={28} className="text-muted mb-4" />
-            <h2 className="font-heading text-lg font-semibold">
-              Не удалось загрузить работы
-            </h2>
-            <p className="text-muted mt-2 mb-6 text-sm">
-              Проверьте подключение и попробуйте ещё раз.
-            </p>
+      )}
+      {list.isPending ? (
+        <ul
+          className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3"
+          aria-busy
+          aria-label="Список работ загружается"
+        >
+          {[0, 1, 2, 3, 4, 5].map((item) => (
+            <li
+              key={item}
+              className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6"
+            >
+              <Skeleton className="size-11 rounded-xl" />
+              <Skeleton className="mt-6 h-5 w-3/4" />
+              <Skeleton className="mt-3 h-4 w-1/2" />
+              <Skeleton className="mt-8 h-6 w-28 rounded-full" />
+            </li>
+          ))}
+        </ul>
+      ) : list.isError ? (
+        <Notice
+          tone="danger"
+          role="alert"
+          title="Не удалось загрузить работы"
+          action={
             <Button
               variant="secondary"
+              size="sm"
+              loading={list.isFetching}
               onClick={() => {
                 void list.refetch();
               }}
             >
+              <RotateCw size={15} />
               Повторить
             </Button>
+          }
+        >
+          Проверьте подключение и попробуйте ещё раз.
+        </Notice>
+      ) : !works.length ? (
+        <section className="animate-rise relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(90%_120%_at_50%_0%,#2a0a12,#0b0b0e_60%)] px-6 py-14 text-center sm:px-12">
+          <EventHorizon state="idle" className="mx-auto size-40" />
+          <h2 className="font-heading mt-8 text-2xl font-bold tracking-tight">
+            Начните с первой работы
+          </h2>
+          <p className="text-muted mx-auto mt-3 max-w-md leading-7">
+            Anyko поглотит файлы клиента, извлечёт сведения и заполнит комплект
+            документов по шаблону.
+          </p>
+          <Button size="lg" className="mt-8" onClick={openCreate}>
+            <Plus size={18} />
+            Создать работу
+          </Button>
+          <div className="mx-auto mt-12 max-w-3xl text-left">
+            <Journey />
           </div>
-        ) : !visible.length ? (
-          <div className="flex flex-col items-center px-6 py-20 text-center">
-            <span className="border-brand/15 bg-tint text-brand mb-6 flex size-16 items-center justify-center rounded-2xl border">
-              {works.length ? (
-                <Search size={26} strokeWidth={1.5} />
-              ) : (
-                <FolderOpen size={28} strokeWidth={1.5} />
-              )}
-            </span>
-            <h2 className="font-heading text-xl font-semibold">
-              {works.length ? 'Работы не найдены' : 'Начните с первой работы'}
-            </h2>
-            <p className="text-muted mt-3 max-w-sm text-sm leading-6">
-              {works.length
-                ? 'Измените запрос или выберите другой статус.'
-                : 'Выберите пакет документов и добавьте исходные файлы клиента.'}
-            </p>
-            {works.length ? (
+        </section>
+      ) : !visible.length ? (
+        <section className="animate-rise flex flex-col items-center rounded-3xl border border-dashed border-white/10 px-6 py-16 text-center">
+          <span className="grid size-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.03] text-zinc-400">
+            <Search size={24} />
+          </span>
+          <h2 className="font-heading mt-5 text-xl font-bold">
+            Работы не найдены
+          </h2>
+          <p className="text-muted mt-2 text-sm">
+            Измените запрос или выберите другой статус.
+          </p>
+          <Button
+            variant="secondary"
+            className="mt-6"
+            onClick={() => {
+              setSearch('');
+              setFilter('all');
+            }}
+          >
+            Сбросить фильтры
+          </Button>
+        </section>
+      ) : (
+        <ul
+          className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3"
+          aria-label="Список работ"
+        >
+          {visible.map((work, index) => {
+            const confirmed = work.confirmedRevision === work.revision;
+            const pack = packages.find(
+              (item) => item.version === work.packageVersion,
+            );
+            return (
+              <li key={work.id} className={`animate-rise ${stagger(index)}`}>
+                <Link
+                  href={`/works/${work.id}`}
+                  className="group focus-visible:outline-brand-hot relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] bg-[linear-gradient(180deg,#141418,#0c0c0f)] p-6 transition-[border-color,transform,box-shadow] duration-300 hover:-translate-y-1 hover:border-[#ff3b62]/40 hover:shadow-[0_20px_60px_-20px_#db143c88] focus-visible:outline-2 focus-visible:outline-offset-2"
+                >
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute -top-16 -right-16 size-44 rounded-full bg-[radial-gradient(closest-side,#db143c55,transparent)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+                  />
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="grid size-11 place-items-center rounded-xl border border-white/10 bg-white/[0.03] text-zinc-300 transition-colors duration-300 group-hover:border-[#ff3b62]/40 group-hover:text-[#ff6a88]">
+                      <FileStack size={20} strokeWidth={1.6} />
+                    </span>
+                    <ArrowUpRight
+                      size={20}
+                      className="text-muted transition-[transform,color] duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-white"
+                    />
+                  </div>
+                  <h2 className="font-heading mt-6 text-lg leading-snug font-bold tracking-tight wrap-anywhere">
+                    {work.title}
+                  </h2>
+                  <p className="text-muted mt-1.5 text-sm leading-6 wrap-anywhere">
+                    {pack?.title ?? 'Комплект документов'}
+                  </p>
+                  <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-7">
+                    {confirmed ? (
+                      <StatusPill tone="success">Подтверждена</StatusPill>
+                    ) : (
+                      <StatusPill tone="brand">В работе</StatusPill>
+                    )}
+                    <span className="text-muted text-xs">
+                      Изменена <RelativeTime value={work.updatedAt} />
+                    </span>
+                  </div>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {list.hasNextPage && (
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <Button
+            variant="secondary"
+            loading={list.isFetchingNextPage}
+            onClick={() => {
+              void list.fetchNextPage();
+            }}
+          >
+            Показать ещё
+            <ArrowRight size={16} />
+          </Button>
+          <p className="text-muted text-xs">
+            Поиск и фильтр применяются к загруженным работам · показано{' '}
+            {visible.length} из {works.length}
+          </p>
+        </div>
+      )}
+      <Modal
+        open={creating}
+        onOpenChange={setCreating}
+        dismissible={!create.isPending}
+        title="Новая работа"
+        description="Назовите работу и выберите комплект документов, который нужно подготовить."
+      >
+        {catalog.isPending ? (
+          <div className="grid gap-4" aria-busy>
+            <Skeleton className="h-11 w-full rounded-xl" />
+            <Skeleton className="h-20 w-full rounded-2xl" />
+            <Skeleton className="h-20 w-full rounded-2xl" />
+          </div>
+        ) : catalog.isError ? (
+          <Notice
+            tone="danger"
+            role="alert"
+            title="Не удалось загрузить шаблоны"
+            action={
               <Button
                 variant="secondary"
-                className="mt-6"
+                size="sm"
+                loading={catalog.isFetching}
                 onClick={() => {
-                  setSearch('');
-                  setFilter('all');
+                  void catalog.refetch();
                 }}
               >
-                Сбросить фильтры
+                Повторить
               </Button>
-            ) : (
-              <Button
-                className="mt-6"
-                onClick={() => {
-                  setCreating(true);
-                }}
-              >
-                <Plus size={16} />
-                Создать работу
-              </Button>
-            )}
-          </div>
+            }
+          />
+        ) : !packages.length ? (
+          <Notice tone="neutral">
+            Доступных комплектов пока нет. Обратитесь к владельцу рабочей
+            области.
+          </Notice>
         ) : (
-          <>
-            <div
-              aria-hidden
-              className="text-muted border-line bg-canvas/40 hidden grid-cols-[minmax(0,1fr)_150px_150px_24px] items-center gap-6 border-b px-6 py-3 text-xs lg:grid"
-            >
-              <span>Название и пакет документов</span>
-              <span>Статус</span>
-              <span>Изменено</span>
-              <span />
-            </div>
-            <ul className="divide-line divide-y">
-              {visible.map((work) => {
-                const confirmed = work.confirmedRevision === work.revision;
-                const pack = catalog.data?.packages.find(
-                  (item) => item.version === work.packageVersion,
-                );
-                return (
-                  <li key={work.id}>
-                    <Link
-                      href={`/works/${work.id}`}
-                      className="group hover:bg-tint/50 focus-visible:outline-brand grid grid-cols-[minmax(0,1fr)_20px] items-center gap-x-4 gap-y-3 px-4 py-5 transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 sm:px-6 lg:grid-cols-[minmax(0,1fr)_150px_150px_24px] lg:gap-6"
-                    >
-                      <div className="flex min-w-0 items-center gap-3.5">
-                        <span className="border-line bg-canvas text-muted group-hover:border-brand/25 group-hover:text-brand hidden size-11 shrink-0 items-center justify-center rounded-xl border transition-colors sm:flex">
-                          <FileText size={20} strokeWidth={1.5} />
-                        </span>
-                        <div className="min-w-0">
-                          <p className="text-sm leading-6 font-medium wrap-anywhere">
-                            {work.title}
-                          </p>
-                          <p className="text-muted mt-1 text-xs leading-5 wrap-anywhere">
-                            {pack?.title ?? 'Комплект документов'}
-                          </p>
-                        </div>
-                      </div>
-                      <span
-                        className={`col-start-1 row-start-2 inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs lg:col-auto lg:row-auto ${confirmed ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' : 'bg-canvas text-muted ring-line ring-1 ring-inset'}`}
-                      >
-                        {confirmed ? (
-                          <Check size={12} />
-                        ) : (
-                          <span
-                            className="size-1.5 rounded-full bg-current opacity-60"
-                            aria-hidden
-                          />
-                        )}
-                        {confirmed ? 'Подтверждена' : 'Черновик'}
-                      </span>
-                      <time
-                        dateTime={work.updatedAt}
-                        className="text-muted col-start-1 row-start-3 text-xs tabular-nums lg:col-auto lg:row-auto"
-                      >
-                        <span className="lg:hidden">Изменено </span>
-                        {new Date(work.updatedAt).toLocaleDateString('ru-RU', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                        <span className="ml-2 opacity-70 lg:mt-1 lg:ml-0 lg:block">
-                          {new Date(work.updatedAt).toLocaleTimeString(
-                            'ru-RU',
-                            { hour: '2-digit', minute: '2-digit' },
-                          )}
-                        </span>
-                      </time>
-                      <ArrowRight
-                        size={17}
-                        className="text-muted group-hover:text-brand col-start-2 row-start-1 transition-transform motion-safe:group-hover:translate-x-1 lg:col-auto lg:row-auto"
-                      />
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          </>
-        )}
-        {!list.isPending && !list.isError && works.length > 0 && (
-          <div
-            className="border-line text-muted border-t px-5 py-3 text-xs"
-            role="status"
+          <Form
+            className="grid gap-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!create.isPending)
+                create.mutate(new FormData(event.currentTarget));
+            }}
           >
-            Показано: {visible.length} из {works.length}
-            {list.hasNextPage ? ' загруженных' : ''}
-          </div>
-        )}
-        {list.hasNextPage && (
-          <div className="border-line border-t p-5">
-            <p className="text-muted mb-3 text-xs">
-              Поиск и фильтр применяются к загруженным работам.
-            </p>
-            <Button
-              variant="secondary"
-              disabled={list.isFetchingNextPage}
-              onClick={() => {
-                void list.fetchNextPage();
-              }}
-            >
-              {list.isFetchingNextPage && (
-                <OrbitLoader compact label="Загружаем работы" />
-              )}
-              {list.isFetchingNextPage ? 'Загружаем…' : 'Показать ещё'}
-            </Button>
-          </div>
-        )}
-      </section>
-      <Dialog.Root
-        open={creating}
-        onOpenChange={(open) => {
-          if (!create.isPending) setCreating(open);
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity data-ending-style:opacity-0 data-starting-style:opacity-0 motion-reduce:transition-none" />
-          <Dialog.Popup className="border-line bg-surface text-ink fixed top-1/2 left-1/2 z-50 max-h-[90dvh] w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border p-6 shadow-2xl transition-[opacity,scale] data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0 motion-reduce:transition-none sm:p-8">
-            <div className="flex items-center justify-between gap-4">
-              <Dialog.Title className="font-heading text-2xl font-bold">
-                Новая работа
-              </Dialog.Title>
-              <Dialog.Close
-                render={
-                  <Button
-                    variant="secondary"
-                    aria-label="Закрыть"
-                    disabled={create.isPending}
-                  />
-                }
+            <FormField label="Название работы">
+              <Input
+                name="title"
+                required
+                maxLength={200}
+                autoFocus
+                placeholder="Например, Иванов И. И. — банкротство"
+                disabled={create.isPending}
+              />
+            </FormField>
+            <Field.Root className="grid gap-2.5">
+              <span
+                id={packageLabel}
+                className="text-[13px] font-medium text-zinc-200"
               >
-                <X size={16} />
-              </Dialog.Close>
-            </div>
-            <Dialog.Description className="text-muted mt-3 text-sm leading-6">
-              Назовите работу и выберите пакет документов.
-            </Dialog.Description>
-            {catalog.isPending ? (
-              <div className="py-10">
-                <OrbitLoader label="Загружаем шаблоны…" />
-              </div>
-            ) : catalog.isError ? (
-              <div role="alert" className="mt-6">
-                <p>Не удалось загрузить шаблоны.</p>
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    void catalog.refetch();
-                  }}
-                >
-                  Повторить
-                </Button>
-              </div>
-            ) : !catalog.data.packages.length ? (
-              <p className="text-muted mt-6 text-sm">
-                Доступных пакетов пока нет. Обратитесь к владельцу рабочей
-                области.
+                Комплект документов
+              </span>
+              <RadioGroup
+                name="packageVersion"
+                aria-labelledby={packageLabel}
+                defaultValue={packages[0]?.version}
+                disabled={create.isPending}
+                className="grid gap-2.5"
+              >
+                {packages.map((pack) => (
+                  <label
+                    key={pack.version}
+                    className="group has-[[data-checked]]:border-brand/60 has-[[data-checked]]:bg-brand/[0.07] flex cursor-pointer items-start gap-3.5 rounded-2xl border border-white/10 bg-white/[0.02] p-4 transition-colors hover:border-white/20 has-[[data-checked]]:shadow-[0_0_30px_-12px_#db143c]"
+                  >
+                    <Radio.Root
+                      value={pack.version}
+                      className="data-[checked]:border-brand-hot focus-visible:outline-brand-hot mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border border-white/25 focus-visible:outline-2 focus-visible:outline-offset-2"
+                    >
+                      <Radio.Indicator className="bg-brand-hot size-2.5 rounded-full shadow-[0_0_8px_#ff3b62] data-[unchecked]:hidden" />
+                    </Radio.Root>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium">
+                        {pack.title}
+                        {pack.technical && (
+                          <span className="text-muted ml-2 text-xs font-normal">
+                            проверочный бланк
+                          </span>
+                        )}
+                      </span>
+                      <span className="text-muted mt-1 block text-xs leading-5">
+                        {pack.documents.map((doc) => doc.title).join(' · ')}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </RadioGroup>
+            </Field.Root>
+            <div className="rounded-2xl border border-white/[0.06] bg-black/30 p-4">
+              <p className="text-muted mb-3 flex items-center gap-2 text-xs">
+                <FolderKanban size={14} />
+                Что будет дальше
               </p>
-            ) : (
-              <Form
-                className="mt-6 grid gap-5"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (!create.isPending)
-                    create.mutate(new FormData(event.currentTarget));
+              <Journey compact />
+            </div>
+            {create.isError && (
+              <Notice tone="danger" role="alert">
+                Не удалось создать работу. Попробуйте снова.
+              </Notice>
+            )}
+            <div className="flex flex-wrap justify-end gap-3">
+              <Button
+                variant="secondary"
+                disabled={create.isPending}
+                onClick={() => {
+                  setCreating(false);
                 }}
               >
-                <FormField label="Название работы">
-                  <Input
-                    name="title"
-                    required
-                    maxLength={200}
-                    placeholder="Например, заявление клиента"
-                    disabled={create.isPending}
-                  />
-                </FormField>
-                <FormField label="Пакет документов">
-                  <Select
-                    name="packageVersion"
-                    disabled={create.isPending}
-                    items={catalog.data.packages.map((pack) => ({
-                      value: pack.version,
-                      label:
-                        pack.title +
-                        (pack.technical ? ' (проверочный бланк)' : ''),
-                    }))}
-                  />
-                </FormField>
-                {create.isError && (
-                  <p
-                    role="alert"
-                    className="text-sm text-red-700 dark:text-red-300"
-                  >
-                    Не удалось создать работу. Попробуйте снова.
-                  </p>
-                )}
-                <div className="border-line mt-2 flex flex-wrap justify-end gap-3 border-t pt-6">
-                  <Dialog.Close
-                    render={
-                      <Button variant="secondary" disabled={create.isPending} />
-                    }
-                  >
-                    Отмена
-                  </Dialog.Close>
-                  <Button type="submit" disabled={create.isPending}>
-                    {create.isPending ? (
-                      <OrbitLoader compact label="Создаём работу" />
-                    ) : (
-                      <Plus size={16} />
-                    )}
-                    {create.isPending ? 'Создаём…' : 'Создать работу'}
-                  </Button>
-                </div>
-              </Form>
-            )}
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </Dialog.Root>
+                Отмена
+              </Button>
+              <Button type="submit" loading={create.isPending}>
+                Создать и открыть
+                <ArrowRight size={16} />
+              </Button>
+            </div>
+          </Form>
+        )}
+      </Modal>
     </>
   );
 }

@@ -1,6 +1,14 @@
 'use client';
+import { Button as ButtonPrimitive } from '@base-ui/react/button';
 import { Tabs } from '@base-ui/react/tabs';
-import { type ReactNode, useState } from 'react';
+import { Ban, FileText, Minus, Plus, Table2 } from 'lucide-react';
+import {
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 
 import {
   type DocumentPackage,
@@ -13,22 +21,145 @@ import {
   type PreviewRow,
 } from '@anyko/contracts';
 
+import { Button } from '@/components/ui/button';
 import { Disclosure } from '@/components/ui/disclosure';
 import { FieldEditor, TextSlot } from '@/features/works/work-fields';
+
+// Literal zoom classes so Tailwind can see them.
+const zooms = [
+  { value: 0.4, className: '[zoom:0.4]' },
+  { value: 0.5, className: '[zoom:0.5]' },
+  { value: 0.6, className: '[zoom:0.6]' },
+  { value: 0.7, className: '[zoom:0.7]' },
+  { value: 0.8, className: '[zoom:0.8]' },
+  { value: 0.9, className: '[zoom:0.9]' },
+  { value: 1, className: '[zoom:1]' },
+  { value: 1.15, className: '[zoom:1.15]' },
+  { value: 1.3, className: '[zoom:1.3]' },
+] as const;
+const PAGE_WIDTH = 794;
 
 interface Props {
   pack: DocumentPackage;
   values: FieldValues;
   disabled: boolean;
   onChange: (key: FieldKey, value: FieldValue) => void;
+  /** Bring this field into view and highlight it; a new nonce repeats the jump. */
+  focus?: { key: FieldKey; nonce: number } | undefined;
 }
+
+function mentions(blocks: DocumentPackage['documents'][number]['blocks']) {
+  const text = blocks
+    .flatMap((block) =>
+      block.kind === 'paragraph'
+        ? [block.paragraph.text]
+        : block.rows.flatMap((row) => [
+            row.repeat ? `{#${row.repeat}}` : '',
+            ...row.cells.flatMap((cell) => cell.paragraphs.map((p) => p.text)),
+          ]),
+    )
+    .join(' ');
+  return text;
+}
+
 export function PackagePreview(props: Props) {
-  const { pack, values, disabled, onChange } = props;
+  const { pack, values, disabled, onChange, focus } = props;
   const [selected, select] = useState(pack.documents[0]?.version);
+  const [zoom, setZoom] = useState<number | 'fit'>('fit');
+  const [fit, setFit] = useState(1);
+  const frame = useRef<HTMLDivElement>(null);
   const document =
     pack.documents.find((item) => item.version === selected) ??
     pack.documents[0];
+  useLayoutEffect(() => {
+    const node = frame.current;
+    if (!node) return;
+    const measure = () => {
+      const available = node.clientWidth - 32;
+      const level = [...zooms]
+        .reverse()
+        .find(
+          (item) => item.value <= 1 && PAGE_WIDTH * item.value <= available,
+        );
+      setFit(level?.value ?? zooms[0].value);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    if (!focus) return;
+    const host = pack.documents.find((item) =>
+      new RegExp(`\\{[#]?${focus.key}\\}`).test(mentions(item.blocks)),
+    );
+    if (host && host.version !== selected) {
+      select(host.version);
+      return;
+    }
+    const target =
+      frame.current?.querySelector<HTMLElement>(
+        `[data-field="${focus.key}"]`,
+      ) ??
+      window.document.querySelector<HTMLElement>(
+        `[data-field-editor="${focus.key}"]`,
+      );
+    if (!target) return;
+    target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    // Re-adding the class on the next frame restarts the highlight animation.
+    target.classList.remove('animate-flash');
+    requestAnimationFrame(() => {
+      target.classList.add('animate-flash');
+    });
+    const input = target.querySelector('textarea');
+    input?.focus({ preventScroll: true });
+    input?.setSelectionRange(input.value.length, input.value.length);
+    // `selected` is a dependency so the jump finishes after a tab switch.
+  }, [focus, selected, pack.documents]);
   if (!document) return null;
+  const scale = zoom === 'fit' ? fit : zoom;
+  const zoomIndex = zooms.findIndex((item) => item.value === scale);
+  const zoomClass = zooms[zoomIndex]?.className ?? '';
+  const columnsOf = (key: FieldKey) =>
+    pack.fields.find((item) => item.key === key)?.columns ?? [];
+  const emptyRow = (key: FieldKey): FieldRow =>
+    Object.fromEntries(columnsOf(key).map((column) => [column.key, null]));
+  const paperAction =
+    'focus-visible:outline-brand-hot inline-flex min-h-6 items-center gap-1 rounded-md px-1.5 font-medium transition-colors hover:bg-rose-100 focus-visible:outline-2';
+  const collectionNote = (key: FieldKey, collection: FieldValue) => (
+    <span className="my-1 inline-flex max-w-full flex-wrap items-center gap-x-1 gap-y-0.5 rounded-md border border-dashed border-[#db143c]/50 bg-rose-50 px-2 py-0.5 align-middle font-sans text-[12px] leading-5 font-normal text-rose-950">
+      <span className="mr-1">
+        {pack.fields.find((item) => item.key === key)?.label ?? 'Список'}:{' '}
+        {collection === null ? 'состав не установлен' : 'записей нет'}
+      </span>
+      {!disabled && (
+        <>
+          <ButtonPrimitive
+            className={`${paperAction} text-[#b0102f]`}
+            onClick={() => {
+              onChange(key, [emptyRow(key)]);
+            }}
+          >
+            <Plus size={12} />
+            Добавить запись
+          </ButtonPrimitive>
+          {collection === null && (
+            <ButtonPrimitive
+              className={`${paperAction} text-zinc-600`}
+              onClick={() => {
+                onChange(key, []);
+              }}
+            >
+              <Ban size={12} />
+              Записей нет
+            </ButtonPrimitive>
+          )}
+        </>
+      )}
+    </span>
+  );
   const tokens = (
     text: string,
     row?: FieldRow,
@@ -47,7 +178,7 @@ export function PackagePreview(props: Props) {
           <TextSlot
             key={index}
             label={`${document.title}: ${column?.label ?? key}`}
-            placeholder="…"
+            placeholder={column?.label ?? '…'}
             value={row[key] ?? null}
             disabled={disabled}
             multiline
@@ -55,11 +186,16 @@ export function PackagePreview(props: Props) {
           />
         );
       if (!field || field.columns.length)
-        return <span key={index}>[не заполнено]</span>;
+        return (
+          <span key={index} className="text-zinc-400">
+            [не заполнено]
+          </span>
+        );
       const value = values[field.key];
       return (
         <TextSlot
           key={index}
+          fieldKey={field.key}
           label={field.label}
           value={typeof value === 'string' ? value : null}
           disabled={disabled}
@@ -82,7 +218,7 @@ export function PackagePreview(props: Props) {
       const collection = values[repeat];
       const rows = Array.isArray(collection) ? collection : [];
       return (
-        <div key={id}>
+        <div key={id} data-field={repeat} className="rounded-[3px]">
           {rows.length ? (
             rows.map((item, index) =>
               paragraph(
@@ -100,11 +236,7 @@ export function PackagePreview(props: Props) {
               ),
             )
           ) : (
-            <p>
-              {collection === null
-                ? 'Состав не установлен'
-                : 'Записи отсутствуют'}
-            </p>
+            <p>{collectionNote(repeat, collection ?? null)}</p>
           )}
         </div>
       );
@@ -146,14 +278,20 @@ export function PackagePreview(props: Props) {
       : [undefined];
     if (repeat && Array.isArray(collection) && !collection.length)
       return (
-        <tr key={index}>
-          <td colSpan={row.cells.reduce((sum, cell) => sum + cell.span, 0)}>
-            Указано отсутствие записей
+        <tr key={index} data-field={repeat}>
+          <td
+            colSpan={row.cells.reduce((sum, cell) => sum + cell.span, 0)}
+            className="text-center"
+          >
+            {collectionNote(repeat, collection)}
           </td>
         </tr>
       );
     return entries.map((entry, number) => (
-      <tr key={`${String(index)}-${String(number)}`}>
+      <tr
+        key={`${String(index)}-${String(number)}`}
+        data-field={repeat && number === 0 ? repeat : undefined}
+      >
         {row.cells.map((cell, cellIndex) =>
           cell.merge === 'continue' ? null : (
             <td key={cellIndex} colSpan={cell.span} rowSpan={cell.rowSpan}>
@@ -193,97 +331,170 @@ export function PackagePreview(props: Props) {
       }}
       render={<section className="min-w-0" aria-label="Пакет документов" />}
     >
-      <Tabs.List
-        aria-label="Документы пакета"
-        className="my-6 flex flex-wrap gap-2"
-      >
-        {pack.documents.map((item) => (
-          <Tabs.Tab
-            key={item.version}
-            value={item.version}
-            className="border-line text-muted aria-selected:bg-tint aria-selected:text-ink focus-visible:outline-brand min-h-11 rounded-lg border px-4 py-2 text-left text-sm focus-visible:outline-2"
+      <div className="z-10 -mx-1 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-[#0d0d10]/90 p-1.5 backdrop-blur-xl md:sticky md:top-3">
+        <Tabs.List
+          aria-label="Документы пакета"
+          className="relative flex min-w-0 flex-wrap gap-1"
+        >
+          <Tabs.Indicator className="absolute top-0 left-0 -z-1 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) translate-y-(--active-tab-top) rounded-xl bg-white/[0.08] shadow-[inset_0_1px_0_#ffffff14,0_0_0_1px_#ffffff10] transition-[translate,width,height] duration-300 ease-out" />
+          {pack.documents.map((item) => (
+            <Tabs.Tab
+              key={item.version}
+              value={item.version}
+              className="text-muted aria-selected:text-ink focus-visible:outline-brand-hot flex min-h-9 items-center gap-2 rounded-xl px-3 py-1.5 text-left text-[13px] transition-colors hover:text-zinc-200 focus-visible:outline-2"
+            >
+              <FileText size={14} className="shrink-0 opacity-70" aria-hidden />
+              {item.title}
+            </Tabs.Tab>
+          ))}
+        </Tabs.List>
+        <div
+          className="flex items-center gap-1"
+          role="group"
+          aria-label="Масштаб листа"
+        >
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Уменьшить масштаб"
+            disabled={zoomIndex <= 0}
+            onClick={() => {
+              setZoom(zooms[zoomIndex - 1]?.value ?? scale);
+            }}
           >
-            {item.title}
-          </Tabs.Tab>
-        ))}
-      </Tabs.List>
+            <Minus size={15} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="min-w-16 tabular-nums"
+            aria-pressed={zoom === 'fit'}
+            title="Подогнать по ширине"
+            onClick={() => {
+              setZoom('fit');
+            }}
+          >
+            {Math.round(scale * 100)}%
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Увеличить масштаб"
+            disabled={zoomIndex >= zooms.length - 1}
+            onClick={() => {
+              setZoom(zooms[zoomIndex + 1]?.value ?? scale);
+            }}
+          >
+            <Plus size={15} />
+          </Button>
+        </div>
+      </div>
       <Tabs.Panel value={document.version}>
-        <p className="text-muted text-sm leading-6">
-          Поля общие для всего пакета. Подсветка обозначает редактируемые места.
-          Переносы страниц в DOCX могут отличаться.
-        </p>
-        <div className="max-w-full overflow-x-auto">
-          <article
-            className="border-line mx-auto my-8 min-h-[850px] w-[794px] max-w-none min-w-[794px] border bg-white py-[76px] pr-[57px] pl-[113px] font-['Times_New_Roman',serif] text-[12pt] leading-[1.15] text-zinc-900 shadow-sm [&_input]:min-h-0 [&_textarea]:min-h-[1.3em]"
-            aria-label={document.title}
-          >
-            {pack.technical && (
-              <p className="text-center font-sans text-xs text-zinc-600">
-                Архивный технический бланк
-              </p>
-            )}
-            {document.blocks.length
-              ? document.blocks.map((block, index) =>
-                  block.kind === 'paragraph' ? (
-                    paragraph(block.paragraph, String(index))
-                  ) : (
-                    <table
-                      key={index}
-                      className={`my-3 w-full table-fixed border-collapse [&_td]:p-1 [&_td]:align-top [&_td]:wrap-anywhere ${block.bordered ? '[&_td]:border [&_td]:border-zinc-600' : ''}`}
-                    >
-                      <colgroup>
-                        {block.widths.map((width, col) => (
-                          <col
-                            key={col}
-                            style={{
-                              width: `${String(
-                                (width /
-                                  Math.max(
-                                    1,
-                                    block.widths.reduce((a, b) => a + b, 0),
-                                  )) *
-                                  100,
-                              )}%`,
-                            }}
-                          />
-                        ))}
-                      </colgroup>
-                      <tbody>{block.rows.map(tableRow)}</tbody>
-                    </table>
-                  ),
-                )
-              : pack.fields.map((field) => (
-                  <FieldEditor
-                    key={field.key}
-                    field={field}
-                    value={values[field.key] ?? null}
-                    disabled={disabled}
-                    onChange={(next) => {
-                      onChange(field.key, next);
-                    }}
-                  />
-                ))}
-          </article>
+        <div className="text-muted mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
+          <span className="flex items-center gap-2">
+            <span className="h-3 w-6 rounded-[2px] border-b border-dotted border-zinc-400 bg-sky-100" />
+            Заполнено — можно исправить
+          </span>
+          <span className="flex items-center gap-2">
+            <span className="h-3 w-6 rounded-[2px] border-b border-dashed border-[#db143c] bg-rose-100" />
+            Пусто — нажмите и впишите
+          </span>
+          <span>Переносы страниц в DOCX могут отличаться.</span>
+        </div>
+        <div
+          ref={frame}
+          className="max-w-full overflow-x-auto rounded-3xl bg-[radial-gradient(80%_60%_at_50%_0%,#26262c,#141417)] px-4 py-8 shadow-[inset_0_0_0_1px_#ffffff0d]"
+        >
+          <div className={`mx-auto w-fit ${zoomClass}`}>
+            <article
+              key={document.version}
+              className="animate-rise min-h-[1123px] w-[794px] max-w-none min-w-[794px] bg-white py-[76px] pr-[57px] pl-[113px] font-['Times_New_Roman',serif] text-[12pt] leading-[1.15] text-zinc-900 shadow-[0_2px_4px_#0003,0_24px_70px_-20px_#000] [&_td]:align-top"
+              aria-label={document.title}
+            >
+              {pack.technical && (
+                <p className="mb-4 text-center font-sans text-xs text-zinc-500">
+                  Архивный технический бланк
+                </p>
+              )}
+              {document.blocks.length
+                ? document.blocks.map((block, index) =>
+                    block.kind === 'paragraph' ? (
+                      paragraph(block.paragraph, String(index))
+                    ) : (
+                      <table
+                        key={index}
+                        className={`my-3 w-full table-fixed border-collapse [&_td]:p-1 [&_td]:wrap-anywhere ${block.bordered ? '[&_td]:border [&_td]:border-zinc-600' : ''}`}
+                      >
+                        <colgroup>
+                          {block.widths.map((width, col) => (
+                            <col
+                              key={col}
+                              style={{
+                                width: `${String(
+                                  (width /
+                                    Math.max(
+                                      1,
+                                      block.widths.reduce((a, b) => a + b, 0),
+                                    )) *
+                                    100,
+                                )}%`,
+                              }}
+                            />
+                          ))}
+                        </colgroup>
+                        <tbody>{block.rows.map(tableRow)}</tbody>
+                      </table>
+                    ),
+                  )
+                : pack.fields.map((field) => (
+                    <FieldEditor
+                      key={field.key}
+                      field={field}
+                      value={values[field.key] ?? null}
+                      disabled={disabled}
+                      onChange={(next) => {
+                        onChange(field.key, next);
+                      }}
+                    />
+                  ))}
+            </article>
+          </div>
         </div>
         <Disclosure
-          className="border-line bg-surface my-6 rounded-2xl border p-5 shadow-sm sm:p-7"
-          title={<>Общие реквизиты и таблицы пакета</>}
+          className="mt-6 rounded-3xl border border-white/[0.08] bg-white/[0.015] px-5 py-2 sm:px-6"
+          title={
+            <span className="flex items-center gap-3">
+              <span className="grid size-9 place-items-center rounded-xl border border-white/10 bg-white/[0.03]">
+                <Table2 size={16} />
+              </span>
+              <span>
+                <span className="block">Все поля и таблицы формой</span>
+                <span className="text-muted block text-xs font-normal">
+                  Строки кредиторов, имущества и счетов; отсутствие записей и
+                  неизвестный состав
+                </span>
+              </span>
+            </span>
+          }
         >
-          <p className="text-muted text-sm leading-6">
-            Здесь можно добавить строки и явно указать отсутствие объектов.
-            Неизвестный состав сохраняется отдельно от отсутствия.
-          </p>
-          {pack.fields.map((field) => (
-            <FieldEditor
-              key={field.key}
-              field={field}
-              value={values[field.key] ?? null}
-              disabled={disabled}
-              onChange={(next) => {
-                onChange(field.key, next);
-              }}
-            />
-          ))}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[...pack.fields]
+              .sort(
+                (a, b) =>
+                  Number(b.columns.length > 0) - Number(a.columns.length > 0),
+              )
+              .map((field) => (
+                <FieldEditor
+                  key={field.key}
+                  field={field}
+                  value={values[field.key] ?? null}
+                  disabled={disabled}
+                  onChange={(next) => {
+                    onChange(field.key, next);
+                  }}
+                />
+              ))}
+          </div>
         </Disclosure>
       </Tabs.Panel>
     </Tabs.Root>

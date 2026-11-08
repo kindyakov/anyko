@@ -1,4 +1,5 @@
 'use client';
+import { LogOut } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -32,20 +33,23 @@ export function SignOut({ onSignedOut }: { onSignedOut: () => void }) {
     }
   }
   return (
-    <div>
+    <div className="relative">
       <Button
-        variant="secondary"
-        disabled={pending}
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Выйти"
+        title="Выйти"
+        loading={pending}
         onClick={() => {
           void signOut();
         }}
       >
-        {pending ? 'Выходим…' : 'Выйти'}
+        <LogOut size={17} />
       </Button>
       {error && (
         <p
           role="alert"
-          className="my-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm leading-6 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+          className="animate-rise absolute right-0 bottom-full mb-2 w-48 rounded-xl border border-red-400/25 bg-[#1a0b0e] p-3 text-xs leading-5 text-red-200 shadow-xl"
         >
           {error}
         </p>

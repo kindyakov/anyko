@@ -1,33 +1,41 @@
 'use client';
-import { AlertDialog } from '@base-ui/react/alert-dialog';
-import { Form } from '@base-ui/react/form';
-import {
-  type SyntheticEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { Eye, RefreshCw, RotateCw, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import {
   documentResponseSchema,
-  documentResultSchema,
   documentsResponseSchema,
   type DocumentSummary,
 } from '@anyko/contracts';
 
 import { Button } from '@/components/ui/button';
-import { FormField } from '@/components/ui/form-field';
-import { Input } from '@/components/ui/input';
-import { ResultPreview } from '@/features/documents/result-preview';
+import { Confirm } from '@/components/ui/confirm';
+import { DropZone } from '@/components/ui/drop-zone';
+import { FileIcon } from '@/components/ui/file-icon';
+import { RelativeTime } from '@/components/ui/relative-time';
+import { Skeleton } from '@/components/ui/skeleton';
+import { stagger } from '@/components/ui/stagger';
+import { Notice, StatusPill, type Tone } from '@/components/ui/status';
+import {
+  DocumentViewer,
+  type ViewedDocument,
+} from '@/features/documents/document-viewer';
 import { ApiError, requestApi } from '@/lib/api/client';
 
+const accept =
+  '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff';
 const labels: Record<DocumentSummary['status'], string> = {
   queued: 'В очереди',
   running: 'Распознаётся',
-  succeeded: 'Готово',
+  succeeded: 'Распознан',
   failed: 'Не удалось обработать',
+};
+const tones: Record<DocumentSummary['status'], Tone> = {
+  queued: 'neutral',
+  running: 'progress',
+  succeeded: 'success',
+  failed: 'danger',
 };
 function message(error: unknown) {
   if (error instanceof ApiError) {
@@ -61,15 +69,9 @@ export function DocumentWorkspace({
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [pendingId, setPendingId] = useState<string>();
-  const [result, setResult] = useState<{
-    id: string;
-    filename: string;
-    markdown: string;
-    processorVersion: string;
-    images: { path: string; url: string }[];
-  }>();
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [viewing, setViewing] = useState<ViewedDocument>();
   const [deleting, setDeleting] = useState<DocumentSummary>();
   const alive = useRef(true);
   const handleError = useCallback(
@@ -114,9 +116,9 @@ export function DocumentWorkspace({
       controller.abort();
     };
   }, [refresh]);
-  const processing = documents.some(
+  const processing = documents.filter(
     (document) => document.status === 'queued' || document.status === 'running',
-  );
+  ).length;
   useEffect(() => {
     if (!processing && deletions.length === 0) return;
     const controller = new AbortController();
@@ -128,44 +130,50 @@ export function DocumentWorkspace({
       controller.abort();
     };
   }, [processing, deletions.length, refresh]);
-  async function upload(event: SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function upload(files: File[]) {
     if (uploading) return;
-    const file = fileInput.current?.files?.[0];
-    if (!file) {
-      setError('Выберите документ или фотографию.');
-      return;
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      setError('Максимальный размер файла — 20 МБ.');
-      return;
-    }
-    if (!/\.(pdf|docx|jpe?g|png|webp|tiff?)$/i.test(file.name)) {
-      setError('Поддерживаются PDF, DOCX, JPEG, PNG, WebP и TIFF.');
-      return;
-    }
     setError('');
     setUploading(true);
-    const body = new FormData();
-    body.set('file', file);
-    try {
-      const response = await requestApi('/documents', documentResponseSchema, {
-        method: 'POST',
-        body,
-        headers: { 'idempotency-key': crypto.randomUUID() },
-      });
-      if (alive.current) {
-        setDocuments((items) => [
-          response.document,
-          ...items.filter((item) => item.id !== response.document.id),
-        ]);
-        setLoaded(true);
-        if (fileInput.current) fileInput.current.value = '';
+    const problems: string[] = [];
+    for (const file of files) {
+      if (file.size > 20 * 1024 * 1024) {
+        problems.push(`${file.name}: максимальный размер файла — 20 МБ.`);
+        continue;
       }
-    } catch (failure) {
-      handleError(failure);
-    } finally {
-      if (alive.current) setUploading(false);
+      if (!/\.(pdf|docx|jpe?g|png|webp|tiff?)$/i.test(file.name)) {
+        problems.push(
+          `${file.name}: поддерживаются PDF, DOCX, JPEG, PNG, WebP и TIFF.`,
+        );
+        continue;
+      }
+      const body = new FormData();
+      body.set('file', file);
+      try {
+        const response = await requestApi(
+          '/documents',
+          documentResponseSchema,
+          {
+            method: 'POST',
+            body,
+            headers: { 'idempotency-key': crypto.randomUUID() },
+          },
+        );
+        if (alive.current)
+          setDocuments((items) => [
+            response.document,
+            ...items.filter((item) => item.id !== response.document.id),
+          ]);
+      } catch (failure) {
+        if (failure instanceof ApiError && failure.status === 401) {
+          handleError(failure);
+          break;
+        }
+        problems.push(`${file.name}: ${message(failure)}`);
+      }
+    }
+    if (alive.current) {
+      setUploading(false);
+      if (problems.length) setError(problems.join(' '));
     }
   }
   async function retry(document: DocumentSummary) {
@@ -200,7 +208,7 @@ export function DocumentWorkspace({
       );
       await refresh();
       if (alive.current)
-        setResult((current) =>
+        setViewing((current) =>
           current?.id === document.id ? undefined : current,
         );
       let complete = false;
@@ -225,9 +233,6 @@ export function DocumentWorkspace({
         setDocuments((items) =>
           items.filter((item) => item.id !== document.id),
         );
-        setResult((current) =>
-          current?.id === document.id ? undefined : current,
-        );
         setDeleting(undefined);
         await refresh();
       }
@@ -237,252 +242,207 @@ export function DocumentWorkspace({
       if (alive.current) setPendingId(undefined);
     }
   }
-  async function open(document: DocumentSummary) {
-    setPendingId(document.id);
-    setError('');
-    try {
-      const response = await requestApi(
-        `/documents/${encodeURIComponent(document.id)}/result`,
-        documentResultSchema,
-      );
-      if (alive.current)
-        setResult({
-          id: document.id,
-          filename: document.filename,
-          ...response,
-        });
-    } catch (failure) {
-      handleError(failure);
-    } finally {
-      if (alive.current) setPendingId(undefined);
-    }
-  }
   return (
     <>
-      <section className="text-muted mt-3 mb-8 max-w-2xl text-sm leading-7">
-        <p className="text-muted mb-3 text-[10px] font-semibold tracking-[0.2em]">
-          РАБОЧАЯ ОБЛАСТЬ
-        </p>
-        <h1 className="font-heading mb-3 text-2xl font-semibold tracking-tight">
-          Ваши документы
-        </h1>
-        <p>
-          Загрузите документ или фотографию. Мы сохраним оригинал и извлечём
-          текст — обработка продолжится, даже если вы закроете страницу.
-        </p>
-      </section>
-      <section className="border-line my-6 rounded-xl border p-5">
-        <h2 className="font-heading mb-4 text-lg font-bold">Новый документ</h2>
-        <Form
-          className="border-line bg-canvas mt-5 flex flex-col gap-5 rounded-xl border border-dashed p-5 sm:flex-row sm:items-end sm:justify-between"
-          onSubmit={(event) => {
-            void upload(event);
+      <header className="animate-rise mb-8 flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">
+            Распознавание
+          </h1>
+          <p className="text-muted mt-3 max-w-2xl leading-7">
+            Получите текст из скана, фото или DOCX без создания работы. Оригинал
+            сохраняется, а обработка продолжится, даже если закрыть страницу.
+          </p>
+        </div>
+        <Button
+          variant="secondary"
+          loading={refreshing}
+          onClick={() => {
+            setError('');
+            setRefreshing(true);
+            void refresh().finally(() => {
+              setRefreshing(false);
+            });
           }}
         >
-          <FormField
-            className="grid gap-2 text-sm font-medium"
-            label={<>PDF, DOCX, JPEG, PNG, WebP или TIFF — до 20 МБ </>}
-          >
-            <Input
-              className="border-line bg-surface text-ink placeholder:text-muted focus-visible:outline-brand file:bg-tint file:text-ink min-h-11 w-full min-w-0 rounded-lg border px-3 py-2.5 text-sm file:mr-4 file:rounded-md file:border-0 file:px-3 file:py-1 focus-visible:outline-2 disabled:opacity-50"
-              ref={fileInput}
-              type="file"
-              name="file"
-              accept=".pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff"
-              disabled={uploading}
-              required
-            />
-          </FormField>
-          <Button type="submit" disabled={uploading}>
-            {uploading ? 'Загружаем…' : 'Загрузить и распознать'}
-          </Button>
-        </Form>
-      </section>
+          <RefreshCw size={16} />
+          Обновить
+        </Button>
+      </header>
+      <div className="animate-rise [animation-delay:60ms]">
+        <DropZone
+          title="Отправьте файлы в Anyko"
+          hint="PDF, DOCX, JPEG, PNG, WebP или TIFF до 20 МБ. Каждый файл распознаётся отдельно: текст, таблицы, формулы и изображения."
+          inputLabel="Файлы для распознавания"
+          accept={accept}
+          busy={uploading}
+          onFiles={(files) => {
+            void upload(files);
+          }}
+        />
+      </div>
       {error && (
-        <p
-          className="my-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm leading-6 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
-          role="alert"
-        >
-          {error}
-        </p>
+        <div className="mt-6">
+          <Notice tone="danger" role="alert" title="Не всё получилось">
+            {error}
+          </Notice>
+        </div>
       )}
-      <section className="border-line my-6 rounded-xl border p-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h2 className="font-heading mb-4 text-lg font-bold">Документы</h2>
-          <Button
-            variant="secondary"
-            type="button"
-            onClick={() => {
-              setError('');
-              void refresh();
-            }}
+      {deletions.length > 0 && (
+        <section
+          className="mt-6 grid gap-2"
+          aria-label="Незавершённые удаления"
+        >
+          {deletions.map((item) => (
+            <Notice
+              key={item.id}
+              tone={item.status === 'needs-recovery' ? 'warning' : 'progress'}
+              role="status"
+              title={
+                item.status === 'needs-recovery'
+                  ? 'Удаление требует восстановления — файлы ещё не удалены'
+                  : 'Удаляем файлы и результаты'
+              }
+            >
+              Полное удаление ещё не подтверждено. Статус сохранится после
+              обновления страницы. Начато{' '}
+              <RelativeTime value={item.createdAt} />.
+            </Notice>
+          ))}
+        </section>
+      )}
+      <section className="mt-10" aria-labelledby="documents-title">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2
+            id="documents-title"
+            className="font-heading text-xl font-bold tracking-tight"
           >
-            Обновить
-          </Button>
+            Файлы
+            {documents.length > 0 && (
+              <span className="text-muted ml-2 text-base font-medium">
+                {documents.length}
+              </span>
+            )}
+          </h2>
+          {processing > 0 && (
+            <StatusPill tone="progress">Распознаётся: {processing}</StatusPill>
+          )}
         </div>
         {!loaded ? (
-          <p role="status">Загружаем список…</p>
-        ) : documents.length === 0 ? (
-          <p className="text-muted text-sm leading-6">
-            Здесь появятся ваши документы и результаты распознавания.
-          </p>
-        ) : (
-          <ul className="divide-line mt-5 divide-y [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:gap-4 [&>li]:py-5">
-            {documents.map((document) => (
-              <li key={document.id}>
-                <div className="grid min-w-0 flex-1 gap-2 wrap-anywhere">
-                  <strong>{document.filename}</strong>
-                  <span className="text-muted text-sm leading-6">
-                    {new Date(document.createdAt).toLocaleString('ru-RU')}
-                  </span>
+          <ul className="grid gap-3" aria-busy aria-label="Файлы загружаются">
+            {[0, 1, 2].map((item) => (
+              <li
+                key={item}
+                className="flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+              >
+                <Skeleton className="size-12 rounded-xl" />
+                <div className="flex-1">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="mt-2 h-3 w-1/5" />
                 </div>
-                <span className="border-line bg-canvas text-muted w-fit rounded-full border px-3 py-1 text-xs">
-                  {labels[document.status]}
-                </span>
-                {document.status === 'failed' && (
-                  <Button
-                    variant="secondary"
-                    disabled={pendingId !== undefined}
-                    onClick={() => {
-                      void retry(document);
-                    }}
-                  >
-                    Повторить
-                  </Button>
-                )}
-                {document.status === 'succeeded' && (
-                  <Button
-                    variant="secondary"
-                    disabled={pendingId !== undefined}
-                    onClick={() => {
-                      void open(document);
-                    }}
-                  >
-                    {pendingId === document.id
-                      ? 'Открываем…'
-                      : 'Открыть результат'}
-                  </Button>
-                )}
-                <Button
-                  variant="secondary"
-                  disabled={pendingId !== undefined}
-                  onClick={() => {
-                    setDeleting(document);
-                  }}
-                  aria-label={`Удалить ${document.filename}`}
-                >
-                  Удалить
-                </Button>
+                <Skeleton className="h-9 w-28 rounded-lg" />
               </li>
             ))}
+          </ul>
+        ) : documents.length === 0 ? (
+          <p className="text-muted rounded-2xl border border-dashed border-white/10 px-6 py-10 text-center text-sm">
+            Здесь появятся загруженные файлы и результаты распознавания.
+          </p>
+        ) : (
+          <ul className="grid gap-3">
+            {documents.map((document, index) => {
+              const busy =
+                document.status === 'queued' || document.status === 'running';
+              return (
+                <li
+                  key={document.id}
+                  className={`animate-rise relative flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl border border-white/[0.07] bg-[linear-gradient(180deg,#131317,#0d0d10)] p-4 transition-colors hover:border-white/15 sm:flex-nowrap ${stagger(index)}`}
+                >
+                  {busy && (
+                    <span
+                      aria-hidden
+                      className="animate-flow absolute inset-x-0 bottom-0 h-0.5 bg-[repeating-linear-gradient(90deg,#db143c_0_14px,transparent_14px_28px)]"
+                    />
+                  )}
+                  <FileIcon filename={document.filename} />
+                  <div className="min-w-0 flex-1 basis-48">
+                    <p className="font-medium wrap-anywhere">
+                      {document.filename}
+                    </p>
+                    <p className="text-muted mt-1 text-xs">
+                      Загружен <RelativeTime value={document.createdAt} />
+                    </p>
+                  </div>
+                  <StatusPill tone={tones[document.status]}>
+                    {labels[document.status]}
+                  </StatusPill>
+                  <div className="flex gap-2">
+                    {document.status === 'failed' && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={pendingId === document.id && !deleting}
+                        disabled={pendingId !== undefined}
+                        onClick={() => {
+                          void retry(document);
+                        }}
+                      >
+                        <RotateCw size={15} />
+                        Повторить
+                      </Button>
+                    )}
+                    {document.status === 'succeeded' && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          setViewing(document);
+                        }}
+                      >
+                        <Eye size={15} />
+                        Открыть
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      disabled={pendingId !== undefined}
+                      onClick={() => {
+                        setDeleting(document);
+                      }}
+                      aria-label={`Удалить ${document.filename}`}
+                      title="Удалить"
+                    >
+                      <Trash2 size={16} />
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
-      {deletions.length > 0 && (
-        <section
-          className="border-line my-6 rounded-xl border p-5"
-          aria-label="Незавершённые удаления"
-        >
-          <h2 className="font-heading mb-4 text-lg font-bold">
-            Незавершённые удаления
-          </h2>
-          <p>
-            Полное удаление этих файлов ещё не подтверждено. Статус сохранится
-            после обновления страницы.
-          </p>
-          <ul className="divide-line mt-5 divide-y [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:gap-4 [&>li]:py-5">
-            {deletions.map((item) => (
-              <li key={item.id}>
-                <div className="grid min-w-0 flex-1 gap-2 wrap-anywhere">
-                  <strong>Удаление {item.id}</strong>
-                  <span className="text-muted text-sm leading-6">
-                    {new Date(item.createdAt).toLocaleString('ru-RU')}
-                  </span>
-                </div>
-                <span role="status">
-                  {item.status === 'needs-recovery'
-                    ? 'Требует восстановления — файлы ещё не удалены'
-                    : 'Удаляем файлы и результаты…'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {result && (
-        <section className="border-line bg-surface [&_pre]:bg-canvas my-6 rounded-2xl border p-5 shadow-sm sm:p-7 [&_pre]:max-h-[650px] [&_pre]:overflow-auto [&_pre]:rounded-xl [&_pre]:p-5 [&_pre]:text-sm [&_pre]:whitespace-pre-wrap">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <h2 className="font-heading mb-4 text-lg font-bold">
-                Результат распознавания
-              </h2>
-              <p className="text-muted text-sm leading-6">{result.filename}</p>
-            </div>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setResult(undefined);
-              }}
-            >
-              Закрыть
-            </Button>
-          </div>
-          <p className="text-muted my-5 text-sm leading-6">
-            Автоматически извлечённый текст. Перед использованием проверьте его
-            по исходному документу.
-          </p>
-          <ResultPreview
-            key={result.id}
-            markdown={result.markdown}
-            images={result.images}
-          />
-        </section>
-      )}
-      {deleting && (
-        <AlertDialog.Root
-          open
-          onOpenChange={(open) => {
-            if (!open && pendingId === undefined) setDeleting(undefined);
-          }}
-        >
-          <AlertDialog.Portal>
-            <AlertDialog.Backdrop className="fixed inset-0 z-40 bg-black/50" />
-            <AlertDialog.Popup
-              className="border-line bg-surface text-ink fixed top-1/2 left-1/2 z-50 w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border p-6 shadow-xl"
-              aria-label="Удаление документа"
-            >
-              <AlertDialog.Title className="font-heading mb-4 text-lg font-bold">
-                Удалить «{deleting.filename}»?
-              </AlertDialog.Title>
-              <AlertDialog.Description className="text-muted text-sm leading-6">
-                Документ исчезнет из рабочей области. Оригинал и все результаты
-                будут удалены без возможности восстановления.
-              </AlertDialog.Description>
-              <div className="my-5 flex flex-wrap gap-2">
-                <Button
-                  disabled={pendingId !== undefined}
-                  onClick={() => {
-                    void remove(deleting);
-                  }}
-                >
-                  {pendingId === deleting.id
-                    ? 'Удаляем файлы и результаты…'
-                    : 'Удалить документ'}
-                </Button>
-                <Button
-                  variant="secondary"
-                  disabled={pendingId !== undefined}
-                  onClick={() => {
-                    setDeleting(undefined);
-                  }}
-                >
-                  Отмена
-                </Button>
-              </div>
-            </AlertDialog.Popup>
-          </AlertDialog.Portal>
-        </AlertDialog.Root>
-      )}
+      <DocumentViewer
+        document={viewing}
+        onClose={() => {
+          setViewing(undefined);
+        }}
+      />
+      <Confirm
+        open={!!deleting}
+        title={`Удалить «${deleting?.filename ?? ''}»?`}
+        confirmLabel="Удалить документ"
+        pending={pendingId !== undefined}
+        onConfirm={() => {
+          if (deleting) void remove(deleting);
+        }}
+        onCancel={() => {
+          setDeleting(undefined);
+        }}
+      >
+        Документ исчезнет из рабочей области. Оригинал и все результаты будут
+        удалены без возможности восстановления.
+      </Confirm>
     </>
   );
 }

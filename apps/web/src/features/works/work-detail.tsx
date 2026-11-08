@@ -1,55 +1,264 @@
 'use client';
-import { Form } from '@base-ui/react/form';
 import { Tabs } from '@base-ui/react/tabs';
-import { Download, Files, History, ScanText } from 'lucide-react';
-import Link from 'next/link';
 import {
-  type SyntheticEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  Download,
+  FileSearch,
+  PackageCheck,
+  RotateCw,
+  Save,
+  Sparkles,
+  Undo2,
+} from 'lucide-react';
+import Link from 'next/link';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import {
   documentResponseSchema,
+  type FieldKey,
+  type FieldValue,
   type FieldValues,
   workResponseSchema,
   type WorkView,
 } from '@anyko/contracts';
 
+import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';
-import { Disclosure } from '@/components/ui/disclosure';
-import { FormField } from '@/components/ui/form-field';
-import { Input } from '@/components/ui/input';
-import { PackagePreview } from '@/features/works/package-preview';
-import { SessionContext } from '@/features/works/session-context';
-import { SourcePreview } from '@/features/works/source-preview';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Notice, StatusPill } from '@/components/ui/status';
+import { DocumentViewer, type ViewedDocument } from '@/features/documents';
 import {
-  UploadFailure,
-  uploadFailureMessage,
-} from '@/features/works/upload-errors';
-import { CandidateValue } from '@/features/works/work-fields';
+  journeySteps,
+  type StepKey,
+  stepOf,
+  type WorkStage,
+  workStage,
+} from '@/features/works/journey';
+import { uploadFailureMessage } from '@/features/works/upload-errors';
+import { WorkPipeline } from '@/features/works/work-pipeline';
+import { WorkResults } from '@/features/works/work-results';
+import { WorkReview } from '@/features/works/work-review';
+import { type Upload, WorkSources } from '@/features/works/work-sources';
 import { ApiError, requestApi } from '@/lib/api/client';
 
 const accepted = z.object({ status: z.string() });
-const statuses: Record<string, string> = {
-  queued: 'В очереди',
-  running: 'Выполняется',
-  succeeded: 'Готово',
-  failed: 'Ошибка',
-  partial: 'Частично готово',
-  cancelled: 'Остановлено',
-  skipped: 'Не требуется',
-};
-const stages: Record<string, string> = {
-  parsing: 'Парсинг и OCR',
-  vision: 'Анализ изображений',
-  extraction: 'Извлечение фактов',
-  reconciliation: 'Сопоставление сведений',
-  generation: 'Формирование DOCX',
-};
+type Live = 'connecting' | 'live' | 'reconnecting';
+
+function Hero({
+  stage,
+  step,
+  busy,
+  locked,
+  onStep,
+  onAnalyze,
+  onGenerate,
+}: {
+  stage: WorkStage;
+  step: StepKey;
+  busy: boolean;
+  locked: boolean;
+  onStep: (step: StepKey) => void;
+  onAnalyze: () => void;
+  onGenerate: () => void;
+}) {
+  const content: {
+    title: string;
+    text: string;
+    horizon: 'idle' | 'active' | 'calm';
+    action?: React.ReactNode;
+  } = (() => {
+    switch (stage.kind) {
+      case 'empty':
+        return {
+          title: 'Добавьте файлы клиента',
+          text: 'Паспорт, СНИЛС, справки и выписки — Anyko прочитает их и найдёт сведения для документов.',
+          horizon: 'idle',
+          ...(step !== 'files' && {
+            action: (
+              <Button
+                onClick={() => {
+                  onStep('files');
+                }}
+              >
+                К загрузке файлов <ArrowRight size={16} />
+              </Button>
+            ),
+          }),
+        };
+      case 'ready':
+        return {
+          title: 'Файлы готовы — запустите извлечение',
+          text: !stage.first
+            ? `Новых файлов, ещё не прочитанных Anyko: ${String(stage.pending)}. Извлечение найдёт в них сведения и дополнит работу.`
+            : 'Anyko распознает текст, изучит изображения и найдёт сведения с цитатами из источников.',
+          horizon: 'idle',
+          action: (
+            <Button
+              size="lg"
+              loading={busy}
+              disabled={locked}
+              onClick={onAnalyze}
+            >
+              <Sparkles size={18} />
+              Извлечь сведения
+            </Button>
+          ),
+        };
+      case 'processing':
+        return {
+          title: 'Anyko извлекает сведения',
+          text: `Выполнено этапов: ${String(stage.done)} из ${String(stage.total)}. Можно закрыть страницу — обработка продолжится на сервере.`,
+          horizon: 'active',
+          ...(step !== 'extraction' && {
+            action: (
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  onStep('extraction');
+                }}
+              >
+                Смотреть процесс <ArrowRight size={16} />
+              </Button>
+            ),
+          }),
+        };
+      case 'review':
+        return {
+          title: stage.conflicts
+            ? 'Проверьте сведения и разрешите расхождения'
+            : 'Проверьте найденные сведения',
+          text: `Найдено полей: ${String(stage.fields)}${stage.conflicts ? `, расхождений: ${String(stage.conflicts)}` : ''}. Примените значения, поправьте документы и подтвердите.${stage.run.status === 'partial' || stage.run.status === 'failed' ? ' Часть этапов извлечения не выполнена.' : ''}`,
+          horizon: 'calm',
+          action:
+            step === 'review' ? (
+              <Button
+                onClick={() => {
+                  onStep('documents');
+                }}
+              >
+                Всё верно, дальше <ArrowRight size={16} />
+              </Button>
+            ) : (
+              <Button
+                onClick={() => {
+                  onStep('review');
+                }}
+              >
+                <FileSearch size={16} />
+                Перейти к проверке
+              </Button>
+            ),
+        };
+      case 'confirmed':
+        return {
+          title: 'Сведения подтверждены',
+          text: 'Осталось сформировать комплект документов в DOCX.',
+          horizon: 'calm',
+          action: (
+            <Button
+              size="lg"
+              loading={busy}
+              disabled={locked}
+              onClick={onGenerate}
+            >
+              <PackageCheck size={18} />
+              Сформировать комплект
+            </Button>
+          ),
+        };
+      case 'generating':
+        return {
+          title: 'Формируем документы',
+          text: 'Anyko заполняет шаблоны. Файлы появятся автоматически.',
+          horizon: 'active',
+        };
+      case 'generated':
+        return {
+          title: 'Комплект готов',
+          text: `Сформировано документов: ${String(stage.files)}. Скачайте DOCX или вернитесь к сведениям, чтобы что-то поправить.`,
+          horizon: 'calm',
+          ...(step !== 'documents' && {
+            action: (
+              <Button
+                onClick={() => {
+                  onStep('documents');
+                }}
+              >
+                <Download size={16} />К документам
+              </Button>
+            ),
+          }),
+        };
+    }
+  })();
+  return (
+    <section
+      aria-live="polite"
+      className="relative flex flex-col gap-5 overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(70%_160%_at_0%_50%,#3a0b18,transparent_60%),linear-gradient(180deg,#131317,#0b0b0e)] p-5 sm:flex-row sm:items-center sm:p-6"
+    >
+      <EventHorizon
+        state={content.horizon}
+        className="size-20 self-center sm:size-24"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-brand-hot text-xs font-semibold tracking-[0.14em] uppercase">
+          Сейчас
+        </p>
+        <p className="font-heading mt-1 text-xl font-bold tracking-tight">
+          {content.title}
+        </p>
+        <p className="text-muted mt-1.5 max-w-2xl text-sm leading-6">
+          {content.text}
+        </p>
+      </div>
+      {content.action && <div className="shrink-0">{content.action}</div>}
+    </section>
+  );
+}
+
+function Stepper({ current }: { current: StepKey }) {
+  const currentIndex = journeySteps.findIndex((step) => step.key === current);
+  return (
+    <Tabs.List
+      aria-label="Шаги работы"
+      className="relative grid grid-cols-2 gap-1.5 rounded-2xl border border-white/[0.07] bg-black/40 p-1.5 lg:grid-cols-4"
+    >
+      <Tabs.Indicator className="absolute top-0 left-0 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) translate-y-(--active-tab-top) rounded-xl bg-[linear-gradient(180deg,#ffffff12,#ffffff06)] shadow-[inset_0_1px_0_#ffffff14,0_0_0_1px_#ff3b6240,0_10px_30px_-12px_#db143c] transition-[translate,width,height] duration-300 ease-out" />
+      {journeySteps.map((step, index) => {
+        const done = index < currentIndex;
+        const now = index === currentIndex;
+        return (
+          <Tabs.Tab
+            key={step.key}
+            value={step.key}
+            className="group focus-visible:outline-brand-hot relative z-10 flex min-h-14 items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors focus-visible:outline-2"
+          >
+            <span
+              className={`relative grid size-8 shrink-0 place-items-center rounded-full border text-xs font-bold transition-colors ${done ? 'border-emerald-400/40 bg-emerald-400/10 text-emerald-300' : now ? 'border-[#ff3b62]/70 bg-[#db143c]/20 text-white shadow-[0_0_16px_-2px_#db143c]' : 'border-white/10 text-zinc-500'}`}
+            >
+              {now && (
+                <span className="animate-horizon absolute -inset-1 rounded-full border border-[#ff3b62]/40" />
+              )}
+              {done ? <Check size={14} strokeWidth={3} /> : index + 1}
+            </span>
+            <span className="min-w-0">
+              <span className="text-muted block text-sm font-medium transition-colors group-aria-selected:text-white">
+                {step.title}
+              </span>
+              <span className="text-muted hidden truncate text-[11px] sm:block">
+                {now ? 'Текущий шаг' : step.caption}
+              </span>
+            </span>
+          </Tabs.Tab>
+        );
+      })}
+    </Tabs.List>
+  );
+}
+
 export function WorkDetail({
   workId,
   onUnauthorized,
@@ -65,8 +274,12 @@ export function WorkDetail({
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
   const [pending, setPending] = useState(false);
-  const [streamState, setStreamState] = useState('Подключение событий…');
+  const [live, setLive] = useState<Live>('connecting');
+  const [step, setStep] = useState<StepKey>();
+  const [uploads, setUploads] = useState<Upload[]>([]);
+  const [viewing, setViewing] = useState<ViewedDocument>();
   const loadVersion = useRef(0);
+  const previousStage = useRef<WorkStage['kind']>(undefined);
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
     try {
@@ -100,11 +313,11 @@ export function WorkDetail({
           void load();
         });
         events.onopen = () => {
-          setStreamState('Статусы обновляются автоматически');
+          setLive('live');
           void load();
         };
         events.onerror = () => {
-          setStreamState('Переподключаем события. Состояние работы сохранено.');
+          setLive('reconnecting');
           void load();
         };
       })
@@ -117,77 +330,126 @@ export function WorkDetail({
       events?.close();
     };
   }, [workId, load]);
+  const stage = view ? workStage(view) : undefined;
+  // Open the step that matches the work's situation, and follow it when
+  // background processing moves the work forward.
+  useEffect(() => {
+    if (!stage) return;
+    const before = previousStage.current;
+    previousStage.current = stage.kind;
+    if (before === undefined) setStep(stepOf(stage));
+    else if (before === 'processing' && stage.kind === 'review')
+      setStep((current) => (current === 'extraction' ? 'review' : current));
+  }, [stage]);
   async function command(operation: () => Promise<unknown>) {
     setPending(true);
     setError('');
     try {
       await operation();
       await load();
+      return true;
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 401)
         onUnauthorized();
       else
         setError(
           failure instanceof ApiError && failure.code === 'REVISION_CONFLICT'
-            ? 'Работа изменилась. Ваши правки сохранены в полях. Обновите основу правок перед повторным сохранением.'
-            : failure instanceof UploadFailure
-              ? failure.message
-              : failure instanceof ApiError
-                ? `Операция не выполнена: ${failure.code}`
-                : 'Операция не выполнена. Повторите попытку.',
+            ? 'Работа изменилась, пока вы редактировали. Ваши правки сохранены в полях — нажмите «Перенести правки», затем сохраните.'
+            : failure instanceof ApiError
+              ? `Операция не выполнена: ${failure.code}`
+              : 'Операция не выполнена. Повторите попытку.',
         );
+      return false;
     } finally {
       setPending(false);
     }
   }
-  async function upload(event: SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const files = new FormData(form).getAll('files');
-    await command(async () => {
-      const failed: string[] = [];
-      for (const file of files)
-        if (file instanceof File && file.size) {
-          const data = new FormData();
-          data.set('file', file);
-          try {
-            await requestApi(
-              `/works/${workId}/documents`,
-              documentResponseSchema,
-              {
-                method: 'POST',
-                body: data,
-                headers: { 'idempotency-key': crypto.randomUUID() },
-                timeoutMs: 60000,
-              },
-            );
-          } catch (failure) {
-            if (failure instanceof ApiError && failure.status === 401)
-              throw failure;
-            failed.push(uploadFailureMessage(file.name, failure));
+  async function upload(files: File[]) {
+    const batch: Upload[] = files.map((file) => ({
+      id: crypto.randomUUID(),
+      name: file.name,
+      state: 'uploading',
+    }));
+    const mark = (id: string, next: Partial<Upload>) => {
+      setUploads((items) =>
+        items.map((item) => (item.id === id ? { ...item, ...next } : item)),
+      );
+    };
+    setUploads(batch);
+    setPending(true);
+    setError('');
+    try {
+      for (const [index, file] of files.entries()) {
+        const id = batch[index]?.id ?? '';
+        const data = new FormData();
+        data.set('file', file);
+        try {
+          await requestApi(
+            `/works/${workId}/documents`,
+            documentResponseSchema,
+            {
+              method: 'POST',
+              body: data,
+              headers: { 'idempotency-key': crypto.randomUUID() },
+              timeoutMs: 60000,
+            },
+          );
+          mark(id, { state: 'done' });
+        } catch (failure) {
+          if (failure instanceof ApiError && failure.status === 401) {
+            onUnauthorized();
+            return;
           }
+          mark(id, {
+            state: 'failed',
+            reason: uploadFailureMessage(file.name, failure),
+          });
         }
-      if (failed.length) throw new UploadFailure(failed.join(' '));
-      form.reset();
-    });
+      }
+      await load();
+    } finally {
+      setPending(false);
+      setTimeout(() => {
+        setUploads((items) => items.filter((item) => item.state !== 'done'));
+      }, 2500);
+    }
   }
-  if (!view)
-    return (
-      <section className="bg-surface my-5">
-        <p role="status">{error || loadError || 'Открываем работу…'}</p>
-        <Button
-          onClick={() => {
-            void load();
-          }}
-        >
-          Повторить
-        </Button>
+  if (!view || !stage)
+    return loadError ? (
+      <section className="animate-rise mx-auto flex max-w-md flex-col items-center py-20 text-center">
+        <EventHorizon state="calm" className="size-28" />
+        <h1 className="font-heading mt-8 text-2xl font-bold">{loadError}</h1>
+        <div className="mt-7 flex gap-3">
+          <Link href="/" className="text-muted hover:text-ink self-center">
+            Все работы
+          </Link>
+          <Button
+            onClick={() => {
+              void load();
+            }}
+          >
+            <RotateCw size={16} />
+            Повторить
+          </Button>
+        </div>
       </section>
+    ) : (
+      <div aria-busy className="grid gap-6">
+        <span role="status" className="sr-only">
+          Открываем работу
+        </span>
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="h-9 w-2/3 max-w-xl" />
+        <Skeleton className="h-32 w-full rounded-3xl" />
+        <Skeleton className="h-16 w-full rounded-2xl" />
+        <Skeleton className="h-72 w-full rounded-3xl" />
+      </div>
     );
+  const locked =
+    view.cleanupPending ||
+    stage.kind === 'processing' ||
+    stage.kind === 'generating';
   const busy = pending || view.cleanupPending;
-  const active = view.runs.some(
-    (run) => run.status === 'queued' || run.status === 'running',
-  );
   const values = draft?.values ?? view.facts.values;
   const post = (path: string, value: unknown = {}) =>
     requestApi(`/works/${workId}/${path}`, accepted, {
@@ -195,39 +457,212 @@ export function WorkDetail({
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(value),
     });
+  const analyze = () => {
+    void command(() => post('analyze')).then((ok) => {
+      if (ok) setStep('extraction');
+    });
+  };
+  const generate = () => {
+    void command(() => post('generate', { revision: view.work.revision })).then(
+      (ok) => {
+        if (ok) setStep('documents');
+      },
+    );
+  };
+  const change = (changes: Partial<Record<FieldKey, FieldValue>>) => {
+    setDraft({
+      revision: draft?.revision ?? view.work.revision,
+      values: { ...values, ...changes },
+    });
+  };
+  const current = step ?? stepOf(stage);
   return (
     <>
-      <Link href="/" className="text-muted hover:text-ink text-xs">
-        ← Все работы
-      </Link>
-      <h1 className="font-heading mt-4 mb-2 text-2xl font-semibold tracking-tight">
-        {view.work.title}
-      </h1>
-      <p className="text-muted text-sm leading-6" role="status">
-        {streamState}
-      </p>
-      {(error || loadError) && (
-        <div
-          className="my-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm leading-6 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
-          role="alert"
+      <div className="animate-rise">
+        <Link
+          href="/"
+          className="text-muted hover:text-ink group inline-flex items-center gap-1.5 text-sm transition-colors"
         >
-          {error || loadError}
+          <ArrowLeft
+            size={15}
+            className="transition-transform group-hover:-translate-x-0.5"
+          />
+          Все работы
+        </Link>
+        <div className="mt-4 mb-6 flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <h1 className="font-heading text-2xl font-bold tracking-tight wrap-anywhere sm:text-3xl">
+              {view.work.title}
+            </h1>
+            <p className="text-muted mt-2 text-sm">{view.package.title}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {view.work.confirmedRevision === view.work.revision ? (
+              <StatusPill tone="success">Подтверждена</StatusPill>
+            ) : (
+              <StatusPill tone="brand">В работе</StatusPill>
+            )}
+            <span
+              role="status"
+              className="text-muted flex items-center gap-2 rounded-full border border-white/[0.07] px-2.5 py-1 text-xs"
+            >
+              <span
+                className={`size-1.5 rounded-full ${live === 'live' ? 'animate-blink bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-amber-400'}`}
+              />
+              {live === 'live'
+                ? 'Обновляется автоматически'
+                : live === 'connecting'
+                  ? 'Подключаемся'
+                  : 'Переподключаемся — данные сохранены'}
+            </span>
+          </div>
         </div>
-      )}
-      {view.cleanupPending && (
-        <p
-          className="my-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm leading-6 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
-          role="status"
-        >
-          Удаляем данные исходника и производные результаты. Документ временно
-          недоступен.
-        </p>
-      )}
+      </div>
+      <div className="grid grid-cols-1 gap-4">
+        {(error || loadError) && (
+          <Notice tone="danger" role="alert">
+            {error || loadError}
+          </Notice>
+        )}
+        {view.cleanupPending && (
+          <Notice tone="progress" role="status" title="Удаляем данные файла">
+            Удаляем исходник и всё, что из него извлечено. Работа временно
+            доступна только для просмотра.
+          </Notice>
+        )}
+        <Hero
+          stage={stage}
+          step={current}
+          busy={busy}
+          locked={locked}
+          onStep={setStep}
+          onAnalyze={analyze}
+          onGenerate={generate}
+        />
+      </div>
+      <Tabs.Root
+        value={current}
+        onValueChange={(value: unknown) => {
+          if (
+            value === 'files' ||
+            value === 'extraction' ||
+            value === 'review' ||
+            value === 'documents'
+          )
+            setStep(value);
+        }}
+        className="mt-6"
+      >
+        <Stepper current={stepOf(stage)} />
+        <div className="mt-8">
+          <Tabs.Panel value="files" className="animate-rise outline-none">
+            <WorkSources
+              view={view}
+              stage={stage}
+              locked={locked}
+              busy={busy}
+              uploads={uploads}
+              onUpload={(files) => {
+                void upload(files);
+              }}
+              onOpen={setViewing}
+              onAnalyze={analyze}
+              onDelete={async (doc) => {
+                setDraft(null);
+                await command(() =>
+                  requestApi(`/works/${workId}/documents/${doc.id}`, accepted, {
+                    method: 'DELETE',
+                  }),
+                );
+              }}
+            />
+          </Tabs.Panel>
+          <Tabs.Panel value="extraction" className="animate-rise outline-none">
+            <WorkPipeline
+              view={view}
+              locked={locked}
+              busy={busy}
+              onOpen={setViewing}
+              onAnalyze={analyze}
+            />
+          </Tabs.Panel>
+          <Tabs.Panel value="review" className="animate-rise outline-none">
+            <WorkReview
+              view={view}
+              values={values}
+              busy={busy}
+              onChange={change}
+              onOpen={setViewing}
+              onExtract={analyze}
+            />
+          </Tabs.Panel>
+          <Tabs.Panel value="documents" className="animate-rise outline-none">
+            <WorkResults
+              view={view}
+              locked={locked}
+              busy={busy}
+              hasDraft={!!draft}
+              onReview={() => {
+                setStep('review');
+              }}
+              onConfirm={() => {
+                void command(() =>
+                  requestApi(`/works/${workId}/confirm`, workResponseSchema, {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ revision: view.work.revision }),
+                  }),
+                );
+              }}
+              onGenerate={generate}
+            />
+          </Tabs.Panel>
+        </div>
+      </Tabs.Root>
       {draft && (
-        <div className="border-line bg-surface sticky top-0 z-20 my-4 rounded-xl border p-4 shadow-sm">
-          <p role="status">Есть несохранённые изменения</p>
-          <div className="my-4 flex flex-wrap items-center gap-3">
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4 md:pl-[264px]">
+          <div
+            role="region"
+            aria-label="Несохранённые правки"
+            className="animate-rise pointer-events-auto flex w-full max-w-3xl flex-wrap items-center gap-3 rounded-2xl border border-[#ff3b62]/30 bg-[#141418]/95 p-3 pl-5 shadow-[0_20px_60px_-10px_#000,0_0_40px_-16px_#db143c] backdrop-blur-xl"
+          >
+            <span className="bg-brand-hot animate-blink size-2 rounded-full shadow-[0_0_8px_#ff3b62]" />
+            <p role="status" className="min-w-0 flex-1 text-sm">
+              Есть несохранённые правки
+              {draft.revision !== view.work.revision && (
+                <span className="block text-xs text-amber-200">
+                  Работа изменилась после начала правок
+                </span>
+              )}
+            </p>
             <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy}
+              onClick={() => {
+                setDraft(null);
+              }}
+            >
+              <Undo2 size={15} />
+              Отменить
+            </Button>
+            {draft.revision !== view.work.revision && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setDraft({
+                    values: draft.values,
+                    revision: view.work.revision,
+                  });
+                }}
+              >
+                Перенести правки
+              </Button>
+            )}
+            <Button
+              size="sm"
+              loading={pending}
               disabled={busy}
               onClick={() => {
                 void command(async () => {
@@ -244,373 +679,18 @@ export function WorkDetail({
                 });
               }}
             >
-              Сохранить поля
+              <Save size={15} />
+              Сохранить
             </Button>
-            <Button
-              variant="secondary"
-              disabled={busy}
-              onClick={() => {
-                setDraft(null);
-              }}
-            >
-              Отменить правки
-            </Button>
-            {draft.revision !== view.work.revision && (
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setDraft({
-                    values: draft.values,
-                    revision: view.work.revision,
-                  });
-                }}
-              >
-                Применить мои поля к текущей версии
-              </Button>
-            )}
           </div>
         </div>
       )}
-      <Tabs.Root defaultValue="sources" className="mt-6">
-        <Tabs.List
-          className="border-line mb-6 grid grid-cols-2 gap-1 border-b xl:flex"
-          aria-label="Разделы работы"
-        >
-          {[
-            { value: 'sources', label: 'Исходные файлы', Icon: Files },
-            { value: 'review', label: 'Сведения и документы', Icon: ScanText },
-            { value: 'history', label: 'История обработки', Icon: History },
-            { value: 'result', label: 'Готовые документы', Icon: Download },
-          ].map(({ value, label, Icon }) => (
-            <Tabs.Tab
-              key={value}
-              value={value}
-              className="text-muted hover:text-ink aria-selected:border-brand aria-selected:text-ink focus-visible:outline-brand flex min-h-12 min-w-0 items-center gap-2 border-b-2 border-transparent px-2 py-2 text-left text-sm transition-colors focus-visible:outline-2 sm:px-4"
-            >
-              <Icon size={16} className="shrink-0" />
-              {label}
-            </Tabs.Tab>
-          ))}
-        </Tabs.List>
-        <Tabs.Panel value="sources" keepMounted>
-          {' '}
-          <section className="bg-surface my-5">
-            <h2 className="font-heading mb-3 text-base font-semibold">
-              Исходные файлы
-            </h2>
-            <p className="text-muted text-sm leading-6">
-              До 20 файлов. Удаление исходника также очищает извлечённые
-              сведения и сформированные документы этой работы.
-            </p>
-            <Form
-              className="border-line bg-canvas mt-5 flex flex-col gap-5 rounded-xl border border-dashed p-6 sm:flex-row sm:items-end sm:justify-between"
-              onSubmit={(event) => {
-                void upload(event);
-              }}
-            >
-              <FormField
-                className="grid gap-2 text-sm font-medium"
-                label={<>PDF, DOCX или фотографии </>}
-              >
-                <Input
-                  className="border-line bg-surface text-ink placeholder:text-muted focus-visible:outline-brand file:bg-tint file:text-ink min-h-11 w-full min-w-0 rounded-lg border px-3 py-2.5 text-sm file:mr-4 file:rounded-md file:border-0 file:px-3 file:py-1 focus-visible:outline-2 disabled:opacity-50"
-                  name="files"
-                  type="file"
-                  multiple
-                  required
-                  accept=".pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff"
-                  disabled={busy || active}
-                />
-              </FormField>
-              <Button type="submit" disabled={busy || active}>
-                Загрузить
-              </Button>
-            </Form>
-            <ul className="divide-line mt-5 divide-y [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:gap-4 [&>li]:py-5">
-              {view.documents.map((doc) => (
-                <li key={doc.id}>
-                  <div className="grid min-w-0 flex-1 gap-2 wrap-anywhere">
-                    <a
-                      href={`/api/documents/${doc.id}/source`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {doc.filename}
-                    </a>
-                    <span className="border-line bg-canvas text-muted w-fit rounded-full border px-3 py-1 text-xs">
-                      {statuses[doc.status]}
-                    </span>
-                    {doc.status === 'succeeded' && (
-                      <SourcePreview
-                        key={`${doc.id}-${String(view.work.inputRevision)}`}
-                        documentId={doc.id}
-                      />
-                    )}
-                  </div>
-                  <Button
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() => {
-                      setDraft(null);
-                      void command(() =>
-                        requestApi(
-                          `/works/${workId}/documents/${doc.id}`,
-                          accepted,
-                          {
-                            method: 'DELETE',
-                          },
-                        ),
-                      );
-                    }}
-                  >
-                    Удалить полностью
-                  </Button>
-                </li>
-              ))}
-            </ul>
-            <Button
-              disabled={busy || active || !view.documents.length}
-              onClick={() => {
-                void command(() => post('analyze'));
-              }}
-            >
-              {view.runs.length ? 'Повторить обработку' : 'Извлечь сведения'}
-            </Button>
-          </section>
-        </Tabs.Panel>
-        <Tabs.Panel value="review">
-          {' '}
-          <SessionContext
-            session={view.session ?? null}
-            revision={view.work.revision}
-            fields={view.package.fields}
-          />
-          <section className="bg-surface my-5">
-            <h2 className="font-heading mb-3 text-base font-semibold">
-              Извлечённые варианты и источники
-            </h2>
-            {!view.facts.candidates.length && (
-              <p className="text-muted text-sm leading-6">
-                После анализа здесь появятся сведения с подтверждающими
-                фрагментами.
-              </p>
-            )}
-            {view.package.fields
-              .filter((field) =>
-                view.facts.candidates.some(
-                  (candidate) => candidate.field === field.key,
-                ),
-              )
-              .map((field) => (
-                <Disclosure
-                  className="border-line [&_blockquote]:border-line my-4 rounded-xl border p-4 text-sm [&_blockquote]:my-4 [&_blockquote]:border-l-2 [&_blockquote]:pl-4"
-                  key={field.key}
-                  title={<>{field.label}</>}
-                >
-                  {view.facts.candidates
-                    .filter((candidate) => candidate.field === field.key)
-                    .map((candidate, index) => (
-                      <div key={index}>
-                        {candidate.origin === 'context' && (
-                          <p className="text-muted text-sm leading-6">
-                            Предложено при сопоставлении документов
-                          </p>
-                        )}
-                        <CandidateValue value={candidate.value} />
-                        <Button
-                          variant="secondary"
-                          disabled={busy}
-                          onClick={() => {
-                            setDraft({
-                              revision: draft?.revision ?? view.work.revision,
-                              values: {
-                                ...values,
-                                [field.key]: candidate.value,
-                              },
-                            });
-                          }}
-                        >
-                          Использовать этот вариант
-                        </Button>
-                        {candidate.evidence.map((source, i) => (
-                          <blockquote key={i}>
-                            <a
-                              href={
-                                '/api/documents/' +
-                                source.documentId +
-                                '/source'
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {view.documents.find(
-                                (doc) => doc.id === source.documentId,
-                              )?.filename ?? 'Источник'}
-                              {source.imagePath && ' · ' + source.imagePath}
-                            </a>
-                            <p>{source.quote}</p>
-                          </blockquote>
-                        ))}
-                      </div>
-                    ))}
-                </Disclosure>
-              ))}
-          </section>
-          <PackagePreview
-            pack={view.package}
-            values={values}
-            disabled={busy}
-            onChange={(key, value) => {
-              setDraft({
-                revision: draft?.revision ?? view.work.revision,
-                values: { ...values, [key]: value },
-              });
-            }}
-          />
-        </Tabs.Panel>
-        <Tabs.Panel value="history">
-          {' '}
-          <section className="bg-surface my-5">
-            <h2 className="font-heading mb-3 text-base font-semibold">
-              Обработка
-            </h2>
-            {!view.runs.length && (
-              <p className="text-muted text-sm leading-6">
-                После загрузки запустите извлечение сведений.
-              </p>
-            )}
-            {view.runs.slice(0, 5).map((run) => (
-              <Disclosure
-                key={run.id}
-                defaultOpen={
-                  run.status === 'running' ||
-                  run.status === 'partial' ||
-                  run.status === 'failed'
-                }
-                title={
-                  <>
-                    {run.kind === 'analysis'
-                      ? 'Анализ файлов'
-                      : 'Создание документа'}{' '}
-                    · {statuses[run.status]}
-                  </>
-                }
-              >
-                <ul>
-                  {run.steps.map((step) => (
-                    <li key={step.id}>
-                      {stages[step.stage]}{' '}
-                      {step.documentId &&
-                        `· ${view.documents.find((doc) => doc.id === step.documentId)?.filename ?? 'исходник'}`}{' '}
-                      — {statuses[step.status]}
-                      {step.errorCode && ` (${step.errorCode})`}
-                      {step.stage === 'vision' &&
-                        step.visuals.map((visual) => (
-                          <Disclosure
-                            key={visual.path}
-                            title={<>{visual.path}</>}
-                          >
-                            {step.documentId && (
-                              <a
-                                href={`/api/documents/${step.documentId}/source`}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                Исходный файл
-                              </a>
-                            )}
-                            {step.documentId &&
-                              visual.imageIndex !== undefined && (
-                                <img
-                                  src={`/api/documents/${step.documentId}/images/${String(visual.imageIndex)}`}
-                                  alt="Исходное изображение для анализа"
-                                  loading="lazy"
-                                  className="block max-h-[360px] max-w-full object-contain"
-                                />
-                              )}
-                            <p>{visual.description}</p>
-                          </Disclosure>
-                        ))}
-                    </li>
-                  ))}
-                </ul>
-              </Disclosure>
-            ))}
-          </section>
-        </Tabs.Panel>
-        <Tabs.Panel value="result">
-          {' '}
-          <section className="bg-surface my-5">
-            <p>
-              {view.work.confirmedRevision === view.work.revision
-                ? 'Работа подтверждена'
-                : 'Сведения требуют вашей проверки'}
-            </p>
-            <div className="my-4 flex flex-wrap items-center gap-3">
-              <Button
-                disabled={busy || active || !!draft}
-                onClick={() => {
-                  void command(() =>
-                    requestApi(`/works/${workId}/confirm`, workResponseSchema, {
-                      method: 'POST',
-                      headers: { 'content-type': 'application/json' },
-                      body: JSON.stringify({ revision: view.work.revision }),
-                    }),
-                  );
-                }}
-              >
-                Подтвердить работу целиком
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={busy || active || !!draft}
-                onClick={() => {
-                  void command(() =>
-                    post('generate', { revision: view.work.revision }),
-                  );
-                }}
-              >
-                Сформировать комплект DOCX
-              </Button>
-            </div>
-            <ul>
-              {view.generations.map((generation) => (
-                <li key={generation.id}>
-                  {generation.confirmed ? 'Документ' : 'Черновик'} · версия{' '}
-                  {generation.revision} · {statuses[generation.status]}{' '}
-                  <ul>
-                    {generation.files.map((file) => (
-                      <li key={file.id}>
-                        {file.title} · {statuses[file.status]}{' '}
-                        {file.status === 'succeeded' && (
-                          <a
-                            href={
-                              '/api/works/' +
-                              workId +
-                              '/generations/' +
-                              generation.id +
-                              '/files/' +
-                              file.id
-                            }
-                          >
-                            Скачать DOCX
-                          </a>
-                        )}
-                        {file.errorCode && (
-                          <span role="status">
-                            Не удалось сформировать этот документ. Можно создать
-                            комплект повторно.
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </Tabs.Panel>
-      </Tabs.Root>
+      <DocumentViewer
+        document={viewing}
+        onClose={() => {
+          setViewing(undefined);
+        }}
+      />
     </>
   );
 }
