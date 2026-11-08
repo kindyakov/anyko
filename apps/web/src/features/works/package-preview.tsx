@@ -331,7 +331,7 @@ export function PackagePreview(props: Props) {
       }}
       render={<section className="min-w-0" aria-label="Пакет документов" />}
     >
-      <div className="z-10 -mx-1 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-[#0d0d10]/90 p-1.5 backdrop-blur-xl md:sticky md:top-3">
+      <div className="z-10 -mx-1 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-[#0d0d10]/70 p-1.5 backdrop-blur-xl md:sticky md:top-3">
         <Tabs.List
           aria-label="Документы пакета"
           className="relative flex min-w-0 flex-wrap gap-1"
@@ -461,7 +461,7 @@ export function PackagePreview(props: Props) {
           </div>
         </div>
         <Disclosure
-          className="mt-6 rounded-3xl border border-white/[0.08] bg-white/[0.015] px-5 py-2 sm:px-6"
+          className="glass mt-6 rounded-3xl border border-white/[0.08] px-5 py-2 sm:px-6"
           title={
             <span className="flex items-center gap-3">
               <span className="grid size-9 place-items-center rounded-xl border border-white/10 bg-white/[0.03]">

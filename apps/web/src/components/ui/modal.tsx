@@ -46,7 +46,7 @@ export function Modal({
       <Dialog.Portal>
         <Dialog.Backdrop className={backdrop} />
         <Dialog.Popup
-          className={`text-ink fixed z-50 flex flex-col overflow-hidden border-white/10 bg-[linear-gradient(180deg,#16161a,#0c0c0f)] shadow-[0_30px_120px_-20px_#000,0_0_0_1px_#ffffff08,0_0_80px_-40px_#db143c] transition-[opacity,scale,translate] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] outline-none ${popup}`}
+          className={`text-ink fixed z-50 flex flex-col overflow-hidden border-white/10 bg-[linear-gradient(180deg,#16161ad9,#0c0c0fe6)] shadow-[0_30px_120px_-20px_#000,0_0_0_1px_#ffffff08,0_0_80px_-40px_#db143c] backdrop-blur-2xl transition-[opacity,scale,translate] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] outline-none ${popup}`}
         >
           <span
             aria-hidden

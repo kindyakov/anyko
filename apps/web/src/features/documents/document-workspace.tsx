@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';
 import { DropZone } from '@/components/ui/drop-zone';
 import { FileIcon } from '@/components/ui/file-icon';
+import { HoverMist } from '@/components/ui/hover-mist';
 import { RelativeTime } from '@/components/ui/relative-time';
 import { Skeleton } from '@/components/ui/skeleton';
 import { stagger } from '@/components/ui/stagger';
@@ -333,7 +334,7 @@ export function DocumentWorkspace({
             {[0, 1, 2].map((item) => (
               <li
                 key={item}
-                className="flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4"
+                className="glass flex items-center gap-4 rounded-2xl border border-white/[0.06] p-4"
               >
                 <Skeleton className="size-12 rounded-xl" />
                 <div className="flex-1">
@@ -345,7 +346,7 @@ export function DocumentWorkspace({
             ))}
           </ul>
         ) : documents.length === 0 ? (
-          <p className="text-muted rounded-2xl border border-dashed border-white/10 px-6 py-10 text-center text-sm">
+          <p className="glass text-muted rounded-2xl border border-dashed border-white/10 px-6 py-10 text-center text-sm">
             Здесь появятся загруженные файлы и результаты распознавания.
           </p>
         ) : (
@@ -356,7 +357,7 @@ export function DocumentWorkspace({
               return (
                 <li
                   key={document.id}
-                  className={`animate-rise relative flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl border border-white/[0.07] bg-[linear-gradient(180deg,#131317,#0d0d10)] p-4 transition-colors hover:border-white/15 sm:flex-nowrap ${stagger(index)}`}
+                  className={`animate-rise glass group/mist relative isolate flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl border border-white/[0.07] p-4 transition-[border-color,box-shadow] duration-500 ease-out hover:border-[#ff3b62]/30 hover:shadow-[0_16px_50px_-24px_#db143c88] sm:flex-nowrap ${stagger(index)}`}
                 >
                   {busy && (
                     <span
@@ -364,6 +365,7 @@ export function DocumentWorkspace({
                       className="animate-flow absolute inset-x-0 bottom-0 h-0.5 bg-[repeating-linear-gradient(90deg,#db143c_0_14px,transparent_14px_28px)]"
                     />
                   )}
+                  <HoverMist />
                   <FileIcon filename={document.filename} />
                   <div className="min-w-0 flex-1 basis-48">
                     <p className="font-medium wrap-anywhere">

@@ -27,6 +27,7 @@ import {
 import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';
 import { FormField } from '@/components/ui/form-field';
+import { HoverMist } from '@/components/ui/hover-mist';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
 import { RelativeTime } from '@/components/ui/relative-time';
@@ -46,7 +47,7 @@ function Journey({ compact = false }: { compact?: boolean }) {
       {journeySteps.map((step, index) => (
         <li
           key={step.key}
-          className={`animate-rise relative rounded-2xl border border-white/[0.07] bg-white/[0.02] p-3.5 ${stagger(index * 2)}`}
+          className={`animate-rise glass relative rounded-2xl border border-white/[0.07] p-3.5 ${stagger(index * 2)}`}
         >
           <span className="font-heading text-brand-hot text-xs font-bold">
             0{index + 1}
@@ -186,7 +187,7 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
           {[0, 1, 2, 3, 4, 5].map((item) => (
             <li
               key={item}
-              className="rounded-3xl border border-white/[0.06] bg-white/[0.02] p-6"
+              className="glass rounded-3xl border border-white/[0.06] p-6"
             >
               <Skeleton className="size-11 rounded-xl" />
               <Skeleton className="mt-6 h-5 w-3/4" />
@@ -217,8 +218,8 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
           Проверьте подключение и попробуйте ещё раз.
         </Notice>
       ) : !works.length ? (
-        <section className="animate-rise relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(90%_120%_at_50%_0%,#2a0a12,#0b0b0e_60%)] px-6 py-14 text-center sm:px-12">
-          <EventHorizon state="idle" className="mx-auto size-40" />
+        <section className="animate-rise glass relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(90%_120%_at_50%_0%,#2a0a12aa,transparent_60%)] px-6 py-14 text-center sm:px-12">
+          <EventHorizon state="idle" className="mx-auto size-56" />
           <h2 className="font-heading mt-8 text-2xl font-bold tracking-tight">
             Начните с первой работы
           </h2>
@@ -235,7 +236,7 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
           </div>
         </section>
       ) : !visible.length ? (
-        <section className="animate-rise flex flex-col items-center rounded-3xl border border-dashed border-white/10 px-6 py-16 text-center">
+        <section className="glass animate-rise flex flex-col items-center rounded-3xl border border-dashed border-white/10 px-6 py-16 text-center">
           <span className="grid size-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.03] text-zinc-400">
             <Search size={24} />
           </span>
@@ -270,12 +271,9 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
               <li key={work.id} className={`animate-rise ${stagger(index)}`}>
                 <Link
                   href={`/works/${work.id}`}
-                  className="group focus-visible:outline-brand-hot relative flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] bg-[linear-gradient(180deg,#141418,#0c0c0f)] p-6 transition-[border-color,transform,box-shadow] duration-300 hover:-translate-y-1 hover:border-[#ff3b62]/40 hover:shadow-[0_20px_60px_-20px_#db143c88] focus-visible:outline-2 focus-visible:outline-offset-2"
+                  className="group group/mist focus-visible:outline-brand-hot glass relative isolate flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] p-6 transition-[border-color,box-shadow] duration-500 ease-out hover:border-[#ff3b62]/40 hover:shadow-[0_20px_60px_-20px_#db143c88] focus-visible:outline-2 focus-visible:outline-offset-2"
                 >
-                  <span
-                    aria-hidden
-                    className="pointer-events-none absolute -top-16 -right-16 size-44 rounded-full bg-[radial-gradient(closest-side,#db143c55,transparent)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
-                  />
+                  <HoverMist />
                   <div className="flex items-start justify-between gap-4">
                     <span className="grid size-11 place-items-center rounded-xl border border-white/10 bg-white/[0.03] text-zinc-300 transition-colors duration-300 group-hover:border-[#ff3b62]/40 group-hover:text-[#ff6a88]">
                       <FileStack size={20} strokeWidth={1.6} />

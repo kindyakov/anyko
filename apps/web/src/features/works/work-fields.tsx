@@ -118,7 +118,7 @@ export function FieldEditor({
   );
   return (
     <Fieldset.Root
-      className="min-w-0 rounded-2xl border border-white/[0.08] bg-white/[0.015] p-4 sm:col-span-full"
+      className="glass min-w-0 rounded-2xl border border-white/[0.08] p-4 sm:col-span-full"
       disabled={disabled}
       data-field-editor={field.key}
     >

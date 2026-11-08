@@ -32,7 +32,7 @@ export function Confirm({
     >
       <AlertDialog.Portal>
         <AlertDialog.Backdrop className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm transition-opacity duration-300 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-        <AlertDialog.Popup className="text-ink fixed top-1/2 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-white/10 bg-[linear-gradient(180deg,#18181c,#0d0d10)] p-6 shadow-[0_30px_120px_-20px_#000] transition-[opacity,scale] duration-200 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0 sm:p-7">
+        <AlertDialog.Popup className="text-ink fixed top-1/2 left-1/2 z-50 w-[calc(100%-32px)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-white/10 bg-[linear-gradient(180deg,#18181cd9,#0d0d10e6)] p-6 shadow-[0_30px_120px_-20px_#000] backdrop-blur-2xl transition-[opacity,scale] duration-200 data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0 sm:p-7">
           <span className="mb-5 grid size-12 place-items-center rounded-2xl border border-red-400/20 bg-red-500/10 text-red-300">
             <Trash2 size={20} />
           </span>

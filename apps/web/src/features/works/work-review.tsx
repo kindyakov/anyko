@@ -142,7 +142,7 @@ export function WorkReview({
           ].map(([label, value, tone]) => (
             <div
               key={String(label)}
-              className="rounded-2xl border border-white/[0.07] bg-white/[0.02] px-4 py-3"
+              className="glass rounded-2xl border border-white/[0.07] px-4 py-3"
             >
               <p className="text-muted text-xs">{label}</p>
               <p
@@ -154,7 +154,7 @@ export function WorkReview({
           ))}
         </div>
         {quick.length > 0 && (
-          <div className="animate-rise mb-5 flex flex-col gap-4 rounded-2xl border border-[#ff3b62]/25 bg-[#db143c]/[0.06] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="animate-rise mb-5 flex flex-col gap-4 rounded-2xl border border-[#ff3b62]/25 bg-[#db143c]/[0.06] p-4 backdrop-blur-[18px] sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm leading-6">
               <span className="font-medium">
                 {quick.length} пустых полей можно заполнить без споров
@@ -183,8 +183,8 @@ export function WorkReview({
           </div>
         )}
         {!fields.length ? (
-          <div className="flex flex-col items-center rounded-3xl border border-dashed border-white/10 px-6 py-12 text-center">
-            <EventHorizon state="calm" className="size-24" />
+          <div className="glass flex flex-col items-center rounded-3xl border border-dashed border-white/10 px-6 py-12 text-center">
+            <EventHorizon state="calm" className="size-36" />
             <p className="mt-6 font-medium">Сведений пока нет</p>
             <p className="text-muted mt-2 max-w-md text-sm leading-6">
               Запустите извлечение — найденные значения с цитатами появятся
@@ -203,7 +203,7 @@ export function WorkReview({
             )}
           </div>
         ) : !visible.length ? (
-          <p className="text-muted rounded-2xl border border-dashed border-white/10 px-6 py-8 text-center text-sm">
+          <p className="glass text-muted rounded-2xl border border-dashed border-white/10 px-6 py-8 text-center text-sm">
             {filter === 'conflicts'
               ? 'Расхождений нет — все файлы согласны между собой.'
               : 'Все найденные значения применены.'}
@@ -216,7 +216,7 @@ export function WorkReview({
               return (
                 <li
                   key={field.key}
-                  className={`animate-rise rounded-2xl border p-4 sm:p-5 ${conflict ? 'border-amber-400/25 bg-amber-400/[0.03]' : 'border-white/[0.07] bg-[linear-gradient(180deg,#131317,#0d0d10)]'} ${stagger(index)}`}
+                  className={`animate-rise rounded-2xl border p-4 sm:p-5 ${conflict ? 'glass border-amber-400/25 bg-amber-400/[0.03]' : 'glass border-white/[0.07]'} ${stagger(index)}`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">

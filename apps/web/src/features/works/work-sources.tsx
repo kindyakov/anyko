@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';
 import { DropZone } from '@/components/ui/drop-zone';
 import { FileIcon } from '@/components/ui/file-icon';
+import { HoverMist } from '@/components/ui/hover-mist';
 import { RelativeTime } from '@/components/ui/relative-time';
 import { Spinner } from '@/components/ui/spinner';
 import { stagger } from '@/components/ui/stagger';
@@ -113,7 +114,7 @@ export function WorkSources({
           </h2>
         </div>
         {!view.documents.length ? (
-          <p className="text-muted rounded-2xl border border-dashed border-white/10 px-6 py-8 text-center text-sm">
+          <p className="glass text-muted rounded-2xl border border-dashed border-white/10 px-6 py-8 text-center text-sm">
             Пока пусто. Загруженные файлы появятся здесь.
           </p>
         ) : (
@@ -123,8 +124,9 @@ export function WorkSources({
               return (
                 <li
                   key={doc.id}
-                  className={`animate-rise flex items-center gap-4 rounded-2xl border border-white/[0.07] bg-[linear-gradient(180deg,#131317,#0d0d10)] p-4 transition-colors hover:border-white/15 ${stagger(index)}`}
+                  className={`animate-rise glass group/mist relative isolate flex items-center gap-4 overflow-hidden rounded-2xl border border-white/[0.07] p-4 transition-[border-color,box-shadow] duration-500 ease-out hover:border-[#ff3b62]/30 hover:shadow-[0_16px_50px_-24px_#db143c88] ${stagger(index)}`}
                 >
+                  <HoverMist />
                   <FileIcon filename={doc.filename} />
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium wrap-anywhere">
@@ -170,7 +172,7 @@ export function WorkSources({
         )}
       </section>
       {view.documents.length > 0 && (
-        <section className="flex flex-col gap-5 rounded-3xl border border-white/[0.08] bg-[radial-gradient(120%_160%_at_0%_0%,#2a0a1288,transparent_60%)] p-6 sm:flex-row sm:items-center sm:justify-between">
+        <section className="glass flex flex-col gap-5 rounded-3xl border border-white/[0.08] bg-[radial-gradient(120%_160%_at_0%_0%,#2a0a1288,transparent_60%)] p-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="font-heading text-lg font-bold">
               {stage.kind === 'ready'

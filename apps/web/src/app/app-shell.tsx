@@ -7,6 +7,7 @@ import type { z } from 'zod';
 
 import type { sessionResponseSchema } from '@anyko/contracts';
 
+import { DeepSkyBackdrop } from '@/components/cosmos/deep-sky-backdrop';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { SignOut } from '@/features/auth';
@@ -76,14 +77,7 @@ export function AppShell({
   );
   return (
     <div className="bg-canvas relative isolate min-h-dvh md:grid md:grid-cols-[264px_minmax(0,1fr)]">
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
-      >
-        <div className="absolute -top-64 right-[-10%] size-[720px] rounded-full bg-[radial-gradient(closest-side,#db143c1c,transparent)]" />
-        <div className="absolute bottom-[-30%] left-[10%] size-[620px] rounded-full bg-[radial-gradient(closest-side,#5b0a1d14,transparent)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(1px_1px_at_20%_30%,#ffffff40,transparent),radial-gradient(1px_1px_at_70%_15%,#ffffff30,transparent),radial-gradient(1px_1px_at_85%_70%,#ffffff35,transparent),radial-gradient(1px_1px_at_40%_85%,#ffffff25,transparent),radial-gradient(1px_1px_at_55%_45%,#ffffff20,transparent)] bg-size-[640px_640px]" />
-      </div>
+      <DeepSkyBackdrop />
       <a
         href="#main"
         className="focus:bg-surface sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:rounded-lg focus:p-4"

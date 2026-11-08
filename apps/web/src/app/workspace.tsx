@@ -50,7 +50,7 @@ export function Workspace({
         <span role="status" className="sr-only">
           Открываем рабочую область
         </span>
-        <EventHorizon state="active" className="animate-fade size-28" />
+        <EventHorizon state="active" className="animate-fade size-44" />
       </main>
     );
   if (query.isError)
@@ -60,7 +60,7 @@ export function Workspace({
         className="grid min-h-dvh place-items-center bg-black px-5"
       >
         <section className="animate-rise flex max-w-md flex-col items-center text-center">
-          <EventHorizon state="calm" className="mb-8 size-32" />
+          <EventHorizon state="calm" className="mb-4 size-44" />
           <h1 className="font-heading text-2xl font-bold">
             Не удалось открыть рабочую область
           </h1>

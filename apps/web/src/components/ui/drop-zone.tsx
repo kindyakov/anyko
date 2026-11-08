@@ -95,15 +95,24 @@ export function DropZone({
       }}
       data-over={over || undefined}
       data-disabled={disabled || undefined}
-      className="group/drop relative isolate overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(120%_140%_at_50%_0%,#2a0a12_0%,#0d0d10_45%,#08080a_100%)] p-6 transition-[border-color,box-shadow] duration-300 data-[disabled]:opacity-60 data-[over]:border-[#ff3b62]/70 data-[over]:shadow-[0_0_0_4px_#db143c22,0_0_60px_-10px_#db143c] sm:p-8"
+      className="group/drop glass relative isolate overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(60%_70%_at_50%_55%,#2a0a1299_0%,transparent_70%)] px-6 py-8 transition-[border-color,box-shadow] duration-300 data-[disabled]:*:opacity-60 data-[over]:border-[#ff3b62]/70 data-[over]:shadow-[0_0_0_4px_#db143c22,0_0_60px_-10px_#db143c] sm:px-10 sm:py-10"
     >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(1px_1px_at_12%_22%,#fff9,transparent),radial-gradient(1px_1px_at_78%_18%,#fff7,transparent),radial-gradient(1px_1px_at_64%_74%,#fff6,transparent),radial-gradient(1.5px_1.5px_at_30%_80%,#ffd6de,transparent),radial-gradient(1px_1px_at_90%_60%,#fff8,transparent),radial-gradient(1px_1px_at_45%_12%,#fff5,transparent)]"
-      />
-      <div className="flex flex-col items-center gap-6 text-center md:flex-row md:text-left">
-        <div className="relative grid size-44 shrink-0 place-items-center sm:size-52">
-          <EventHorizon state={state} className="size-36 sm:size-44" />
+      <div className="flex flex-col items-center text-center">
+        <p className="font-heading text-xl font-bold tracking-tight text-white sm:text-2xl">
+          <span className="group-data-[over]/drop:hidden">{title}</span>
+          <span className="hidden group-data-[over]/drop:inline">
+            Отпустите — Anyko заберёт файлы
+          </span>
+        </p>
+        <p className="text-muted mt-2 max-w-xl text-sm leading-6">{hint}</p>
+        {/* The emblem is larger than its slot and glows behind the copy. */}
+        <div className="relative -z-10 my-2 h-48 w-full sm:h-56">
+          <span className="absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-1/2">
+            <EventHorizon
+              state={state}
+              className="size-72 sm:size-[26rem] lg:size-[30rem]"
+            />
+          </span>
           {flying.map((file, index) => (
             <span
               key={file.id}
@@ -119,28 +128,19 @@ export function DropZone({
             </span>
           ))}
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="font-heading text-xl font-bold tracking-tight text-white sm:text-2xl">
-            <span className="group-data-[over]/drop:hidden">{title}</span>
-            <span className="hidden group-data-[over]/drop:inline">
-              Отпустите — Anyko заберёт файлы
-            </span>
-          </p>
-          <p className="text-muted mt-2 max-w-xl text-sm leading-6">{hint}</p>
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-3 md:justify-start">
-            <Button
-              size="lg"
-              disabled={disabled}
-              loading={busy}
-              onClick={() => input.current?.click()}
-            >
-              <Upload size={17} />
-              {multiple ? 'Выбрать файлы' : 'Выбрать файл'}
-            </Button>
-            <span className="text-muted hidden text-xs sm:inline">
-              или перетащите их сюда
-            </span>
-          </div>
+        <div className="flex flex-col items-center gap-2.5">
+          <Button
+            size="lg"
+            disabled={disabled}
+            loading={busy}
+            onClick={() => input.current?.click()}
+          >
+            <Upload size={17} />
+            {multiple ? 'Выбрать файлы' : 'Выбрать файл'}
+          </Button>
+          <span className="text-muted hidden text-xs sm:inline">
+            или перетащите их в Anyko
+          </span>
         </div>
       </div>
       <Input

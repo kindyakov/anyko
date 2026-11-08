@@ -21,7 +21,7 @@ export function SessionContext({
     fields.find((f) => f.key === key)?.label ?? key;
   return (
     <section
-      className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(120%_140%_at_0%_0%,#2a0a1266,transparent_55%),linear-gradient(180deg,#131317,#0c0c0f)] p-5 sm:p-6"
+      className="glass relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(120%_140%_at_0%_0%,#2a0a1266,transparent_55%)] p-5 sm:p-6"
       aria-label="Контекст работы"
     >
       <div className="flex items-start gap-4">

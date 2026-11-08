@@ -67,7 +67,6 @@ function Hero({
   const content: {
     title: string;
     text: string;
-    horizon: 'idle' | 'active' | 'calm';
     action?: React.ReactNode;
   } = (() => {
     switch (stage.kind) {
@@ -75,7 +74,6 @@ function Hero({
         return {
           title: 'Добавьте файлы клиента',
           text: 'Паспорт, СНИЛС, справки и выписки — Anyko прочитает их и найдёт сведения для документов.',
-          horizon: 'idle',
           ...(step !== 'files' && {
             action: (
               <Button
@@ -94,7 +92,6 @@ function Hero({
           text: !stage.first
             ? `Новых файлов, ещё не прочитанных Anyko: ${String(stage.pending)}. Извлечение найдёт в них сведения и дополнит работу.`
             : 'Anyko распознает текст, изучит изображения и найдёт сведения с цитатами из источников.',
-          horizon: 'idle',
           action: (
             <Button
               size="lg"
@@ -111,7 +108,6 @@ function Hero({
         return {
           title: 'Anyko извлекает сведения',
           text: `Выполнено этапов: ${String(stage.done)} из ${String(stage.total)}. Можно закрыть страницу — обработка продолжится на сервере.`,
-          horizon: 'active',
           ...(step !== 'extraction' && {
             action: (
               <Button
@@ -131,7 +127,6 @@ function Hero({
             ? 'Проверьте сведения и разрешите расхождения'
             : 'Проверьте найденные сведения',
           text: `Найдено полей: ${String(stage.fields)}${stage.conflicts ? `, расхождений: ${String(stage.conflicts)}` : ''}. Примените значения, поправьте документы и подтвердите.${stage.run.status === 'partial' || stage.run.status === 'failed' ? ' Часть этапов извлечения не выполнена.' : ''}`,
-          horizon: 'calm',
           action:
             step === 'review' ? (
               <Button
@@ -156,7 +151,6 @@ function Hero({
         return {
           title: 'Сведения подтверждены',
           text: 'Осталось сформировать комплект документов в DOCX.',
-          horizon: 'calm',
           action: (
             <Button
               size="lg"
@@ -173,13 +167,11 @@ function Hero({
         return {
           title: 'Формируем документы',
           text: 'Anyko заполняет шаблоны. Файлы появятся автоматически.',
-          horizon: 'active',
         };
       case 'generated':
         return {
           title: 'Комплект готов',
           text: `Сформировано документов: ${String(stage.files)}. Скачайте DOCX или вернитесь к сведениям, чтобы что-то поправить.`,
-          horizon: 'calm',
           ...(step !== 'documents' && {
             action: (
               <Button
@@ -197,12 +189,8 @@ function Hero({
   return (
     <section
       aria-live="polite"
-      className="relative flex flex-col gap-5 overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(70%_160%_at_0%_50%,#3a0b18,transparent_60%),linear-gradient(180deg,#131317,#0b0b0e)] p-5 sm:flex-row sm:items-center sm:p-6"
+      className="glass relative flex flex-col gap-5 overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(70%_160%_at_0%_50%,#3a0b18b3,transparent_60%)] p-5 sm:flex-row sm:items-center sm:p-6"
     >
-      <EventHorizon
-        state={content.horizon}
-        className="size-20 self-center sm:size-24"
-      />
       <div className="min-w-0 flex-1">
         <p className="text-brand-hot text-xs font-semibold tracking-[0.14em] uppercase">
           Сейчас
@@ -224,7 +212,7 @@ function Stepper({ current }: { current: StepKey }) {
   return (
     <Tabs.List
       aria-label="Шаги работы"
-      className="relative grid grid-cols-2 gap-1.5 rounded-2xl border border-white/[0.07] bg-black/40 p-1.5 lg:grid-cols-4"
+      className="glass relative grid grid-cols-2 gap-1.5 rounded-2xl border border-white/[0.07] p-1.5 lg:grid-cols-4"
     >
       <Tabs.Indicator className="absolute top-0 left-0 h-(--active-tab-height) w-(--active-tab-width) translate-x-(--active-tab-left) translate-y-(--active-tab-top) rounded-xl bg-[linear-gradient(180deg,#ffffff12,#ffffff06)] shadow-[inset_0_1px_0_#ffffff14,0_0_0_1px_#ff3b6240,0_10px_30px_-12px_#db143c] transition-[translate,width,height] duration-300 ease-out" />
       {journeySteps.map((step, index) => {
@@ -417,7 +405,7 @@ export function WorkDetail({
   if (!view || !stage)
     return loadError ? (
       <section className="animate-rise mx-auto flex max-w-md flex-col items-center py-20 text-center">
-        <EventHorizon state="calm" className="size-28" />
+        <EventHorizon state="calm" className="size-40" />
         <h1 className="font-heading mt-8 text-2xl font-bold">{loadError}</h1>
         <div className="mt-7 flex gap-3">
           <Link href="/" className="text-muted hover:text-ink self-center">
@@ -624,7 +612,7 @@ export function WorkDetail({
           <div
             role="region"
             aria-label="Несохранённые правки"
-            className="animate-rise pointer-events-auto flex w-full max-w-3xl flex-wrap items-center gap-3 rounded-2xl border border-[#ff3b62]/30 bg-[#141418]/95 p-3 pl-5 shadow-[0_20px_60px_-10px_#000,0_0_40px_-16px_#db143c] backdrop-blur-xl"
+            className="animate-rise pointer-events-auto flex w-full max-w-3xl flex-wrap items-center gap-3 rounded-2xl border border-[#ff3b62]/30 bg-[#141418]/80 p-3 pl-5 shadow-[0_20px_60px_-10px_#000,0_0_40px_-16px_#db143c] backdrop-blur-xl"
           >
             <span className="bg-brand-hot animate-blink size-2 rounded-full shadow-[0_0_8px_#ff3b62]" />
             <p role="status" className="min-w-0 flex-1 text-sm">

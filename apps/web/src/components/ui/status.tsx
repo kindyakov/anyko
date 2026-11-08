@@ -83,7 +83,7 @@ export function Notice({
   return (
     <div
       role={role}
-      className={`animate-rise flex flex-wrap items-start gap-3 rounded-2xl border p-4 text-sm leading-6 ${notices[tone]}`}
+      className={`animate-rise flex flex-wrap items-start gap-3 rounded-2xl border p-4 text-sm leading-6 backdrop-blur-[18px] ${notices[tone]}`}
     >
       <span className="mt-0.5 shrink-0">
         {Icon ? <Icon size={18} aria-hidden /> : <Spinner className="size-4" />}

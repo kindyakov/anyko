@@ -41,7 +41,7 @@ function Files({
       {generation.files.map((file, index) => (
         <li
           key={file.id}
-          className={`animate-rise flex items-center gap-3 rounded-2xl border border-white/[0.07] bg-[linear-gradient(180deg,#141418,#0d0d10)] p-4 ${stagger(index)}`}
+          className={`animate-rise glass flex items-center gap-3 rounded-2xl border border-white/[0.07] p-4 ${stagger(index)}`}
         >
           <span className="relative grid size-12 shrink-0 place-items-center rounded-xl border border-sky-300/20 bg-sky-400/[0.06] text-sky-200">
             <FileType2 size={22} strokeWidth={1.5} />
@@ -123,7 +123,7 @@ export function WorkResults({
       )}
       <ol className="grid gap-4 lg:grid-cols-2">
         <li
-          className={`relative overflow-hidden rounded-3xl border p-6 ${confirmed ? 'border-emerald-400/25 bg-emerald-400/[0.04]' : 'border-white/[0.08] bg-[linear-gradient(180deg,#141418,#0c0c0f)]'}`}
+          className={`relative overflow-hidden rounded-3xl border p-6 ${confirmed ? 'glass border-emerald-400/25 bg-emerald-400/[0.04]' : 'glass border-white/[0.08]'}`}
         >
           <span className="font-heading text-brand-hot text-xs font-bold">
             01
@@ -160,7 +160,7 @@ export function WorkResults({
             )}
           </div>
         </li>
-        <li className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[linear-gradient(180deg,#141418,#0c0c0f)] p-6">
+        <li className="glass relative overflow-hidden rounded-3xl border border-white/[0.08] p-6">
           <span className="font-heading text-brand-hot text-xs font-bold">
             02
           </span>
@@ -193,10 +193,10 @@ export function WorkResults({
           Готовые документы
         </h2>
         {!latest ? (
-          <div className="flex flex-col items-center rounded-3xl border border-dashed border-white/10 px-6 py-12 text-center">
+          <div className="glass flex flex-col items-center rounded-3xl border border-dashed border-white/10 px-6 py-12 text-center">
             <EventHorizon
               state={generating ? 'active' : 'calm'}
-              className="size-24"
+              className="size-36"
             />
             <p className="mt-6 font-medium">
               {generating ? 'Формируем документы' : 'Документов пока нет'}
@@ -208,7 +208,7 @@ export function WorkResults({
             </p>
           </div>
         ) : (
-          <div className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(100%_140%_at_100%_0%,#2a0a1277,transparent_55%),linear-gradient(180deg,#121216,#0b0b0e)] p-5 sm:p-6">
+          <div className="glass relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(100%_140%_at_100%_0%,#2a0a1277,transparent_55%)] p-5 sm:p-6">
             <div className="mb-5 flex flex-wrap items-center gap-3">
               <BadgeCheck
                 size={22}
@@ -240,7 +240,7 @@ export function WorkResults({
         )}
         {older.length > 0 && (
           <Disclosure
-            className="mt-4 rounded-2xl border border-white/[0.06] px-4"
+            className="glass mt-4 rounded-2xl border border-white/[0.06] px-4"
             title={
               <span className="text-muted text-sm">
                 Предыдущие версии · {older.length}

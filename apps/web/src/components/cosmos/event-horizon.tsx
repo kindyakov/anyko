@@ -1,41 +1,116 @@
+'use client';
+import { useEffect, useRef } from 'react';
+
+import { paintBlackHole } from '@/components/cosmos/black-hole-renderer';
+
+type HorizonState = 'idle' | 'active' | 'hungry' | 'calm';
+
+// Disk speed and glow per state; the emblem eases between them.
+const moods: Record<HorizonState, { speed: number; glow: number }> = {
+  calm: { speed: 0.35, glow: 0.7 },
+  idle: { speed: 1, glow: 1 },
+  active: { speed: 2.4, glow: 1.25 },
+  hungry: { speed: 4.5, glow: 1.8 },
+};
+
 /**
- * CSS black hole used as the product's "absorbing" emblem. The tilted accretion
- * disk shares a 3D context with the core, so the core hides its far half.
+ * The sign-in black hole as an emblem. The box is the layout size; the canvas
+ * overflows it on every side so the disk and halo are never cut by the box.
  */
 export function EventHorizon({
   state = 'idle',
   className = 'size-40',
 }: {
-  state?: 'idle' | 'active' | 'hungry' | 'calm';
+  state?: HorizonState;
   className?: string;
 }) {
-  const speed =
-    state === 'hungry'
-      ? '[animation-duration:1.2s]'
-      : state === 'active'
-        ? '[animation-duration:3s]'
-        : state === 'calm'
-          ? '[animation-duration:30s]'
-          : '[animation-duration:12s]';
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mood = useRef(moods[state]);
+  useEffect(() => {
+    mood.current = moods[state];
+  }, [state]);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let frame = 0,
+      previous = 0,
+      time = 0,
+      visible = true;
+    const current = { ...mood.current };
+    function paint() {
+      if (!canvas || !ctx) return;
+      const w = canvas.clientWidth,
+        h = canvas.clientHeight;
+      if (!w || !h) return;
+      const dpr = Math.min(window.devicePixelRatio, 2);
+      if (canvas.width !== Math.round(w * dpr)) {
+        canvas.width = Math.round(w * dpr);
+        canvas.height = Math.round(h * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      // The disk spans ~1.2 box widths, the shadow about a third of the box.
+      const r = Math.min(w, h) * 0.11;
+      paintBlackHole(ctx, {
+        x: w / 2,
+        y: h / 2,
+        r,
+        time,
+        tilt: 0,
+        ship: r > 34 ? Math.min(1, r / 70) : 0,
+        quality: Math.min(0.8, Math.max(0.3, r / 90)),
+        glow: current.glow,
+      });
+      canvas.dataset.ready = 'true';
+    }
+    function tick(now: number) {
+      frame = requestAnimationFrame(tick);
+      if (previous && now - previous < 32) return;
+      const delta = previous ? Math.min((now - previous) / 1000, 0.1) : 0;
+      previous = now;
+      current.speed += (mood.current.speed - current.speed) * 0.08;
+      current.glow += (mood.current.glow - current.glow) * 0.08;
+      time += delta * current.speed;
+      paint();
+    }
+    function schedule() {
+      cancelAnimationFrame(frame);
+      previous = 0;
+      paint();
+      if (visible && !document.hidden && !reduced.matches)
+        frame = requestAnimationFrame(tick);
+    }
+    // Off-screen emblems stop drawing entirely.
+    const seen = new IntersectionObserver(([entry]) => {
+      visible = entry?.isIntersecting ?? true;
+      schedule();
+    });
+    const resize = new ResizeObserver(paint);
+    seen.observe(canvas);
+    resize.observe(canvas);
+    document.addEventListener('visibilitychange', schedule);
+    reduced.addEventListener('change', schedule);
+    schedule();
+    return () => {
+      cancelAnimationFrame(frame);
+      seen.disconnect();
+      resize.disconnect();
+      document.removeEventListener('visibilitychange', schedule);
+      reduced.removeEventListener('change', schedule);
+    };
+  }, []);
   return (
     <span
       aria-hidden
       data-state={state}
-      className={`group/horizon relative inline-block shrink-0 transition-transform duration-500 ease-out [perspective:600px] data-[state=hungry]:scale-115 ${className}`}
+      className={`pointer-events-none relative inline-block shrink-0 transition-transform duration-700 ease-out data-[state=hungry]:scale-110 ${className}`}
     >
-      <span className="animate-horizon absolute -inset-1/3 rounded-full bg-[radial-gradient(closest-side,#db143c70,#db143c22_55%,transparent)] blur-md group-data-[state=calm]/horizon:opacity-40 group-data-[state=hungry]/horizon:bg-[radial-gradient(closest-side,#ff3b62aa,#db143c44_55%,transparent)]" />
-      <span className="absolute inset-0 [transform-style:preserve-3d]">
-        <span className="absolute inset-[2%] [transform:rotateX(76deg)_rotateY(-8deg)] [transform-style:preserve-3d]">
-          <span
-            className={`animate-spin-slow absolute inset-0 rounded-full bg-[conic-gradient(from_0deg,#ff3b62,#7a0a22,#ff8aa3,#db143c,#3d0612,#ff3b62,#9c0e2c,#ffb3c3,#ff3b62)] [mask:radial-gradient(closest-side,transparent_34%,#000_40%,#000_62%,transparent_100%)] ${speed}`}
-          />
-          <span
-            className={`animate-spin-slow absolute inset-[14%] rounded-full bg-[conic-gradient(from_90deg,transparent,#fff8,transparent_30%,#ff3b62,transparent_60%,#fff6,transparent)] opacity-70 [animation-direction:reverse] [mask:radial-gradient(closest-side,transparent_52%,#000_60%,transparent_100%)] ${speed}`}
-          />
-        </span>
-        <span className="absolute inset-[31%] rounded-full bg-black shadow-[0_0_0_1.5px_#ff6a88cc,0_0_14px_3px_#db143c,inset_0_0_18px_#000] transition-shadow duration-500 group-data-[state=hungry]/horizon:shadow-[0_0_0_2px_#ffd0da,0_0_28px_8px_#ff3b62,inset_0_0_18px_#000]" />
-        <span className="absolute inset-[27%] rounded-full border-t-2 border-t-[#ff8aa3]/70 blur-[1.5px]" />
-      </span>
+      <canvas
+        ref={canvasRef}
+        className="absolute -top-1/2 -left-1/2 h-[200%] w-[200%] opacity-0 transition-opacity duration-700 data-[ready=true]:opacity-100"
+      />
     </span>
   );
 }

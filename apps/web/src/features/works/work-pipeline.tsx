@@ -137,7 +137,7 @@ function RunView({
         return (
           <div
             key={documentId ?? 'work'}
-            className={`animate-rise rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4 ${stagger(index)}`}
+            className={`animate-rise glass rounded-2xl border border-white/[0.07] p-4 ${stagger(index)}`}
           >
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
               <div className="flex min-w-0 items-center gap-3 lg:w-72">
@@ -251,8 +251,8 @@ export function WorkPipeline({
   const [current, ...previous] = analyses;
   if (!current)
     return (
-      <section className="animate-rise flex flex-col items-center rounded-3xl border border-white/[0.08] bg-[radial-gradient(90%_120%_at_50%_0%,#2a0a12,#0b0b0e_60%)] px-6 py-14 text-center">
-        <EventHorizon state="calm" className="size-32" />
+      <section className="animate-rise glass flex flex-col items-center rounded-3xl border border-white/[0.08] bg-[radial-gradient(90%_120%_at_50%_0%,#2a0a12aa,transparent_60%)] px-6 py-14 text-center">
+        <EventHorizon state="calm" className="size-44" />
         <h2 className="font-heading mt-8 text-2xl font-bold tracking-tight">
           Извлечение ещё не запускалось
         </h2>
@@ -286,7 +286,7 @@ export function WorkPipeline({
     <div className="grid grid-cols-1 gap-8">
       <section
         aria-labelledby="run-title"
-        className="relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[linear-gradient(180deg,#131317,#0b0b0e)] p-5 sm:p-6"
+        className="glass relative overflow-hidden rounded-3xl border border-white/[0.08] p-5 sm:p-6"
       >
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -355,7 +355,7 @@ export function WorkPipeline({
             {previous.slice(0, 5).map((run) => (
               <li
                 key={run.id}
-                className="rounded-2xl border border-white/[0.06] bg-white/[0.015] px-4"
+                className="glass rounded-2xl border border-white/[0.06] px-4"
               >
                 <Disclosure
                   title={
