@@ -30,14 +30,6 @@
 }
 /* Semantic colors from docs/brand/tokens.css. */
 :root {
-  --canvas: #faf8f9;
-  --surface: #ffffff;
-  --ink: #18181b;
-  --muted: #65616a;
-  --line: #ded9dd;
-  --tint: #fdecf0;
-}
-.dark {
   --canvas: #09090b;
   --surface: #18181b;
   --ink: #fafafa;

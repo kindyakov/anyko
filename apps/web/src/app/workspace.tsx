@@ -19,7 +19,6 @@ import { sessionResponseSchema } from '@anyko/contracts';
 import { CosmicBackground } from '@/components/cosmos/cosmic-background';
 import { Button } from '@/components/ui/button';
 import { OrbitLoader } from '@/components/ui/orbit-loader';
-import { ThemePicker } from '@/components/ui/theme-picker';
 import { SignIn, SignOut } from '@/features/auth';
 import { expireSession } from '@/features/auth/session-cache';
 import { DocumentWorkspace } from '@/features/documents';
@@ -67,7 +66,7 @@ export function Workspace({
     <div
       className={
         session
-          ? 'min-h-dvh md:grid md:grid-cols-[232px_minmax(0,1fr)]'
+          ? 'bg-canvas min-h-dvh md:grid md:grid-cols-[248px_minmax(0,1fr)]'
           : 'dark relative isolate min-h-dvh bg-black text-white [--canvas:#09090b] [--ink:#fafafa] [--line:#27272a] [--muted:#a1a1aa] [--surface:#111113] [--tint:#201114]'
       }
     >
@@ -79,14 +78,29 @@ export function Workspace({
         К содержимому
       </a>
       {session ? (
-        <aside className="border-line bg-canvas flex flex-col border-b md:sticky md:top-0 md:h-dvh md:overflow-y-auto md:border-r md:border-b-0">
-          <div className="flex h-20 items-center px-6">{logo}</div>
-          <div className="border-line bg-surface mx-4 mb-6 hidden items-center gap-3 rounded-xl border px-3 py-3 md:flex">
-            <span className="bg-tint flex size-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold">
+        <aside className="border-line bg-surface/40 flex flex-col border-b md:sticky md:top-0 md:h-dvh md:overflow-y-auto md:border-r md:border-b-0">
+          <div className="flex h-20 shrink-0 items-center justify-between gap-3 px-4 md:px-6">
+            {logo}
+            <div className="flex gap-2 md:hidden">
+              <Button
+                variant="secondary"
+                aria-label="Настройки"
+                className="px-3"
+                onClick={() => {
+                  setSettingsOpen(true);
+                }}
+              >
+                <Settings2 size={16} />
+              </Button>
+              <SignOut onSignedOut={unauthorized} />
+            </div>
+          </div>
+          <div className="border-line mx-5 mt-3 mb-7 hidden items-center gap-3 border-b pb-6 md:flex">
+            <span className="bg-tint text-brand ring-brand/15 flex size-9 shrink-0 items-center justify-center rounded-xl text-sm font-semibold ring-1">
               {session.workspace.name.slice(0, 1)}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-xs font-medium">
+              <p className="truncate text-sm font-medium">
                 {session.workspace.name}
               </p>
               <p className="text-muted mt-0.5 text-[11px]">
@@ -94,9 +108,12 @@ export function Workspace({
               </p>
             </div>
           </div>
+          <p className="text-muted mb-3 hidden px-6 text-[10px] font-medium tracking-[0.14em] uppercase md:block">
+            Пространство
+          </p>
           <nav
             aria-label="Основная навигация"
-            className="flex gap-1 px-3 pb-3 md:flex-col"
+            className="flex gap-1.5 px-4 pb-4 md:flex-col"
           >
             {[
               {
@@ -116,7 +133,7 @@ export function Workspace({
                 key={href}
                 href={href}
                 aria-current={active ? 'page' : undefined}
-                className={`hover:bg-surface focus-visible:outline-brand flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm transition-colors focus-visible:outline-2 ${active ? 'bg-surface text-ink ring-line font-medium shadow-xs ring-1' : 'text-muted'}`}
+                className={`focus-visible:outline-brand flex min-h-11 flex-1 items-center gap-3 rounded-xl px-3 text-sm transition-colors focus-visible:outline-2 md:flex-none ${active ? 'bg-tint text-ink ring-brand/15 font-medium ring-1 ring-inset' : 'text-muted hover:bg-surface hover:text-ink'}`}
               >
                 <Icon
                   size={17}
@@ -125,15 +142,15 @@ export function Workspace({
                 />
                 {label}
                 {active && (
-                  <span className="bg-brand ml-auto hidden size-1.5 rounded-full md:block" />
+                  <span className="bg-brand ml-auto hidden h-4 w-0.5 rounded-full md:block" />
                 )}
               </Link>
             ))}
           </nav>
-          <div className="mt-auto hidden space-y-4 p-4 md:block">
+          <div className="mt-auto hidden space-y-4 px-4 pt-8 pb-5 md:block">
             <Button
               variant="secondary"
-              className="w-full justify-start border-transparent bg-transparent"
+              className="text-muted w-full justify-start rounded-xl border-transparent bg-transparent"
               onClick={() => {
                 setSettingsOpen(true);
               }}
@@ -141,9 +158,8 @@ export function Workspace({
               <Settings2 size={17} />
               Настройки
             </Button>
-            <ThemePicker />
             <div className="border-line flex items-center justify-between gap-2 border-t pt-4">
-              <div className="min-w-0">
+              <div className="min-w-0 pl-1">
                 <p className="truncate text-xs font-medium">
                   {session.user.name || session.user.email}
                 </p>
@@ -172,17 +188,18 @@ export function Workspace({
             >
               {motionPaused ? <Play size={16} /> : <Pause size={16} />}
             </Button>
-            <ThemePicker />
           </div>
         </header>
       )}
-      <div className={session ? 'bg-surface min-w-0' : 'relative z-10 min-w-0'}>
+      <div className={session ? 'min-w-0' : 'relative z-10 min-w-0'}>
         {session && (
-          <header className="border-line flex min-h-14 items-center justify-between gap-3 border-b px-5 text-xs sm:px-8">
-            <div className="text-muted flex items-center gap-2">
-              <span>Рабочее пространство</span>
-              <ChevronRight size={13} />
-              <span className="text-ink">
+          <header className="border-line hidden min-h-16 items-center justify-between gap-3 border-b px-5 text-xs md:flex md:px-8 lg:px-10">
+            <div className="text-muted flex min-w-0 items-center gap-2">
+              <span className="hidden max-w-48 truncate sm:block">
+                {session.workspace.name}
+              </span>
+              <ChevronRight size={13} className="hidden shrink-0 sm:block" />
+              <span className="text-ink shrink-0">
                 {documents
                   ? 'Исходные файлы'
                   : workId
@@ -190,20 +207,9 @@ export function Workspace({
                     : 'Все работы'}
               </span>
             </div>
-            <div className="flex gap-2 md:hidden">
-              <Button
-                variant="secondary"
-                aria-label="Настройки"
-                onClick={() => {
-                  setSettingsOpen(true);
-                }}
-              >
-                <Settings2 size={16} />
-              </Button>
-              <SignOut onSignedOut={unauthorized} />
-            </div>
-            <span className="text-muted hidden md:block">
-              Документы и сведения
+            <span className="text-muted hidden items-center gap-2 md:flex">
+              <span className="bg-brand/70 size-1 rounded-full" aria-hidden />
+              Каждый факт на своём месте
             </span>
           </header>
         )}
@@ -211,7 +217,7 @@ export function Workspace({
           id="main"
           className={
             session
-              ? 'mx-auto max-w-[1440px] min-w-0 px-5 py-7 sm:px-8 lg:px-10'
+              ? 'mx-auto max-w-[1440px] min-w-0 px-4 py-7 sm:px-8 sm:py-10 lg:px-10 lg:py-12'
               : 'mx-auto flex min-h-[calc(100svh-94px)] max-w-[1800px] items-center justify-center px-5 pt-10 pb-16 sm:px-10 lg:min-h-[calc(100svh-118px)] lg:justify-end lg:px-16 lg:pt-0 xl:px-24'
           }
         >
@@ -273,9 +279,8 @@ export function Workspace({
                 </Dialog.Close>
               </div>
               <Dialog.Description className="text-muted my-4 text-sm">
-                Тема оформления и подключение модели.
+                Подключение модели для работы с документами.
               </Dialog.Description>
-              <ThemePicker />
               <LlmSettings />
             </Dialog.Popup>
           </Dialog.Portal>

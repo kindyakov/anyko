@@ -20,7 +20,7 @@ export const metadata = {
 };
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ru" suppressHydrationWarning>
+    <html lang="ru" className="dark scheme-dark">
       <body
         className={`${onest.variable} ${manrope.variable} bg-canvas text-ink font-sans antialiased`}
       >
