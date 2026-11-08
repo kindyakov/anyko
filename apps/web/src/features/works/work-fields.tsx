@@ -1,7 +1,12 @@
 'use client';
+import { Field } from '@base-ui/react/field';
+import { Fieldset } from '@base-ui/react/fieldset';
+import { Input } from '@base-ui/react/input';
 import { useLayoutEffect, useRef } from 'react';
 
 import type { FieldDefinition, FieldRow, FieldValue } from '@anyko/contracts';
+
+import { Button } from '@/components/ui/button';
 
 export function TextSlot({
   label,
@@ -38,16 +43,15 @@ export function TextSlot({
     },
   };
   return multiline ? (
-    <textarea
+    <Field.Control
+      render={<textarea ref={textarea} rows={1} />}
       {...props}
-      ref={textarea}
-      rows={1}
-      className="template-slot template-slot-multiline"
+      className="focus-visible:outline-brand inline-block w-full max-w-full min-w-[3em] resize-y rounded-none border-0 border-b border-dashed border-amber-700 bg-amber-50 px-1 py-px align-baseline align-top text-zinc-900 [font:inherit] focus-visible:outline-2"
     />
   ) : (
-    <input
+    <Input
       {...props}
-      className="template-slot"
+      className="focus-visible:outline-brand inline-block max-w-full min-w-[3em] rounded-none border-0 border-b border-dashed border-amber-700 bg-amber-50 px-1 py-px align-baseline text-zinc-900 [font:inherit] focus-visible:outline-2"
       style={{
         width: `${String(Math.min(60, Math.max(4, (value || placeholder || label).length + 1)))}ch`,
       }}
@@ -67,8 +71,8 @@ export function FieldEditor({
 }) {
   if (!field.columns.length)
     return (
-      <label className="paper-field">
-        {field.label}
+      <Field.Root className="my-6 grid gap-2 text-sm font-medium">
+        <Field.Label>{field.label}</Field.Label>
         <TextSlot
           label={field.label}
           value={typeof value === 'string' ? value : null}
@@ -76,7 +80,7 @@ export function FieldEditor({
           multiline={field.multiline}
           onChange={onChange}
         />
-      </label>
+      </Field.Root>
     );
   const rows = Array.isArray(value) ? value : [];
   const setCell = (index: number, column: string, next: string | null) => {
@@ -88,16 +92,19 @@ export function FieldEditor({
     field.columns.map(({ key }) => [key, null]),
   );
   return (
-    <fieldset className="collection-editor" disabled={disabled}>
-      <legend>{field.label}</legend>
-      <p className="muted">
+    <Fieldset.Root
+      className="border-line [&_td]:border-line [&_th]:border-line my-6 min-w-0 rounded-xl border p-4 [&_table]:w-full [&_table]:min-w-[650px] [&_td]:min-w-[100px] [&_td]:border [&_td]:p-2 [&_th]:border [&_th]:p-2 [&_th]:text-left"
+      disabled={disabled}
+    >
+      <Fieldset.Legend>{field.label}</Fieldset.Legend>
+      <p className="text-muted text-sm leading-6">
         {value === null
           ? 'Состав не установлен'
           : rows.length
             ? `Записей: ${String(rows.length)}`
             : 'Указано отсутствие записей'}
       </p>
-      <div className="template-table-scroll">
+      <div className="max-w-full overflow-x-auto">
         <table>
           <thead>
             <tr>
@@ -124,23 +131,23 @@ export function FieldEditor({
                   </td>
                 ))}
                 <td>
-                  <button
+                  <Button
                     type="button"
-                    className="secondary"
+                    variant="secondary"
                     onClick={() => {
                       onChange(rows.filter((_, i) => i !== index));
                     }}
                   >
                     Удалить строку
-                  </button>
+                  </Button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div className="work-actions">
-        <button
+      <div className="my-4 flex flex-wrap items-center gap-3">
+        <Button
           type="button"
           disabled={rows.length >= 100}
           onClick={() => {
@@ -148,27 +155,27 @@ export function FieldEditor({
           }}
         >
           Добавить строку
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="secondary"
+          variant="secondary"
           onClick={() => {
             onChange([]);
           }}
         >
           Указать отсутствие
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className="secondary"
+          variant="secondary"
           onClick={() => {
             onChange(null);
           }}
         >
           Состав неизвестен
-        </button>
+        </Button>
       </div>
-    </fieldset>
+    </Fieldset.Root>
   );
 }
 export function CandidateValue({ value }: { value: FieldValue }) {

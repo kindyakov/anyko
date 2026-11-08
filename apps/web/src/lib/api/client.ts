@@ -1,5 +1,6 @@
-import { httpErrorSchema } from '@anyko/contracts';
 import type { z } from 'zod';
+
+import { httpErrorSchema } from '@anyko/contracts';
 
 export type HttpFetch = (
   input: RequestInfo | URL,

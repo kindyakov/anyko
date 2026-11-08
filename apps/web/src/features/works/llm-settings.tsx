@@ -1,10 +1,15 @@
 'use client';
+import { Form } from '@base-ui/react/form';
 import { type SyntheticEvent, useEffect, useState } from 'react';
 import { z } from 'zod';
 
 import { llmSettingsResponseSchema } from '@anyko/contracts';
 
-import { requestApi } from '../../lib/api/client';
+import { Button } from '@/components/ui/button';
+import { Disclosure } from '@/components/ui/disclosure';
+import { FormField } from '@/components/ui/form-field';
+import { Input } from '@/components/ui/input';
+import { requestApi } from '@/lib/api/client';
 
 export function LlmSettings() {
   const [current, setCurrent] =
@@ -53,22 +58,29 @@ export function LlmSettings() {
     }
   }
   return (
-    <details className="panel">
-      <summary>
-        Подключение модели{' '}
-        {current?.settings ? '· настроено' : '· требуется настройка'}
-      </summary>
+    <Disclosure
+      className="border-line my-6 rounded-xl border p-5"
+      title={
+        <>
+          Подключение модели{' '}
+          {current?.settings ? '· настроено' : '· требуется настройка'}
+        </>
+      }
+    >
       {current?.canManage ? (
-        <form
+        <Form
           key={current.settings?.revision ?? 0}
-          className="settings-form"
+          className="mt-6 grid max-w-2xl gap-5"
           onSubmit={(event) => {
             void submit(event);
           }}
         >
-          <label>
-            Адрес OpenAI-совместимого API
-            <input
+          <FormField
+            className="grid gap-2 text-sm font-medium"
+            label={<>Адрес OpenAI-совместимого API </>}
+          >
+            <Input
+              className="border-line bg-surface text-ink placeholder:text-muted focus-visible:outline-brand file:bg-tint file:text-ink min-h-11 w-full min-w-0 rounded-lg border px-3 py-2.5 text-sm file:mr-4 file:rounded-md file:border-0 file:px-3 file:py-1 focus-visible:outline-2 disabled:opacity-50"
               name="baseURL"
               type="url"
               required
@@ -76,10 +88,13 @@ export function LlmSettings() {
                 current.settings?.baseURL ?? 'https://routerai.ru/api/v1'
               }
             />
-          </label>
-          <label>
-            Модель для изображений
-            <input
+          </FormField>
+          <FormField
+            className="grid gap-2 text-sm font-medium"
+            label={<>Модель для изображений </>}
+          >
+            <Input
+              className="border-line bg-surface text-ink placeholder:text-muted focus-visible:outline-brand file:bg-tint file:text-ink min-h-11 w-full min-w-0 rounded-lg border px-3 py-2.5 text-sm file:mr-4 file:rounded-md file:border-0 file:px-3 file:py-1 focus-visible:outline-2 disabled:opacity-50"
               name="visionModel"
               required
               defaultValue={
@@ -87,10 +102,13 @@ export function LlmSettings() {
                 '~deepseek/deepseek-v4-flash-latest'
               }
             />
-          </label>
-          <label>
-            Модель для извлечения фактов
-            <input
+          </FormField>
+          <FormField
+            className="grid gap-2 text-sm font-medium"
+            label={<>Модель для извлечения фактов </>}
+          >
+            <Input
+              className="border-line bg-surface text-ink placeholder:text-muted focus-visible:outline-brand file:bg-tint file:text-ink min-h-11 w-full min-w-0 rounded-lg border px-3 py-2.5 text-sm file:mr-4 file:rounded-md file:border-0 file:px-3 file:py-1 focus-visible:outline-2 disabled:opacity-50"
               name="extractionModel"
               required
               defaultValue={
@@ -98,22 +116,32 @@ export function LlmSettings() {
                 '~deepseek/deepseek-v4-flash-latest'
               }
             />
-          </label>
-          <label>
-            API-ключ{current.settings && ' (пустое поле сохраняет текущий)'}
-            <input
+          </FormField>
+          <FormField
+            className="grid gap-2 text-sm font-medium"
+            label={
+              <>
+                API-ключ
+                {current.settings && ' (пустое поле сохраняет текущий)'}{' '}
+              </>
+            }
+          >
+            <Input
+              className="border-line bg-surface text-ink placeholder:text-muted focus-visible:outline-brand file:bg-tint file:text-ink min-h-11 w-full min-w-0 rounded-lg border px-3 py-2.5 text-sm file:mr-4 file:rounded-md file:border-0 file:px-3 file:py-1 focus-visible:outline-2 disabled:opacity-50"
               name="apiKey"
               type="password"
               autoComplete="new-password"
               required={!current.settings}
             />
-          </label>
-          <button disabled={pending}>Сохранить подключение</button>
-        </form>
+          </FormField>
+          <Button type="submit" disabled={pending}>
+            Сохранить подключение
+          </Button>
+        </Form>
       ) : (
         <p>Настройки подключения меняет владелец рабочей области.</p>
       )}
       {message && <p role="status">{message}</p>}
-    </details>
+    </Disclosure>
   );
 }

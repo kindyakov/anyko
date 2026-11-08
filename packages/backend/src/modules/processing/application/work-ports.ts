@@ -1,6 +1,7 @@
+import { z } from 'zod';
+
 import type { WorkView } from '@anyko/contracts';
 import { candidateSchema } from '@anyko/contracts';
-import { z } from 'zod';
 
 export const stepOutputSchema = z
   .object({

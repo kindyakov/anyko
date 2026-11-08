@@ -1,4 +1,4 @@
-import type { HttpFetch } from './client';
+import type { HttpFetch } from '@/lib/api/client';
 const requestHeaders = [
   'accept',
   'content-type',

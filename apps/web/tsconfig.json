@@ -6,7 +6,10 @@
         "name": "next"
       }
     ],
-    "types": ["node", "bun"]
+    "types": ["node", "bun"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": [
     "next-env.d.ts",

@@ -1,5 +1,6 @@
 'use client';
-
+import { AlertDialog } from '@base-ui/react/alert-dialog';
+import { Form } from '@base-ui/react/form';
 import {
   type SyntheticEvent,
   useCallback,
@@ -16,9 +17,11 @@ import {
   type DocumentSummary,
 } from '@anyko/contracts';
 
-import { ApiError, requestApi } from '../../lib/api/client';
-
-import { ResultPreview } from './result-preview';
+import { Button } from '@/components/ui/button';
+import { FormField } from '@/components/ui/form-field';
+import { Input } from '@/components/ui/input';
+import { ResultPreview } from '@/features/documents/result-preview';
+import { ApiError, requestApi } from '@/lib/api/client';
 
 const labels: Record<DocumentSummary['status'], string> = {
   queued: 'В очереди',
@@ -68,11 +71,6 @@ export function DocumentWorkspace({
   }>();
   const fileInput = useRef<HTMLInputElement>(null);
   const [deleting, setDeleting] = useState<DocumentSummary>();
-  const deleteDialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    if (deleting && deleteDialog.current && !deleteDialog.current.open)
-      deleteDialog.current.showModal();
-  }, [deleting]);
   const alive = useRef(true);
   const handleError = useCallback(
     (failure: unknown) => {
@@ -261,25 +259,32 @@ export function DocumentWorkspace({
   }
   return (
     <>
-      <section className="intro">
-        <p className="eyebrow">РАБОЧАЯ ОБЛАСТЬ</p>
-        <h1>Ваши документы</h1>
+      <section className="text-muted mt-3 mb-8 max-w-2xl text-sm leading-7">
+        <p className="text-muted mb-3 text-[10px] font-semibold tracking-[0.2em]">
+          РАБОЧАЯ ОБЛАСТЬ
+        </p>
+        <h1 className="font-heading mb-3 text-2xl font-semibold tracking-tight">
+          Ваши документы
+        </h1>
         <p>
           Загрузите документ или фотографию. Мы сохраним оригинал и извлечём
           текст — обработка продолжится, даже если вы закроете страницу.
         </p>
       </section>
-      <section className="panel">
-        <h2>Новый документ</h2>
-        <form
-          className="upload-form"
+      <section className="border-line my-6 rounded-xl border p-5">
+        <h2 className="font-heading mb-4 text-lg font-bold">Новый документ</h2>
+        <Form
+          className="border-line bg-canvas mt-5 flex flex-col gap-5 rounded-xl border border-dashed p-5 sm:flex-row sm:items-end sm:justify-between"
           onSubmit={(event) => {
             void upload(event);
           }}
         >
-          <label>
-            PDF, DOCX, JPEG, PNG, WebP или TIFF — до 20 МБ
-            <input
+          <FormField
+            className="grid gap-2 text-sm font-medium"
+            label={<>PDF, DOCX, JPEG, PNG, WebP или TIFF — до 20 МБ </>}
+          >
+            <Input
+              className="border-line bg-surface text-ink placeholder:text-muted focus-visible:outline-brand file:bg-tint file:text-ink min-h-11 w-full min-w-0 rounded-lg border px-3 py-2.5 text-sm file:mr-4 file:rounded-md file:border-0 file:px-3 file:py-1 focus-visible:outline-2 disabled:opacity-50"
               ref={fileInput}
               type="file"
               name="file"
@@ -287,22 +292,25 @@ export function DocumentWorkspace({
               disabled={uploading}
               required
             />
-          </label>
-          <button type="submit" disabled={uploading}>
+          </FormField>
+          <Button type="submit" disabled={uploading}>
             {uploading ? 'Загружаем…' : 'Загрузить и распознать'}
-          </button>
-        </form>
+          </Button>
+        </Form>
       </section>
       {error && (
-        <p className="error" role="alert">
+        <p
+          className="my-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm leading-6 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+          role="alert"
+        >
           {error}
         </p>
       )}
-      <section className="panel">
-        <div className="section-heading">
-          <h2>Документы</h2>
-          <button
-            className="secondary"
+      <section className="border-line my-6 rounded-xl border p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h2 className="font-heading mb-4 text-lg font-bold">Документы</h2>
+          <Button
+            variant="secondary"
             type="button"
             onClick={() => {
               setError('');
@@ -310,41 +318,41 @@ export function DocumentWorkspace({
             }}
           >
             Обновить
-          </button>
+          </Button>
         </div>
         {!loaded ? (
           <p role="status">Загружаем список…</p>
         ) : documents.length === 0 ? (
-          <p className="muted">
+          <p className="text-muted text-sm leading-6">
             Здесь появятся ваши документы и результаты распознавания.
           </p>
         ) : (
-          <ul className="document-list">
+          <ul className="divide-line mt-5 divide-y [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:gap-4 [&>li]:py-5">
             {documents.map((document) => (
               <li key={document.id}>
-                <div className="document-name">
+                <div className="grid min-w-0 flex-1 gap-2 wrap-anywhere">
                   <strong>{document.filename}</strong>
-                  <span className="muted">
+                  <span className="text-muted text-sm leading-6">
                     {new Date(document.createdAt).toLocaleString('ru-RU')}
                   </span>
                 </div>
-                <span className={`status status-${document.status}`}>
+                <span className="border-line bg-canvas text-muted w-fit rounded-full border px-3 py-1 text-xs">
                   {labels[document.status]}
                 </span>
                 {document.status === 'failed' && (
-                  <button
-                    className="secondary"
+                  <Button
+                    variant="secondary"
                     disabled={pendingId !== undefined}
                     onClick={() => {
                       void retry(document);
                     }}
                   >
                     Повторить
-                  </button>
+                  </Button>
                 )}
                 {document.status === 'succeeded' && (
-                  <button
-                    className="secondary"
+                  <Button
+                    variant="secondary"
                     disabled={pendingId !== undefined}
                     onClick={() => {
                       void open(document);
@@ -353,10 +361,10 @@ export function DocumentWorkspace({
                     {pendingId === document.id
                       ? 'Открываем…'
                       : 'Открыть результат'}
-                  </button>
+                  </Button>
                 )}
-                <button
-                  className="secondary"
+                <Button
+                  variant="secondary"
                   disabled={pendingId !== undefined}
                   onClick={() => {
                     setDeleting(document);
@@ -364,25 +372,30 @@ export function DocumentWorkspace({
                   aria-label={`Удалить ${document.filename}`}
                 >
                   Удалить
-                </button>
+                </Button>
               </li>
             ))}
           </ul>
         )}
       </section>
       {deletions.length > 0 && (
-        <section className="panel" aria-label="Незавершённые удаления">
-          <h2>Незавершённые удаления</h2>
+        <section
+          className="border-line my-6 rounded-xl border p-5"
+          aria-label="Незавершённые удаления"
+        >
+          <h2 className="font-heading mb-4 text-lg font-bold">
+            Незавершённые удаления
+          </h2>
           <p>
             Полное удаление этих файлов ещё не подтверждено. Статус сохранится
             после обновления страницы.
           </p>
-          <ul className="document-list">
+          <ul className="divide-line mt-5 divide-y [&>li]:flex [&>li]:flex-wrap [&>li]:items-center [&>li]:gap-4 [&>li]:py-5">
             {deletions.map((item) => (
               <li key={item.id}>
-                <div className="document-name">
+                <div className="grid min-w-0 flex-1 gap-2 wrap-anywhere">
                   <strong>Удаление {item.id}</strong>
-                  <span className="muted">
+                  <span className="text-muted text-sm leading-6">
                     {new Date(item.createdAt).toLocaleString('ru-RU')}
                   </span>
                 </div>
@@ -397,22 +410,24 @@ export function DocumentWorkspace({
         </section>
       )}
       {result && (
-        <section className="panel result">
-          <div className="section-heading">
+        <section className="border-line bg-surface [&_pre]:bg-canvas my-6 rounded-2xl border p-5 shadow-sm sm:p-7 [&_pre]:max-h-[650px] [&_pre]:overflow-auto [&_pre]:rounded-xl [&_pre]:p-5 [&_pre]:text-sm [&_pre]:whitespace-pre-wrap">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h2>Результат распознавания</h2>
-              <p className="muted">{result.filename}</p>
+              <h2 className="font-heading mb-4 text-lg font-bold">
+                Результат распознавания
+              </h2>
+              <p className="text-muted text-sm leading-6">{result.filename}</p>
             </div>
-            <button
-              className="secondary"
+            <Button
+              variant="secondary"
               onClick={() => {
                 setResult(undefined);
               }}
             >
               Закрыть
-            </button>
+            </Button>
           </div>
-          <p className="result-note">
+          <p className="text-muted my-5 text-sm leading-6">
             Автоматически извлечённый текст. Перед использованием проверьте его
             по исходному документу.
           </p>
@@ -424,47 +439,49 @@ export function DocumentWorkspace({
         </section>
       )}
       {deleting && (
-        <dialog
-          ref={deleteDialog}
-          className="panel"
-          role="alertdialog"
-          aria-label="Удаление документа"
-          aria-describedby="deletion-description"
-          onCancel={(event) => {
-            if (pendingId !== undefined) {
-              event.preventDefault();
-              return;
-            }
-            setDeleting(undefined);
+        <AlertDialog.Root
+          open
+          onOpenChange={(open) => {
+            if (!open && pendingId === undefined) setDeleting(undefined);
           }}
         >
-          <h2>Удалить «{deleting.filename}»?</h2>
-          <p id="deletion-description">
-            Документ исчезнет из рабочей области. Оригинал и все результаты
-            будут удалены без возможности восстановления.
-          </p>
-          <div className="result-toolbar">
-            <button
-              disabled={pendingId !== undefined}
-              onClick={() => {
-                void remove(deleting);
-              }}
+          <AlertDialog.Portal>
+            <AlertDialog.Backdrop className="fixed inset-0 z-40 bg-black/50" />
+            <AlertDialog.Popup
+              className="border-line bg-surface text-ink fixed top-1/2 left-1/2 z-50 w-[calc(100%-32px)] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-2xl border p-6 shadow-xl"
+              aria-label="Удаление документа"
             >
-              {pendingId === deleting.id
-                ? 'Удаляем файлы и результаты…'
-                : 'Удалить документ'}
-            </button>
-            <button
-              className="secondary"
-              disabled={pendingId !== undefined}
-              onClick={() => {
-                setDeleting(undefined);
-              }}
-            >
-              Отмена
-            </button>
-          </div>
-        </dialog>
+              <AlertDialog.Title className="font-heading mb-4 text-lg font-bold">
+                Удалить «{deleting.filename}»?
+              </AlertDialog.Title>
+              <AlertDialog.Description className="text-muted text-sm leading-6">
+                Документ исчезнет из рабочей области. Оригинал и все результаты
+                будут удалены без возможности восстановления.
+              </AlertDialog.Description>
+              <div className="my-5 flex flex-wrap gap-2">
+                <Button
+                  disabled={pendingId !== undefined}
+                  onClick={() => {
+                    void remove(deleting);
+                  }}
+                >
+                  {pendingId === deleting.id
+                    ? 'Удаляем файлы и результаты…'
+                    : 'Удалить документ'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={pendingId !== undefined}
+                  onClick={() => {
+                    setDeleting(undefined);
+                  }}
+                >
+                  Отмена
+                </Button>
+              </div>
+            </AlertDialog.Popup>
+          </AlertDialog.Portal>
+        </AlertDialog.Root>
       )}
     </>
   );

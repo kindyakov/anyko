@@ -30,10 +30,11 @@ bun run build
 `bun run dev`. Для свежего checkout перед отдельными quality-командами выполните
 `bun run db:generate`.
 
-Локальные launcher API и worker загружают корневой `.env` и, при наличии, `.env` приложения. Переменные процесса имеют приоритет. Секреты не нужны для сборки сайта. Следующие команды позволяют запускать процессы отдельно; для полной PDF/OCR-вертикали используйте `bun run dev` и инструкцию выше.
+Локальные launcher API и worker загружают корневой `.env` и, при наличии, `.env` приложения. Команды `dev`, `build` и `start` web и диагностическая команда worker также загружают корневой `.env`. Переменные процесса имеют приоритет. Секреты не нужны для сборки сайта. Следующие команды позволяют запускать процессы отдельно; для полной PDF/OCR-вертикали используйте `bun run dev` и инструкцию выше.
 
 ```sh
-docker compose -p anyko-runtime-test -f infra/compose/local.yml up -d
+docker compose --env-file .env -p anyko-runtime-test -f infra/compose/local.yml -f infra/compose/storage.yml up -d
+bun run storage:prepare
 bun run dev:api
 bun run dev:web
 ```
@@ -49,7 +50,10 @@ bun --filter @anyko/worker diagnostic
 
 Локальные команды `dev` и `start` API и worker сохраняют stdout/stderr в
 `apps/api/.logs/runtime.log` и `apps/worker/.logs/runtime.log`, одновременно
-показывая вывод в терминале. Файлы дописываются после перезапуска; при размере
+показывая вывод в терминале.
+В интерактивном терминале JSON-события отображаются в читаемом виде с цветом
+уровня; `NO_COLOR` отключает цвет. При перенаправлении stdout остаётся JSON.
+Файлы дописываются после перезапуска; при размере
 10 MiB создаются до трёх предыдущих файлов `.1`–`.3`. Каталоги `.logs`
 игнорируются Git. Запускайте один локальный процесс каждого приложения:
 параллельные launcher одного приложения не делят ротацию безопасно.

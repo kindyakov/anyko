@@ -10,6 +10,8 @@ import {
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { createTerminalLog } from './terminal-log.mjs';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 export function parseLaunchArgs(args) {
@@ -106,6 +108,9 @@ async function main(args) {
   const onTerminate = () => stop('SIGTERM');
   process.on('SIGINT', onInterrupt);
   process.on('SIGTERM', onTerminate);
+  const terminal = process.stdout.isTTY
+    ? createTerminalLog(process.stdout, { color: !('NO_COLOR' in process.env) })
+    : process.stdout;
   function tee(chunk, output) {
     try {
       writer.write(chunk);
@@ -117,7 +122,10 @@ async function main(args) {
       stop('SIGTERM');
     }
   }
-  child.stdout.on('data', (chunk) => tee(chunk, process.stdout));
+  child.stdout.on('data', (chunk) => tee(chunk, terminal));
+  child.stdout.on('end', () => {
+    if (terminal !== process.stdout) terminal.end();
+  });
   child.stderr.on('data', (chunk) => tee(chunk, process.stderr));
   child.once('error', () => {
     sinkFailed = true;

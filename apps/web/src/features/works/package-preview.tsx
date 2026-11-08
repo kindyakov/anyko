@@ -1,4 +1,5 @@
 'use client';
+import { Tabs } from '@base-ui/react/tabs';
 import { type ReactNode, useState } from 'react';
 
 import {
@@ -12,8 +13,8 @@ import {
   type PreviewRow,
 } from '@anyko/contracts';
 
-import { FieldEditor, TextSlot } from './work-fields';
-import './works.css';
+import { Disclosure } from '@/components/ui/disclosure';
+import { FieldEditor, TextSlot } from '@/features/works/work-fields';
 
 interface Props {
   pack: DocumentPackage;
@@ -111,7 +112,7 @@ export function PackagePreview(props: Props) {
     return (
       <div
         key={id}
-        className="template-paragraph"
+        className="min-h-[1em] wrap-anywhere whitespace-pre-wrap"
         style={{
           textAlign: p.align,
           fontWeight: p.bold ? 'bold' : 'normal',
@@ -155,12 +156,7 @@ export function PackagePreview(props: Props) {
       <tr key={`${String(index)}-${String(number)}`}>
         {row.cells.map((cell, cellIndex) =>
           cell.merge === 'continue' ? null : (
-            <td
-              key={cellIndex}
-              colSpan={cell.span}
-              rowSpan={cell.rowSpan}
-              className={`merge-${cell.merge}`}
-            >
+            <td key={cellIndex} colSpan={cell.span} rowSpan={cell.rowSpan}>
               {cell.paragraphs.map((p, pIndex) =>
                 paragraph(
                   p,
@@ -190,99 +186,106 @@ export function PackagePreview(props: Props) {
     ));
   };
   return (
-    <section className="package-editor" aria-label="Пакет документов">
-      <div
-        role="tablist"
+    <Tabs.Root
+      value={document.version}
+      onValueChange={(value) => {
+        if (typeof value === 'string') select(value);
+      }}
+      render={<section className="min-w-0" aria-label="Пакет документов" />}
+    >
+      <Tabs.List
         aria-label="Документы пакета"
-        className="document-tabs"
+        className="my-6 flex flex-wrap gap-2"
       >
         {pack.documents.map((item) => (
-          <button
+          <Tabs.Tab
             key={item.version}
-            type="button"
-            role="tab"
-            aria-selected={item.version === document.version}
-            onClick={() => {
-              select(item.version);
-            }}
+            value={item.version}
+            className="border-line text-muted aria-selected:bg-tint aria-selected:text-ink focus-visible:outline-brand min-h-11 rounded-lg border px-4 py-2 text-left text-sm focus-visible:outline-2"
           >
             {item.title}
-          </button>
+          </Tabs.Tab>
         ))}
-      </div>
-      <p className="muted">
-        Поля общие для всего пакета. Подсветка обозначает редактируемые места.
-        Переносы страниц в DOCX могут отличаться.
-      </p>
-      <div className="template-table-scroll">
-        <article
-          className="document-paper source-document"
-          aria-label={document.title}
-        >
-          {pack.technical && (
-            <p className="fixture-label">Архивный технический бланк</p>
-          )}
-          {document.blocks.length
-            ? document.blocks.map((block, index) =>
-                block.kind === 'paragraph' ? (
-                  paragraph(block.paragraph, String(index))
-                ) : (
-                  <table
-                    key={index}
-                    className={`source-table${block.bordered ? '' : ' source-table-borderless'}`}
-                  >
-                    <colgroup>
-                      {block.widths.map((width, col) => (
-                        <col
-                          key={col}
-                          style={{
-                            width: `${String(
-                              (width /
-                                Math.max(
-                                  1,
-                                  block.widths.reduce((a, b) => a + b, 0),
-                                )) *
-                                100,
-                            )}%`,
-                          }}
-                        />
-                      ))}
-                    </colgroup>
-                    <tbody>{block.rows.map(tableRow)}</tbody>
-                  </table>
-                ),
-              )
-            : pack.fields.map((field) => (
-                <FieldEditor
-                  key={field.key}
-                  field={field}
-                  value={values[field.key] ?? null}
-                  disabled={disabled}
-                  onChange={(next) => {
-                    onChange(field.key, next);
-                  }}
-                />
-              ))}
-        </article>
-      </div>
-      <details className="panel">
-        <summary>Общие реквизиты и таблицы пакета</summary>
-        <p className="muted">
-          Здесь можно добавить строки и явно указать отсутствие объектов.
-          Неизвестный состав сохраняется отдельно от отсутствия.
+      </Tabs.List>
+      <Tabs.Panel value={document.version}>
+        <p className="text-muted text-sm leading-6">
+          Поля общие для всего пакета. Подсветка обозначает редактируемые места.
+          Переносы страниц в DOCX могут отличаться.
         </p>
-        {pack.fields.map((field) => (
-          <FieldEditor
-            key={field.key}
-            field={field}
-            value={values[field.key] ?? null}
-            disabled={disabled}
-            onChange={(next) => {
-              onChange(field.key, next);
-            }}
-          />
-        ))}
-      </details>
-    </section>
+        <div className="max-w-full overflow-x-auto">
+          <article
+            className="border-line mx-auto my-8 min-h-[850px] w-[794px] max-w-none min-w-[794px] border bg-white py-[76px] pr-[57px] pl-[113px] font-['Times_New_Roman',serif] text-[12pt] leading-[1.15] text-zinc-900 shadow-sm [&_input]:min-h-0 [&_textarea]:min-h-[1.3em]"
+            aria-label={document.title}
+          >
+            {pack.technical && (
+              <p className="text-center font-sans text-xs text-zinc-600">
+                Архивный технический бланк
+              </p>
+            )}
+            {document.blocks.length
+              ? document.blocks.map((block, index) =>
+                  block.kind === 'paragraph' ? (
+                    paragraph(block.paragraph, String(index))
+                  ) : (
+                    <table
+                      key={index}
+                      className={`my-3 w-full table-fixed border-collapse [&_td]:p-1 [&_td]:align-top [&_td]:wrap-anywhere ${block.bordered ? '[&_td]:border [&_td]:border-zinc-600' : ''}`}
+                    >
+                      <colgroup>
+                        {block.widths.map((width, col) => (
+                          <col
+                            key={col}
+                            style={{
+                              width: `${String(
+                                (width /
+                                  Math.max(
+                                    1,
+                                    block.widths.reduce((a, b) => a + b, 0),
+                                  )) *
+                                  100,
+                              )}%`,
+                            }}
+                          />
+                        ))}
+                      </colgroup>
+                      <tbody>{block.rows.map(tableRow)}</tbody>
+                    </table>
+                  ),
+                )
+              : pack.fields.map((field) => (
+                  <FieldEditor
+                    key={field.key}
+                    field={field}
+                    value={values[field.key] ?? null}
+                    disabled={disabled}
+                    onChange={(next) => {
+                      onChange(field.key, next);
+                    }}
+                  />
+                ))}
+          </article>
+        </div>
+        <Disclosure
+          className="border-line bg-surface my-6 rounded-2xl border p-5 shadow-sm sm:p-7"
+          title={<>Общие реквизиты и таблицы пакета</>}
+        >
+          <p className="text-muted text-sm leading-6">
+            Здесь можно добавить строки и явно указать отсутствие объектов.
+            Неизвестный состав сохраняется отдельно от отсутствия.
+          </p>
+          {pack.fields.map((field) => (
+            <FieldEditor
+              key={field.key}
+              field={field}
+              value={values[field.key] ?? null}
+              disabled={disabled}
+              onChange={(next) => {
+                onChange(field.key, next);
+              }}
+            />
+          ))}
+        </Disclosure>
+      </Tabs.Panel>
+    </Tabs.Root>
   );
 }

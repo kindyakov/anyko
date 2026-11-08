@@ -8,7 +8,7 @@ import {
   fieldDefinitions,
 } from '@anyko/contracts';
 
-import { PackagePreview } from './package-preview';
+import { PackagePreview } from '@/features/works/package-preview';
 
 const paragraph = (text: string) => ({
   text,

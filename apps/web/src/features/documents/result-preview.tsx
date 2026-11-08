@@ -7,7 +7,8 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 
-import { cyrillicMathMacros } from './cyrillic-math';
+import { SegmentedControl } from '@/components/ui/segmented-control';
+import { cyrillicMathMacros } from '@/features/documents/cyrillic-math';
 const schema = {
   ...defaultSchema,
   attributes: {
@@ -30,34 +31,23 @@ export function ResultPreview({
   const [source, setSource] = useState(false);
   return (
     <>
-      <div
-        className="result-toolbar"
-        role="group"
-        aria-label="Представление результата"
-      >
-        <button
-          className="secondary"
-          aria-pressed={!source}
-          onClick={() => {
-            setSource(false);
+      <div className="my-5">
+        <SegmentedControl
+          label="Представление результата"
+          value={source ? 'source' : 'preview'}
+          onValueChange={(value) => {
+            setSource(value === 'source');
           }}
-        >
-          Просмотр
-        </button>
-        <button
-          className="secondary"
-          aria-pressed={source}
-          onClick={() => {
-            setSource(true);
-          }}
-        >
-          Markdown
-        </button>
+          items={[
+            { value: 'preview', label: 'Просмотр' },
+            { value: 'source', label: 'Markdown' },
+          ]}
+        />
       </div>
       {source ? (
         <pre>{markdown || 'В документе не найден текст.'}</pre>
       ) : (
-        <div className="document-preview">
+        <div className="[&_h1]:font-heading [&_h2]:font-heading [&_td]:border-line [&_th]:border-line [&_th]:bg-canvas [&_blockquote]:border-brand overflow-x-auto leading-7 wrap-anywhere [&_.katex-display]:overflow-x-auto [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-5 [&_h1]:my-6 [&_h1]:text-3xl [&_h1]:font-bold [&_h2]:my-5 [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:my-4 [&_h3]:text-xl [&_h3]:font-semibold [&_img]:my-5 [&_img]:max-w-full [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:my-3 [&_pre]:overflow-x-auto [&_table]:my-5 [&_table]:border-collapse [&_td]:border [&_td]:p-3 [&_th]:border [&_th]:p-3 [&_ul]:list-disc [&_ul]:pl-6">
           <Markdown
             remarkPlugins={[remarkGfm, remarkMath]}
             rehypePlugins={[
@@ -88,7 +78,7 @@ export function ResultPreview({
                   !/^\/api\/documents\/[^/]+\/images\/\d+$/.test(image.url)
                 )
                   return (
-                    <span className="muted">
+                    <span className="text-muted text-sm leading-6">
                       [Изображение недоступно{alt ? `: ${alt}` : ''}]
                     </span>
                   );

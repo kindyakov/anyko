@@ -1,5 +1,7 @@
 import type { AgentSession, FieldDefinition } from '@anyko/contracts';
 
+import { Disclosure } from '@/components/ui/disclosure';
+
 export function SessionContext({
   session,
   revision,
@@ -15,8 +17,11 @@ export function SessionContext({
       .map((key) => fields.find((f) => f.key === key)?.label ?? key)
       .join(', ');
   return (
-    <section className="panel" aria-label="Контекст работы">
-      <h2>Контекст работы</h2>
+    <section
+      className="border-line my-6 rounded-xl border p-5"
+      aria-label="Контекст работы"
+    >
+      <h2 className="font-heading mb-4 text-lg font-bold">Контекст работы</h2>
       {!context ? (
         <p>
           После анализа здесь появится сохранённый контекст. Новые документы
@@ -24,7 +29,7 @@ export function SessionContext({
         </p>
       ) : (
         <>
-          <p className="muted">
+          <p className="text-muted text-sm leading-6">
             Сохранённый контекст · версия {session.revision}
           </p>
           {context.workRevision !== revision && (
@@ -34,17 +39,18 @@ export function SessionContext({
             </p>
           )}
           <p>{context.summary}</p>
-          <p className="muted">
+          <p className="text-muted text-sm leading-6">
             Сводка агента помогает ориентироваться. Проверяйте сведения по
             исходникам.
           </p>
           {!!context.conflictFields.length && (
             <p>Требуют проверки: {labels(context.conflictFields)}</p>
           )}
-          <details>
-            <summary>Не заполнены {context.missingFields.length} полей</summary>
+          <Disclosure
+            title={<>Не заполнены {context.missingFields.length} полей</>}
+          >
             <p>{labels(context.missingFields)}</p>
-          </details>
+          </Disclosure>
         </>
       )}
     </section>

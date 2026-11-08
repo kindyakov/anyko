@@ -7,7 +7,7 @@
     "start": "bun ../../scripts/run-local.mjs worker start",
     "typecheck": "tsc --noEmit",
     "test": "bun test tests",
-    "diagnostic": "bun src/cli/diagnostic.ts"
+    "diagnostic": "bun --env-file=../../.env src/cli/diagnostic.ts"
   },
   "dependencies": {
     "@anyko/backend": "workspace:*",

@@ -1,6 +1,7 @@
 'use client';
-
 import { useState } from 'react';
+
+import { Button } from '@/components/ui/button';
 
 export function SignOut({ onSignedOut }: { onSignedOut: () => void }) {
   const [pending, setPending] = useState(false);
@@ -32,17 +33,20 @@ export function SignOut({ onSignedOut }: { onSignedOut: () => void }) {
   }
   return (
     <div>
-      <button
-        className="secondary"
+      <Button
+        variant="secondary"
         disabled={pending}
         onClick={() => {
           void signOut();
         }}
       >
         {pending ? 'Выходим…' : 'Выйти'}
-      </button>
+      </Button>
       {error && (
-        <p role="alert" className="error">
+        <p
+          role="alert"
+          className="my-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm leading-6 text-red-900 dark:border-red-900 dark:bg-red-950 dark:text-red-200"
+        >
           {error}
         </p>
       )}

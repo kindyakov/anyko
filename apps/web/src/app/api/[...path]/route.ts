@@ -1,5 +1,5 @@
-import { proxyApiRequest } from '../../../lib/api/proxy';
-import { readServerConfig } from '../../../lib/server/config';
+import { proxyApiRequest } from '@/lib/api/proxy';
+import { readServerConfig } from '@/lib/server/config';
 
 export const dynamic = 'force-dynamic';
 async function relay(

@@ -4,16 +4,18 @@ import type { z } from 'zod';
 
 import { documentResultSchema } from '@anyko/contracts';
 
-import { requestApi } from '../../lib/api/client';
-import { ResultPreview } from '../documents';
+import { Disclosure } from '@/components/ui/disclosure';
+import { ResultPreview } from '@/features/documents';
+import { requestApi } from '@/lib/api/client';
 
 export function SourcePreview({ documentId }: { documentId: string }) {
   const [result, setResult] = useState<z.infer<typeof documentResultSchema>>();
   const [error, setError] = useState('');
   return (
-    <details
-      onToggle={(event) => {
-        if (event.currentTarget.open && !result)
+    <Disclosure
+      title="Распознанный исходник"
+      onOpenChange={(open) => {
+        if (open && !result)
           void requestApi(
             `/documents/${documentId}/result`,
             documentResultSchema,
@@ -26,11 +28,10 @@ export function SourcePreview({ documentId }: { documentId: string }) {
             });
       }}
     >
-      <summary>Распознанный исходник</summary>
       {error && !result && <p role="status">{error}</p>}
       {result && (
         <ResultPreview markdown={result.markdown} images={result.images} />
       )}
-    </details>
+    </Disclosure>
   );
 }
