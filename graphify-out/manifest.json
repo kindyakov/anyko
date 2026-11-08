@@ -24,9 +24,9 @@
     "semantic_hash": "1bd9d3d2acfd2c0b13ea105824306e98"
   },
   "AGENTS.md": {
-    "mtime": 1793847184.1188223,
-    "seen": 1793849568.221276,
-    "ast_hash": "ad6474f316a34932aa25a13a848c2417",
+    "mtime": 1794175725.491923,
+    "seen": 1794176538.487161,
+    "ast_hash": "09df838b77c4b0f6b0d6920c3d6ba684",
     "semantic_hash": ""
   },
   "docs/agents/domain.md": {
@@ -42,9 +42,9 @@
     "semantic_hash": ""
   },
   "docs/agents/triage-labels.md": {
-    "mtime": 1793815098.1283464,
-    "seen": 1793836680.5979478,
-    "ast_hash": "f249f945732e34c9488548542840489d",
+    "mtime": 1794175725.5304134,
+    "seen": 1794176538.4871955,
+    "ast_hash": "88dffa93303287fef2eb1552db868b6b",
     "semantic_hash": ""
   },
   "docs/architecture.md": {
@@ -342,9 +342,9 @@
     "semantic_hash": ""
   },
   "docs/engineering/README.md": {
-    "mtime": 1793845459.9660664,
-    "seen": 1793845537.647337,
-    "ast_hash": "136d4f0934ceb2fdd37962cec613eccf",
+    "mtime": 1794175725.4888747,
+    "seen": 1794176538.4872158,
+    "ast_hash": "7382972fe4b995d0f74b044c7e6af990",
     "semantic_hash": ""
   },
   "docs/engineering/agent-workflow.md": {
@@ -384,9 +384,9 @@
     "semantic_hash": ""
   },
   "docs/roadmap.md": {
-    "mtime": 1793837586.4157612,
-    "seen": 1793838183.3305933,
-    "ast_hash": "19d72fbe5918e6ee7b6e50b956be9e80",
+    "mtime": 1794175725.4703555,
+    "seen": 1794176538.4872632,
+    "ast_hash": "0e4cb23d2aa6f218f0afd5158c81fef0",
     "semantic_hash": ""
   },
   "scripts/check-project.mjs": {
@@ -444,21 +444,21 @@
     "semantic_hash": ""
   },
   "docs/engineering/review-cases/expected.md": {
-    "mtime": 1793839743.686841,
-    "seen": 1793840979.2534723,
-    "ast_hash": "9d259a3af07e65d60a4e9a1f33dae1b8",
+    "mtime": 1794175725.5089517,
+    "seen": 1794176538.4872522,
+    "ast_hash": "bdeedc2e7790b6e4a6acf25f9322e8c9",
     "semantic_hash": ""
   },
   "docs/engineering/review-cases/results-2026-11-05.md": {
-    "mtime": 1793839809.3765402,
-    "seen": 1793840979.2534738,
-    "ast_hash": "3d83948dbda7adc9c397098c26d13557",
+    "mtime": 1794175725.510406,
+    "seen": 1794176538.4872546,
+    "ast_hash": "037023548c5c2db0b3a7d466d3cecb53",
     "semantic_hash": ""
   },
   "docs/engineering/test-review.md": {
-    "mtime": 1793839696.2853017,
-    "seen": 1793840979.253476,
-    "ast_hash": "1aa83050076f2c9a030ba7b6d8c14b17",
+    "mtime": 1794175725.4863687,
+    "seen": 1794176538.487259,
+    "ast_hash": "81cc158f1d983f3e59b5d9c44b5dc44b",
     "semantic_hash": ""
   },
   "tests/tooling/agent-github.test.mjs": {
@@ -534,9 +534,9 @@
     "semantic_hash": ""
   },
   "docs/engineering/deployment.md": {
-    "mtime": 1793918580.28276,
-    "seen": 1793918672.9981837,
-    "ast_hash": "41d595b4d714f4de9c0167767b49af19",
+    "mtime": 1794175725.4744637,
+    "seen": 1794176538.487228,
+    "ast_hash": "45c74390cd7e424b2ec57bf475c7e769",
     "semantic_hash": ""
   },
   "docs/engineering/runtime-foundation.md": {
@@ -546,15 +546,15 @@
     "semantic_hash": ""
   },
   "infra/compose/dokploy.yml": {
-    "mtime": 1793917902.575214,
-    "seen": 1793918493.3354564,
-    "ast_hash": "d2d6649a209acbac5105b1946990b57a",
+    "mtime": 1794175725.510406,
+    "seen": 1794176538.4872658,
+    "ast_hash": "cb35494ee67b1345f0fc9a25dfb606d4",
     "semantic_hash": ""
   },
   "infra/compose/local.yml": {
-    "mtime": 1793917902.5731885,
-    "seen": 1793918493.335458,
-    "ast_hash": "1af8d51a55744ee88e139682d3f327d8",
+    "mtime": 1794175725.528776,
+    "seen": 1794176538.4872673,
+    "ast_hash": "2d1ee93b6e8645a4439315e46063ee09",
     "semantic_hash": ""
   },
   "scripts/run-local.mjs": {
@@ -1830,9 +1830,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/features/works/work-pipeline.tsx": {
-    "mtime": 1794172475.291913,
-    "seen": 1794173865.8812418,
-    "ast_hash": "a426791dcd47f35590676f0f805d4b0f",
+    "mtime": 1794176464.2643852,
+    "seen": 1794176538.4866083,
+    "ast_hash": "85e647ec283f4a4240b774ab295f1942",
     "semantic_hash": ""
   },
   "apps/web/src/features/works/work-results.tsx": {
@@ -1854,15 +1854,15 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/cosmos/deep-sky-backdrop.tsx": {
-    "mtime": 1794172081.2651687,
-    "seen": 1794172143.890141,
-    "ast_hash": "09f3eabbc44e81c94ced142fc2f10707",
+    "mtime": 1794175726.184222,
+    "seen": 1794176538.486492,
+    "ast_hash": "1357584621b02453e580f75e8e824f1f",
     "semantic_hash": ""
   },
   "apps/web/src/components/cosmos/deep-sky.ts": {
-    "mtime": 1794172081.00135,
-    "seen": 1794172143.8901427,
-    "ast_hash": "c317f23b0ddb40443d7ed923945aedd8",
+    "mtime": 1794176399.7534387,
+    "seen": 1794176538.486495,
+    "ast_hash": "78d7ecf040a484b8203bbf70c6003166",
     "semantic_hash": ""
   },
   "apps/web/src/components/ui/hover-mist.tsx": {

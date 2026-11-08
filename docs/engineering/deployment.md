@@ -88,7 +88,12 @@ restrict,command="/usr/bin/sudo -n /usr/bin/python3 -I /usr/local/libexec/anyko-
 Пример stdin:
 
 ```json
-{"service":"worker","environment":"production","correlationId":"probe-123","limit":200}
+{
+  "service": "worker",
+  "environment": "production",
+  "correlationId": "probe-123",
+  "limit": 200
+}
 ```
 
 Разрешены сервисы api, worker, web, redis и среды production, staging. Без

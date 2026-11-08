@@ -1,12 +1,14 @@
 // A deterministic deep-space "exposure": emission gas with dust lanes, a dense
-// field of faint stars coloured by temperature and distant galaxies as soft
-// smudges. The seed is fixed so the sky is the same place on every visit.
+// field of faint stars coloured by temperature and distant galaxies. The seed
+// is fixed so the sky is the same place on every visit. The still exposure is
+// painted once; the parts that live (flowing gas, turning galaxies, twinkling
+// stars and meteors) are cheap layers redrawn over it.
 
 type Rgb = readonly [number, number, number];
 type Random = () => number;
 type Noise = (x: number, y: number, octaves?: number) => number;
 
-export interface TwinklingStar {
+interface TwinklingStar {
   x: number;
   y: number;
   radius: number;
@@ -14,7 +16,50 @@ export interface TwinklingStar {
   color: Rgb;
   speed: number;
   phase: number;
+  /** Bright stars show diffraction spikes and now and then flare up. */
+  spikes: boolean;
 }
+
+interface Galaxy {
+  sprite: HTMLCanvasElement;
+  x: number;
+  y: number;
+  /** Half the sprite size in CSS pixels. */
+  half: number;
+  tilt: number;
+  angle: number;
+  /** Radians per second; negative so the arms trail the rotation. */
+  spin: number;
+}
+
+interface Field {
+  width: number;
+  height: number;
+  gas: Noise;
+  warp: Noise;
+  dust: Noise;
+}
+
+export interface DeepSky {
+  field: Field;
+  twinkling: TwinklingStar[];
+  galaxies: Galaxy[];
+  sprites: Map<Rgb, HTMLCanvasElement>;
+}
+
+export interface Meteor {
+  born: number;
+  x: number;
+  y: number;
+  dx: number;
+  dy: number;
+  speed: number;
+  length: number;
+  life: number;
+}
+
+/** The nebula layers overhang the screen by this many CSS pixels to drift. */
+const nebulaMargin = 24;
 
 function seeded(seed: number): Random {
   let state = seed >>> 0;
@@ -40,6 +85,23 @@ function rgba([r, g, b]: Rgb, alpha: number) {
   return `rgba(${String(r)},${String(g)},${String(b)},${String(alpha)})`;
 }
 
+function pixelRatio() {
+  return Math.min(window.devicePixelRatio, 2);
+}
+
+function fit(canvas: HTMLCanvasElement, width: number, height: number) {
+  const dpr = pixelRatio();
+  const w = Math.round(width * dpr),
+    h = Math.round(height * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return ctx;
+}
+
 // Blackbody tints from cool K stars through the Sun to hot B stars.
 const spectrum: readonly (readonly [number, Rgb])[] = [
   [0.12, [255, 196, 140]],
@@ -49,6 +111,7 @@ const spectrum: readonly (readonly [number, Rgb])[] = [
   [0.14, [210, 224, 255]],
   [0.1, [178, 202, 255]],
 ];
+const white: Rgb = [255, 255, 255];
 
 function starColor(random: Random): Rgb {
   let pick = random();
@@ -56,7 +119,7 @@ function starColor(random: Random): Rgb {
     if (pick < weight) return color;
     pick -= weight;
   }
-  return [255, 255, 255];
+  return white;
 }
 
 function valueNoise(random: Random): Noise {
@@ -88,14 +151,6 @@ function valueNoise(random: Random): Noise {
     }
     return total / norm;
   };
-}
-
-interface Field {
-  width: number;
-  height: number;
-  gas: Noise;
-  warp: Noise;
-  dust: Noise;
 }
 
 /** 0 = clear sky, 1 = fully behind a dark dust lane. */
@@ -162,26 +217,42 @@ function bandDistance(x: number, y: number, aspect: number) {
   return Math.abs(dy * x - dx * (y - 0.95)) / Math.hypot(dx, dy);
 }
 
-function paintGas(ctx: CanvasRenderingContext2D, field: Field) {
-  const { width, height } = field;
+/**
+ * Paints the gas into a small opaque canvas that CSS stretches over the
+ * screen. `flow` moves the turbulence and brightens emission, so crossfading
+ * two states reads as glowing gas slowly churning. Dust lanes stay put to keep
+ * hiding the same stars.
+ */
+export function paintNebula(
+  canvas: HTMLCanvasElement,
+  sky: DeepSky,
+  flow: number,
+) {
+  const { field } = sky;
+  const width = field.width + nebulaMargin * 2,
+    height = field.height + nebulaMargin * 2;
   const columns = Math.min(560, Math.max(200, Math.round(width / 3.4)));
   const rows = Math.max(110, Math.round((columns * height) / width));
-  const surface = document.createElement('canvas');
-  surface.width = columns;
-  surface.height = rows;
-  const surfaceCtx = surface.getContext('2d');
-  if (!surfaceCtx) return;
-  const image = surfaceCtx.createImageData(columns, rows);
-  const aspect = width / height;
+  canvas.width = columns;
+  canvas.height = rows;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const image = ctx.createImageData(columns, rows);
+  const aspect = field.width / field.height;
+  const gain = 1 + flow * 0.3;
   for (let row = 0; row < rows; row++) {
     for (let column = 0; column < columns; column++) {
-      const v = row / rows,
-        u = column / columns,
+      const v = ((row / rows) * height - nebulaMargin) / field.height,
+        u = ((column / columns) * width - nebulaMargin) / field.width,
         x = u * aspect;
-      const qx = field.warp(x * 1.5, v * 1.5, 4),
-        qy = field.warp(x * 1.5 + 5.2, v * 1.5 + 1.3, 4);
+      const qx = field.warp(x * 1.5 + flow * 0.24, v * 1.5 - flow * 0.14, 4),
+        qy = field.warp(
+          x * 1.5 + 5.2 - flow * 0.17,
+          v * 1.5 + 1.3 + flow * 0.2,
+          4,
+        );
       const gas = field.gas(x * 2.6 + qx * 2.4, v * 2.6 + qy * 2.4, 7);
-      const emission = smoothstep(0.36, 0.9, gas) ** 1.7;
+      const emission = smoothstep(0.36, 0.9, gas) ** 1.7 * gain;
       const lane = smoothstep(0.5, 0.74, field.dust(x * 3.1, v * 3.1, 5));
       const veil = 1 - lane * 0.9;
       let r = 0,
@@ -206,21 +277,16 @@ function paintGas(ctx: CanvasRenderingContext2D, field: Field) {
       r += glow;
       g += glow * 0.9;
       b += glow * 0.86;
-      // Filmic response keeps bright gas from clipping into flat colour.
+      // Filmic response over the #060608 canvas keeps bright gas from
+      // clipping into flat colour.
       const index = (row * columns + column) * 4;
-      image.data[index] = 105 * (1 - Math.exp(-r / 170));
-      image.data[index + 1] = 105 * (1 - Math.exp(-g / 170));
-      image.data[index + 2] = 105 * (1 - Math.exp(-b / 170));
+      image.data[index] = 6 + 105 * (1 - Math.exp(-r / 170));
+      image.data[index + 1] = 6 + 105 * (1 - Math.exp(-g / 170));
+      image.data[index + 2] = 8 + 105 * (1 - Math.exp(-b / 170));
       image.data[index + 3] = 255;
     }
   }
-  surfaceCtx.putImageData(image, 0, 0);
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(surface, 0, 0, width, height);
-  ctx.restore();
+  ctx.putImageData(image, 0, 0);
 }
 
 function softBlob(
@@ -239,41 +305,39 @@ function softBlob(
   ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
 }
 
-// A spiral seen at a distance: diffuse arms built from soft light, a warm
-// bulge and a few pink star-forming knots. No hard dots.
-function paintSpiral(
-  ctx: CanvasRenderingContext2D,
-  random: Random,
-  x: number,
-  y: number,
-  radius: number,
-  tilt: number,
-  angle: number,
-) {
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(angle);
-  ctx.scale(1, tilt);
-  softBlob(ctx, 0, 0, radius, [200, 200, 230], 0.08);
-  const puffs = Math.round(radius * 9);
-  for (let index = 0; index < puffs; index++) {
-    const t = random() ** 0.9;
-    const theta =
-      (index % 2) * Math.PI + t * Math.PI * 2.4 + gaussian(random) * 0.3;
-    const distance = radius * (0.12 + t * 0.85);
-    const knot = random() < 0.05;
-    softBlob(
-      ctx,
-      Math.cos(theta) * distance,
-      Math.sin(theta) * distance,
-      radius * (knot ? 0.025 : 0.06 + random() * 0.05),
-      knot ? [255, 140, 170] : [196, 210, 255],
-      knot ? 0.35 : (1 - t) * 0.08 + 0.025,
-    );
+// A face-on spiral seen at a distance: diffuse arms built from soft light, a
+// warm bulge and a few pink star-forming knots. Tilt and rotation are applied
+// when the sprite is drawn, so the galaxy can turn in its own plane.
+function spiralSprite(random: Random, radius: number) {
+  const dpr = pixelRatio();
+  const half = radius * 1.15;
+  const sprite = document.createElement('canvas');
+  sprite.width = sprite.height = Math.ceil(half * 2 * dpr);
+  const ctx = sprite.getContext('2d');
+  if (ctx) {
+    ctx.setTransform(dpr, 0, 0, dpr, half * dpr, half * dpr);
+    ctx.globalCompositeOperation = 'lighter';
+    softBlob(ctx, 0, 0, radius, [200, 200, 230], 0.08);
+    const puffs = Math.round(radius * 9);
+    for (let index = 0; index < puffs; index++) {
+      const t = random() ** 0.9;
+      const theta =
+        (index % 2) * Math.PI + t * Math.PI * 2.4 + gaussian(random) * 0.3;
+      const distance = radius * (0.12 + t * 0.85);
+      const knot = random() < 0.05;
+      softBlob(
+        ctx,
+        Math.cos(theta) * distance,
+        Math.sin(theta) * distance,
+        radius * (knot ? 0.025 : 0.06 + random() * 0.05),
+        knot ? [255, 140, 170] : [196, 210, 255],
+        knot ? 0.35 : (1 - t) * 0.08 + 0.025,
+      );
+    }
+    softBlob(ctx, 0, 0, radius * 0.28, [255, 226, 186], 0.32);
+    softBlob(ctx, 0, 0, radius * 0.07, [255, 244, 226], 0.6);
   }
-  softBlob(ctx, 0, 0, radius * 0.28, [255, 226, 186], 0.32);
-  softBlob(ctx, 0, 0, radius * 0.07, [255, 244, 226], 0.6);
-  ctx.restore();
+  return { sprite, half };
 }
 
 function paintSmudge(
@@ -294,26 +358,36 @@ function paintSmudge(
   ctx.restore();
 }
 
-function paintGalaxies(
+function createGalaxies(
   ctx: CanvasRenderingContext2D,
   field: Field,
   random: Random,
-) {
+): Galaxy[] {
   const { width, height } = field;
   const unit = Math.min(width, height);
+  const large = spiralSprite(random, unit * 0.075);
+  const small = spiralSprite(random, unit * 0.028);
+  const galaxies: Galaxy[] = [
+    {
+      ...large,
+      x: width * 0.9,
+      y: height * 0.8,
+      tilt: 0.45,
+      angle: -0.5,
+      spin: -0.035,
+    },
+    {
+      ...small,
+      x: width * 0.69,
+      y: height * 0.06,
+      tilt: 0.55,
+      angle: 0.9,
+      spin: -0.06,
+    },
+  ];
+  // Deep-field background: tiny warm ellipticals and edge-on discs.
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
-  paintSpiral(ctx, random, width * 0.9, height * 0.8, unit * 0.075, 0.45, -0.5);
-  paintSpiral(
-    ctx,
-    random,
-    width * 0.69,
-    height * 0.06,
-    unit * 0.028,
-    0.55,
-    0.9,
-  );
-  // Deep-field background: tiny warm ellipticals and edge-on discs.
   for (let index = 0; index < 18; index++) {
     const px = random() * width,
       py = random() * height;
@@ -330,6 +404,7 @@ function paintGalaxies(
     );
   }
   ctx.restore();
+  return galaxies;
 }
 
 function placeStar(random: Random, width: number, height: number) {
@@ -361,18 +436,28 @@ function paintStar(
   ctx.fill();
 }
 
-/** Paints the static sky and returns the few stars that should twinkle. */
+// Twinkling stars are stamped from one pre-rendered sprite per colour.
+const spriteRadius = 8;
+const spriteHalf = spriteRadius * 3.2;
+
+function starSprites() {
+  const sprites = new Map<Rgb, HTMLCanvasElement>();
+  for (const color of [...spectrum.map(([, tint]) => tint), white]) {
+    const sprite = document.createElement('canvas');
+    sprite.width = sprite.height = spriteHalf * 2;
+    const ctx = sprite.getContext('2d');
+    if (ctx) paintStar(ctx, spriteHalf, spriteHalf, spriteRadius, 1, color);
+    sprites.set(color, sprite);
+  }
+  return sprites;
+}
+
+/** Paints the still stars and returns the scene for the living layers. */
 export function paintDeepSky(
   canvas: HTMLCanvasElement,
   width: number,
   height: number,
-): TwinklingStar[] {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return [];
-  const dpr = Math.min(window.devicePixelRatio, 2);
-  canvas.width = Math.round(width * dpr);
-  canvas.height = Math.round(height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+): DeepSky {
   const random = seeded(0x41_6e_79_6b);
   const field: Field = {
     width,
@@ -381,10 +466,16 @@ export function paintDeepSky(
     warp: valueNoise(random),
     dust: valueNoise(random),
   };
-  ctx.fillStyle = '#060608';
-  ctx.fillRect(0, 0, width, height);
-  paintGas(ctx, field);
-  paintGalaxies(ctx, field, random);
+  const sky: DeepSky = {
+    field,
+    twinkling: [],
+    galaxies: [],
+    sprites: starSprites(),
+  };
+  const ctx = fit(canvas, width, height);
+  if (!ctx) return sky;
+  ctx.clearRect(0, 0, width, height);
+  sky.galaxies = createGalaxies(ctx, field, random);
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
@@ -398,8 +489,7 @@ export function paintDeepSky(
     const size = 0.5 + random() * 0.5;
     ctx.fillRect(x, y, size, size);
   }
-  // Resolved foreground stars.
-  const twinkling: TwinklingStar[] = [];
+  // Resolved foreground stars; about a third of them scintillate.
   const bright = Math.round((width * height) / 5200);
   for (let index = 0; index < bright; index++) {
     const [x, y] = placeStar(random, width, height);
@@ -408,54 +498,171 @@ export function paintDeepSky(
     const alpha =
       (0.3 + Math.sqrt(magnitude) * 0.62) * (1 - obscured(field, x, y) * 0.8);
     const color = starColor(random);
-    if (magnitude > 0.12 && random() < 0.1) {
-      twinkling.push({
+    if (random() < 0.34) {
+      sky.twinkling.push({
         x,
         y,
         radius,
         alpha,
         color,
-        speed: 0.5 + random() * 0.9,
+        speed: 0.7 + random() * 1.6,
         phase: random() * Math.PI * 2,
+        spikes: magnitude > 0.35 && alpha > 0.5,
       });
       continue;
     }
     paintStar(ctx, x, y, radius, alpha, color);
   }
   ctx.restore();
-  return twinkling;
+  return sky;
 }
 
-/** Redraws the twinkling layer for the given time in seconds. */
-export function paintTwinkles(
-  canvas: HTMLCanvasElement,
+/** A meteor somewhere in the upper sky, sliding down to the left or right. */
+export function launchMeteor(
   width: number,
   height: number,
-  stars: TwinklingStar[],
+  time: number,
+): Meteor {
+  const angle =
+    (Math.random() < 0.5 ? 0.45 : Math.PI - 0.45) +
+    (Math.random() - 0.5) * 0.35;
+  return {
+    born: time,
+    x: width * (0.15 + Math.random() * 0.7),
+    y: height * Math.random() * 0.45,
+    dx: Math.cos(angle),
+    dy: Math.sin(angle),
+    speed: 520 + Math.random() * 420,
+    length: 110 + Math.random() * 150,
+    life: 0.7 + Math.random() * 0.6,
+  };
+}
+
+function paintMeteor(
+  ctx: CanvasRenderingContext2D,
+  meteor: Meteor,
   time: number,
 ) {
-  const ctx = canvas.getContext('2d');
-  if (!ctx) return;
-  const dpr = Math.min(window.devicePixelRatio, 2);
-  if (
-    canvas.width !== Math.round(width * dpr) ||
-    canvas.height !== Math.round(height * dpr)
-  ) {
-    canvas.width = Math.round(width * dpr);
-    canvas.height = Math.round(height * dpr);
+  const age = time - meteor.born;
+  if (age < 0 || age > meteor.life) return;
+  const progress = age / meteor.life;
+  // Flares up fast as it hits the air and burns out more slowly.
+  const light = Math.min(1, progress * 6) * (1 - progress) ** 0.7;
+  const travelled = meteor.speed * age;
+  const tail = Math.min(meteor.length, travelled);
+  const hx = meteor.x + meteor.dx * travelled,
+    hy = meteor.y + meteor.dy * travelled;
+  const ex = hx - meteor.dx * tail,
+    ey = hy - meteor.dy * tail;
+  ctx.lineCap = 'round';
+  // A wide crimson afterglow under a hot, thin core.
+  for (const [lineWidth, strength] of [
+    [6, 0.35],
+    [1.8, 1],
+  ] as const) {
+    const trail = ctx.createLinearGradient(hx, hy, ex, ey);
+    trail.addColorStop(0, `rgba(255,244,240,${String(light * strength)})`);
+    trail.addColorStop(
+      0.25,
+      `rgba(255,110,140,${String(light * strength * 0.7)})`,
+    );
+    trail.addColorStop(1, 'rgba(219,20,60,0)');
+    ctx.strokeStyle = trail;
+    ctx.lineWidth = lineWidth;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
   }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  softBlob(ctx, hx, hy, 12, [255, 214, 222], light);
+}
+
+function paintSpikes(
+  ctx: CanvasRenderingContext2D,
+  star: TwinklingStar,
+  length: number,
+  alpha: number,
+) {
+  const glow = rgba(star.color, alpha);
+  const fade = rgba(star.color, 0);
+  ctx.lineWidth = 0.7;
+  for (const [dx, dy] of [
+    [length, 0],
+    [0, length],
+  ] as const) {
+    const ray = ctx.createLinearGradient(
+      star.x - dx,
+      star.y - dy,
+      star.x + dx,
+      star.y + dy,
+    );
+    ray.addColorStop(0, fade);
+    ray.addColorStop(0.5, glow);
+    ray.addColorStop(1, fade);
+    ctx.strokeStyle = ray;
+    ctx.beginPath();
+    ctx.moveTo(star.x - dx, star.y - dy);
+    ctx.lineTo(star.x + dx, star.y + dy);
+    ctx.stroke();
+  }
+}
+
+/** Redraws the living layer: galaxies, scintillating stars and a meteor. */
+export function paintSkyMotion(
+  canvas: HTMLCanvasElement,
+  sky: DeepSky,
+  time: number,
+  meteor?: Meteor,
+) {
+  const { width, height } = sky.field;
+  const ctx = fit(canvas, width, height);
+  if (!ctx) return;
   ctx.clearRect(0, 0, width, height);
   ctx.globalCompositeOperation = 'lighter';
-  for (const star of stars) {
-    const pulse = 0.5 + 0.5 * Math.sin(time * star.speed + star.phase);
-    paintStar(
-      ctx,
-      star.x,
-      star.y,
-      star.radius,
-      star.alpha * (0.6 + pulse * 0.4),
-      star.color,
+  for (const galaxy of sky.galaxies) {
+    ctx.save();
+    ctx.translate(galaxy.x, galaxy.y);
+    ctx.rotate(galaxy.angle);
+    ctx.scale(1, galaxy.tilt);
+    ctx.rotate(time * galaxy.spin);
+    ctx.drawImage(
+      galaxy.sprite,
+      -galaxy.half,
+      -galaxy.half,
+      galaxy.half * 2,
+      galaxy.half * 2,
     );
+    ctx.restore();
   }
+  for (const star of sky.twinkling) {
+    // Two incommensurate waves make the scintillation irregular; a rare
+    // narrow peak makes bright stars flare for a few seconds.
+    const slow = Math.sin(time * star.speed + star.phase);
+    const quick = Math.sin(time * star.speed * 3.3 + star.phase * 1.7);
+    const flare = star.spikes
+      ? Math.max(0, Math.sin(time * 0.07 * star.speed + star.phase * 2.3)) ** 40
+      : 0;
+    const level = 0.52 + slow * 0.3 + quick * 0.16 + flare * 0.7;
+    const size = (star.radius / spriteRadius) * (0.8 + level * 0.3 + flare);
+    const sprite = sky.sprites.get(star.color);
+    if (!sprite) continue;
+    ctx.globalAlpha = Math.min(1, star.alpha * level);
+    ctx.drawImage(
+      sprite,
+      star.x - spriteHalf * size,
+      star.y - spriteHalf * size,
+      spriteHalf * 2 * size,
+      spriteHalf * 2 * size,
+    );
+    ctx.globalAlpha = 1;
+    if (star.spikes && level > 0.5) {
+      paintSpikes(
+        ctx,
+        star,
+        star.radius * (5 + flare * 12),
+        Math.min(0.8, (level - 0.5) * star.alpha * 0.9),
+      );
+    }
+  }
+  if (meteor) paintMeteor(ctx, meteor, time);
 }

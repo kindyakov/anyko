@@ -6,11 +6,14 @@ import {
   GitMerge,
   ImageIcon,
   Minus,
+  Plus,
+  RotateCw,
   ScanText,
   Search,
   Sparkles,
   X,
 } from 'lucide-react';
+import { useState } from 'react';
 
 import type { WorkView } from '@anyko/contracts';
 
@@ -18,6 +21,7 @@ import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';
 import { Disclosure } from '@/components/ui/disclosure';
 import { FileIcon } from '@/components/ui/file-icon';
+import { Modal } from '@/components/ui/modal';
 import { RelativeTime } from '@/components/ui/relative-time';
 import { Spinner } from '@/components/ui/spinner';
 import { stagger } from '@/components/ui/stagger';
@@ -114,6 +118,10 @@ function RunView({
   documents: Document[];
   onOpen: (document: Document) => void;
 }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const groups = new Map<string | null, Step[]>();
   for (const step of run.steps) {
     const list = groups.get(step.documentId) ?? [];
@@ -198,15 +206,28 @@ function RunView({
                   {visuals.map((visual) => (
                     <li
                       key={visual.key}
-                      className="flex gap-3 rounded-xl border border-white/[0.06] bg-black/30 p-3"
+                      className="flow-root rounded-xl border border-white/[0.06] bg-black/30 p-3"
                     >
                       {visual.documentId && visual.imageIndex !== undefined && (
-                        <img
-                          src={`/api/documents/${visual.documentId}/images/${String(visual.imageIndex)}`}
-                          alt="Изображение из файла"
-                          loading="lazy"
-                          className="size-20 shrink-0 rounded-lg bg-white object-cover"
-                        />
+                        <button
+                          type="button"
+                          aria-label="Открыть изображение из файла"
+                          className="float-left mr-3 cursor-pointer rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400"
+                          onClick={() => {
+                            setZoom(1);
+                            setRotation(0);
+                            setPreview(
+                              `/api/documents/${visual.documentId ?? ''}/images/${String(visual.imageIndex)}`,
+                            );
+                          }}
+                        >
+                          <img
+                            src={`/api/documents/${visual.documentId}/images/${String(visual.imageIndex)}`}
+                            alt=""
+                            loading="lazy"
+                            className="size-20 rounded-lg bg-white object-contain"
+                          />
+                        </button>
                       )}
                       <p className="text-muted text-xs leading-5">
                         {visual.description}
@@ -228,6 +249,93 @@ function RunView({
           {errorText(step.errorCode ?? '')}
         </Notice>
       ))}
+      <Modal
+        open={preview !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreview(null);
+        }}
+        title="Изображение из файла"
+        size="wide"
+        headerExtra={
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Уменьшить"
+              disabled={zoom <= 1}
+              onClick={() => {
+                setZoom((value) => Math.max(1, value - 0.25));
+              }}
+            >
+              <Minus size={18} />
+            </Button>
+            <span
+              className="text-muted w-12 text-center text-xs"
+              aria-live="polite"
+            >
+              {Math.round(zoom * 100)}%
+            </span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Увеличить"
+              disabled={zoom >= 4}
+              onClick={() => {
+                setZoom((value) => Math.min(4, value + 0.25));
+              }}
+            >
+              <Plus size={18} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Повернуть по часовой стрелке"
+              onClick={() => {
+                setRotation((value) => value + 90);
+              }}
+            >
+              <RotateCw size={18} />
+            </Button>
+          </div>
+        }
+      >
+        {preview && (
+          <div className="grid min-h-0 flex-1 overflow-auto rounded-xl bg-black/40 p-3">
+            <div
+              className="relative m-auto shrink-0"
+              style={{
+                width:
+                  (rotation % 180 ? imageSize.height : imageSize.width) * zoom,
+                height:
+                  (rotation % 180 ? imageSize.width : imageSize.height) * zoom,
+              }}
+            >
+              <img
+                src={preview}
+                alt="Изображение из файла в увеличенном размере"
+                onLoad={(event) => {
+                  const { naturalWidth, naturalHeight } = event.currentTarget;
+                  const fit = Math.min(
+                    1,
+                    (window.innerWidth * 0.7) / naturalWidth,
+                    (window.innerHeight * 0.65) / naturalHeight,
+                  );
+                  setImageSize({
+                    width: naturalWidth * fit,
+                    height: naturalHeight * fit,
+                  });
+                }}
+                className="absolute top-1/2 left-1/2 max-w-none rounded bg-white"
+                style={{
+                  width: imageSize.width * zoom,
+                  height: imageSize.height * zoom,
+                  transform: `translate(-50%, -50%) rotate(${String(rotation)}deg)`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
