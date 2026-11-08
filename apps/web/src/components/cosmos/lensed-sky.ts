@@ -106,6 +106,18 @@ export function createLensedSky() {
     paint.setTransform(ratio, 0, 0, ratio, 0, 0);
     paint.fillStyle = '#08080b';
     paint.fillRect(0, 0, width, height);
+    // Dense, barely visible field stars make the lens readable: near the
+    // shadow they are stretched into arcs as the sky drifts past.
+    let seed = 0x6b6f;
+    const next = () =>
+      (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    paint.shadowBlur = 0;
+    for (let i = Math.round((width * height) / 900); i > 0; i--) {
+      paint.globalAlpha = 0.2 + next() * 0.3;
+      paint.fillStyle =
+        next() < 0.3 ? '#c4dcff' : next() < 0.5 ? '#ffe8c2' : '#f4f7ff';
+      paint.fillRect(next() * width, next() * height, 1.1, 1.1);
+    }
     for (let i = 0; i < 520; i++) {
       const x = (((i * 719 + 137) % 997) / 997) * width;
       const y = (((i * 433 + 311) % 991) / 991) * height;

@@ -1,3 +1,4 @@
+import { createGalaxyRenderer } from '@/components/cosmos/galaxy';
 import { createLensedSky } from '@/components/cosmos/lensed-sky';
 
 // Canvas gas emission over a ray-bent WebGL sky.
@@ -8,6 +9,7 @@ export function startBlackHole(
   const ctx = canvas.getContext('2d');
   if (!ctx) return () => undefined;
   const sky = createLensedSky();
+  const galaxy = createGalaxyRenderer();
   let frame = 0;
   let previous = 0;
   let time = 0;
@@ -58,34 +60,13 @@ export function startBlackHole(
     ctx.shadowBlur = 0;
     ctx.lineCap = 'butt';
     ctx.globalAlpha = 1;
-    // A distant, 32px spiral galaxy; subtle independent drift adds depth.
-    ctx.save();
-    ctx.translate(w * 0.65 + Math.sin(time * 0.025) * 4, h * 0.16);
-    ctx.rotate(-0.45);
-    ctx.scale(1.6, 1.04);
-    ctx.rotate(-time * 0.16);
-    const galaxyGlow = ctx.createRadialGradient(0, 0, 0, 0, 0, 10);
-    galaxyGlow.addColorStop(0, '#fff1d5cc');
-    galaxyGlow.addColorStop(0.2, '#c9d8ff88');
-    galaxyGlow.addColorStop(0.65, '#8c9fd138');
-    galaxyGlow.addColorStop(1, '#8c9fd100');
-    ctx.fillStyle = galaxyGlow;
-    ctx.fillRect(-10, -10, 20, 20);
-    ctx.strokeStyle = '#c1d0ef88';
-    ctx.lineWidth = 0.8;
-    for (let arm = 0; arm < 2; arm++) {
-      ctx.beginPath();
-      for (let step = 0; step <= 40; step++) {
-        const angle = step * 0.13 + arm * Math.PI;
-        const radius = 0.7 + step * 0.21;
-        const gx = Math.cos(angle) * radius;
-        const gy = Math.sin(angle) * radius;
-        if (step === 0) ctx.moveTo(gx, gy);
-        else ctx.lineTo(gx, gy);
-      }
-      ctx.stroke();
-    }
-    ctx.restore();
+    galaxy?.(
+      ctx,
+      w * (mobile ? 0.8 : 0.65) + Math.sin(time * 0.025) * 4,
+      h * (mobile ? 0.13 : 0.16),
+      mobile ? 34 : 48,
+      time,
+    );
     paintBlackHole(ctx, {
       x,
       y,
@@ -185,7 +166,8 @@ export function paintBlackHole(
   ctx.fillRect(x - r * 2.2, y - r * 2.2, r * 4.4, r * 4.4);
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(-0.24 + tilt * 0.025);
+  // Pointer parallax rolls the whole lens by up to about 7 degrees.
+  ctx.rotate(-0.24 + tilt * 0.12);
 
   // The disk is inclined; its far side bends into an arch around the shadow.
   // Closed surfaces avoid the visible endpoints of separately stroked arcs.
@@ -211,7 +193,11 @@ export function paintBlackHole(
 
     return [px, py];
   }
-  function annulus(inner: number, outer: number, color: string) {
+  function annulus(
+    inner: number,
+    outer: number,
+    color: string | CanvasGradient,
+  ) {
     ctx.beginPath();
     for (let i = 0; i <= segments; i++) {
       const [px, py] = project(outer, (i * Math.PI * 2) / segments);
@@ -228,20 +214,28 @@ export function paintBlackHole(
     ctx.fillStyle = color;
     ctx.fill('evenodd');
   }
+  // Relativistic beaming: gas on the approaching (right) side of the disk is
+  // brighter and whiter, on the receding side dimmer and deeper red.
+  const bands = Array.from({ length: 48 }, (_, band) => {
+    const distance = band / 47;
+    const light = 8 + Math.exp(-distance * 3.4) * 58;
+    const alpha = String(Math.min(1, (1 - distance) * 5));
+    const inner = 0.74 + distance * 1.3;
+    // Each ring spans its own width, so the inner, brightest gas is beamed
+    // as strongly as the outer rim.
+    const reach = (0.74 + (inner - 0.74) * 1.28) * r;
+    const beam = ctx.createLinearGradient(-reach, 0, reach, 0);
+    beam.addColorStop(0, `hsl(343 100% ${String(light * 0.45)}% / ${alpha})`);
+    beam.addColorStop(0.5, `hsl(348 100% ${String(light)}% / ${alpha})`);
+    beam.addColorStop(
+      1,
+      `hsl(353 92% ${String(Math.min(88, light * 1.35 + 6))}% / ${alpha})`,
+    );
+    return { inner, beam };
+  }).reverse();
   function disk() {
     // Smooth emission underneath advected, turbulent gas filaments.
-    for (let band = 47; band >= 0; band--) {
-      const distance = band / 47;
-      const inner = 0.74 + distance * 1.3;
-      const heat = Math.exp(-distance * 3.4);
-      const light = 8 + heat * 58;
-      const opacity = Math.min(1, (1 - distance) * 5);
-      annulus(
-        inner,
-        inner + 0.032,
-        `hsl(348 100% ${String(light)}% / ${String(opacity)})`,
-      );
-    }
+    for (const { inner, beam } of bands) annulus(inner, inner + 0.032, beam);
     // Each filament carries its own density pattern around the hole;
     // differential rotation shears the gas instead of rotating rigid rings.
     for (let j = 0; j < filaments; j++) {
@@ -270,7 +264,9 @@ export function paintBlackHole(
       ctx.fillStyle =
         j % 4 === 0 ? '#240008' : j % 3 === 0 ? '#ffb3a8' : '#ff5265';
       ctx.globalAlpha =
-        (j % 4 === 0 ? 0.3 : 0.5) * Math.exp(-(orbit - 0.8) * 1.3);
+        (j % 4 === 0 ? 0.3 : 0.5) *
+        Math.exp(-(orbit - 0.8) * 1.3) *
+        (1 + Math.cos(head - length / 2) * 0.6);
       ctx.fill();
     }
     ctx.globalAlpha = 1;

@@ -1722,9 +1722,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/cosmos/black-hole-renderer.ts": {
-    "mtime": 1794173743.340358,
-    "seen": 1794173865.8811476,
-    "ast_hash": "cd1047c406ff24f57f82e261a355a307",
+    "mtime": 1794174781.5653973,
+    "seen": 1794174901.2969294,
+    "ast_hash": "c769ac2bce7fffa642a1264d9d8c1da0",
     "semantic_hash": ""
   },
   "apps/web/src/components/cosmos/cosmic-background.tsx": {
@@ -1740,9 +1740,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/components/cosmos/lensed-sky.ts": {
-    "mtime": 1794164573.901038,
-    "seen": 1794164620.4513264,
-    "ast_hash": "ad8dad7afe043f922d9bf5237acd5e93",
+    "mtime": 1794174618.0891025,
+    "seen": 1794174772.9029999,
+    "ast_hash": "1c2c9cfb289acb9d67f593a9f256e72c",
     "semantic_hash": ""
   },
   "apps/web/src/app/app-shell.tsx": {
@@ -1869,6 +1869,12 @@
     "mtime": 1794173142.6272545,
     "seen": 1794173865.881172,
     "ast_hash": "ed5a72a205840db6c1735b91b9e7e242",
+    "semantic_hash": ""
+  },
+  "apps/web/src/components/cosmos/galaxy.ts": {
+    "mtime": 1794174795.2436695,
+    "seen": 1794174901.2969427,
+    "ast_hash": "4a67c8981212db27bcbe4cbe418f4911",
     "semantic_hash": ""
   }
 }
