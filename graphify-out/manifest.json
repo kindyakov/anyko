@@ -1884,9 +1884,9 @@
     "semantic_hash": ""
   },
   "infra/windows/bootstrap.mjs": {
-    "mtime": 1794183129.938195,
-    "seen": 1794184899.789767,
-    "ast_hash": "27cb85c70d5d8c1e8058e9b8933662bb",
+    "mtime": 1794214384.0941935,
+    "seen": 1794216201.2617793,
+    "ast_hash": "1e1bf13a28a5f398e7f7e09f0583203c",
     "semantic_hash": ""
   },
   "infra/windows/launcher.py": {
@@ -1938,9 +1938,9 @@
     "semantic_hash": ""
   },
   "scripts/smoke-windows-migrator.mjs": {
-    "mtime": 1794184848.9141128,
-    "seen": 1794184899.8047757,
-    "ast_hash": "50cad64020e82fd9c28b22d08df765d4",
+    "mtime": 1794216114.0854084,
+    "seen": 1794216201.2736769,
+    "ast_hash": "c3c13edd19a7327d2f12abc6155516c5",
     "semantic_hash": ""
   },
   "scripts/smoke-windows-mineru.mjs": {
@@ -2004,9 +2004,9 @@
     "semantic_hash": ""
   },
   ".github/workflows/windows-components.yml": {
-    "mtime": 1794184811.24365,
-    "seen": 1794184899.8065915,
-    "ast_hash": "4640bc833dc007771d81d1ca3e527c1c",
+    "mtime": 1794216100.7737093,
+    "seen": 1794216201.2766538,
+    "ast_hash": "96f8b0ac902fd1685e4b4e6a39bbedc8",
     "semantic_hash": ""
   },
   "infra/windows/README.txt": {

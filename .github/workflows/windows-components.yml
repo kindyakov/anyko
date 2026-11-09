@@ -47,8 +47,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           bun run smoke:windows:web
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          bun run smoke:windows:migrator
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $originalTemp = $env:TEMP
+          $originalTmp = $env:TMP
+          try {
+            $env:TEMP = Join-Path $build 'temp-тест-漢'
+            $env:TMP = $env:TEMP
+            New-Item -ItemType Directory -Path $env:TEMP | Out-Null
+            bun run smoke:windows:migrator
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            $env:TEMP = $originalTemp
+            $env:TMP = $originalTmp
+          }
           bun run smoke:windows:mineru
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -B tests/processor/windows_job.py
@@ -64,7 +74,7 @@ jobs:
           parent = (Path(os.environ['GITHUB_WORKSPACE']) / 'work' / 'windows-builds').resolve()
           if build.parent != parent or not build.name.startswith('build-'):
               raise RuntimeError('Unexpected build directory')
-          for name in ('components', 'web', 'infrastructure', 'migrator', 'mineru', 'release'):
+          for name in ('components', 'web', 'infrastructure', 'migrator', 'mineru', 'release', 'temp-тест-漢'):
               target = build / name
               if target.is_dir():
                   for attempt in range(10):
