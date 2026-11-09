@@ -3,6 +3,9 @@ name: Windows portable build
 on:
   pull_request:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: read
@@ -120,3 +123,46 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 1
+
+  publish:
+    name: Publish Windows x64 release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Verify release tag and source
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]
+          git fetch --no-tags origin +refs/heads/master:refs/remotes/origin/master
+          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/master
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: Anyko-windows-x64.zip
+          path: dist
+          skip-decompress: true
+      - name: Publish verified archive
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          verify_tag() {
+            git fetch --force --no-tags origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
+            [[ "$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")" == "$GITHUB_SHA" ]]
+          }
+          verify_tag
+          args=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/Anyko-windows-x64.zip \
+            --verify-tag --draft "${args[@]}" \
+            --title "Anyko $GITHUB_REF_NAME — Windows x64" \
+            --notes 'Windows x64: распакуйте архив и запустите Anyko.exe. Для облачного AI нужны интернет и настройки провайдера.'
+          verify_tag
+          gh release edit "$GITHUB_REF_NAME" --draft=false

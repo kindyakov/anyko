@@ -132,6 +132,12 @@ export function commandEnvironment(token, configDir) {
   };
 }
 
+export function commandTimeout(command, args) {
+  return command === 'gh' && args[0] === 'release' && args[1] === 'upload'
+    ? 45 * 60 * 1000
+    : 5 * 60 * 1000;
+}
+
 export function assertNoLocalAuthHeaders(cwd = process.cwd()) {
   const result = spawnSync(
     'git',
@@ -214,7 +220,7 @@ async function main() {
       env: commandEnvironment(token, configDir),
       stdio: 'inherit',
       shell: false,
-      timeout: 300000,
+      timeout: commandTimeout(command, args),
     });
     if (result.error || result.signal)
       throw new Error(

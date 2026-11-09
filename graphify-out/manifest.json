@@ -318,9 +318,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1794184808.000096,
-    "seen": 1794184899.8068285,
-    "ast_hash": "2657df5076a929bb5f3bc25f05013749",
+    "mtime": 1794238552.0779889,
+    "seen": 1794240010.1044323,
+    "ast_hash": "d2fb4f75dac29b02273362b52e88b5a8",
     "semantic_hash": ""
   },
   "docs/adr/0001-modular-monolith.md": {
@@ -414,9 +414,9 @@
     "semantic_hash": ""
   },
   "scripts/agent-github.mjs": {
-    "mtime": 1793975548.302961,
-    "seen": 1793978091.2763479,
-    "ast_hash": "bef507ebc4e002140bb98a25b4470b42",
+    "mtime": 1794239845.955213,
+    "seen": 1794240010.1007922,
+    "ast_hash": "3c57e40014cac63f681e7d0ce90a720f",
     "semantic_hash": ""
   },
   ".github/pull_request_template.md": {
@@ -426,9 +426,9 @@
     "semantic_hash": ""
   },
   "docs/engineering/github-protection.md": {
-    "mtime": 1793898749.185446,
-    "seen": 1793898978.7538853,
-    "ast_hash": "0a5eb460a649b258c31a4927004d872b",
+    "mtime": 1794239868.4147704,
+    "seen": 1794240010.107038,
+    "ast_hash": "ba3a7467cb3f704837d49196dd279589",
     "semantic_hash": ""
   },
   "docs/engineering/review-cases/README.md": {
@@ -462,9 +462,9 @@
     "semantic_hash": ""
   },
   "tests/tooling/agent-github.test.mjs": {
-    "mtime": 1793975548.30848,
-    "seen": 1793978091.277554,
-    "ast_hash": "21e98620d796534b14fbdcf126041502",
+    "mtime": 1794240028.736621,
+    "seen": 1794240188.261338,
+    "ast_hash": "c7b63f91a9f6795a8649e6d51d5d1492",
     "semantic_hash": ""
   },
   "apps/web/src/instrumentation.ts": {
@@ -2004,9 +2004,9 @@
     "semantic_hash": ""
   },
   ".github/workflows/windows-components.yml": {
-    "mtime": 1794216100.7737093,
-    "seen": 1794216201.2766538,
-    "ast_hash": "96f8b0ac902fd1685e4b4e6a39bbedc8",
+    "mtime": 1794238549.0395575,
+    "seen": 1794240010.1042614,
+    "ast_hash": "c4ec73ad94ee01e9dbe6f7fca3711697",
     "semantic_hash": ""
   },
   "infra/windows/README.txt": {
