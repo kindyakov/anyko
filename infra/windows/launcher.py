@@ -250,7 +250,7 @@ class OwnedPostgres:
 
 
 def allow_restricted_user(data, base):
-    """Ensure the current user retains access after pg_ctl drops admin groups."""
+    """Allow the current user to read the bundle and write its data after privilege drop."""
     if not ctypes.windll.shell32.IsUserAnAdmin():
         return
     system = Path(base['SystemRoot'])/'System32'
@@ -260,9 +260,20 @@ def allow_restricted_user(data, base):
     match = re.search(rb'S-\d-(?:\d+-)+\d+', result.stdout)
     if not match:
         raise RuntimeError('Cannot determine the current Windows user for data access')
-    subprocess.run([system/'icacls.exe', data, '/grant', f'*{match.group().decode("ascii")}:(OI)(CI)F'],
-                   env=base, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                   stderr=subprocess.DEVNULL, timeout=30, check=True)
+    sid = match.group().decode('ascii')
+    for path, access in ((ROOT, 'RX'), (data, 'F')):
+        subprocess.run([system/'icacls.exe', path, '/grant', f'*{sid}:(OI)(CI){access}'],
+                       env=base, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL, timeout=120, check=True)
+
+
+def initialize_database(args, env):
+    with (DATA/'logs/initdb.log').open('ab') as log:
+        result = subprocess.run([str(arg) for arg in args], cwd=ROOT, env=env,
+                                stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                                timeout=180)
+    if result.returncode:
+        raise RuntimeError(f'initdb.exe failed (code 0x{result.returncode & 0xffffffff:08X}); see data/logs/initdb.log')
 
 
 def start_postgres(pg, data, port, env, job):
@@ -384,8 +395,8 @@ def run():
             elif pwfile.read_text(encoding='utf8') != config['dbpassword']:
                 raise RuntimeError('PostgreSQL password file does not match settings')
             print('Preparing local database...', flush=True)
-            command([pg/'initdb.exe', '-D', pgdata, '-U', config['dbuser'], '--pwfile', pwfile,
-                     '--auth', 'scram-sha-256', '--encoding', 'UTF8', '--locale=C'], env)
+            initialize_database([pg/'initdb.exe', '-D', pgdata, '-U', config['dbuser'], '--pwfile', pwfile,
+                                 '--auth', 'scram-sha-256', '--encoding', 'UTF8', '--locale=C'], env)
         database = start_postgres(pg, pgdata, pgport, env, job)
         wait_listener(database, pgport)
         args = [str(pg/'psql.exe'), '-h', '127.0.0.1', '-p', str(pgport), '-U', config['dbuser'], '-d', 'postgres', '-Atc', 'select 1']

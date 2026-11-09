@@ -37,6 +37,18 @@ def extended(path):
     return '\\\\?\\' + str(path)
 
 
+def initdb_diagnostic():
+    try:
+        output = (release/'data/logs/initdb.log').read_text(encoding='utf8', errors='replace')[-3000:]
+        config = json.loads((release/'data/settings.json').read_text(encoding='utf8'))
+        for value in config.values():
+            if isinstance(value, str) and len(value) >= 8:
+                output = output.replace(value, '[redacted]')
+        return output
+    except (OSError, ValueError):
+        return ''
+
+
 def start():
     child = subprocess.Popen([str(release/'Anyko.exe')], cwd=probe, env=env, stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -49,7 +61,9 @@ def start():
     while time.monotonic() < end:
         if child.poll() is not None:
             reader.join(timeout=3)
-            raise RuntimeError(f'Launcher exited ({child.returncode}): ' + ''.join(history + list(messages.queue))[-1200:])
+            output = ''.join(history + list(messages.queue))[-1200:]
+            diagnostic = initdb_diagnostic() if 'initdb.exe failed' in output else ''
+            raise RuntimeError(f'Launcher exited ({child.returncode}): ' + output + '\n' + diagnostic)
         try:
             line = messages.get(timeout=.2)
             history.append(line)
@@ -131,6 +145,16 @@ try:
     shutil.copytree(extended(source), extended(release))
     probe.mkdir()
     (probe/'work').mkdir()
+    initdb = release/'infrastructure/postgresql/pgsql/bin/initdb.exe'
+    system = Path(os.environ['SystemRoot'])/'System32'
+    preflight_env = {'SystemRoot': os.environ['SystemRoot'], 'PATH': str(system), 'COMSPEC': str(system/'cmd.exe'),
+                     'TEMP': str(temporary), 'TMP': str(temporary), 'USERPROFILE': str(temporary),
+                     'APPDATA': str(temporary), 'LOCALAPPDATA': str(temporary)}
+    preflight = subprocess.run([str(initdb), '--version'], cwd=probe, env=preflight_env, stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE, timeout=30)
+    if preflight.returncode:
+        raise RuntimeError(f'PostgreSQL executable preflight failed (0x{preflight.returncode & 0xffffffff:08X})')
+    print('PostgreSQL executable preflight passed', flush=True)
     metadata = json.loads((release/'mineru/complete.json').read_text(encoding='utf8'))
     python = (release/'mineru'/metadata['python']).resolve()
     python.relative_to((release/'mineru').resolve())
