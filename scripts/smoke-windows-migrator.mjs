@@ -1,3 +1,4 @@
+import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { randomBytes } from 'node:crypto';
 import {
   cp,
@@ -32,10 +33,51 @@ for (const [directory, format] of [
   )
     throw new Error('Incomplete build');
 }
-const root = await mkdtemp(join(tmpdir(), 'anyko-тест-db-'));
+// Prefer an ASCII parent even when the user's TEMP contains Unicode and the
+// volume does not provide 8.3 aliases. The checkout work directory is isolated.
+const tempParent = /^[\x00-\x7f]+$/.test(tmpdir()) ? tmpdir() : resolve('work');
+await mkdir(tempParent, { recursive: true });
+const actualRoot = await mkdtemp(join(tempParent, 'anyko-db-'));
+// initdb passes absolute data paths to a child using the Windows code page.
+// Use the same ASCII short-path fallback as the portable launcher.
+function postgresPath(path) {
+  if (/^[\x00-\x7f]+$/.test(path)) return path;
+  const kernel = dlopen('kernel32.dll', {
+    GetShortPathNameW: {
+      args: [FFIType.ptr, FFIType.ptr, FFIType.u32],
+      returns: FFIType.u32,
+    },
+  });
+  try {
+    const input = Buffer.from(`${path}\0`, 'utf16le');
+    const output = Buffer.alloc(32768 * 2);
+    const length = kernel.symbols.GetShortPathNameW(
+      ptr(input),
+      ptr(output),
+      32768,
+    );
+    const short = output.toString('utf16le', 0, length * 2);
+    if (!length || length >= 32768 || !/^[\x00-\x7f]+$/.test(short))
+      throw new Error(
+        'PostgreSQL smoke requires ASCII paths or Windows 8.3 short names',
+      );
+    return short;
+  } finally {
+    kernel.close();
+  }
+}
+let root;
+let infrastructure;
+try {
+  root = postgresPath(actualRoot);
+  infrastructure = postgresPath(infra);
+} catch (error) {
+  await rm(actualRoot, { recursive: true, force: true });
+  throw error;
+}
 const migrator = resolve(root, 'migrator');
 const data = resolve(root, 'data');
-const bin = resolve(infra, 'postgresql/pgsql/bin');
+const bin = resolve(infrastructure, 'postgresql/pgsql/bin');
 const pass = randomBytes(24).toString('hex');
 const identity = randomBytes(12).toString('hex');
 const user = `anyko_${identity}`;
@@ -210,7 +252,7 @@ try {
     }
     await server.exited;
   }
-  if (stopped) await rm(root, { recursive: true, force: true });
+  if (stopped) await rm(actualRoot, { recursive: true, force: true });
   else
     console.error(`PostgreSQL stop failed; temporary data retained at ${root}`);
 }
