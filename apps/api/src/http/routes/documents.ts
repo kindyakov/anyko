@@ -1,7 +1,8 @@
 import { Elysia } from 'elysia';
-import { createDocumentService } from '@anyko/backend/documents';
-import { createAccess } from '@anyko/backend/access';
 import { z } from 'zod';
+
+import { createAccess } from '@anyko/backend/access';
+import { createDocumentService } from '@anyko/backend/documents';
 
 export interface DocumentHttpOptions {
   documents: ReturnType<typeof createDocumentService>;
@@ -117,6 +118,22 @@ export function documentRoutes(options: DocumentHttpOptions) {
         return options.documents.result({
           workspaceId: session.workspace.id,
           documentId: params.id,
+        });
+      })
+      .get('/:id/source', async ({ params, session }) => {
+        if (!session) throw new Error('UNAUTHORIZED');
+        const source = await options.documents.source({
+          workspaceId: session.workspace.id,
+          documentId: params.id,
+        });
+        return new Response(Uint8Array.from(source.bytes), {
+          headers: {
+            'content-type': source.contentType,
+            'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(source.filename)}`,
+            'cache-control': 'no-store',
+            'x-content-type-options': 'nosniff',
+            'content-security-policy': "default-src 'none'; sandbox",
+          },
         });
       })
       .get('/:id/images/:index', async ({ params, session }) => {

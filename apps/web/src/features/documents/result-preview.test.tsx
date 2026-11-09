@@ -1,6 +1,23 @@
 import { expect, test } from 'bun:test';
+
 import { renderToStaticMarkup } from 'react-dom/server';
-import { ResultPreview } from './result-preview';
+
+import { ResultPreview } from '@/features/documents/result-preview';
+
+test('renders DOCX Cyrillic math symbols without unknown command errors', () => {
+  const html = renderToStaticMarkup(
+    <ResultPreview
+      markdown={
+        '$P=P_2 \\cdot \\CYRK\\CYRP\\CYRD$\n\n$P_{\\cyrg\\cyre\\cyro\\cyrm}$'
+      }
+      images={[]}
+    />,
+  );
+  expect(html).toContain('>К<');
+  expect(html).toContain('>П<');
+  expect(html).toContain('>Д<');
+  expect(html).not.toContain('color:#cc0000');
+});
 
 test('renders headings, GFM and HTML tables, math and only authorized images', () => {
   const html = renderToStaticMarkup(

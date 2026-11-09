@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
-import { zipSync, strToU8 } from 'fflate';
+
+import { strToU8, zipSync } from 'fflate';
+
 import { createMineruParser } from './mineru';
 const identity = '00000000-0000-4000-8000-000000000001';
 const pdf = strToU8('%PDF-1.7 synthetic');

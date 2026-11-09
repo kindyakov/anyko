@@ -1,4 +1,5 @@
 import type { Database } from '@anyko/database';
+
 import type { ProcessingStore } from '../application/ports';
 
 export function createProcessingStore(db: Database): ProcessingStore {

@@ -1,0 +1,27 @@
+[fmt]
+singleQuote = true
+sortTailwindcss = true
+sortPackageJson = true
+ignorePatterns = [
+  "packages/database/generated/**",
+  "apps/web/next-env.d.ts",
+  "graphify-out/**",
+  "work/**",
+  "docs/brand/**",
+  ".agents/**",
+  ".codex/**",
+]
+
+[fmt.sortImports]
+groups = [
+  "builtin",
+  "external",
+  "anyko",
+  ["internal", "subpath"],
+  "parent",
+  "sibling",
+  "index",
+  "style",
+  "unknown",
+]
+customGroups = [{ groupName = "anyko", elementNamePattern = ["@anyko/**"] }]

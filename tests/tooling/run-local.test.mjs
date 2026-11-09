@@ -8,7 +8,9 @@ import {
   rmSync,
 } from 'node:fs';
 import { resolve, sep } from 'node:path';
+
 import { createLogWriter, parseLaunchArgs } from '../../scripts/run-local.mjs';
+import { createTerminalLog } from '../../scripts/terminal-log.mjs';
 
 const work = resolve('work');
 const directories = [];
@@ -84,4 +86,42 @@ test('invalid rotation configuration fails explicitly', () => {
   const file = logFile();
   expect(() => createLogWriter(file, { maxBytes: 0 })).toThrow('rotation');
   expect(() => createLogWriter(file, { backups: 0 })).toThrow('rotation');
+});
+
+test('terminal displays split JSON events with level colors and preserves other output', () => {
+  let result = '';
+  const terminal = createTerminalLog({
+    write: (chunk) => {
+      result += chunk;
+    },
+  });
+  const input = Buffer.from(
+    '{"level":30,"time":"2026-11-08T18:36:29.165Z","service":"api","event":"process_ready","port":3021}\nplain output\n',
+  );
+  terminal.write(input.subarray(0, 23));
+  terminal.write(input.subarray(23));
+  terminal.end();
+  expect(result).toContain('\x1b[32mINFO\x1b[0m [api] process_ready port=3021');
+  expect(result).toEndWith('plain output\n');
+});
+
+test('terminal escapes control characters and preserves oversized and unfinished lines', () => {
+  let result = '';
+  const terminal = createTerminalLog(
+    {
+      write: (chunk) => {
+        result += chunk;
+      },
+    },
+    { color: false, maxLine: 100 },
+  );
+  terminal.write(
+    Buffer.from('{"level":50,"service":"api","event":"bad\\u001b[31m"}\n'),
+  );
+  terminal.write(Buffer.from('x'.repeat(120)));
+  terminal.write(Buffer.from(' tail\nunfinished'));
+  terminal.end();
+  expect(result).toContain('ERROR [api] bad\\u001b[31m');
+  expect(result).not.toContain('\x1b');
+  expect(result).toEndWith(`${'x'.repeat(120)} tail\nunfinished`);
 });

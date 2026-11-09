@@ -1,12 +1,13 @@
 import { unzipSync } from 'fflate';
 import { z } from 'zod';
+
+import type { DocumentResult } from '../application/ports';
 import {
   matchesSourceFormat,
   sourceContentTypes,
-  sourceFormatFromKey,
   type SourceFormat,
+  sourceFormatFromKey,
 } from '../application/source-format';
-import type { DocumentResult } from '../application/ports';
 
 function decodeArchive(
   archive: Uint8Array,

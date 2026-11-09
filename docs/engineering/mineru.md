@@ -7,7 +7,7 @@ powershell -NoProfile -File infra/mineru/setup.ps1
 powershell -NoProfile -File infra/mineru/start.ps1
 ```
 
-Сервис слушает `127.0.0.1:8000`. `start.ps1` запускает Anyko-owned HTTP-адаптер
+Сервис слушает `127.0.0.1:8020`. `start.ps1` запускает Anyko-owned HTTP-адаптер
 `infra/mineru/processor.py` поверх поддержанного `mineru.parser.parse_async`.
 Tasks API, FileStore, document library и их retention-кэш не используются.
 В `work/mineru/home` остаются только настройки и веса моделей; телеметрия выключена.

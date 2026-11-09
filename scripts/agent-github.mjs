@@ -1,8 +1,8 @@
+import { spawnSync } from 'node:child_process';
 import { sign } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
 
 const appId = 5620461;
 const installationId = 178751173;
@@ -11,7 +11,7 @@ const permissions = {
   actions: 'read',
   checks: 'read',
   contents: 'write',
-  issues: 'read',
+  issues: 'write',
   metadata: 'read',
   pull_requests: 'write',
 };
@@ -39,7 +39,7 @@ async function readResponse(response) {
   return response.json();
 }
 
-function assertPermissions(actual) {
+export function assertPermissions(actual) {
   if (
     !actual ||
     Object.keys(actual).length !== Object.keys(permissions).length ||

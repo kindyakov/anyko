@@ -1,5 +1,7 @@
-import type { Database } from '@anyko/database';
 import { z } from 'zod';
+
+import type { Database } from '@anyko/database';
+
 import type { DocumentView } from '../application/ports';
 const statusSchema = z.enum(['queued', 'running', 'succeeded', 'failed']);
 /** Explicit document screen read model: source metadata + latest processing summary. */
@@ -31,6 +33,25 @@ export function createDocumentReadModel(db: Database) {
     };
   }
   return {
+    async source(workspaceId: string, documentId: string) {
+      const row = await db.sourceDocument.findFirst({
+        where: { workspaceId, id: documentId, deletedAt: null },
+        select: {
+          sourceKey: true,
+          sourceChecksum: true,
+          size: true,
+          filename: true,
+        },
+      });
+      return row
+        ? {
+            key: row.sourceKey,
+            checksum: row.sourceChecksum,
+            size: row.size,
+            filename: row.filename,
+          }
+        : null;
+    },
     async pendingDeletions(workspaceId: string) {
       const rows = await db.documentDeletion.findMany({
         where: { workspaceId, completedAt: null },

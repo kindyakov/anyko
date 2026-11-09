@@ -12,7 +12,7 @@ const schema = z.object({
     .enum(['debug', 'info', 'warn', 'error', 'fatal'])
     .default('info'),
   WORKER_HOST: z.string().min(1).default('127.0.0.1'),
-  WORKER_PORT: z.coerce.number().int().min(1).max(65535).default(3002),
+  WORKER_PORT: z.coerce.number().int().min(1).max(65535).default(3022),
   REDIS_URL: z.url().refine((value) => /^rediss?:\/\//.test(value)),
   QUEUE_NAME: z
     .string()
@@ -29,7 +29,7 @@ const schema = z.object({
     .number()
     .int()
     .min(100)
-    .max(60000)
+    .max(600000)
     .default(10000),
   DOCUMENTS_ENABLED: z.enum(['true', 'false']).default('false'),
 });

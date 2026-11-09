@@ -1,20 +1,22 @@
 import { expect, test } from 'bun:test';
+
 import { createDatabase, createResourceLocks } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
-import { createDocumentRuntime } from '../../src/runtime/documents/api';
-import { createDocumentWorker } from '../../src/runtime/documents/worker';
-import { finishDocumentDeletion } from '../../src/runtime/documents/unit-of-work';
-import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
+
+import {
+  type SourceStorage,
+  StorageWriteOutcomeUnknown,
+} from '../../src/modules/documents';
+import { createArtifactRegistry } from '../../src/modules/documents/infrastructure/artifact-store';
 import { createDeletionStore } from '../../src/modules/documents/infrastructure/deletion-store';
 import { createDocumentIo } from '../../src/modules/documents/infrastructure/document-io';
-import { createArtifactRegistry } from '../../src/modules/documents/infrastructure/artifact-store';
+import { createProcessingService } from '../../src/modules/processing';
+import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
+import { createDocumentRuntime } from '../../src/runtime/documents/api';
+import { finishDocumentDeletion } from '../../src/runtime/documents/unit-of-work';
+import { createDocumentWorker } from '../../src/runtime/documents/worker';
 import { createDocumentDeletionWorkflow } from '../../src/workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../../src/workflows/document-ocr';
-import { createProcessingService } from '../../src/modules/processing';
-import {
-  StorageWriteOutcomeUnknown,
-  type SourceStorage,
-} from '../../src/modules/documents';
 const databaseUrl = process.env.TEST_DATABASE_URL,
   redisUrl = process.env.TEST_REDIS_URL;
 if (

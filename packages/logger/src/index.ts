@@ -14,6 +14,10 @@ export interface LogEvent {
   errorCode?: string;
   state?: string;
   port?: number;
+  provider?: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 export interface Logger {
   debug(fields: LogEvent): void;
@@ -36,6 +40,10 @@ const fields = [
   'errorCode',
   'state',
   'port',
+  'provider',
+  'model',
+  'inputTokens',
+  'outputTokens',
 ] as const;
 /** Never serialize arbitrary request objects or Error messages. */
 export function createLogger(

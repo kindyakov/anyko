@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const children = new Set();
@@ -79,7 +79,10 @@ try {
     'up',
     '-d',
   ]);
-  await wait('http://127.0.0.1:19000/health', 30000);
+  await wait(
+    `${process.env.S3_ENDPOINT ?? 'http://127.0.0.1:19020'}/health`,
+    30000,
+  );
   for (const task of [
     'db:generate',
     'db:migrate',
@@ -87,7 +90,7 @@ try {
     'access:provision-local',
   ])
     await command('bun', ['run', task]);
-  const mineruUrl = process.env.MINERU_BASE_URL ?? 'http://127.0.0.1:8000';
+  const mineruUrl = process.env.MINERU_BASE_URL ?? 'http://127.0.0.1:8020';
   if (!(await probe(`${mineruUrl}/v1/health`))) {
     if (process.platform !== 'win32')
       throw new Error('Start MinerU using docs/engineering/mineru.md');
@@ -97,6 +100,8 @@ try {
       'Bypass',
       '-File',
       resolve(root, 'infra/mineru/start.ps1'),
+      '-Port',
+      new URL(mineruUrl).port || '8020',
     ]);
     await wait(`${mineruUrl}/v1/health`, 120000);
   }
@@ -114,7 +119,7 @@ try {
     });
   }
   console.info(
-    'Anyko: http://localhost:3000 — local credentials are in the ignored root .env',
+    `Anyko: ${process.env.APP_ORIGIN ?? 'http://127.0.0.1:3020'} — local credentials are in the ignored root .env`,
   );
 } catch (error) {
   if (!stopping) {

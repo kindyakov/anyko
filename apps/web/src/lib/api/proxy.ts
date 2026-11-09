@@ -1,4 +1,4 @@
-import type { HttpFetch } from './client';
+import type { HttpFetch } from '@/lib/api/client';
 const requestHeaders = [
   'accept',
   'content-type',
@@ -6,6 +6,7 @@ const requestHeaders = [
   'origin',
   'referer',
   'idempotency-key',
+  'last-event-id',
 ];
 const responseHeaders = [
   'content-type',
@@ -13,6 +14,7 @@ const responseHeaders = [
   'x-request-id',
   'x-content-type-options',
   'content-security-policy',
+  'x-accel-buffering',
 ];
 const REQUEST_LIMIT = 21 * 1024 * 1024;
 const RESPONSE_LIMIT = 32 * 1024 * 1024;
@@ -24,6 +26,7 @@ export async function proxyApiRequest(
   origin: string,
   timeoutMs = 60000,
   fetcher: HttpFetch = fetch,
+  publicOrigin?: string,
 ): Promise<Response> {
   const base = new URL(origin);
   if (
@@ -59,11 +62,18 @@ export async function proxyApiRequest(
   )
     return failure(400, 'INVALID_REQUEST');
   const source = new URL(request.url);
+  const allowedOrigin = publicOrigin ?? source.origin;
+  const parsedPublic = new URL(allowedOrigin);
+  if (
+    !['http:', 'https:'].includes(parsedPublic.protocol) ||
+    parsedPublic.origin !== allowedOrigin
+  )
+    throw new Error('INVALID_PUBLIC_ORIGIN');
   const incomingOrigin = request.headers.get('origin');
   if (
     !['GET', 'HEAD'].includes(request.method) &&
     incomingOrigin !== null &&
-    incomingOrigin !== source.origin
+    incomingOrigin !== allowedOrigin
   )
     return failure(403, 'INVALID_ORIGIN');
   const size = request.headers.get('content-length');

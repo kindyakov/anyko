@@ -7,7 +7,7 @@ services:
       RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in ignored .env}
       RUSTFS_CONSOLE_ENABLE: 'false'
       RUSTFS_OBS_LOGGER_LEVEL: error
-    ports: ['127.0.0.1:19000:9000']
+    ports: ['127.0.0.1:19020:9000']
     volumes: ['source-data:/data']
     logging:
       driver: local

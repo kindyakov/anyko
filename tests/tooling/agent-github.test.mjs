@@ -3,10 +3,37 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
 import {
   assertNoLocalAuthHeaders,
+  assertPermissions,
   commandEnvironment,
 } from '../../scripts/agent-github.mjs';
+
+const approvedPermissions = {
+  actions: 'read',
+  checks: 'read',
+  contents: 'write',
+  issues: 'write',
+  metadata: 'read',
+  pull_requests: 'write',
+};
+
+test('accepts the approved issue editing and labeling permissions', () => {
+  expect(() => assertPermissions(approvedPermissions)).not.toThrow();
+});
+
+for (const unexpected of [
+  { ...approvedPermissions, administration: 'read' },
+  { ...approvedPermissions, workflows: 'write' },
+  { ...approvedPermissions, issues: 'read' },
+]) {
+  test(`rejects an unapproved permission set: ${JSON.stringify(unexpected)}`, () => {
+    expect(() => assertPermissions(unexpected)).toThrow(
+      'Unexpected GitHub App permissions',
+    );
+  });
+}
 
 // Exercise Git's real URL matcher: a public ls-remote can pass without authentication.
 for (const suffix of ['', '.git']) {

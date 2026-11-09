@@ -1,4 +1,6 @@
 import asyncio
+import io
+import zipfile
 import importlib.util
 import os
 import subprocess
@@ -142,6 +144,39 @@ class ProcessorReview(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(late.status_code,410)
         finally:
             module.processor = previous
+
+class VisualExportReview(unittest.TestCase):
+    def test_all_tiff_frames_are_exported_as_independent_images(self):
+        from PIL import Image
+        first = Image.new('RGB', (60, 40), 'red')
+        second = Image.new('RGB', (60, 40), 'blue')
+        source = io.BytesIO()
+        first.save(source, format='TIFF', save_all=True, append_images=[second])
+        writer = module.ZipWriter()
+        module.visual_inputs(writer, source.getvalue(), 'tiff')
+        self.assertEqual(sorted(writer.files), ['images/anyko-source-000.jpg', 'images/anyko-source-001.jpg'])
+        with Image.open(io.BytesIO(writer.files['images/anyko-source-001.jpg'])) as image:
+            self.assertEqual(image.format, 'JPEG')
+            self.assertGreater(image.getpixel((5, 5))[2], 240)
+
+    def test_docx_embedded_picture_has_an_explicit_visual_even_without_markdown_reference(self):
+        from PIL import Image
+        picture = io.BytesIO()
+        Image.new('RGB', (80, 50), 'white').save(picture, format='PNG')
+        source = io.BytesIO()
+        with zipfile.ZipFile(source, 'w') as archive:
+            archive.writestr('word/media/picture.png', picture.getvalue())
+        writer = module.ZipWriter()
+        module.visual_inputs(writer, source.getvalue(), 'docx')
+        self.assertIn('images/anyko-docx-000-000.jpg', writer.files)
+        self.assertNotIn('markdown.md', writer.files)
+
+    def test_unsupported_docx_graphic_is_an_explicit_failure(self):
+        source = io.BytesIO()
+        with zipfile.ZipFile(source, 'w') as archive:
+            archive.writestr('word/media/picture.wmf', b'unsupported')
+        with self.assertRaisesRegex(ValueError, 'UNSUPPORTED_DOCUMENT_VISUAL'):
+            module.visual_inputs(module.ZipWriter(), source.getvalue(), 'docx')
 
 if __name__ == '__main__':
     unittest.main()

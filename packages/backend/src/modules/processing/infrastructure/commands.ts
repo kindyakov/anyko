@@ -1,4 +1,5 @@
 import type { Database } from '@anyko/database';
+
 import { nextRunRevision } from '../domain/retry';
 type Connection = Pick<
   Database,

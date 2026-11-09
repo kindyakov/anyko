@@ -15,7 +15,7 @@ const schema = z.object({
     .enum(['debug', 'info', 'warn', 'error', 'fatal'])
     .default('info'),
   API_HOST: z.string().min(1).default('127.0.0.1'),
-  API_PORT: z.coerce.number().int().min(1).max(65535).default(3001),
+  API_PORT: z.coerce.number().int().min(1).max(65535).default(3021),
   SHUTDOWN_TIMEOUT_MS: z.coerce
     .number()
     .int()

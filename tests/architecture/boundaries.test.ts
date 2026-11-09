@@ -1,11 +1,11 @@
 import { afterAll, expect, test } from 'bun:test';
 import {
-  mkdtemp,
   mkdir,
+  mkdtemp,
   readFile,
   rm,
-  writeFile,
   symlink,
+  writeFile,
 } from 'node:fs/promises';
 import { dirname, join, posix, resolve } from 'node:path';
 
@@ -97,6 +97,9 @@ async function check(
 }
 
 const cases = [
+  ['web-no-server', 'apps/web/index.ts', '../../packages/llm/index.ts'],
+  ['contracts-no-server', 'packages/contracts/index.ts', '../llm/index.ts'],
+  ['ui-no-business', 'packages/ui/index.ts', '../llm/index.ts'],
   ['web-no-server', 'apps/web/index.ts', '../../packages/backend/index.ts'],
   [
     'contracts-no-server',
@@ -126,6 +129,25 @@ const cases = [
     '../infrastructure/index.ts',
   ],
 ] as const;
+
+test('server agent infrastructure can use the public LLM gateway', async () => {
+  const { result } = await check(
+    {
+      'packages/backend/src/modules/agents/infrastructure/example.ts':
+        "import '@anyko/llm';",
+      'packages/llm/package.json': JSON.stringify({
+        name: '@anyko/llm',
+        type: 'module',
+        exports: './index.ts',
+      }),
+      'packages/llm/index.ts': 'export const gateway = 1;',
+      'apps/placeholder.ts': 'export {};',
+    },
+    false,
+    ['llm'],
+  );
+  expect(result.summary.advisedExitCode).toBe(0);
+});
 
 for (const [rule, source, target] of cases) {
   test(`rejects ${rule}`, async () => {

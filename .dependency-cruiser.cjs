@@ -2,6 +2,8 @@
 // index may be imported by the owning module.
 const moduleEdges = {
   access: [],
+  agents: [],
+  works: ['documents'],
   cases: [],
   documents: [],
   processing: [],
@@ -88,19 +90,19 @@ module.exports = {
       name: 'web-no-server',
       severity: 'error',
       from: { path: '^apps/web/' },
-      to: { path: '^packages/(backend|database)/' },
+      to: { path: '^packages/(backend|database|llm)/' },
     },
     {
       name: 'contracts-no-server',
       severity: 'error',
       from: { path: '^packages/contracts/' },
-      to: { path: '^packages/(backend|database)/' },
+      to: { path: '^packages/(backend|database|llm)/' },
     },
     {
       name: 'ui-no-business',
       severity: 'error',
       from: { path: '^packages/ui/' },
-      to: { path: '^packages/(backend|database|contracts)/' },
+      to: { path: '^packages/(backend|database|contracts|llm)/' },
     },
     {
       name: 'domain-no-infrastructure',

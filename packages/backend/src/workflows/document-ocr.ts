@@ -1,16 +1,17 @@
+import type { Logger } from '@anyko/logger';
+
 import type {
+  ArtifactRegistry,
   DocumentParser,
   SourceStorage,
-  ArtifactRegistry,
 } from '../modules/documents';
-import type { createProcessingService } from '../modules/processing';
-import type { Logger } from '@anyko/logger';
 import {
+  checksum,
   documentResultSchema,
   sourceFormatFromKey,
-  checksum,
   StorageWriteOutcomeUnknown,
 } from '../modules/documents';
+import type { createProcessingService } from '../modules/processing';
 export function createDocumentOcrWorkflow(options: {
   processing: ReturnType<typeof createProcessingService>;
   storage: SourceStorage;

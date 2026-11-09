@@ -1,13 +1,18 @@
 import { Elysia } from 'elysia';
-import { createLogger, type Logger } from '@anyko/logger';
+
 import { DocumentError } from '@anyko/backend/documents';
-import { documentRoutes, type DocumentHttpOptions } from './routes/documents';
+import { WorkError } from '@anyko/backend/works';
+import { createLogger, type Logger } from '@anyko/logger';
+
 import { authRoutes } from './routes/auth';
+import { type DocumentHttpOptions, documentRoutes } from './routes/documents';
+import { type WorkHttpOptions, workRoutes } from './routes/works';
 
 export function createApp(options?: {
   logger?: Logger;
   ready?: () => boolean;
   documentHttp?: DocumentHttpOptions;
+  workHttp?: WorkHttpOptions;
 }) {
   const logger =
     options?.logger ??
@@ -34,21 +39,29 @@ export function createApp(options?: {
       const id = contexts.get(request)?.requestId ?? crypto.randomUUID();
       set.headers['x-request-id'] = id;
       const status =
-        error instanceof DocumentError
+        error instanceof WorkError
           ? error.code === 'NOT_FOUND'
             ? 404
-            : error.code === 'INVALID_DOCUMENT' ||
-                error.code === 'UNSUPPORTED_DOCUMENT_FORMAT'
-              ? 400
-              : 409
-          : code === 'NOT_FOUND'
-            ? 404
-            : code === 'VALIDATION' || code === 'PARSE'
-              ? 400
-              : 500;
+            : error.code === 'FORBIDDEN'
+              ? 403
+              : error.code === 'INVALID_WORK_INPUT'
+                ? 400
+                : 409
+          : error instanceof DocumentError
+            ? error.code === 'NOT_FOUND'
+              ? 404
+              : error.code === 'INVALID_DOCUMENT' ||
+                  error.code === 'UNSUPPORTED_DOCUMENT_FORMAT'
+                ? 400
+                : 409
+            : code === 'NOT_FOUND'
+              ? 404
+              : code === 'VALIDATION' || code === 'PARSE'
+                ? 400
+                : 500;
       set.status = status;
       const errorCode =
-        error instanceof DocumentError
+        error instanceof DocumentError || error instanceof WorkError
           ? error.code
           : status === 404
             ? 'NOT_FOUND'
@@ -79,6 +92,7 @@ export function createApp(options?: {
             .use(documentRoutes(options.documentHttp))
         : new Elysia(),
     )
+    .use(options?.workHttp ? workRoutes(options.workHttp) : new Elysia())
     .get('/health', () => ({ status: 'ok' }))
     .get('/health/live', () => ({ status: 'ok' }))
     .get('/health/ready', ({ set }) => {
