@@ -130,6 +130,10 @@ export async function startWorker() {
     process.on('SIGINT', () => {
       void shutdown();
     });
+    if (process.platform === 'win32')
+      process.on('SIGBREAK', () => {
+        void shutdown();
+      });
   } catch (error) {
     console.error(
       error instanceof Error && error.message.startsWith('INVALID_ENV:')

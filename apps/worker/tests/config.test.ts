@@ -31,6 +31,18 @@ test('worker requires Redis and accepts explicit process configuration', () => {
       WORKER_PORT: '3102',
     }).WORKER_PORT,
   ).toBe(3102);
+  expect(
+    parseWorkerConfig({
+      REDIS_URL: 'redis://127.0.0.1:6379',
+      SHUTDOWN_TIMEOUT_MS: '300000',
+    }).SHUTDOWN_TIMEOUT_MS,
+  ).toBe(300000);
+  expect(() =>
+    parseWorkerConfig({
+      REDIS_URL: 'redis://127.0.0.1:6379',
+      SHUTDOWN_TIMEOUT_MS: '600001',
+    }),
+  ).toThrow('SHUTDOWN_TIMEOUT_MS');
 });
 test('configuration rejects invalid values without exposing secret inputs', () => {
   const secret = 'not-a-url-sensitive-value';

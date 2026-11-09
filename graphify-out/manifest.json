@@ -234,15 +234,15 @@
     "semantic_hash": ""
   },
   "knip.json": {
-    "mtime": 1793911785.7396555,
-    "seen": 1793912861.745706,
-    "ast_hash": "edb7797ffdbc092d560be75613896519",
+    "mtime": 1794185270.05263,
+    "seen": 1794185315.4812174,
+    "ast_hash": "1164152a8a670f2463077cd51315c76e",
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1793975613.1502378,
-    "seen": 1793978091.2704225,
-    "ast_hash": "e3db0b392cdffc94b4254653cc12397c",
+    "mtime": 1794184441.0568545,
+    "seen": 1794184899.7898552,
+    "ast_hash": "55b8d90a3fe5ad440a4a1f484eb0d599",
     "semantic_hash": ""
   },
   "packages/eslint-config/base.js": {
@@ -318,9 +318,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1794163126.1506479,
-    "seen": 1794163685.3408728,
-    "ast_hash": "1489291fbf5d54c65f6799fb7b5feab5",
+    "mtime": 1794184808.000096,
+    "seen": 1794184899.8068285,
+    "ast_hash": "2657df5076a929bb5f3bc25f05013749",
     "semantic_hash": ""
   },
   "docs/adr/0001-modular-monolith.md": {
@@ -794,13 +794,13 @@
   "packages/database/prisma/migrations/202611050001_document_vertical/migration.sql": {
     "mtime": 1793847770.9274359,
     "seen": 1794170961.8253858,
-    "ast_hash": "ca7a2dc7ced4f834abb9b4ce62f37a4b",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050002_document_constraints/migration.sql": {
     "mtime": 1793847812.3472278,
     "seen": 1794170961.8253882,
-    "ast_hash": "a6741f0810ac3dc4a17abf0205ea5182",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "packages/database/src/index.ts": {
@@ -938,7 +938,7 @@
   "packages/database/prisma/migrations/202611050003_document_deletion/migration.sql": {
     "mtime": 1793877936.5507777,
     "seen": 1794170961.8253906,
-    "ast_hash": "3072e76ee083db2ad8e778db775380cc",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "apps/api/src/bootstrap/config.ts": {
@@ -954,9 +954,9 @@
     "semantic_hash": ""
   },
   "apps/api/src/bootstrap/start-api.ts": {
-    "mtime": 1793976357.7935736,
-    "seen": 1793978091.267979,
-    "ast_hash": "8a042223571a06f50fcc663c68fd64b2",
+    "mtime": 1794181574.8307314,
+    "seen": 1794184899.7811708,
+    "ast_hash": "f622c8e5b12155caffb876b3f61eda4d",
     "semantic_hash": ""
   },
   "apps/api/src/http/app.ts": {
@@ -996,15 +996,15 @@
     "semantic_hash": ""
   },
   "apps/worker/src/bootstrap/config.ts": {
-    "mtime": 1793917902.575214,
-    "seen": 1793918493.3350742,
-    "ast_hash": "4891c3f5f31006176d9eece5a22c7221",
+    "mtime": 1794181579.9286902,
+    "seen": 1794184899.7885916,
+    "ast_hash": "e1502f36d312d3a8fd53cd6c886ed824",
     "semantic_hash": ""
   },
   "apps/worker/src/bootstrap/start-worker.ts": {
-    "mtime": 1793975548.3034656,
-    "seen": 1793978091.268715,
-    "ast_hash": "e29ded13ea4bac75c5fee0be503f2ffc",
+    "mtime": 1794181577.54346,
+    "seen": 1794184899.7885933,
+    "ast_hash": "c1f011cd2a61a1bd0ab4bcdb1f13ffee",
     "semantic_hash": ""
   },
   "apps/worker/src/cli/diagnostic.ts": {
@@ -1014,9 +1014,9 @@
     "semantic_hash": ""
   },
   "apps/worker/tests/config.test.ts": {
-    "mtime": 1793975548.3170238,
-    "seen": 1793978091.2688813,
-    "ast_hash": "5f1e820529f7fb78203f885eb2f6ad65",
+    "mtime": 1794181582.5302045,
+    "seen": 1794184899.7887707,
+    "ast_hash": "0f680a2ff7f8811283bfd6c4c9462d04",
     "semantic_hash": ""
   },
   "packages/backend/src/runtime/diagnostics/client.ts": {
@@ -1094,19 +1094,19 @@
   "packages/database/prisma/migrations/202611050004_document_artifacts/migration.sql": {
     "mtime": 1793880869.5274906,
     "seen": 1794170961.8253932,
-    "ast_hash": "a3d7f8bc685533f720c98ddb37595236",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050005_document_io/migration.sql": {
     "mtime": 1793882184.5851521,
     "seen": 1794170961.8253958,
-    "ast_hash": "95ba9e802d7f09f9413597c4ed1f7252",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050006_uncertain_writes/migration.sql": {
     "mtime": 1793882394.6302488,
     "seen": 1794170961.825398,
-    "ast_hash": "67cd2449901f630ff2bde9ecd56ad11e",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "packages/database/src/resource-locks.ts": {
@@ -1170,9 +1170,9 @@
     "semantic_hash": ""
   },
   "apps/web/next.config.ts": {
-    "mtime": 1793917917.0195048,
-    "seen": 1793918493.3350089,
-    "ast_hash": "0306f6288d2214daedf2483ae0a64711",
+    "mtime": 1794178526.708187,
+    "seen": 1794184899.7822132,
+    "ast_hash": "969dbbd22a7ff1c077b8c1405c3a7a87",
     "semantic_hash": ""
   },
   "apps/web/src/app/documents/page.tsx": {
@@ -1388,13 +1388,13 @@
   "packages/database/prisma/migrations/202611050007_work_pipeline/migration.sql": {
     "mtime": 1793901641.7629728,
     "seen": 1794170961.8254006,
-    "ast_hash": "d6d3b691cc9a205c55b730cfdcf8f7f1",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050008_work_constraints/migration.sql": {
     "mtime": 1793902734.9371088,
     "seen": 1794170961.825403,
-    "ast_hash": "e8986d1e95b8736b235a7b3060baf69e",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "packages/llm/package.json": {
@@ -1496,19 +1496,19 @@
   "packages/database/prisma/migrations/202611050009_document_packages/migration.sql": {
     "mtime": 1793910229.192512,
     "seen": 1794170961.8254051,
-    "ast_hash": "d5efe083bd49eb865e2b7f33c93267fa",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050010_bankruptcy_package_v2/migration.sql": {
     "mtime": 1793910555.6253724,
     "seen": 1794170961.8254075,
-    "ast_hash": "abe9eaaad85e0381f1a8ab3d09d586ab",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050011_bankruptcy_package_v3/migration.sql": {
     "mtime": 1793912314.7211897,
     "seen": 1794170961.82541,
-    "ast_hash": "792c7bc18de711bbb3540f6a0c7de6e5",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "docs/adr/0006-document-packages.md": {
@@ -1616,7 +1616,7 @@
   "packages/database/prisma/migrations/202611060012_work_agent_sessions/migration.sql": {
     "mtime": 1793922895.5845368,
     "seen": 1794170961.8254123,
-    "ast_hash": "1a8ba3cd69f93efe362c5132c4d7c538",
+    "ast_hash": "",
     "semantic_hash": ""
   },
   "docs/adr/0007-persistent-work-agent-session.md": {
@@ -1830,9 +1830,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/features/works/work-pipeline.tsx": {
-    "mtime": 1794176464.2643852,
-    "seen": 1794176538.4866083,
-    "ast_hash": "85e647ec283f4a4240b774ab295f1942",
+    "mtime": 1794176647.8943808,
+    "seen": 1794184899.7876055,
+    "ast_hash": "d13fcd20679e2fabd888e56beba63477",
     "semantic_hash": ""
   },
   "apps/web/src/features/works/work-results.tsx": {
@@ -1875,6 +1875,174 @@
     "mtime": 1794174795.2436695,
     "seen": 1794174901.2969427,
     "ast_hash": "4a67c8981212db27bcbe4cbe418f4911",
+    "semantic_hash": ""
+  },
+  "infra/mineru/prepare-portable-models.py": {
+    "mtime": 1794180466.476056,
+    "seen": 1794184899.7893326,
+    "ast_hash": "5cf4696b29b1c6c063cb0e86d6cbe9ae",
+    "semantic_hash": ""
+  },
+  "infra/windows/bootstrap.mjs": {
+    "mtime": 1794183129.938195,
+    "seen": 1794184899.789767,
+    "ast_hash": "27cb85c70d5d8c1e8058e9b8933662bb",
+    "semantic_hash": ""
+  },
+  "infra/windows/launcher.py": {
+    "mtime": 1794184512.0717404,
+    "seen": 1794184899.789769,
+    "ast_hash": "611f0a99dfcf3532490e9f65b4aee320",
+    "semantic_hash": ""
+  },
+  "infra/windows/serve_processor.py": {
+    "mtime": 1794182279.9955008,
+    "seen": 1794184899.7897706,
+    "ast_hash": "2fab237d82e76017b4e23d803ab4cd2b",
+    "semantic_hash": ""
+  },
+  "packages/backend/tests/portable-template-probe.ts": {
+    "mtime": 1794183073.0438821,
+    "seen": 1794184899.799037,
+    "ast_hash": "420e05a425acb0cad9065fe230594075",
+    "semantic_hash": ""
+  },
+  "scripts/build-windows-components.mjs": {
+    "mtime": 1794184748.8465383,
+    "seen": 1794184899.803617,
+    "ast_hash": "a55190d583c0a22075f10a1bc3d33193",
+    "semantic_hash": ""
+  },
+  "scripts/build-windows-portable.mjs": {
+    "mtime": 1794184748.8465383,
+    "seen": 1794184899.8036194,
+    "ast_hash": "62c2efa58fa407602cdb394e552f9d10",
+    "semantic_hash": ""
+  },
+  "scripts/build-windows-web.mjs": {
+    "mtime": 1794178697.1350653,
+    "seen": 1794184899.8036208,
+    "ast_hash": "cf8426deb72a9a22a01fa2f5259bcd9e",
+    "semantic_hash": ""
+  },
+  "scripts/restore-windows-web-links.mjs": {
+    "mtime": 1794179202.8586566,
+    "seen": 1794184899.8045828,
+    "ast_hash": "5d9481211e3e6f0f5890e1a569ed3dd0",
+    "semantic_hash": ""
+  },
+  "scripts/smoke-windows-components.mjs": {
+    "mtime": 1794184748.8465383,
+    "seen": 1794184899.804774,
+    "ast_hash": "83b52e3819fe9ed1f01a3ac477dedecf",
+    "semantic_hash": ""
+  },
+  "scripts/smoke-windows-migrator.mjs": {
+    "mtime": 1794184848.9141128,
+    "seen": 1794184899.8047757,
+    "ast_hash": "50cad64020e82fd9c28b22d08df765d4",
+    "semantic_hash": ""
+  },
+  "scripts/smoke-windows-mineru.mjs": {
+    "mtime": 1794183073.044883,
+    "seen": 1794184899.8047774,
+    "ast_hash": "1e0b5ba28f10be24cd9999bece50b66c",
+    "semantic_hash": ""
+  },
+  "scripts/smoke-windows-release.py": {
+    "mtime": 1794184018.6328971,
+    "seen": 1794184899.8047793,
+    "ast_hash": "589ce83ceb844a4980808b0bc86c601d",
+    "semantic_hash": ""
+  },
+  "scripts/smoke-windows-web.mjs": {
+    "mtime": 1794179202.8586566,
+    "seen": 1794184899.8047807,
+    "ast_hash": "6ce0ba3f2b0c889f3a6e9d0e856157ab",
+    "semantic_hash": ""
+  },
+  "scripts/stage-windows-infrastructure.mjs": {
+    "mtime": 1794180010.7560694,
+    "seen": 1794184899.8047824,
+    "ast_hash": "312f85067f05bf0d59361658e78862c6",
+    "semantic_hash": ""
+  },
+  "scripts/stage-windows-migrator.mjs": {
+    "mtime": 1794180748.3904257,
+    "seen": 1794184899.8047836,
+    "ast_hash": "5dffad8e55fa1134350ab45bcd7e4e31",
+    "semantic_hash": ""
+  },
+  "scripts/stage-windows-mineru.mjs": {
+    "mtime": 1794183687.9890528,
+    "seen": 1794184899.8047855,
+    "ast_hash": "bbb556ca354358f1fcac206c820cf271",
+    "semantic_hash": ""
+  },
+  "scripts/stage-windows-release.mjs": {
+    "mtime": 1794184997.572706,
+    "seen": 1794185315.4962084,
+    "ast_hash": "cd2c95501dad08c5b0e03c190fab02ac",
+    "semantic_hash": ""
+  },
+  "scripts/stage-windows-web.mjs": {
+    "mtime": 1794178714.8605142,
+    "seen": 1794184899.804788,
+    "ast_hash": "512810eea31e4b17c5d6cbc3306d6af2",
+    "semantic_hash": ""
+  },
+  "tests/processor/portable_shutdown.py": {
+    "mtime": 1794183023.9659774,
+    "seen": 1794184899.8058548,
+    "ast_hash": "7b1a11fef12042c5441686b12d56667b",
+    "semantic_hash": ""
+  },
+  "tests/processor/windows_job.py": {
+    "mtime": 1794183848.0601416,
+    "seen": 1794184899.806024,
+    "ast_hash": "fd89df63bc41847637afa23470117a04",
+    "semantic_hash": ""
+  },
+  ".github/workflows/windows-components.yml": {
+    "mtime": 1794184811.24365,
+    "seen": 1794184899.8065915,
+    "ast_hash": "4640bc833dc007771d81d1ca3e527c1c",
+    "semantic_hash": ""
+  },
+  "infra/windows/README.txt": {
+    "mtime": 1794184207.6839657,
+    "seen": 1794184899.8135517,
+    "ast_hash": "eaf251c37059badb2f357a91bd970ca2",
+    "semantic_hash": ""
+  },
+  "infra/windows/licenses/README.txt": {
+    "mtime": 1794185195.0908682,
+    "seen": 1794185315.5039804,
+    "ast_hash": "13566f5993d43651f4c33ff03f43e907",
+    "semantic_hash": ""
+  },
+  "infra/windows/licenses/bun.txt": {
+    "mtime": 1794183900.7527719,
+    "seen": 1794184899.8135557,
+    "ast_hash": "a3eefeb91043676797626482af15993b",
+    "semantic_hash": ""
+  },
+  "infra/windows/licenses/redis-windows.txt": {
+    "mtime": 1794183898.3907754,
+    "seen": 1794184899.813557,
+    "ast_hash": "86d3f3a95c324c9479bd8986968f4327",
+    "semantic_hash": ""
+  },
+  "infra/windows/licenses/redis.txt": {
+    "mtime": 1794183901.4974687,
+    "seen": 1794184899.8135593,
+    "ast_hash": "9f1da87999fb281d8a9e3e3b2d0403b4",
+    "semantic_hash": ""
+  },
+  "infra/windows/licenses/rustfs.txt": {
+    "mtime": 1794183897.678901,
+    "seen": 1794184899.8135605,
+    "ast_hash": "781b917855e4b9d03e0a1fc92149e3ba",
     "semantic_hash": ""
   }
 }

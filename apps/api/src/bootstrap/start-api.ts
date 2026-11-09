@@ -126,6 +126,10 @@ export async function startApi() {
     process.on('SIGINT', () => {
       void stop();
     });
+    if (process.platform === 'win32')
+      process.on('SIGBREAK', () => {
+        void stop();
+      });
   } catch {
     await Promise.allSettled(startupResources.map((close) => close()));
     createLogger({

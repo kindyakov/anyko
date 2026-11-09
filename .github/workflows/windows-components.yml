@@ -1,0 +1,112 @@
+name: Windows portable build
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and verify Windows x64 portable release
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: 26.13.0
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: 1.4.4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned uv
+        run: python -m pip install uv==0.13.2
+      - name: Build portable archive using the local command
+        run: bun run build:windows
+      - name: Select completed build and run component checks
+        shell: pwsh
+        run: |
+          $builds = Get-ChildItem work/windows-builds -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'Anyko-windows-x64.zip') }
+          if (@($builds).Count -ne 1) { throw 'Expected one completed build' }
+          $build = $builds.FullName
+          $infra = Get-ChildItem (Join-Path $build 'infrastructure') -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'complete.json') }
+          $migrator = Get-ChildItem (Join-Path $build 'migrator') -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'complete.json') }
+          $mineru = Get-ChildItem (Join-Path $build 'mineru') -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'complete.json') }
+          if (@($infra).Count -ne 1 -or @($migrator).Count -ne 1 -or @($mineru).Count -ne 1) { throw 'Expected one complete build of each component' }
+          $env:ANYKO_WINDOWS_COMPONENTS_OUTPUT = Join-Path $build 'components'
+          $env:ANYKO_WINDOWS_WEB_OUTPUT = Join-Path $build 'web'
+          $env:ANYKO_WINDOWS_INFRA_PATH = $infra.FullName
+          $env:ANYKO_WINDOWS_MIGRATOR_PATH = $migrator.FullName
+          $env:ANYKO_WINDOWS_MINERU_PATH = $mineru.FullName
+          $env:ANYKO_REDIS_EXE = Join-Path $infra.FullName 'redis/Redis-8.10.3-Windows-x64-msys2/redis-server.exe'
+          bun run smoke:windows:components
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          bun run smoke:windows:web
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          bun run smoke:windows:migrator
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          bun run smoke:windows:mineru
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -B tests/processor/windows_job.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "ANYKO_ARCHIVE_PATH=$(Join-Path $build 'Anyko-windows-x64.zip')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          # Free the generated staging trees before extracting the archive and
+          # making another isolated test copy on the hosted runner.
+          $env:ANYKO_BUILD_PATH = $build
+          $cleanup = @'
+          import os, shutil, time
+          from pathlib import Path
+          build = Path(os.environ['ANYKO_BUILD_PATH']).resolve()
+          parent = (Path(os.environ['GITHUB_WORKSPACE']) / 'work' / 'windows-builds').resolve()
+          if build.parent != parent or not build.name.startswith('build-'):
+              raise RuntimeError('Unexpected build directory')
+          for name in ('components', 'web', 'infrastructure', 'migrator', 'mineru', 'release'):
+              target = build / name
+              if target.is_dir():
+                  for attempt in range(10):
+                      try:
+                          shutil.rmtree('\\\\?\\' + str(target))
+                          break
+                      except PermissionError:
+                          if attempt == 9:
+                              # A file handle can remain open on Windows.
+                              # Remove the rest; the runner is ephemeral.
+                              def tolerate_locked(_fn, path, error):
+                                  if not isinstance(error, PermissionError) and getattr(error, 'winerror', None) != 145:
+                                      raise error
+                                  print(f'Cleanup retained {path}: {error}')
+                              shutil.rmtree('\\\\?\\' + str(target), onexc=tolerate_locked)
+                              break
+                          time.sleep(2)
+          '@
+          python -B -c $cleanup
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build document smoke client
+        run: bun build --compile scripts/smoke-document.ts --outfile work/smoke-document.exe
+      - name: Extract download archive
+        shell: pwsh
+        run: |
+          $unpacked = Join-Path $env:RUNNER_TEMP 'anyko-unpacked'
+          7z x $env:ANYKO_ARCHIVE_PATH "-o$unpacked"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "ANYKO_UNPACKED_PATH=$(Join-Path $unpacked 'Anyko')" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Check OCR reset and drain
+        shell: pwsh
+        run: |
+          $mineru = Join-Path $env:ANYKO_UNPACKED_PATH 'mineru'
+          $meta = Get-Content (Join-Path $mineru 'complete.json') -Raw | ConvertFrom-Json
+          $python = Join-Path $mineru $meta.python
+          & $python -I -B tests/processor/portable_shutdown.py $mineru
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Smoke extracted release and restart
+        run: python -B scripts/smoke-windows-release.py "$env:ANYKO_UNPACKED_PATH" work/smoke-document.exe
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          path: ${{ env.ANYKO_ARCHIVE_PATH }}
+          archive: false
+          if-no-files-found: error
+          retention-days: 1

@@ -29,7 +29,7 @@ const schema = z.object({
     .number()
     .int()
     .min(100)
-    .max(60000)
+    .max(600000)
     .default(10000),
   DOCUMENTS_ENABLED: z.enum(['true', 'false']).default('false'),
 });

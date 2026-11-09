@@ -6,12 +6,16 @@
     ".": {
       "entry": [
         "tests/architecture/**/*.test.ts",
-        "tests/processor/create-junction.mjs"
+        "tests/processor/create-junction.mjs",
+        "infra/windows/bootstrap.mjs",
+        "scripts/restore-windows-web-links.mjs",
+        "scripts/stage-windows-web.mjs"
       ]
     },
     "packages/backend": {
       "entry": [
         "tests/integration/*.test.ts",
+        "tests/portable-template-probe.ts",
         "tests/templates.test.ts",
         "src/modules/**/*.test.ts"
       ]
