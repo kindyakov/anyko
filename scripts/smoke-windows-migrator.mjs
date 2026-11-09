@@ -1,5 +1,6 @@
 import { dlopen, FFIType, ptr } from 'bun:ffi';
 import { randomBytes } from 'node:crypto';
+import { closeSync, openSync } from 'node:fs';
 import {
   cp,
   mkdir,
@@ -88,6 +89,7 @@ await mkdir(appdata);
 const env = {
   SystemRoot: process.env.SystemRoot,
   PATH: resolve(process.env.SystemRoot, 'System32'),
+  COMSPEC: resolve(process.env.SystemRoot, 'System32/cmd.exe'),
   TEMP: root,
   TMP: root,
   USERPROFILE: root,
@@ -95,7 +97,39 @@ const env = {
   LOCALAPPDATA: appdata,
   PGPASSWORD: pass,
 };
-let server;
+let serverStarted = false;
+let serverOwned = false;
+let preserveData = false;
+let failed = false;
+let migrationsApplied;
+// The test process owns a kill-on-close job before pg_ctl can spawn children.
+// Keep the handle open until Bun exits, including failed/late startup paths.
+const win = dlopen('kernel32.dll', {
+  CreateJobObjectW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+  SetInformationJobObject: {
+    args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32],
+    returns: FFIType.i32,
+  },
+  OpenProcess: {
+    args: [FFIType.u32, FFIType.i32, FFIType.u32],
+    returns: FFIType.ptr,
+  },
+  AssignProcessToJobObject: {
+    args: [FFIType.ptr, FFIType.ptr],
+    returns: FFIType.i32,
+  },
+  IsProcessInJob: {
+    args: [FFIType.ptr, FFIType.ptr, FFIType.ptr],
+    returns: FFIType.i32,
+  },
+  QueryInformationJobObject: {
+    args: [FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.u32, FFIType.ptr],
+    returns: FFIType.i32,
+  },
+  CloseHandle: { args: [FFIType.ptr], returns: FFIType.i32 },
+});
+let job;
+let jobAssigned = false;
 async function command(args, options = {}) {
   const child = Bun.spawn(args, {
     env,
@@ -111,6 +145,46 @@ async function command(args, options = {}) {
     );
 }
 try {
+  job = win.symbols.CreateJobObjectW(0, 0);
+  const limits = Buffer.alloc(144); // JOBOBJECT_EXTENDED_LIMIT_INFORMATION, x64
+  limits.writeUInt32LE(0x2000, 16); // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+  if (
+    !job ||
+    !win.symbols.SetInformationJobObject(job, 9, ptr(limits), limits.length)
+  )
+    throw new Error('Cannot create PostgreSQL test supervisor');
+  const current = win.symbols.OpenProcess(0x101, 0, process.pid);
+  if (!current) throw new Error('Cannot inspect PostgreSQL test supervisor');
+  try {
+    if (!win.symbols.AssignProcessToJobObject(job, current))
+      throw new Error('Cannot supervise PostgreSQL test processes');
+    jobAssigned = true;
+  } finally {
+    win.symbols.CloseHandle(current);
+  }
+  if ([root, infrastructure].some((path) => /[%!]/.test(path)))
+    throw new Error('PostgreSQL smoke requires paths without % or !');
+  const whoami = Bun.spawn(
+    [
+      resolve(env.SystemRoot, 'System32/whoami.exe'),
+      '/user',
+      '/fo',
+      'csv',
+      '/nh',
+    ],
+    { env, stdout: 'pipe', stderr: 'ignore' },
+  );
+  const identityOutput = new Response(whoami.stdout).text();
+  if ((await whoami.exited) !== 0)
+    throw new Error('Cannot determine the current Windows user');
+  const sid = (await identityOutput).match(/S-\d-(?:\d+-)+\d+/)?.[0];
+  if (!sid) throw new Error('Cannot determine the current Windows user SID');
+  await command([
+    resolve(env.SystemRoot, 'System32/icacls.exe'),
+    root,
+    '/grant',
+    `*${sid}:(OI)(CI)F`,
+  ]);
   await cp(migratorSource, migrator, { recursive: true });
   const socket = createServer();
   await new Promise((done, reject) => {
@@ -135,21 +209,44 @@ try {
     'UTF8',
     '--locale=C',
   ]);
-  server = Bun.spawn(
-    [
-      resolve(bin, 'postgres.exe'),
-      '-D',
-      data,
-      '-h',
-      '127.0.0.1',
-      '-p',
-      String(port),
-    ],
-    { env, stdout: 'ignore', stderr: 'ignore' },
-  );
+  const log = resolve(root, 'postgres.log');
+  const controlLog = resolve(root, 'postgres-control.log');
+  const controlFd = openSync(controlLog, 'a');
+  let startCode;
+  try {
+    const start = Bun.spawn(
+      [
+        resolve(bin, 'pg_ctl.exe'),
+        '-D',
+        data,
+        '-l',
+        log,
+        '-w',
+        '-t',
+        '60',
+        'start',
+        '-o',
+        `-h 127.0.0.1 -p ${port}`,
+      ],
+      { env, stdout: controlFd, stderr: controlFd },
+    );
+    startCode = await start.exited;
+  } finally {
+    closeSync(controlFd);
+  }
+  if (startCode !== 0) {
+    preserveData = true;
+    const output = await readFile(log, 'utf8').catch(
+      () => 'No PostgreSQL log was created',
+    );
+    const control = await readFile(controlLog, 'utf8');
+    throw new Error(
+      `PostgreSQL failed to start: ${(control + '\n' + output).slice(-8192).replaceAll(pass, '[redacted]')}`,
+    );
+  }
+  serverStarted = true;
   let ready = false;
   for (let i = 0; i < 100; i++) {
-    if (server.exitCode !== null) throw new Error('PostgreSQL exited');
     const probe = Bun.spawn(
       [
         resolve(bin, 'psql.exe'),
@@ -174,7 +271,35 @@ try {
       const pid = Number(
         pidBytes.subarray(0, pidBytes.indexOf(10)).toString('ascii').trim(),
       );
-      if (pid !== server.pid) throw new Error('Unexpected PostgreSQL process');
+      const processHandle = win.symbols.OpenProcess(0x101000, 0, pid);
+      if (!processHandle) throw new Error('Cannot inspect PostgreSQL process');
+      try {
+        const member = Buffer.alloc(4);
+        if (
+          !win.symbols.IsProcessInJob(processHandle, job, ptr(member)) ||
+          !member.readInt32LE()
+        )
+          throw new Error('PostgreSQL is outside the test supervisor');
+      } finally {
+        win.symbols.CloseHandle(processHandle);
+      }
+      const netstat = Bun.spawn(
+        [resolve(env.SystemRoot, 'System32/netstat.exe'), '-ano', '-p', 'tcp'],
+        { env, stdout: 'pipe', stderr: 'ignore' },
+      );
+      const rows = new Response(netstat.stdout).text();
+      if ((await netstat.exited) !== 0)
+        throw new Error('Cannot inspect PostgreSQL listener');
+      const owned = (await rows).split(/\r?\n/).some((line) => {
+        const fields = line.trim().split(/\s+/);
+        return (
+          fields[0] === 'TCP' &&
+          fields[1] === `127.0.0.1:${port}` &&
+          Number(fields.at(-1)) === pid
+        );
+      });
+      if (!owned) throw new Error('Unexpected PostgreSQL process');
+      serverOwned = true;
       ready = true;
       break;
     }
@@ -232,27 +357,84 @@ try {
   ).filter((entry) => entry.isDirectory()).length;
   if (Number((await output).trim()) !== migrations)
     throw new Error('Migration history mismatch');
-  console.log(`Applied ${migrations} migrations; second deploy succeeded`);
+  migrationsApplied = migrations;
+} catch (error) {
+  failed = true;
+  throw error;
 } finally {
-  let stopped = true;
-  if (server && server.exitCode === null) {
-    try {
-      await command([
-        resolve(bin, 'pg_ctl.exe'),
-        '-D',
-        data,
-        '-m',
-        'fast',
-        '-w',
-        'stop',
-      ]);
-    } catch {
-      stopped = false;
-      server.kill();
+  try {
+    let cleanupFailure;
+    let stopped = true;
+    if (serverStarted && serverOwned) {
+      try {
+        await command([
+          resolve(bin, 'pg_ctl.exe'),
+          '-D',
+          data,
+          '-m',
+          'fast',
+          '-w',
+          'stop',
+        ]);
+      } catch (error) {
+        stopped = false;
+        cleanupFailure = new Error('PostgreSQL test shutdown failed', {
+          cause: error,
+        });
+      }
     }
-    await server.exited;
+    if (serverStarted && !serverOwned) {
+      preserveData = true;
+      cleanupFailure = new Error('PostgreSQL ownership could not be confirmed');
+    }
+    if (stopped && !preserveData && jobAssigned) {
+      const accounting = Buffer.alloc(48); // JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, x64
+      let empty = false;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        if (
+          !win.symbols.QueryInformationJobObject(
+            job,
+            1,
+            ptr(accounting),
+            accounting.length,
+            0,
+          )
+        )
+          throw new Error('Cannot inspect PostgreSQL test processes');
+        if (accounting.readUInt32LE(40) === 1) {
+          empty = true;
+          break;
+        }
+        await Bun.sleep(100);
+      }
+      if (!empty) {
+        preserveData = true;
+        cleanupFailure = new Error(
+          'PostgreSQL test processes did not terminate',
+        );
+      }
+    }
+    if (stopped && !preserveData) {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          await rm(actualRoot, { recursive: true, force: true });
+          break;
+        } catch (error) {
+          if (
+            attempt >= 9 ||
+            !['EPERM', 'EACCES', 'EBUSY', 'ENOTEMPTY'].includes(error.code)
+          )
+            throw error;
+          await Bun.sleep(500);
+        }
+      }
+    } else {
+      console.error(`PostgreSQL test data retained at ${actualRoot}`);
+      if (cleanupFailure) throw cleanupFailure;
+    }
+  } catch (error) {
+    if (!failed) throw error;
+    console.error(`PostgreSQL test cleanup also failed: ${error.message}`);
   }
-  if (stopped) await rm(actualRoot, { recursive: true, force: true });
-  else
-    console.error(`PostgreSQL stop failed; temporary data retained at ${root}`);
 }
+console.log(`Applied ${migrationsApplied} migrations; second deploy succeeded`);

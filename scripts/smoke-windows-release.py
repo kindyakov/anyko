@@ -70,7 +70,7 @@ def stop(child):
         raise RuntimeError(f'Launcher shutdown failed: {child.returncode}')
 
 
-def descendant_handles(pid):
+def descendant_handles(pid, required_pids=()):
     class ProcessEntry(ctypes.Structure):
         _fields_ = [('size', wintypes.DWORD), ('usage', wintypes.DWORD), ('pid', wintypes.DWORD),
                     ('heap', ctypes.c_size_t), ('module', wintypes.DWORD), ('threads', wintypes.DWORD),
@@ -108,16 +108,21 @@ def descendant_handles(pid):
     descendants.remove(pid)
     if len(descendants) < 5:
         raise RuntimeError('Expected launcher process tree not found')
+    # pg_ctl exits after spawning a shell and postmaster, so PostgreSQL may
+    # no longer appear in a process-tree walk. Track its real PID explicitly.
+    descendants.update(required_pids)
     handles = []
     try:
         for child in descendants:
             handle = kernel.OpenProcess(0x100000, False, child)
             if not handle:
                 raise OSError(ctypes.get_last_error(), 'Cannot inspect launcher child')
-            handles.append(handle)
+            handles.append((child, handle))
+            if child in required_pids and kernel.WaitForSingleObject(handle, 0) != 258:
+                raise RuntimeError(f'Required process was not running before the crash: {child}')
         return kernel, handles
     except Exception:
-        for handle in handles:
+        for _, handle in handles:
             kernel.CloseHandle(handle)
         raise
 
@@ -261,18 +266,19 @@ try:
     stop(process)
     process = None
     process, _ = start()
-    kernel, handles = descendant_handles(process.pid)
+    postmaster = int((release/'data/postgres/postmaster.pid').read_bytes().splitlines()[0])
+    kernel, handles = descendant_handles(process.pid, (postmaster,))
     try:
         process.terminate()
         process.wait(timeout=30)
         process = None
         end = time.monotonic() + 30
-        for handle in handles:
+        for pid, handle in handles:
             remaining = max(0, int((end - time.monotonic()) * 1000))
             if kernel.WaitForSingleObject(handle, remaining) != 0:
-                raise RuntimeError('A launcher child survived forced termination')
+                raise RuntimeError(f'A launcher child survived forced termination: {pid}')
     finally:
-        for handle in handles:
+        for _, handle in handles:
             kernel.CloseHandle(handle)
     process, _ = start()
     stop(process)

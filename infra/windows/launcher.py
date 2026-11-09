@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import signal
 import socket
@@ -199,6 +200,87 @@ def start(name, args, env, kernel, job, cwd=ROOT):
     return proc
 
 
+class OwnedPostgres:
+    """A postmaster started by pg_ctl and verified as part of our job."""
+    def __init__(self, pid, job):
+        self.pid = pid
+        self.kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        self.kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        self.kernel.OpenProcess.restype = wintypes.HANDLE
+        self.kernel.IsProcessInJob.argtypes = [wintypes.HANDLE, wintypes.HANDLE, ctypes.POINTER(wintypes.BOOL)]
+        self.kernel.IsProcessInJob.restype = wintypes.BOOL
+        self.kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        self.kernel.WaitForSingleObject.restype = wintypes.DWORD
+        self.kernel.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+        self.kernel.TerminateProcess.restype = wintypes.BOOL
+        self.kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+        self.handle = self.kernel.OpenProcess(0x100000 | 0x1000 | 0x0001, False, pid)
+        if not self.handle:
+            raise OSError(ctypes.get_last_error(), 'Cannot inspect PostgreSQL process')
+        member = wintypes.BOOL()
+        if not self.kernel.IsProcessInJob(self.handle, job, ctypes.byref(member)) or not member.value:
+            self.kernel.CloseHandle(self.handle)
+            raise RuntimeError('PostgreSQL is outside the application supervisor')
+
+    def poll(self):
+        result = self.kernel.WaitForSingleObject(self.handle, 0)
+        if result == 258:
+            return None
+        if result == 0:
+            return 0
+        raise OSError(ctypes.get_last_error(), 'Cannot inspect PostgreSQL process')
+
+    def wait(self, timeout=None):
+        milliseconds = 0xffffffff if timeout is None else min(int(timeout * 1000), 0xfffffffe)
+        result = self.kernel.WaitForSingleObject(self.handle, milliseconds)
+        if result == 258:
+            raise subprocess.TimeoutExpired('postgres', timeout)
+        if result != 0:
+            raise OSError(ctypes.get_last_error(), 'Cannot wait for PostgreSQL process')
+        return 0
+
+    def terminate(self):
+        if not self.kernel.TerminateProcess(self.handle, 1) and self.poll() is None:
+            raise OSError(ctypes.get_last_error(), 'Cannot stop PostgreSQL process')
+
+    kill = terminate
+
+    def close(self):
+        self.kernel.CloseHandle(self.handle)
+
+
+def allow_restricted_user(data, base):
+    """Ensure the current user retains access after pg_ctl drops admin groups."""
+    if not ctypes.windll.shell32.IsUserAnAdmin():
+        return
+    system = Path(base['SystemRoot'])/'System32'
+    result = subprocess.run([system/'whoami.exe', '/user', '/fo', 'csv', '/nh'],
+                            env=base, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                            stdin=subprocess.DEVNULL, timeout=10, check=True)
+    match = re.search(rb'S-\d-(?:\d+-)+\d+', result.stdout)
+    if not match:
+        raise RuntimeError('Cannot determine the current Windows user for data access')
+    subprocess.run([system/'icacls.exe', data, '/grant', f'*{match.group().decode("ascii")}:(OI)(CI)F'],
+                   env=base, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL, timeout=30, check=True)
+
+
+def start_postgres(pg, data, port, env, job):
+    args = [pg/'pg_ctl.exe', '-D', data, '-l', DATA/'logs/postgres.log',
+            '-w', '-t', '120', 'start', '-o', f'-h 127.0.0.1 -p {port}']
+    with (DATA/'logs/postgres-control.log').open('ab') as control:
+        result = subprocess.run([str(arg) for arg in args], cwd=ROOT, env=env,
+                                stdin=subprocess.DEVNULL, stdout=control,
+                                stderr=control, timeout=135)
+    if result.returncode:
+        raise RuntimeError('PostgreSQL failed to start; see data/logs/postgres.log and postgres-control.log')
+    with (data/'postmaster.pid').open('rb') as pidfile:
+        pid = int(pidfile.readline())
+    process = OwnedPostgres(pid, job)
+    CHILDREN.append(('postgres', process))
+    return process
+
+
 def wait_http(proc, url, seconds=120):
     end = time.monotonic() + seconds
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -241,11 +323,13 @@ def settings():
 
 def run():
     global KERNEL, JOB
+    # pg_ctl invokes cmd.exe, which can expand these characters inside quotes.
+    if any(char in str(ROOT) for char in '%!'):
+        raise RuntimeError('Move the Anyko folder to a path without % or !')
     for directory, version in [(INFRA, 1), (MIGRATOR, 2), (MINERU, 1)]:
         if json.loads((directory/'complete.json').read_text(encoding='utf8')).get('format') != version:
             raise RuntimeError('Incomplete component: ' + str(directory))
     DATA.mkdir(exist_ok=True)
-    (DATA/'logs').mkdir(exist_ok=True)
     mutex_kernel, mutex = create_mutex()
     kernel = job = None
     pgdata = DATA/'postgres'
@@ -260,12 +344,15 @@ def run():
         systemroot = os.environ['SystemRoot']
         temp = DATA/'temp'
         appdata = DATA/'appdata'
-        temp.mkdir(exist_ok=True)
-        appdata.mkdir(exist_ok=True)
         origin = f'http://127.0.0.1:{webport}'
         base = {'SystemRoot': systemroot, 'PATH': str(Path(systemroot)/'System32'),
+                'COMSPEC': str(Path(systemroot)/'System32/cmd.exe'),
                 'TEMP': str(temp), 'TMP': str(temp), 'USERPROFILE': str(DATA),
                 'APPDATA': str(appdata), 'LOCALAPPDATA': str(appdata), 'PYTHONUTF8': '1'}
+        allow_restricted_user(DATA, base)
+        temp.mkdir(exist_ok=True)
+        appdata.mkdir(exist_ok=True)
+        (DATA/'logs').mkdir(exist_ok=True)
         database_url = f"postgresql://{config['dbuser']}:{config['dbpassword']}@127.0.0.1:{pgport}/{config['dbname']}"
         env = {**base, 'PGPASSWORD': config['dbpassword'], 'DATABASE_URL': database_url}
         storage_env = {**base, 'S3_ENDPOINT': f'http://127.0.0.1:{s3port}', 'S3_BUCKET': 'anyko-local',
@@ -299,7 +386,7 @@ def run():
             print('Preparing local database...', flush=True)
             command([pg/'initdb.exe', '-D', pgdata, '-U', config['dbuser'], '--pwfile', pwfile,
                      '--auth', 'scram-sha-256', '--encoding', 'UTF8', '--locale=C'], env)
-        database = start('postgres', [pg/'postgres.exe', '-D', pgdata, '-h', '127.0.0.1', '-p', str(pgport)], env, kernel, job)
+        database = start_postgres(pg, pgdata, pgport, env, job)
         wait_listener(database, pgport)
         args = [str(pg/'psql.exe'), '-h', '127.0.0.1', '-p', str(pgport), '-U', config['dbuser'], '-d', 'postgres', '-Atc', 'select 1']
         for _ in range(150):
@@ -376,6 +463,8 @@ def run():
         order = ('web', 'api', 'worker', 'ocr', 'storage', 'redis', 'postgres')
         for name, proc in sorted(CHILDREN, key=lambda child: order.index(child[0])):
             if proc.poll() is not None:
+                if name == 'postgres':
+                    proc.close()
                 continue
             if name == 'postgres':
                 try:
@@ -398,6 +487,8 @@ def run():
             except subprocess.TimeoutExpired:
                 proc.kill()
                 proc.wait()
+            if name == 'postgres':
+                proc.close()
         # Keep the job handle open until Python exits: closing it here would
         # terminate the supervisor itself before it can report its result.
         for log in LOGS:

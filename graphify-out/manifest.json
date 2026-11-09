@@ -1890,9 +1890,9 @@
     "semantic_hash": ""
   },
   "infra/windows/launcher.py": {
-    "mtime": 1794184512.0717404,
-    "seen": 1794184899.789769,
-    "ast_hash": "611f0a99dfcf3532490e9f65b4aee320",
+    "mtime": 1794229478.1845493,
+    "seen": 1794229596.7666442,
+    "ast_hash": "a152c60a889a1695604b45ec45a394ca",
     "semantic_hash": ""
   },
   "infra/windows/serve_processor.py": {
@@ -1938,9 +1938,9 @@
     "semantic_hash": ""
   },
   "scripts/smoke-windows-migrator.mjs": {
-    "mtime": 1794216114.0854084,
-    "seen": 1794216201.2736769,
-    "ast_hash": "c3c13edd19a7327d2f12abc6155516c5",
+    "mtime": 1794229884.7575977,
+    "seen": 1794229976.8503182,
+    "ast_hash": "c25463d1fdb853200196b46152df0c83",
     "semantic_hash": ""
   },
   "scripts/smoke-windows-mineru.mjs": {
@@ -1950,9 +1950,9 @@
     "semantic_hash": ""
   },
   "scripts/smoke-windows-release.py": {
-    "mtime": 1794184018.6328971,
-    "seen": 1794184899.8047793,
-    "ast_hash": "589ce83ceb844a4980808b0bc86c601d",
+    "mtime": 1794229398.1693966,
+    "seen": 1794229465.397336,
+    "ast_hash": "3c6ca21c03076354ff89bf2592b86b16",
     "semantic_hash": ""
   },
   "scripts/smoke-windows-web.mjs": {
@@ -2010,9 +2010,9 @@
     "semantic_hash": ""
   },
   "infra/windows/README.txt": {
-    "mtime": 1794184207.6839657,
-    "seen": 1794184899.8135517,
-    "ast_hash": "eaf251c37059badb2f357a91bd970ca2",
+    "mtime": 1794217395.1883006,
+    "seen": 1794217974.777913,
+    "ast_hash": "be31dee37d726b446f87a11534516226",
     "semantic_hash": ""
   },
   "infra/windows/licenses/README.txt": {
