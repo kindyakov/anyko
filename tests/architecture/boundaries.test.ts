@@ -616,3 +616,56 @@ test('ESLint rejects ambient clock, ids and environment in application code', as
   );
   expect(allowed.rules).not.toContain('no-restricted-syntax');
 }, 120000);
+
+test('backend-modules-database-types-only rejects database client values outside runtime and permits types', async () => {
+  const database = {
+    'packages/database/package.json': JSON.stringify({
+      name: '@anyko/database',
+      exports: { '.': './src/index.ts' },
+    }),
+    'packages/database/src/index.ts':
+      'export const createDatabase = (url: string) => url; export type Database = string;',
+  };
+  const rejected = await check(
+    {
+      ...database,
+      'packages/backend/src/modules/access/infrastructure/example.ts':
+        "import { createDatabase } from '@anyko/database';\nexport const client = createDatabase;",
+      'apps/placeholder.ts': 'export {};',
+    },
+    false,
+    ['database'],
+  );
+  expect(
+    hasViolation(rejected.result, 'backend-modules-database-types-only'),
+  ).toBe(true);
+  const allowed = await check(
+    {
+      ...database,
+      'packages/backend/src/modules/access/infrastructure/example.ts':
+        "import type { Database } from '@anyko/database';\nexport type Client = Database;",
+      'packages/backend/src/runtime/example.ts':
+        "import { createDatabase } from '@anyko/database';\nexport const client = createDatabase;",
+      'apps/placeholder.ts': 'export {};',
+    },
+    false,
+    ['database'],
+  );
+  expect(
+    hasViolation(allowed.result, 'backend-modules-database-types-only'),
+  ).toBe(false);
+}, 30000);
+
+test('ESLint rejects process.env in backend runtime and permits passed-in configuration', async () => {
+  const filename = 'packages/backend/src/runtime/example.js';
+  const rejected = await lintSnippet(
+    filename,
+    'export const url = process.env.DATABASE_URL;',
+  );
+  expect(rejected.rules).toContain('no-restricted-syntax');
+  const allowed = await lintSnippet(
+    filename,
+    'export function url(config) { return config.database.url; }',
+  );
+  expect(allowed.rules).not.toContain('no-restricted-syntax');
+}, 60000);

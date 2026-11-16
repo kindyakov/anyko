@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { createMineruParser } from '@anyko/backend/runtime';
-import { createDatabase } from '@anyko/database';
+import { createDatabase, createDatabasePool } from '@anyko/database';
 if (
   !process.argv.includes('--applications-stopped') ||
   !process.argv.includes('--storage-requests-drained')
@@ -12,7 +12,8 @@ if (
 const env = z
   .object({ DATABASE_URL: z.string(), MINERU_BASE_URL: z.url() })
   .parse(process.env);
-const db = createDatabase(env.DATABASE_URL);
+const pool = createDatabasePool(env.DATABASE_URL);
+const db = createDatabase(pool);
 const parser = createMineruParser({
   baseUrl: env.MINERU_BASE_URL,
   timeoutMs: 1000,
@@ -42,4 +43,5 @@ try {
   );
 } finally {
   await db.$disconnect();
+  await pool.end();
 }

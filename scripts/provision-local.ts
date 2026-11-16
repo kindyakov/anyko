@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { provisionLocalAccess } from '@anyko/backend/access';
+import { createDatabase, createDatabasePool } from '@anyko/database';
 
 const schema = z.object({
   DATABASE_URL: z.url(),
@@ -15,10 +16,13 @@ if (!config.success) {
   console.error('Local provisioning configuration is incomplete');
   process.exitCode = 1;
 } else {
+  // One-shot operator process: it owns its pool and closes it.
+  const pool = createDatabasePool(config.data.DATABASE_URL);
+  const db = createDatabase(pool);
   try {
     const c = config.data;
     await provisionLocalAccess({
-      databaseUrl: c.DATABASE_URL,
+      db,
       secret: c.AUTH_SECRET,
       baseURL: c.AUTH_BASE_URL,
       origin: c.APP_ORIGIN,
@@ -31,5 +35,8 @@ if (!config.success) {
   } catch {
     console.error('LOCAL_PROVISIONING_FAILED');
     process.exitCode = 1;
+  } finally {
+    await db.$disconnect();
+    await pool.end();
   }
 }

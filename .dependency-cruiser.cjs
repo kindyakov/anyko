@@ -228,6 +228,16 @@ module.exports = {
       from: { path: '^packages/contracts/' },
       to: { pathNot: ['^packages/contracts/', '(^|/)zod(/|$)'] },
     },
+    {
+      name: 'backend-modules-database-types-only',
+      severity: 'error',
+      comment:
+        'Модули, сценарии и примитивы получают клиент БД от composition root (ADR 0009): значения @anyko/database импортирует только runtime и интеграционные тесты; типы разрешены.',
+      from: {
+        path: '^packages/backend/src/(modules|workflows|platform|profiles)/',
+      },
+      to: { path: '^packages/database/', dependencyTypesNot: ['type-only'] },
+    },
   ],
   options: {
     enhancedResolveOptions: {

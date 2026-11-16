@@ -40,7 +40,7 @@ Scope получается из сессии и Membership; изменения �
 
 ## Локальный запуск и доказательства
 
-После `bun install --frozen-lockfile` и `bun run db:generate` примените миграции к локальной базе. В игнорируемом `.env`: `WORKS_ENABLED=true`, `DOCUMENTS_ENABLED=true`, приватный `LLM_CONFIG_ENCRYPTION_KEY` из 32 случайных байтов в hex. Ключ одинаков у API и worker; его потеря делает существующие подключения нечитаемыми.
+После `bun install --frozen-lockfile` и `bun run db:generate` примените миграции к локальной базе. В игнорируемом `.env`: `WORKS_ENABLED=true`, `DOCUMENTS_ENABLED=true`, приватный `LLM_CONFIG_ENCRYPTION_KEY` из 32 случайных байтов в hex. Режим один из двух: оба флага `true` (полный, нужны БД, S3, ключ и для worker MinerU с Redis) либо оба `false` (пустой, только проверка готовности). Смешанное сочетание завершает старт с кодом `CONFIG_MODE_MISMATCH` в журнале. Ключ одинаков у API и worker; его потеря делает существующие подключения нечитаемыми.
 
 Подключение задаётся owner через интерфейс. Для начального RouterAI есть `bun --env-file=.env --env-file=.env.routerai.local run llm:provision`: отдельный игнорируемый файл содержит `ROUTERAI_API_KEY` и `ROUTERAI_BASE_URL`. Команда сохраняет существующие настройки. Модель по умолчанию `~deepseek/deepseek-v4-flash-latest`, альтернативный ID `minimax/minimax-m3.1-flash` задаётся в настройках.
 

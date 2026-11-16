@@ -2,10 +2,11 @@ import { Queue, UnrecoverableError, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { z } from 'zod';
 
+import type { Logger } from '@anyko/logger';
+
 import { createWorkCleanup } from '../../workflows/works/cleanup';
 import { createWorkExecution } from '../../workflows/works/execute';
-
-import { createWorkRuntime, type WorkRuntimeOptions } from './resources';
+import type { WorkDependencies } from '../../workflows/works/ports';
 
 const envelope = z
   .object({
@@ -14,16 +15,17 @@ const envelope = z
     runId: z.uuid(),
   })
   .strict();
-export async function createWorkWorker(
-  options: WorkRuntimeOptions & {
-    redisUrl: string;
-    queueName?: string;
-    shutdownTimeoutMs?: number;
-  },
-) {
-  const runtime = createWorkRuntime(options);
+
+export async function createWorkWorker(options: {
+  /** Built once by `createBackend`; this consumer creates no database client of its own. */
+  deps: WorkDependencies;
+  redisUrl: string;
+  logger: Logger;
+  queueName: string;
+  shutdownTimeoutMs: number;
+}) {
+  const { deps } = options;
   const controller = new AbortController();
-  const name = options.queueName ?? 'anyko-work-pipeline';
   const connection = new Redis(options.redisUrl, {
     maxRetriesPerRequest: null,
     connectTimeout: 5000,
@@ -34,9 +36,9 @@ export async function createWorkWorker(
     connectTimeout: 5000,
     commandTimeout: 5000,
   });
-  const queue = new Queue(name, { connection: producer });
-  const execute = createWorkExecution(runtime.deps);
-  const cleanup = createWorkCleanup(runtime.deps);
+  const queue = new Queue(options.queueName, { connection: producer });
+  const execute = createWorkExecution(deps);
+  const cleanup = createWorkCleanup(deps);
   let healthy = false,
     stopping: Promise<void> | undefined;
   connection.on('error', () => {
@@ -46,7 +48,7 @@ export async function createWorkWorker(
     healthy = false;
   });
   const worker = new Worker<unknown>(
-    name,
+    options.queueName,
     async (job) => {
       const parsed = envelope.safeParse(job.data);
       if (!parsed.success || job.name !== 'work.execute')
@@ -74,29 +76,20 @@ export async function createWorkWorker(
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => {
               reject(new Error('WORK_SHUTDOWN_TIMEOUT'));
-            }, options.shutdownTimeoutMs ?? 10000);
+            }, options.shutdownTimeoutMs);
           }),
         ]);
       } finally {
         if (timer) clearTimeout(timer);
         connection.disconnect();
         producer.disconnect();
-        await Promise.allSettled([
-          worker.close(true),
-          queue.close(),
-          runtime.stop(),
-        ]);
+        await Promise.allSettled([worker.close(true), queue.close()]);
       }
     })());
   let startupTimer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      Promise.all([
-        runtime.ready(),
-        runtime.deps.agents.ready(),
-        queue.waitUntilReady(),
-        worker.waitUntilReady(),
-      ]),
+      Promise.all([queue.waitUntilReady(), worker.waitUntilReady()]),
       new Promise<never>((_, reject) => {
         startupTimer = setTimeout(() => {
           reject(new Error('WORK_STARTUP_TIMEOUT'));
@@ -112,10 +105,10 @@ export async function createWorkWorker(
   loop = (async () => {
     while (!controller.signal.aborted) {
       try {
-        await runtime.deps.processing.reconcile();
+        await deps.processing.reconcile();
         await cleanup();
         for (let i = 0; i < 20; i++) {
-          const item = await runtime.deps.processing.delivery();
+          const item = await deps.processing.delivery();
           if (!item) break;
           try {
             await queue.add(
@@ -128,9 +121,9 @@ export async function createWorkWorker(
                 attempts: 1,
               },
             );
-            await runtime.deps.processing.delivered(item.id, item.token);
+            await deps.processing.delivered(item.id, item.token);
           } catch {
-            await runtime.deps.processing.release(item.id, item.token);
+            await deps.processing.release(item.id, item.token);
             throw new Error('WORK_DISPATCH_FAILED');
           }
         }

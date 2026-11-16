@@ -1,10 +1,7 @@
 import { expect, test } from 'bun:test';
 
-import { createAccess, provisionLocalAccess } from '@anyko/backend/access';
-import {
-  createDocumentRuntime,
-  createWorkRuntime,
-} from '@anyko/backend/runtime';
+import { provisionLocalAccess } from '@anyko/backend/access';
+import { type BackendConfig, createBackend } from '@anyko/backend/runtime';
 import {
   documentResponseSchema,
   documentsResponseSchema,
@@ -12,7 +9,7 @@ import {
   llmSettingsResponseSchema,
   workResponseSchema,
 } from '@anyko/contracts';
-import { createDatabase } from '@anyko/database';
+import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../../apps/api/src/http/app';
@@ -37,82 +34,74 @@ test('real sessions enforce closed signup, mutation origin and document workspac
   const password = `Fixture-${crypto.randomUUID()}!aA9`;
   const origin = 'http://localhost:3000';
   const config = {
-    databaseUrl,
     secret: crypto.randomUUID() + crypto.randomUUID(),
     baseURL: 'http://127.0.0.1:3001',
     origin,
   };
-  const db = createDatabase(databaseUrl);
-  const access = createAccess(config);
+  const pool = createDatabasePool(databaseUrl);
+  const db = createDatabase(pool);
   const files = new Map<string, Uint8Array>();
-  const documents = createDocumentRuntime({
-    databaseUrl,
-    logger: createLogger({
-      service: 'api',
-      environment: 'test',
-      release: 'access-integration',
-      level: 'fatal',
-    }),
-    storage: {
-      exists: (key) => Promise.resolve(files.has(key)),
-      put(key, bytes) {
-        files.set(key, bytes);
-        return Promise.resolve();
-      },
-      get(key) {
-        const bytes = files.get(key);
-        if (!bytes) throw new Error('MISSING_FIXTURE');
-        return Promise.resolve(bytes);
-      },
-      delete(key) {
-        files.delete(key);
-        return Promise.resolve();
-      },
-    },
+  const logger = createLogger({
+    service: 'api',
+    environment: 'test',
+    release: 'access-integration',
+    level: 'fatal',
   });
-  const works = createWorkRuntime({
-    databaseUrl,
-    encryptionKey: (crypto.randomUUID() + crypto.randomUUID()).replaceAll(
-      '-',
-      '',
-    ),
-    logger: createLogger({
-      service: 'api',
-      environment: 'test',
-      release: 'work-access',
-      level: 'fatal',
-    }),
+  // One API composition: the same pool and storage serve sessions, documents and works.
+  const backendConfig: BackendConfig = {
+    database: { url: databaseUrl },
     storage: {
-      exists: () => Promise.resolve(false),
-      get: () => Promise.reject(new Error('UNEXPECTED_STORAGE_READ')),
-      put: () => Promise.reject(new Error('UNEXPECTED_STORAGE_WRITE')),
-      delete: () => Promise.reject(new Error('UNEXPECTED_STORAGE_DELETE')),
+      endpoint: 'http://127.0.0.1:1',
+      bucket: 'fixture',
+      accessKeyId: 'fixture',
+      secretAccessKey: 'fixture',
+    },
+    works: {
+      encryptionKey: (crypto.randomUUID() + crypto.randomUUID()).replaceAll(
+        '-',
+        '',
+      ),
+    },
+    auth: {
+      secret: config.secret,
+      baseUrl: config.baseURL,
+      origin,
+    },
+  };
+  const api = createBackend(backendConfig, {
+    logger,
+    role: 'api',
+    dependencies: {
+      storage: {
+        exists: (key) => Promise.resolve(files.has(key)),
+        put(key, bytes) {
+          files.set(key, bytes);
+          return Promise.resolve();
+        },
+        get(key) {
+          const bytes = files.get(key);
+          if (!bytes) throw new Error('MISSING_FIXTURE');
+          return Promise.resolve(bytes);
+        },
+        delete(key) {
+          files.delete(key);
+          return Promise.resolve();
+        },
+      },
     },
   });
   const ownedWorkIds: string[] = [];
   let ownedSettingsRevision: number | undefined;
   const app = createApp({
-    workHttp: {
-      access,
-      documents,
-      origin,
-      works: works.api,
-      settings: works.settings,
-      saveSettings: works.saveSettings,
-    },
-    documentHttp: { access, documents, origin },
-    logger: createLogger({
-      service: 'api',
-      environment: 'test',
-      release: 'access-integration',
-      level: 'fatal',
-    }),
+    workHttp: api.workHttp,
+    documentHttp: api.documentHttp,
+    logger,
   });
   let listening = false;
   const foreignWorkspace = `access-${fixtureId}`;
   try {
-    await provisionLocalAccess({ ...config, email: firstEmail, password });
-    await provisionLocalAccess({ ...config, email: secondEmail, password });
+    await provisionLocalAccess({ db, ...config, email: firstEmail, password });
+    await provisionLocalAccess({ db, ...config, email: secondEmail, password });
     const secondUser = await db.user.findUniqueOrThrow({
       where: { email: secondEmail },
     });
@@ -463,12 +452,9 @@ test('real sessions enforce closed signup, mutation origin and document workspac
       await db.user.deleteMany({ where: { id: { in: userIds } } });
       await db.anykoWorkspace.deleteMany({ where: { id: foreignWorkspace } });
     } finally {
-      await Promise.all([
-        works.stop(),
-        documents.stop(),
-        access.stop(),
-        db.$disconnect(),
-      ]);
+      await api.stop();
+      await db.$disconnect();
+      await pool.end();
     }
   }
 }, 30000);

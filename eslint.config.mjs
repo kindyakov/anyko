@@ -99,4 +99,19 @@ export default [
       ],
     },
   },
+  {
+    // backend-runtime-no-process-env (ADR 0009): composition получает уже разобранную BackendConfig.
+    files: ['packages/backend/src/runtime/**/*.{js,mjs,cjs,ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "MemberExpression[object.name='process'][property.name='env']",
+          message:
+            'runtime получает настройки аргументом (BackendConfig); process.env читают только bootstrap приложений.',
+        },
+      ],
+    },
+  },
 ];

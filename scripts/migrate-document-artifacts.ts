@@ -6,7 +6,11 @@ import {
   StorageWriteOutcomeUnknown,
 } from '@anyko/backend/documents';
 import { createS3Storage } from '@anyko/backend/runtime';
-import { createDatabase, createResourceLocks } from '@anyko/database';
+import {
+  createDatabase,
+  createDatabasePool,
+  createResourceLocks,
+} from '@anyko/database';
 const env = z
   .object({
     DATABASE_URL: z.string(),
@@ -23,8 +27,9 @@ if (
   throw new Error(
     'Migration requires verified quiescence; see document-vertical.md',
   );
-const db = createDatabase(env.DATABASE_URL),
-  locks = createResourceLocks(env.DATABASE_URL);
+const pool = createDatabasePool(env.DATABASE_URL),
+  db = createDatabase(pool),
+  locks = createResourceLocks(pool);
 const storage = createS3Storage({
   endpoint: env.S3_ENDPOINT,
   bucket: env.S3_BUCKET,
@@ -226,6 +231,6 @@ try {
   }
   console.info('Document artifacts migrated to separate private S3 objects');
 } finally {
-  await locks.stop();
   await db.$disconnect();
+  await pool.end();
 }

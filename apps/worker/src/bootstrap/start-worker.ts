@@ -1,26 +1,31 @@
 import {
-  createDocumentWorker,
-  createMineruParser,
-  createS3Storage,
+  BackendConfigError,
+  createBackend,
   createWorkerRuntime,
-  createWorkWorker,
-  parseWorkConfig,
+  resolveBackendMode,
+  type WorkerBackend,
 } from '@anyko/backend/runtime';
 import { createLogger } from '@anyko/logger';
 
+import { parseBackendEnv } from './backend-config';
 import { parseWorkerConfig } from './config';
 
 export async function startWorker() {
+  let diagnostic: Awaited<ReturnType<typeof createWorkerRuntime>> | undefined;
+  let backend: WorkerBackend | undefined;
   try {
     const config = parseWorkerConfig(process.env);
-    const workConfig = parseWorkConfig(process.env);
     const logger = createLogger({
       service: 'worker',
       environment: config.NODE_ENV,
       release: config.RELEASE,
       level: config.LOG_LEVEL,
     });
-    const runtime = await createWorkerRuntime({
+    const mode = resolveBackendMode({
+      documentsEnabled: config.DOCUMENTS_ENABLED === 'true',
+      worksEnabled: config.WORKS_ENABLED === 'true',
+    });
+    diagnostic = await createWorkerRuntime({
       redisUrl: config.REDIS_URL,
       queueName: config.QUEUE_NAME,
       concurrency: config.WORKER_CONCURRENCY,
@@ -29,93 +34,50 @@ export async function startWorker() {
       logger,
     });
     let documentWorker:
-      Awaited<ReturnType<typeof createDocumentWorker>> | undefined;
-    if (config.documents) {
-      const documents = config.documents;
-      try {
-        documentWorker = await createDocumentWorker({
-          databaseUrl: documents.DATABASE_URL,
+      Awaited<ReturnType<WorkerBackend['startDocumentWorker']>> | undefined;
+    let workWorker:
+      Awaited<ReturnType<WorkerBackend['startWorkWorker']>> | undefined;
+    if (mode === 'full') {
+      backend = createBackend(
+        parseBackendEnv(process.env, {
           redisUrl: config.REDIS_URL,
-          logger,
-          storage: createS3Storage({
-            endpoint: documents.S3_ENDPOINT,
-            bucket: documents.S3_BUCKET,
-            accessKeyId: documents.S3_ACCESS_KEY,
-            secretAccessKey: documents.S3_SECRET_KEY,
-          }),
-          parser: createMineruParser({
-            baseUrl: documents.MINERU_BASE_URL,
-            timeoutMs: documents.MINERU_TIMEOUT_MS,
-          }),
-          leaseMs: documents.MINERU_TIMEOUT_MS + 60000,
           shutdownTimeoutMs: config.SHUTDOWN_TIMEOUT_MS,
-        });
-      } catch (error) {
-        await runtime.stop();
-        throw error;
-      }
+        }),
+        { logger, role: 'worker' },
+      );
+      await backend.ready();
+      documentWorker = await backend.startDocumentWorker();
+      workWorker = await backend.startWorkWorker();
     }
-    let server;
-    let workWorker: Awaited<ReturnType<typeof createWorkWorker>> | undefined;
-    try {
-      if (workConfig && config.documents)
-        workWorker = await createWorkWorker({
-          databaseUrl: config.documents.DATABASE_URL,
-          encryptionKey: workConfig.encryptionKey,
-          redisUrl: config.REDIS_URL,
-          logger,
-          storage: createS3Storage({
-            endpoint: config.documents.S3_ENDPOINT,
-            bucket: config.documents.S3_BUCKET,
-            accessKeyId: config.documents.S3_ACCESS_KEY,
-            secretAccessKey: config.documents.S3_SECRET_KEY,
-          }),
-          shutdownTimeoutMs: config.SHUTDOWN_TIMEOUT_MS,
-        });
-    } catch (error) {
-      await documentWorker?.stop();
-      await runtime.stop();
-      throw error;
-    }
-    try {
-      server = Bun.serve({
-        hostname: config.WORKER_HOST,
-        port: config.WORKER_PORT,
-        fetch(request) {
-          const path = new URL(request.url).pathname;
-          if (path === '/health/live') return Response.json({ status: 'ok' });
-          if (path === '/health/ready') {
-            const diagnosticState = runtime.state();
-            const state =
-              diagnosticState === 'ready'
-                ? documentWorker?.state() === 'ready' || !documentWorker
-                  ? (workWorker?.state() ?? 'ready')
-                  : documentWorker.state()
-                : diagnosticState;
-            return Response.json(
-              { status: state },
-              { status: state === 'ready' ? 200 : 503 },
-            );
-          }
-          return new Response(null, { status: 404 });
-        },
-      });
-    } catch {
-      await documentWorker?.stop();
-      await workWorker?.stop();
-      await runtime.stop();
-      throw new Error('WORKER_LISTEN_FAILED');
-    }
+    const server = Bun.serve({
+      hostname: config.WORKER_HOST,
+      port: config.WORKER_PORT,
+      fetch(request) {
+        const path = new URL(request.url).pathname;
+        if (path === '/health/live') return Response.json({ status: 'ok' });
+        if (path === '/health/ready') {
+          const diagnosticState = diagnostic?.state() ?? 'stopped';
+          const state =
+            diagnosticState === 'ready'
+              ? documentWorker?.state() === 'ready' || !documentWorker
+                ? (workWorker?.state() ?? 'ready')
+                : documentWorker.state()
+              : diagnosticState;
+          return Response.json(
+            { status: state },
+            { status: state === 'ready' ? 200 : 503 },
+          );
+        }
+        return new Response(null, { status: 404 });
+      },
+    });
     let stopping = false;
     const shutdown = async () => {
       if (stopping) return;
       stopping = true;
       try {
-        await Promise.all([
-          runtime.stop(),
-          documentWorker?.stop(),
-          workWorker?.stop(),
-        ]);
+        // The backend stops its queue workers first, then releases the shared pool.
+        await Promise.all([diagnostic?.stop(), backend?.stop()]);
         logger.info({ event: 'worker.stopped' });
       } catch {
         logger.error({ event: 'worker.shutdown_failed' });
@@ -135,8 +97,10 @@ export async function startWorker() {
         void shutdown();
       });
   } catch (error) {
+    await Promise.allSettled([diagnostic?.stop(), backend?.stop()]);
     console.error(
-      error instanceof Error && error.message.startsWith('INVALID_ENV:')
+      error instanceof BackendConfigError ||
+        (error instanceof Error && error.message.startsWith('INVALID_ENV:'))
         ? error.message
         : 'WORKER_STARTUP_FAILED',
     );
