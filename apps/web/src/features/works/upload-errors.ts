@@ -1,19 +1,26 @@
-import { ApiError } from '@/lib/api/client';
+import { ApiError, describeApiError } from '@/lib/api/errors';
+
+const uploadTexts = {
+  codes: {
+    UNSUPPORTED_DOCUMENT_FORMAT:
+      'Поддерживаются PDF, DOCX, JPEG, PNG, WebP и TIFF.',
+    INVALID_DOCUMENT:
+      'Содержимое файла не соответствует формату или файл повреждён.',
+    PAYLOAD_TOO_LARGE: 'Размер файла превышает 20 МБ.',
+    REQUEST_TIMEOUT:
+      'Не удалось получить ответ сервера. Обновите список перед повторной загрузкой.',
+    NETWORK_ERROR:
+      'Не удалось получить ответ сервера. Обновите список перед повторной загрузкой.',
+  },
+  technical: 'Не удалось загрузить файл. Повторите попытку.',
+  fallback: 'Не удалось загрузить файл. Повторите попытку.',
+};
 
 export function uploadFailureMessage(
   filename: string,
   failure: unknown,
 ): string {
-  const code = failure instanceof ApiError ? failure.code : '';
-  const reason =
-    code === 'UNSUPPORTED_DOCUMENT_FORMAT'
-      ? 'Поддерживаются PDF, DOCX, JPEG, PNG, WebP и TIFF.'
-      : code === 'INVALID_DOCUMENT'
-        ? 'Содержимое файла не соответствует формату или файл повреждён.'
-        : code === 'PAYLOAD_TOO_LARGE'
-          ? 'Размер файла превышает 20 МБ.'
-          : code === 'REQUEST_TIMEOUT' || code === 'NETWORK_ERROR'
-            ? 'Не удалось получить ответ сервера. Обновите список перед повторной загрузкой.'
-            : 'Не удалось загрузить файл. Повторите попытку.';
-  return `${filename}: ${reason}${failure instanceof ApiError && failure.requestId ? ` Код обращения: ${failure.requestId}.` : ''}`;
+  const reason = describeApiError(failure, uploadTexts);
+  const requestId = failure instanceof ApiError ? failure.requestId : undefined;
+  return `${filename}: ${reason}${requestId ? ` Код обращения: ${requestId}.` : ''}`;
 }

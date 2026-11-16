@@ -42,7 +42,9 @@ import { WorkPipeline } from '@/features/works/work-pipeline';
 import { WorkResults } from '@/features/works/work-results';
 import { WorkReview } from '@/features/works/work-review';
 import { type Upload, WorkSources } from '@/features/works/work-sources';
-import { ApiError, requestApi } from '@/lib/api/client';
+import { requestApi } from '@/lib/api/client';
+import { ApiError } from '@/lib/api/errors';
+import { routes } from '@/lib/routes';
 
 const accepted = z.object({ status: z.string() });
 type Live = 'connecting' | 'live' | 'reconnecting';
@@ -408,7 +410,10 @@ export function WorkDetail({
         <EventHorizon state="calm" className="size-40" />
         <h1 className="font-heading mt-8 text-2xl font-bold">{loadError}</h1>
         <div className="mt-7 flex gap-3">
-          <Link href="/" className="text-muted hover:text-ink self-center">
+          <Link
+            href={routes.works()}
+            className="text-muted hover:text-ink self-center"
+          >
             Все работы
           </Link>
           <Button
@@ -468,7 +473,7 @@ export function WorkDetail({
     <>
       <div className="animate-rise">
         <Link
-          href="/"
+          href={routes.works()}
           className="text-muted hover:text-ink group inline-flex items-center gap-1.5 text-sm transition-colors"
         >
           <ArrowLeft

@@ -2,21 +2,13 @@ import type { z } from 'zod';
 
 import { httpErrorSchema } from '@anyko/contracts';
 
+import { ApiError } from '@/lib/api/errors';
+
 export type HttpFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
 
-export class ApiError extends Error {
-  constructor(
-    readonly code: string,
-    readonly status: number | undefined,
-    readonly requestId: string | undefined,
-  ) {
-    super(code);
-    this.name = 'ApiError';
-  }
-}
 export async function requestApi<T>(
   path: string,
   schema: z.ZodType<T>,

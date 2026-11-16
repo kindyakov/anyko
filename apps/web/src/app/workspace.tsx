@@ -3,17 +3,16 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pause, Play, RotateCw } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
-import { sessionResponseSchema } from '@anyko/contracts';
-
 import { AppShell, Logo } from '@/app/app-shell';
 import { CosmicBackground } from '@/components/cosmos/cosmic-background';
 import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';
 import { SignIn } from '@/features/auth';
-import { expireSession } from '@/features/auth/session-cache';
 import { DocumentWorkspace } from '@/features/documents';
 import { WorkDetail, WorkList } from '@/features/works';
-import { ApiError, requestApi } from '@/lib/api/client';
+import { expireSession } from '@/lib/api/query-client';
+import { sessionQueryOptions } from '@/lib/api/session';
+import { routes } from '@/lib/routes';
 
 export function Workspace({
   workId,
@@ -24,18 +23,7 @@ export function Workspace({
 }) {
   const [motionPaused, setMotionPaused] = useState(false);
   const client = useQueryClient();
-  const query = useQuery({
-    queryKey: ['session'],
-    queryFn: async ({ signal }) => {
-      try {
-        return await requestApi('/session', sessionResponseSchema, { signal });
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) return null;
-        throw error;
-      }
-    },
-    refetchOnWindowFocus: false,
-  });
+  const query = useQuery(sessionQueryOptions());
   const session = query.data;
   const unauthorized = useCallback(() => {
     expireSession(client);
@@ -117,7 +105,7 @@ export function Workspace({
   return (
     <AppShell
       session={session}
-      section={documents ? '/documents' : '/'}
+      section={documents ? routes.recognition() : routes.works()}
       onUnauthorized={unauthorized}
     >
       {documents ? (

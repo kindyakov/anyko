@@ -3,7 +3,7 @@ import { Field } from '@base-ui/react/field';
 import { Form } from '@base-ui/react/form';
 import { Radio } from '@base-ui/react/radio';
 import { RadioGroup } from '@base-ui/react/radio-group';
-import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -18,12 +18,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
 
-import {
-  packagesResponseSchema,
-  workResponseSchema,
-  worksResponseSchema,
-} from '@anyko/contracts';
-
 import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';
 import { FormField } from '@/components/ui/form-field';
@@ -35,9 +29,16 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
 import { stagger } from '@/components/ui/stagger';
 import { Notice, StatusPill } from '@/components/ui/status';
+import { useCreateWork } from '@/features/works/api/mutations';
+import {
+  documentPackagesQueryOptions,
+  worksQueryOptions,
+} from '@/features/works/api/queries';
 import { journeySteps } from '@/features/works/journey';
 import { useListPreferences } from '@/features/works/list-preferences';
-import { ApiError, requestApi } from '@/lib/api/client';
+import { ApiError } from '@/lib/api/errors';
+import { useWorkspaceId } from '@/lib/api/session';
+import { routes } from '@/lib/routes';
 
 function Journey({ compact = false }: { compact?: boolean }) {
   return (
@@ -60,41 +61,23 @@ function Journey({ compact = false }: { compact?: boolean }) {
   );
 }
 
+function formText(data: FormData, name: string) {
+  const value = data.get(name);
+  return typeof value === 'string' ? value : '';
+}
+
 export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
   const router = useRouter();
   const packageLabel = useId();
   const [creating, setCreating] = useState(false);
   const { search, filter, setSearch, setFilter } = useListPreferences();
+  const workspaceId = useWorkspaceId();
   const list = useInfiniteQuery({
-    queryKey: ['works'],
+    ...worksQueryOptions(workspaceId),
     refetchOnMount: 'always',
-    initialPageParam: '',
-    queryFn: ({ pageParam, signal }) =>
-      requestApi('/works', worksResponseSchema, {
-        signal,
-        ...(pageParam ? { query: { after: pageParam } } : {}),
-      }),
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
   });
-  const catalog = useQuery({
-    queryKey: ['document-packages'],
-    queryFn: ({ signal }) =>
-      requestApi('/document-packages', packagesResponseSchema, { signal }),
-  });
-  const create = useMutation({
-    mutationFn: (data: FormData) =>
-      requestApi('/works', workResponseSchema, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          title: data.get('title'),
-          packageVersion: data.get('packageVersion'),
-        }),
-      }),
-    onSuccess: (result) => {
-      router.push(`/works/${result.work.id}`);
-    },
-  });
+  const catalog = useQuery(documentPackagesQueryOptions(workspaceId));
+  const create = useCreateWork();
   const error = list.error ?? catalog.error ?? create.error;
   useEffect(() => {
     if (error instanceof ApiError && error.status === 401) onUnauthorized();
@@ -270,7 +253,7 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
             return (
               <li key={work.id} className={`animate-rise ${stagger(index)}`}>
                 <Link
-                  href={`/works/${work.id}`}
+                  href={routes.work(work.id)}
                   className="group group/mist focus-visible:outline-brand-hot glass relative isolate flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] p-6 transition-[border-color,box-shadow] duration-500 ease-out hover:border-[#ff3b62]/40 hover:shadow-[0_20px_60px_-20px_#db143c88] focus-visible:outline-2 focus-visible:outline-offset-2"
                 >
                   <HoverMist />
@@ -364,8 +347,19 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
             className="grid gap-6"
             onSubmit={(event) => {
               event.preventDefault();
-              if (!create.isPending)
-                create.mutate(new FormData(event.currentTarget));
+              if (create.isPending) return;
+              const data = new FormData(event.currentTarget);
+              create.mutate(
+                {
+                  title: formText(data, 'title'),
+                  packageVersion: formText(data, 'packageVersion'),
+                },
+                {
+                  onSuccess: (result) => {
+                    router.push(routes.work(result.work.id));
+                  },
+                },
+              );
             }}
           >
             <FormField label="Название работы">

@@ -22,7 +22,8 @@ import {
   DocumentViewer,
   type ViewedDocument,
 } from '@/features/documents/document-viewer';
-import { ApiError, requestApi } from '@/lib/api/client';
+import { requestApi } from '@/lib/api/client';
+import { ApiError, describeApiError } from '@/lib/api/errors';
 
 const accept =
   '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff';
@@ -38,25 +39,27 @@ const tones: Record<DocumentSummary['status'], Tone> = {
   succeeded: 'success',
   failed: 'danger',
 };
+const documentTexts = {
+  codes: {
+    DELETION_PENDING:
+      'Удаление ещё выполняется. Файлы пока не считаются удалёнными; повторите проверку позже.',
+    DELETION_NEEDS_RECOVERY:
+      'Удаление требует восстановления незавершённой записи в хранилище. Статус «удалено» ещё не подтверждён.',
+    PAYLOAD_TOO_LARGE: 'Файл слишком большой. Максимум — 20 МБ.',
+    INVALID_DOCUMENT:
+      'Не удалось прочитать файл. Проверьте, что его содержимое соответствует формату PDF, DOCX или изображения.',
+    UNSUPPORTED_DOCUMENT_FORMAT:
+      'Поддерживаются PDF, DOCX, JPEG, PNG, WebP и TIFF.',
+    REQUEST_TIMEOUT:
+      'Сервер не ответил вовремя. Обновите список перед повторной загрузкой.',
+  },
+  technical: 'Не удалось выполнить действие. Попробуйте ещё раз.',
+  fallback: 'Не удалось выполнить действие. Попробуйте ещё раз.',
+};
 function message(error: unknown) {
-  if (error instanceof ApiError) {
-    const text =
-      error.code === 'DELETION_PENDING'
-        ? 'Удаление ещё выполняется. Файлы пока не считаются удалёнными; повторите проверку позже.'
-        : error.code === 'DELETION_NEEDS_RECOVERY'
-          ? 'Удаление требует восстановления незавершённой записи в хранилище. Статус «удалено» ещё не подтверждён.'
-          : error.code === 'PAYLOAD_TOO_LARGE'
-            ? 'Файл слишком большой. Максимум — 20 МБ.'
-            : error.code === 'INVALID_DOCUMENT'
-              ? 'Не удалось прочитать файл. Проверьте, что его содержимое соответствует формату PDF, DOCX или изображения.'
-              : error.code === 'UNSUPPORTED_DOCUMENT_FORMAT'
-                ? 'Поддерживаются PDF, DOCX, JPEG, PNG, WebP и TIFF.'
-                : error.code === 'REQUEST_TIMEOUT'
-                  ? 'Сервер не ответил вовремя. Обновите список перед повторной загрузкой.'
-                  : 'Не удалось выполнить действие. Попробуйте ещё раз.';
-    return error.requestId ? `${text} Код обращения: ${error.requestId}` : text;
-  }
-  return 'Не удалось выполнить действие.';
+  if (!(error instanceof ApiError)) return 'Не удалось выполнить действие.';
+  const text = describeApiError(error, documentTexts);
+  return error.requestId ? `${text} Код обращения: ${error.requestId}` : text;
 }
 export function DocumentWorkspace({
   onUnauthorized,

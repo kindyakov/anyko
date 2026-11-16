@@ -5,7 +5,8 @@ import {
   documentsResponseSchema,
 } from '@anyko/contracts';
 
-import { ApiError, type HttpFetch, requestApi } from '@/lib/api/client';
+import { type HttpFetch, requestApi } from '@/lib/api/client';
+import { ApiError } from '@/lib/api/errors';
 import { proxyApiRequest } from '@/lib/api/proxy';
 
 test('proxy uses configured public origin despite Next internal localhost URL and forwards SSE cursor', async () => {

@@ -21,10 +21,8 @@ const presentModules = existsSync(moduleRoot)
   : [];
 
 // Известные нарушения web-правил. Списки только сокращаются: новое нарушение в список не добавляется.
-const webKnownFeatureViolations = [
-  // Известное нарушение: только сокращается; убирается в #10
-  '^apps/web/src/app/workspace[.]tsx$',
-];
+// Известных нарушений feature-границ нет (список только сокращается).
+const webKnownFeatureViolations = [];
 // requestApi допустим из api/ своей feature, из lib/ и из тестов.
 const webClientAllowed = [
   '^apps/web/src/lib/',
@@ -33,13 +31,9 @@ const webClientAllowed = [
 ];
 const webKnownClientImporters = [
   // Известные нарушения: только сокращается; убираются в #10/#11
-  '^apps/web/src/app/workspace[.]tsx$',
-  '^apps/web/src/features/works/work-list[.]tsx$',
   '^apps/web/src/features/works/work-detail[.]tsx$',
-  '^apps/web/src/features/works/upload-errors[.]ts$',
   '^apps/web/src/features/works/llm-settings[.]tsx$',
   '^apps/web/src/features/documents/document-workspace[.]tsx$',
-  '^apps/web/src/features/documents/document-viewer[.]tsx$',
 ];
 
 module.exports = {

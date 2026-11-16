@@ -12,16 +12,17 @@ import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { SignOut } from '@/features/auth';
 import { LlmSettings } from '@/features/works';
+import { routes } from '@/lib/routes';
 
 const navigation = [
   {
-    href: '/',
+    href: routes.works(),
     label: 'Работы',
     hint: 'Дела и комплекты документов',
     Icon: FolderKanban,
   },
   {
-    href: '/documents',
+    href: routes.recognition(),
     label: 'Распознавание',
     hint: 'Текст из любого файла',
     Icon: ScanText,
@@ -31,7 +32,7 @@ const navigation = [
 export function Logo() {
   return (
     <Link
-      href="/"
+      href={routes.works()}
       aria-label="Anyko, главная"
       className="group focus-visible:outline-brand-hot flex w-fit items-center gap-2.5 rounded-lg text-2xl font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4"
     >
