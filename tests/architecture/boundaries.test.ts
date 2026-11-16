@@ -510,3 +510,109 @@ test('blocks relative and src deep workspace imports but permits package exports
   const allowed = await lintSnippet(filename, "import '@anyko/backend/facts';");
   expect(allowed.rules).not.toContain('architecture/no-cross-package-source');
 }, 30000);
+
+// Backend (ADR 0009): правила этапа 1. Каждое правило имеет пример нарушения и пример разрешённого кода.
+
+function npmModule(name: string): Record<string, string> {
+  return {
+    [`node_modules/${name}/package.json`]: JSON.stringify({
+      name,
+      main: 'index.js',
+    }),
+    [`node_modules/${name}/index.js`]: 'module.exports = {};',
+  };
+}
+
+function hasViolation(
+  result: { summary: { violations: { rule: { name: string } }[] } },
+  rule: string,
+) {
+  return result.summary.violations.some((item) => item.rule.name === rule);
+}
+
+test('backend-no-contracts rejects new HTTP contract imports and permits the listed legacy file', async () => {
+  const contractImport = "import '../../../../contracts/index.ts';";
+  const contractTarget = 'packages/contracts/index.ts';
+  const rejected = await check({
+    'packages/backend/src/modules/works/new-rule.ts': contractImport,
+    [contractTarget]: 'export const value = 1;',
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(rejected.result, 'backend-no-contracts')).toBe(true);
+  const legacy = await check({
+    'packages/backend/src/modules/works/index.ts': contractImport,
+    [contractTarget]: 'export const value = 1;',
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(legacy.result, 'backend-no-contracts')).toBe(false);
+});
+
+test('backend-no-transport-libs rejects Elysia, BullMQ and ioredis outside the listed runtime adapters', async () => {
+  const rejected = await check({
+    'packages/backend/src/modules/works/infrastructure/queue.ts':
+      "import 'bullmq';",
+    ...npmModule('bullmq'),
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(rejected.result, 'backend-no-transport-libs')).toBe(true);
+  const allowed = await check({
+    'apps/worker/src/queues/index.ts': "import 'bullmq';",
+    'packages/backend/src/runtime/works/worker.ts': "import 'bullmq';",
+    ...npmModule('bullmq'),
+  });
+  expect(hasViolation(allowed.result, 'backend-no-transport-libs')).toBe(false);
+});
+
+test('backend-contracts-only-zod permits zod and rejects other external or Node dependencies', async () => {
+  const allowed = await check({
+    'packages/contracts/index.ts': "import 'zod';",
+    ...npmModule('zod'),
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(allowed.result, 'backend-contracts-only-zod')).toBe(
+    false,
+  );
+  for (const dependency of ['example-external', 'node:fs']) {
+    const rejected = await check({
+      'packages/contracts/index.ts': `import '${dependency}';`,
+      ...npmModule('example-external'),
+      'apps/placeholder.ts': 'export {};',
+    });
+    expect(hasViolation(rejected.result, 'backend-contracts-only-zod')).toBe(
+      true,
+    );
+  }
+});
+
+test('ESLint rejects request body parsing in HTTP routes and permits passed-in values', async () => {
+  const filename = 'apps/api/src/http/routes/example.js';
+  const rejected = await lintSnippet(
+    filename,
+    'export async function handle(request) { return request.json(); }',
+  );
+  expect(rejected.rules).toContain('no-restricted-syntax');
+  const allowed = await lintSnippet(
+    filename,
+    'export function handle(value) { return value; }',
+  );
+  expect(allowed.rules).not.toContain('no-restricted-syntax');
+}, 30000);
+
+test('ESLint rejects ambient clock, ids and environment in application code', async () => {
+  const filename = 'packages/backend/src/modules/facts/application/example.js';
+  const rejected = await Promise.all(
+    [
+      'new Date()',
+      'Date.now()',
+      'crypto.randomUUID()',
+      'process.env.SECRET',
+    ].map((code) => lintSnippet(filename, code)),
+  );
+  for (const result of rejected)
+    expect(result.rules).toContain('no-restricted-syntax');
+  const allowed = await lintSnippet(
+    filename,
+    'function expiresAt(now, ms) { return new Date(now.getTime() + ms); } expiresAt(new Date(0), 1);',
+  );
+  expect(allowed.rules).not.toContain('no-restricted-syntax');
+}, 120000);
