@@ -9,6 +9,8 @@ status: accepted
 
 ## Web
 
+Уровни, адреса рабочей области, проверка сессии и UI-пакет уточнены в [ADR 0008](0008-web-application-architecture.md).
+
 Next App Router отвечает за маршруты, layouts и framework loading/error states.
 Пользовательский сценарий принадлежит `src/features/<name>`: UI, состояние и
 предметные HTTP-вызовы находятся рядом. Feature предоставляет небольшой явный

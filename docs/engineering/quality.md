@@ -13,7 +13,7 @@
 | Границы и циклы                    | dependency-cruiser                                         | Нет запрещённых рёбер, в том числе type-only обходов             |
 | Копирование                        | jscpd                                                      | Отчёт для Code review; каждая новая содержательная копия оценена |
 | Backend unit/integration           | Bun test                                                   | Ожидаемое поведение на выбранном runtime                         |
-| React component tests              | Vitest + React Testing Library                             | Поведение компонентов через публичный интерфейс                  |
+| React component tests              | Bun test + happy-dom + React Testing Library               | Поведение компонентов через публичный интерфейс                  |
 | Сквозные проверки                  | Playwright                                                 | Основные сценарии на запущенных приложениях                      |
 | Инструкции и конфиги               | Небольшая проверка ссылок/manifests/scripts                | Нет битых указателей и выдуманных команд                         |
 
@@ -40,7 +40,7 @@ Full verify запускается на pull request/кандидате изме
 
 ## Границы тестовых сред
 
-Backend unit и integration исполняются на Bun. Vitest/Playwright и другие dev tools могут запускаться на закреплённом поддерживаемом Node; это не меняет production-runtime приложения. В отчёте явно указано, какой runtime проверялся. Корневая команда вызывает scoped suites и не запускает голый `bun test` по всему репозиторию, чтобы не подбирать файлы Vitest/Playwright.
+Backend unit и integration исполняются на Bun. Компонентные тесты web тоже исполняются на Bun с эмуляцией DOM happy-dom; условия перехода на Vitest описаны в [web.md](web.md#тестирование). Runner Playwright и другие dev tools могут запускаться на закреплённом поддерживаемом Node; это не меняет production-runtime приложения. В отчёте явно указано, какой runtime проверялся. Корневая команда вызывает scoped suites и не запускает голый `bun test` по всему репозиторию, чтобы не подбирать файлы Vitest/Playwright.
 
 Async Server Components проверяются через реально запущенный Next и Playwright, а не имитируются Vitest: [ограничение Next/Vitest](https://nextjs.org/docs/app/guides/testing/vitest). E2E проходит через тот же proxy/API-path и cookie-механизм, что размещённое приложение.
 
