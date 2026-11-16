@@ -23,6 +23,10 @@
     "packages/database": {
       "ignore": ["generated/**"],
       "ignoreDependencies": ["@prisma/client", "@prisma/client-runtime-utils"]
+    },
+    "apps/web": {
+      "entry": ["src/**/*.test.{ts,tsx}"],
+      "ignoreDependencies": ["happy-dom"]
     }
   }
 }

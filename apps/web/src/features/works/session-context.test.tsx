@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { SessionContext } from '@/features/works/session-context';
 
 test('shows persisted context and explicitly warns after the underlying work changes', () => {
-  const html = renderToStaticMarkup(
+  const view = renderToStaticMarkup(
     <SessionContext
       revision={3}
       fields={[]}
@@ -27,8 +27,8 @@ test('shows persisted context and explicitly warns after the underlying work cha
       }}
     />,
   );
-  expect(html).toContain('Получен первый документ');
-  expect(html).toContain('будет обновлён');
-  expect(html).toContain('Требуют проверки');
-  expect(html).toContain('Не заполнены');
+  expect(view).toContain('Получен первый документ');
+  expect(view).toContain('будет обновлён');
+  expect(view).toContain('Требуют проверки');
+  expect(view).toContain('Не заполнены');
 });

@@ -20,6 +20,28 @@ const presentModules = existsSync(moduleRoot)
       .map((entry) => entry.name)
   : [];
 
+// Известные нарушения web-правил. Списки только сокращаются: новое нарушение в список не добавляется.
+const webKnownFeatureViolations = [
+  // Известное нарушение: только сокращается; убирается в #10
+  '^apps/web/src/app/workspace[.]tsx$',
+];
+// requestApi допустим из api/ своей feature, из lib/ и из тестов.
+const webClientAllowed = [
+  '^apps/web/src/lib/',
+  '^apps/web/src/features/[^/]+/api/',
+  '[.]test[.]tsx?$',
+];
+const webKnownClientImporters = [
+  // Известные нарушения: только сокращается; убираются в #10/#11
+  '^apps/web/src/app/workspace[.]tsx$',
+  '^apps/web/src/features/works/work-list[.]tsx$',
+  '^apps/web/src/features/works/work-detail[.]tsx$',
+  '^apps/web/src/features/works/upload-errors[.]ts$',
+  '^apps/web/src/features/works/llm-settings[.]tsx$',
+  '^apps/web/src/features/documents/document-workspace[.]tsx$',
+  '^apps/web/src/features/documents/document-viewer[.]tsx$',
+];
+
 module.exports = {
   forbidden: [
     {
@@ -165,6 +187,79 @@ module.exports = {
       from: { path: '^packages/backend/src/platform/' },
       to: { path: '^packages/backend/src/(modules|profiles|workflows)/' },
     },
+    // Web (apps/web): правила через пути и обратные ссылки, без перечисления features.
+    // Известные нарушения (списки только сокращаются; убираются в #10/#11):
+    // см. webKnownFeatureViolations и webKnownClientImporters ниже.
+    {
+      name: 'web-feature-public-api',
+      comment:
+        'Импортируйте из другой feature только её index.ts и реэкспортируйте нужное там. Глубокий импорт features/<b>/... запрещён; app/ тоже ходит в features только через index.ts.',
+      severity: 'error',
+      from: {
+        path: '^apps/web/src/(?:features/([^/]+)|app)/',
+        pathNot: webKnownFeatureViolations,
+      },
+      to: {
+        path: '^apps/web/src/features/(?!$1/)[^/]+/',
+        pathNot: '^apps/web/src/features/[^/]+/index[.]ts$',
+      },
+    },
+    {
+      name: 'web-no-feature-cycles',
+      comment:
+        'Цикл между features недопустим. Общий код вынесите в lib/ или перенесите координацию сценария в экран app/.',
+      severity: 'error',
+      from: { path: '^apps/web/src/features/([^/]+)/' },
+      to: {
+        path: '^apps/web/src/features/(?!$1/)[^/]+/',
+        circular: true,
+      },
+    },
+    {
+      name: 'web-features-no-app',
+      comment:
+        'features и components не импортируют app/. Передайте данные или обработчики пропсами; маршрутные файлы остаются в app/.',
+      severity: 'error',
+      from: { path: '^apps/web/src/(?:features|components)/' },
+      to: { path: '^apps/web/src/app/' },
+    },
+    {
+      name: 'web-components-no-features',
+      comment:
+        'components/ — общие примитивы без предметного смысла. Не импортируйте features/ и lib/api/: передайте данные пропсами, а предметную логику оставьте в feature.',
+      severity: 'error',
+      from: { path: '^apps/web/src/components/' },
+      to: { path: '^apps/web/src/(?:features/|lib/api/)' },
+    },
+    {
+      name: 'web-api-client-in-api',
+      comment:
+        'requestApi вызывается только из features/<name>/api/ и lib/. Вынесите запрос в api/ своей feature через queryOptions или useMutation.',
+      severity: 'error',
+      from: {
+        path: '^apps/web/',
+        pathNot: [...webClientAllowed, ...webKnownClientImporters],
+      },
+      to: { path: '^apps/web/src/lib/api/client[.]ts$' },
+    },
+    {
+      name: 'web-server-only',
+      comment:
+        'lib/server содержит server-only конфигурацию и сессию. Из features, components и lib/api читайте данные через API или пропсы серверного компонента.',
+      severity: 'error',
+      from: { path: '^apps/web/src/(?:features/|components/|lib/api/)' },
+      to: { path: '^apps/web/src/lib/server/' },
+    },
+    {
+      name: 'web-no-contracts-admin',
+      comment:
+        'Пользовательский web не использует административные контракты. Используйте @anyko/contracts/<ресурс> для пользовательских ресурсов.',
+      severity: 'error',
+      from: { path: '^apps/web/' },
+      to: {
+        path: ['^packages/contracts/src/admin/', '^@anyko/contracts/admin'],
+      },
+    },
   ],
   options: {
     enhancedResolveOptions: {
@@ -173,6 +268,7 @@ module.exports = {
     },
     doNotFollow: { path: 'node_modules|^packages/database/generated/' },
     tsPreCompilationDeps: true,
+    tsConfig: { fileName: 'apps/web/tsconfig.json' },
     combinedDependencies: true,
   },
 };
