@@ -42,6 +42,8 @@ docs/
 
 ## Серверный пакет
 
+Целевое устройство, правила импорта, примеры и рецепты — в [backend.md](backend.md) ([ADR 0009](../adr/0009-backend-architecture.md)).
+
 ```text
 packages/backend/src/
   modules/
@@ -50,24 +52,27 @@ packages/backend/src/
     agents/                Mastra, ограниченный контекст и проверка evidence
     cases/                 жизненный цикл и реквизиты дела
     documents/             исходники, версии, разбор, источники и артефакты
-    processing/            запуски, этапы, попытки, outbox, настройки подключения
+    processing/            единый механизм запусков: этапы, попытки, leases, outbox
+    connections/           подключения модели платформы и рабочих областей
+    audit/                 журнал действий: actor, scope, действие, итог
     facts/                 кандидаты, подтверждения, конфликты и редакции
     templates/             готовые версии шаблонов и их требования к данным
     generation/            снимки входных данных и сформированные результаты
   workflows/               сценарии, связывающие публичные API модулей
   profiles/
     bfl/                   конкретные правила извлечения и проверки для БФЛ
-  platform/                технические clock/storage/http адаптеры
-  runtime/                 сборка зависимостей для API и worker
+  platform/                ошибки, scope, ID, транзакции, определения заданий, storage
+  runtime/                 createBackend: единственная сборка для API и worker
 ```
 
 Пример выросшего предметного модуля:
 
 ```text
 modules/facts/
-  index.ts                 небольшой публичный API модуля
+  index.ts                 публичные типы, коды ошибок, тип фасада
+  module.ts                createXModule(deps): commands, queries, in(tx)
   domain/                  чистые правила, значения и переходы состояний
-  application/             команды, запросы и нужные им узкие порты
+  application/             один файл на команду или запрос; узкие порты
   infrastructure/          реализации persistence и внешних интеграций
   tests/                   интеграционные проверки модуля
 ```
@@ -79,6 +84,8 @@ modules/facts/
 Composition root в `backend/runtime` может импортировать `modules/<name>/infrastructure` для сборки конкретных адаптеров. Это единственное внешнее исключение из приватности модуля; private domain/application остаются закрыты. В HTTP-handler и worker-handler runtime не импортируется: сборка выполняется в entrypoint процесса или диагностической CLI.
 
 ## Структура запуска приложений
+
+Ниже текущее устройство. Целевое (plugins и маршруты по endpoint-описаниям в API, хост очередей в worker, `createBackend`) описано в [backend.md](backend.md) и вводится этапами ADR 0009.
 
 В корне `apps/api/src` и `apps/worker/src` остаётся `index.ts`, который вызывает
 именованный bootstrap. HTTP, конфигурация процесса, CLI и тесты имеют разные
