@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { DocumentError } from '@anyko/backend/documents';
+import { AppError } from '@anyko/backend/errors';
 import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../src/http/app';
@@ -85,5 +86,42 @@ test('invalid content and unsupported document formats produce actionable client
     }
   } finally {
     await app.stop();
+  }
+});
+
+test('every error kind maps to one HTTP status and keeps the declared code', async () => {
+  const kinds = [
+    ['invalid', 400],
+    ['unauthenticated', 401],
+    ['forbidden', 403],
+    ['not_found', 404],
+    ['conflict', 409],
+    ['precondition', 409],
+    ['unavailable', 503],
+  ] as const;
+  const server = createApp()
+    .get('/kind/:kind', ({ params }) => {
+      const kind = kinds.find(([name]) => name === params.kind)?.[0];
+      if (!kind) throw new Error('unknown fixture kind');
+      throw new AppError(`FIXTURE_${kind.toUpperCase()}`, kind);
+    })
+    .listen({ hostname: '127.0.0.1', port: 0 });
+  try {
+    const port = server.server?.port;
+    if (port === undefined) throw new Error('No listener');
+    for (const [kind, status] of kinds) {
+      const response = await fetch(
+        `http://127.0.0.1:${String(port)}/kind/${kind}`,
+      );
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({
+        error: {
+          code: `FIXTURE_${kind.toUpperCase()}`,
+          requestId: response.headers.get('x-request-id'),
+        },
+      });
+    }
+  } finally {
+    await server.stop();
   }
 });

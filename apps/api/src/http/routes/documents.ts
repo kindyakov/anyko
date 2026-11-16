@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { createAccess } from '@anyko/backend/access';
 import { createDocumentService } from '@anyko/backend/documents';
 
+import { transportErrorCodes } from '../errors';
+
 export interface DocumentHttpOptions {
   documents: ReturnType<typeof createDocumentService>;
   access: ReturnType<typeof createAccess>;
@@ -23,7 +25,7 @@ export function documentRoutes(options: DocumentHttpOptions) {
           set.status = 401;
           return {
             error: {
-              code: 'UNAUTHORIZED',
+              code: transportErrorCodes.UNAUTHORIZED,
               requestId: set.headers['x-request-id'] ?? '',
             },
           };
@@ -36,7 +38,7 @@ export function documentRoutes(options: DocumentHttpOptions) {
           set.status = 403;
           return {
             error: {
-              code: 'INVALID_ORIGIN',
+              code: transportErrorCodes.INVALID_ORIGIN,
               requestId: set.headers['x-request-id'] ?? '',
             },
           };
@@ -64,7 +66,7 @@ export function documentRoutes(options: DocumentHttpOptions) {
             set.status = 400;
             return {
               error: {
-                code: 'INVALID_IDEMPOTENCY_KEY',
+                code: transportErrorCodes.INVALID_IDEMPOTENCY_KEY,
                 requestId: set.headers['x-request-id'] ?? '',
               },
             };
