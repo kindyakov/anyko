@@ -4,7 +4,7 @@ import { PrismaClient } from '../generated/client';
 
 import type { DatabasePool } from './pool';
 
-export { createDatabasePool, type DatabasePool } from './pool';
+export { createDatabasePool, createLockPool, type DatabasePool } from './pool';
 export { createResourceLocks } from './resource-locks';
 
 /** Prisma client on a shared pool; `$disconnect` leaves the pool open for its owner. */

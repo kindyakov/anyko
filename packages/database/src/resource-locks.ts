@@ -1,6 +1,10 @@
 import type { DatabasePool } from './pool';
 
-/** Session locks serialize external I/O without holding a SQL transaction open. */
+/**
+ * Session locks serialize external I/O without holding a SQL transaction open.
+ * Pass the dedicated lock pool from `createLockPool`, never the query pool: a held lock
+ * and its waiters keep connections for a long time (see pool.ts).
+ */
 export function createResourceLocks(pool: DatabasePool) {
   return {
     async run<T>(

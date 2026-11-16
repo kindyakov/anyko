@@ -1,6 +1,7 @@
 import {
   createDatabase,
   createDatabasePool,
+  createLockPool,
   createResourceLocks,
   type Database,
   type DatabasePool,
@@ -63,6 +64,7 @@ interface QueueStartOptions {
  */
 interface BackendDependencies {
   createPool?(url: string): DatabasePool;
+  createLockPool?(url: string): DatabasePool;
   createDatabase?(pool: DatabasePool): Database;
   storage?: SourceStorage;
   parser?: DocumentParser;
@@ -159,11 +161,17 @@ export function createBackend(
   if (role === 'worker' && !worker)
     throw new BackendConfigError('BACKEND_CONFIG_MISSING', 'worker');
 
+  // Two pools per process, both for the same database: queries (Prisma, agent store) and
+  // session locks. A lock holder keeps its connection through external I/O, so it must not
+  // share connections with the queries it runs (see createLockPool in packages/database).
   const pool = (dependencies.createPool ?? createDatabasePool)(
     validated.database.url,
   );
+  const lockPool = (dependencies.createLockPool ?? createLockPool)(
+    validated.database.url,
+  );
   const db = (dependencies.createDatabase ?? createDatabase)(pool);
-  const locks = createResourceLocks(pool);
+  const locks = createResourceLocks(lockPool);
   const storage = dependencies.storage ?? createS3Storage(validated.storage);
   const documents = createDocumentService(
     createDocumentUnitOfWork(db),
@@ -220,8 +228,9 @@ export function createBackend(
   };
   const stop = () =>
     (stopping ??= (async () => {
-      // Reverse of creation: queues, agents, database connection, then the shared pool.
-      // Every step runs even if an earlier one fails, so the pool is always ended.
+      // Reverse of creation: queues (the only holders of locks in workers), then the lock
+      // pool, agents, database connection, and finally the query pool. Every step runs even
+      // if an earlier one fails, so both pools are always ended.
       const failures: unknown[] = [];
       const attempt = async (close: () => Promise<unknown>) => {
         try {
@@ -232,6 +241,7 @@ export function createBackend(
       };
       for (const handle of [...started].reverse())
         await attempt(() => handle.stop());
+      await attempt(() => lockPool.end());
       await attempt(() => work.agents.stop());
       await attempt(() => db.$disconnect());
       await attempt(() => pool.end());

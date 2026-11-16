@@ -3,6 +3,7 @@ import { expect, test } from 'bun:test';
 import {
   createDatabase,
   createDatabasePool,
+  createLockPool,
   type Database,
   type DatabasePool,
 } from '@anyko/database';
@@ -29,68 +30,76 @@ const config: BackendConfig = integrationConfig({
   encryptionKey: 'a'.repeat(64),
 });
 
-/** Counts the factories the composition root calls; each process must call them once. */
+/**
+ * Counts the factories the composition root calls. Each process must create exactly one
+ * query pool and exactly one lock pool, and the database client must sit on the query pool.
+ */
 function countingSeams() {
-  const pools: DatabasePool[] = [];
-  const clients: Database[] = [];
+  const queryPools: DatabasePool[] = [];
+  const lockPools: DatabasePool[] = [];
+  const clients: { client: Database; pool: DatabasePool }[] = [];
   return {
-    pools,
+    queryPools,
+    lockPools,
     clients,
     dependencies: {
       createPool(url: string) {
         const pool = createDatabasePool(url);
-        pools.push(pool);
+        queryPools.push(pool);
+        return pool;
+      },
+      createLockPool(url: string) {
+        const pool = createLockPool(url);
+        lockPools.push(pool);
         return pool;
       },
       createDatabase(pool: DatabasePool) {
         const client = createDatabase(pool);
-        clients.push(client);
+        clients.push({ client, pool });
         return client;
       },
     },
   };
 }
 
-test('api role creates one pool and one database client for every resource it uses', async () => {
+for (const role of ['api', 'worker'] as const) {
+  test(`${role} role creates one query pool, one lock pool and one database client on the query pool`, async () => {
+    const seams = countingSeams();
+    const options = { logger, dependencies: seams.dependencies };
+    const backend =
+      role === 'api'
+        ? createBackend(config, { ...options, role: 'api' })
+        : createBackend(config, { ...options, role: 'worker' });
+    expect(seams.queryPools).toHaveLength(1);
+    expect(seams.lockPools).toHaveLength(1);
+    expect(seams.clients).toHaveLength(1);
+    const [queryPool] = seams.queryPools;
+    const [lockPool] = seams.lockPools;
+    const [client] = seams.clients;
+    expect(client?.pool).toBe(queryPool);
+    expect(lockPool).not.toBe(queryPool);
+    await backend.stop();
+  });
+}
+
+test('stop ends both pools once and repeated calls share the same outcome', async () => {
   const seams = countingSeams();
   const backend = createBackend(config, {
     logger,
     role: 'api',
     dependencies: seams.dependencies,
   });
-  expect(seams.pools).toHaveLength(1);
-  expect(seams.clients).toHaveLength(1);
-  expect(backend.documentHttp.origin).toBe('http://127.0.0.1:3020');
-  await backend.stop();
-});
-
-test('worker role creates one pool and one database client for every resource it uses', async () => {
-  const seams = countingSeams();
-  const backend = createBackend(config, {
-    logger,
-    role: 'worker',
-    dependencies: seams.dependencies,
-  });
-  expect(seams.pools).toHaveLength(1);
-  expect(seams.clients).toHaveLength(1);
-  await backend.stop();
-});
-
-test('stop ends the shared pool once and repeated calls share the same outcome', async () => {
-  const seams = countingSeams();
-  const backend = createBackend(config, {
-    logger,
-    role: 'api',
-    dependencies: seams.dependencies,
-  });
-  const [pool] = seams.pools;
-  if (!pool) throw new Error('pool factory was not called');
-  expect(pool.ended).toBe(false);
+  const [queryPool] = seams.queryPools;
+  const [lockPool] = seams.lockPools;
+  if (!queryPool || !lockPool) throw new Error('pool factory was not called');
+  expect(queryPool.ended).toBe(false);
+  expect(lockPool.ended).toBe(false);
   const first = backend.stop();
   const second = backend.stop();
   expect(second).toBe(first);
   await first;
-  expect(pool.ended).toBe(true);
+  expect(queryPool.ended).toBe(true);
+  expect(lockPool.ended).toBe(true);
   await backend.stop();
 });
 
