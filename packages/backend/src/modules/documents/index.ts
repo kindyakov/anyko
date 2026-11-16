@@ -8,7 +8,11 @@ export type {
   ResourceLocks,
   DocumentIo,
 } from './application/ports';
-export { createDocumentService, DocumentError } from './application/service';
+export {
+  createDocumentService,
+  DocumentError,
+  DocumentErrors,
+} from './application/service';
 export type DocumentService = ReturnType<
   typeof import('./application/service').createDocumentService
 >;

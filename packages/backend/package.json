@@ -7,7 +7,8 @@
     "./documents": "./src/modules/documents/index.ts",
     "./access": "./src/modules/access/index.ts",
     "./works": "./src/modules/works/index.ts",
-    "./processing": "./src/modules/processing/index.ts"
+    "./processing": "./src/modules/processing/index.ts",
+    "./errors": "./src/platform/errors/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

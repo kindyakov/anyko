@@ -6,24 +6,21 @@ import type {
   WorkView,
 } from '@anyko/contracts';
 
+import { defineErrors } from '../../platform/errors';
 import type { DocumentView } from '../documents';
 
 export type WorkSummary = WorkView['work'];
-export class WorkError extends Error {
-  constructor(
-    public readonly code:
-      | 'NOT_FOUND'
-      | 'REVISION_CONFLICT'
-      | 'WORK_BUSY'
-      | 'LLM_NOT_CONFIGURED'
-      | 'FORBIDDEN'
-      | 'INVALID_WORK_INPUT'
-      | 'NOT_READY'
-      | 'CLEANUP_PENDING',
-  ) {
-    super(code);
-  }
-}
+export const WorkErrors = defineErrors({
+  NOT_FOUND: 'not_found',
+  FORBIDDEN: 'forbidden',
+  INVALID_WORK_INPUT: 'invalid',
+  REVISION_CONFLICT: 'conflict',
+  WORK_BUSY: 'conflict',
+  LLM_NOT_CONFIGURED: 'precondition',
+  NOT_READY: 'precondition',
+  CLEANUP_PENDING: 'precondition',
+});
+export class WorkError extends WorkErrors.Failure {}
 export interface WorkStore {
   list(workspaceId: string, after?: string): Promise<WorkSummary[]>;
   get(workspaceId: string, workId: string): Promise<WorkSummary | null>;
