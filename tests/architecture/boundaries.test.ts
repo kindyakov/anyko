@@ -766,7 +766,7 @@ test('ESLint rejects process.env in backend runtime and permits passed-in config
   );
   expect(allowed.rules).not.toContain('no-restricted-syntax');
 }, 60000);
-// Web (apps/web): границы features/components/lib, server-only, административные контракты и правила ESLint.
+// Web (apps/web) и @anyko/ui: границы features/lib/ui, server-only, административные контракты и правила ESLint.
 // Каждый плохой пример должен отклоняться именно этим правилом; хороший проходит.
 async function webRules(
   files: Record<string, string>,
@@ -818,38 +818,54 @@ test('web features cannot form cycles', async () => {
   expect(acyclic).toHaveLength(0);
 });
 
-test('web features and components cannot import app routes', async () => {
-  for (const source of [
-    'apps/web/src/features/works/a.ts',
-    'apps/web/src/components/ui/a.ts',
-  ]) {
-    const rules = await webRules({
-      [source]: "import '@/app/other';",
-      'apps/web/src/app/other.ts': 'export const value = 1;',
-    });
-    expect(rules).toContain('web-features-no-app');
-  }
+test('web features cannot import app routes', async () => {
+  const rules = await webRules({
+    'apps/web/src/features/works/a.ts': "import '@/app/other';",
+    'apps/web/src/app/other.ts': 'export const value = 1;',
+  });
+  expect(rules).toContain('web-features-no-app');
   const allowed = await webRules({
-    'apps/web/src/features/works/a.ts': "import '@/components/ui/b';",
-    'apps/web/src/components/ui/b.ts': 'export const value = 1;',
+    'apps/web/src/features/works/a.ts': "import '@/lib/b';",
+    'apps/web/src/lib/b.ts': 'export const value = 1;',
   });
   expect(allowed).toHaveLength(0);
 });
 
-test('web components cannot import features or the API client', async () => {
+test('@anyko/ui cannot import applications or Next', async () => {
   for (const [specifier, target] of [
-    ['@/features/documents', 'apps/web/src/features/documents/index.ts'],
-    ['@/lib/api/client', 'apps/web/src/lib/api/client.ts'],
+    ['../../../apps/web/src/lib/format.ts', 'apps/web/src/lib/format.ts'],
+    ['../../../apps/admin/src/a.ts', 'apps/admin/src/a.ts'],
+    ['next/link', undefined],
   ] as const) {
     const rules = await webRules({
-      'apps/web/src/components/ui/a.ts': `import '${specifier}';`,
-      [target]: 'export const value = 1;',
+      'packages/ui/src/button.tsx': `import '${specifier}';`,
+      ...(target ? { [target]: 'export const value = 1;' } : {}),
     });
-    expect(rules).toContain('web-components-no-features');
+    expect(rules).toContain('ui-no-business');
+  }
+});
+
+test('@anyko/ui root and form do not import brand graphics', async () => {
+  const brand = {
+    'packages/ui/src/brand/event-horizon.tsx': 'export const value = 1;',
+  };
+  for (const [source, specifier] of [
+    ['packages/ui/src/index.ts', './brand/event-horizon'],
+    ['packages/ui/src/form/fields.tsx', '../brand/event-horizon'],
+  ] as const) {
+    const rules = await webRules({
+      ...brand,
+      [source]: `import '${specifier}';`,
+    });
+    expect(rules).toContain('ui-brand-isolated');
   }
   const allowed = await webRules({
-    'apps/web/src/components/ui/a.ts': "import '@/components/ui/b';",
-    'apps/web/src/components/ui/b.ts': 'export const value = 1;',
+    ...brand,
+    'packages/ui/src/button.tsx': 'export const value = 1;',
+    'packages/ui/src/brand/drop-zone.tsx': [
+      "import '../button';",
+      "import './event-horizon';",
+    ].join('\n'),
   });
   expect(allowed).toHaveLength(0);
 });
@@ -878,13 +894,13 @@ test('web features and app reach the API through call.ts, never through the tran
   expect(allowed).toHaveLength(0);
 });
 
-test('web features and components cannot import server-only modules', async () => {
+test('web features and the API layer cannot import server-only modules', async () => {
   const server = {
     'apps/web/src/lib/server/config.ts': 'export const value = 1;',
   };
   for (const source of [
     'apps/web/src/features/works/a.ts',
-    'apps/web/src/components/ui/a.ts',
+    'apps/web/src/lib/api/a.ts',
   ]) {
     const rules = await webRules({
       ...server,

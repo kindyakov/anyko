@@ -197,6 +197,42 @@ test('recognition reports a failed file and allows retry', async ({ page }) => {
   await expect(row).toContainText('Не удалось обработать');
 });
 
+test('owner switches areas without seeing the other area works; a member cannot open a foreign area', async ({
+  page,
+}) => {
+  const title = 'E2E работа только для Севера';
+  await page.goto('/sign-in');
+  await signIn(page, 'OWNER');
+  await expect(page).toHaveURL(/\/w\/e2e-north\/works$/);
+  await page.getByRole('button', { name: 'Новая работа' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Новая работа' });
+  await dialog.getByLabel('Название работы').fill(title);
+  await dialog.getByRole('button', { name: 'Создать и открыть' }).click();
+  await expect(page).toHaveURL(/\/w\/e2e-north\/works\/[0-9a-f-]+$/);
+  const workId = new URL(page.url()).pathname.split('/').at(-1);
+  if (!workId) throw new Error('Work ID missing');
+
+  await page.getByRole('button', { name: 'E2E Север' }).click();
+  await page.getByRole('menuitem', { name: 'E2E Юг' }).click();
+  await expect(page).toHaveURL(/\/w\/e2e-south\/works$/);
+  await expect(page.getByRole('button', { name: 'E2E Юг' })).toBeVisible();
+  await expect(page.getByLabel('Список работ загружается')).toHaveCount(0);
+  await expect(page.getByText(title)).toHaveCount(0);
+  await page.goto(`/w/e2e-south/works/${workId}`);
+  await expect(page.getByText('Работа не найдена.')).toBeVisible();
+  await expect(page.getByText(title)).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Выйти' }).click();
+  await expect(page).toHaveURL(/\/sign-in/);
+  await signIn(page, 'MEMBER');
+  await expect(page).toHaveURL(/\/w\/e2e-north\/works$/);
+  await expect(page.getByRole('button', { name: 'E2E Север' })).toHaveCount(0);
+  await page.goto('/w/e2e-south/works');
+  await expect(
+    page.getByRole('heading', { name: 'Страница не найдена' }),
+  ).toBeVisible();
+});
+
 test('member has one area and read-only connection settings; outsider has no areas', async ({
   page,
 }) => {
