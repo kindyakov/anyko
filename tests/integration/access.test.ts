@@ -9,6 +9,7 @@ import {
   llmSettingsResponseSchema,
   workResponseSchema,
 } from '@anyko/contracts';
+import { sessionCookieNames } from '@anyko/contracts/session';
 import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 
@@ -170,6 +171,13 @@ for (const prefix of ['/api/v1', '/api']) {
           .map((cookie) => cookie.split(';', 1)[0])
           .filter((cookie): cookie is string => Boolean(cookie));
         expect(cookies.length).toBeGreaterThan(0);
+        // Web находит сессию по этим именам (proxy и серверная проверка): Better Auth должен ставить одно из них.
+        const names: readonly string[] = sessionCookieNames;
+        expect(
+          cookies.some((cookie) =>
+            names.includes(cookie.split('=', 1)[0] ?? ''),
+          ),
+        ).toBe(true);
         return cookies.join('; ');
       }
       const ownerCookie = await login(firstEmail);
