@@ -1,5 +1,7 @@
 import type { Logger } from '@anyko/logger';
 
+import type { ProcessingIo } from '../../processing';
+
 import type { SourceFormat } from './source-format';
 
 type DocumentStatus = 'queued' | 'running' | 'succeeded' | 'failed';
@@ -38,17 +40,7 @@ export interface ResourceLocks {
     operation: (signal: AbortSignal) => Promise<T>,
   ): Promise<T>;
 }
-export interface DocumentIo {
-  run<T>(
-    input: { workspaceId: string; documentId: string; requestKey?: string },
-    operation: () => Promise<T>,
-  ): Promise<T>;
-}
-export class StorageWriteOutcomeUnknown extends Error {
-  constructor() {
-    super('STORAGE_WRITE_OUTCOME_UNKNOWN');
-  }
-}
+export { StorageWriteOutcomeUnknown } from '../../../platform/storage-write-outcome';
 export interface SourceStorage {
   put(
     key: string,
@@ -138,7 +130,7 @@ export interface DocumentDeps {
   storage: SourceStorage;
   artifacts: ArtifactRegistry;
   locks: ResourceLocks;
-  io: DocumentIo;
+  io: Pick<ProcessingIo, 'run'>;
   logger: Logger;
   newId: () => string;
 }

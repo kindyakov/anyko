@@ -11,11 +11,12 @@ const run: SavedJobRun = {
   attemptToken: null,
 };
 
-test('processing issues scope from the saved run and accepts a legacy envelope', async () => {
+test('processing issues scope from the saved run and validates the current envelope', async () => {
   const processing = createJobProcessing({ read: () => Promise.resolve(run) });
   const scope = await processing.internal.scope(
     {
-      format: 'legacy',
+      envelopeVersion: 1,
+      correlationId: run.correlationId,
       version: 1,
       workspaceId: run.workspaceId,
       runId: run.runId,
@@ -36,7 +37,6 @@ test('mismatched correlation, wrong job, stale attempt and already claimed runs 
     read: () => Promise.resolve(saved),
   });
   const envelope = {
-    format: 'current',
     envelopeVersion: 1,
     version: 1,
     workspaceId: run.workspaceId,

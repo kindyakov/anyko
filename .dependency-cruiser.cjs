@@ -5,7 +5,7 @@ const moduleEdges = {
   agents: [],
   works: ['documents'],
   cases: [],
-  documents: [],
+  documents: ['processing'],
   processing: [],
   connections: ['audit'],
   facts: [],

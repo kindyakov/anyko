@@ -8,7 +8,6 @@ import type { DocumentView } from './application/ports';
 export type {
   ArtifactRegistry,
   DocumentDeps,
-  DocumentIo,
   DocumentParser,
   DocumentResult,
   DocumentStore,

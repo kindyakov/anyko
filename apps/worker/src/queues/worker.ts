@@ -20,7 +20,6 @@ export async function startJobWorker(
     prefix?: string;
     /** Queue-name aliases are confined to tests that already own isolated queues. */
     queueNames?: Partial<Record<WorkerQueue, string>>;
-    legacy?: boolean;
   } = {},
 ) {
   const selected = parseWorkerQueues(options.queues);
@@ -123,55 +122,6 @@ export async function startJobWorker(
       runtime.logger.warn({ event: 'job.failed', jobId: job?.id ?? 'unknown' });
     });
     workers.push(worker);
-  }
-  // Rolling upgrade: old queue names are drained into workload queues, never executed here.
-  // A restricted worker may forward a legacy job, but only consumes its selected workload queues.
-  if ((options.legacy ?? true) && prefix === 'bull' && !options.queueNames) {
-    for (const [oldQueue, family] of [
-      ['anyko-document-ocr', 'document'],
-      ['anyko-work-pipeline', 'work'],
-    ] as const) {
-      const worker = new Worker<unknown>(
-        oldQueue,
-        async (job) => {
-          if (
-            job.name !==
-            (family === 'document' ? 'document.ocr' : 'work.execute')
-          )
-            throw new UnrecoverableError('UNKNOWN_LEGACY_JOB');
-          let envelope;
-          try {
-            envelope = parseJobEnvelope(job.data, 1);
-          } catch {
-            throw new UnrecoverableError('INVALID_JOB_ENVELOPE');
-          }
-          if (envelope.format !== 'legacy')
-            throw new UnrecoverableError('INVALID_LEGACY_ENVELOPE');
-          const port = runtime.deliveries[family === 'document' ? 0 : 1];
-          const run = await port?.describe(envelope);
-          const definition = runtime.registry.definitions.find(
-            (entry) => entry.name === run?.jobName,
-          );
-          if (!run || !definition || definition.kind !== 'run') return;
-          await enqueue(
-            definition.queue,
-            definition,
-            {
-              envelopeVersion: 1,
-              version: definition.version,
-              workspaceId: envelope.workspaceId,
-              runId: envelope.runId,
-              correlationId: run.correlationId,
-              payload: envelope.payload,
-            },
-            `legacy-${job.id ?? runtime.newId()}`,
-          );
-        },
-        { connection, prefix, concurrency: 1 },
-      );
-      worker.on('error', degrade);
-      workers.push(worker);
-    }
   }
   const stop = () =>
     (stopping ??= (async () => {

@@ -48,16 +48,19 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       try {
         bytes = generateDocument(source, data);
       } catch {
-        await deps.generation.internal.failFile(
-          run.workspaceId,
-          record.id,
-          file.id,
-        );
-        await deps.works.internal.event(
-          run.workspaceId,
-          run.workId,
-          'generation.file.failed',
-        );
+        await deps.uow.run(async (tx) => {
+          await deps.processing.in(tx).internal.fence(run);
+          await deps.generation
+            .in(tx)
+            .internal.failFile(run.workspaceId, record.id, file.id);
+          await deps.works
+            .in(tx)
+            .internal.event(
+              run.workspaceId,
+              run.workId,
+              'generation.file.failed',
+            );
+        });
         continue;
       }
       const key = `generated/${run.workspaceId}/${run.workId}/${deps.newId()}.docx`;
@@ -69,6 +72,7 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
         async () => {
           await current(run);
           await deps.uow.run(async (tx) => {
+            await deps.processing.in(tx).internal.fence(run);
             await deps.generation.in(tx).internal.publish({
               workspaceId: run.workspaceId,
               workId: run.workId,
@@ -105,7 +109,8 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
           stage: 'generation',
           status: status === 'succeeded' ? 'succeeded' : 'failed',
         });
-        await processing.finish(run, status);
+        if (!(await processing.finish(run, status)))
+          throw new Error('STALE_WORK_ATTEMPT');
         await deps.works
           .in(tx)
           .internal.event(run.workspaceId, run.workId, 'generation.ready');

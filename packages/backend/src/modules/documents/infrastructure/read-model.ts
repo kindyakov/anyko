@@ -23,13 +23,12 @@ export function createDocumentReadModel(db: Database) {
     runs: { status: string; errorCode: string | null }[];
   }): DocumentView {
     const run = row.runs[0];
-    if (!run) throw new Error('DOCUMENT_WITHOUT_RUN');
     return {
       id: row.id,
       filename: row.filename,
       createdAt: row.createdAt.toISOString(),
-      status: statusSchema.parse(run.status),
-      errorCode: run.errorCode,
+      status: run ? statusSchema.parse(run.status) : 'failed',
+      errorCode: run ? run.errorCode : 'OCR_RETRY_REQUIRED',
     };
   }
   return {
@@ -58,8 +57,8 @@ export function createDocumentReadModel(db: Database) {
         orderBy: { createdAt: 'desc' },
         select: { id: true, requestKey: true, createdAt: true },
       });
-      const uncertain = await db.documentIo.findMany({
-        where: { workspaceId, uncertain: true },
+      const uncertain = await db.processingIo.findMany({
+        where: { kind: 'document', workspaceId, uncertain: true },
         select: { documentId: true, requestKey: true },
       });
       return rows.map((row) => ({
@@ -81,9 +80,10 @@ export function createDocumentReadModel(db: Database) {
       if (
         row &&
         !row.completedAt &&
-        (await db.documentIo.count({
+        (await db.processingIo.count({
           where: {
             workspaceId,
+            kind: 'document',
             uncertain: true,
             OR: [{ documentId }, { requestKey: row.requestKey }],
           },

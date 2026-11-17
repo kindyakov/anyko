@@ -22,33 +22,19 @@ const context = {
 const runId = '01900000-0000-7000-8000-000000000001';
 const correlationId = '01900000-0000-7000-8000-000000000002';
 
-test('one parser reads the rollout legacy envelope and the current envelope', () => {
-  expect(
-    parseJobEnvelope({ version: 1, workspaceId: 'local', runId }, 1),
-  ).toEqual({
-    format: 'legacy',
+test('current job envelopes preserve identity and the retired envelope is rejected', () => {
+  const current = {
+    envelopeVersion: 1 as const,
     version: 1,
     workspaceId: 'local',
     runId,
-    payload: {},
-  });
-  expect(
-    parseJobEnvelope(
-      {
-        envelopeVersion: 1,
-        version: 2,
-        workspaceId: 'local',
-        runId,
-        correlationId,
-        payload: { count: 2 },
-      },
-      2,
-    ),
-  ).toMatchObject({
-    format: 'current',
     correlationId,
-    payload: { count: 2 },
-  });
+    payload: {},
+  };
+  expect(parseJobEnvelope(current, 1)).toEqual(current);
+  expect(() =>
+    parseJobEnvelope({ version: 1, workspaceId: 'local', runId }, 1),
+  ).toThrow();
 });
 
 test('unknown envelope and job versions cannot reach a handler', async () => {

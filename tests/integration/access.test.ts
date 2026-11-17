@@ -546,19 +546,19 @@ test('real sessions enforce closed signup, mutation origin and document workspac
         select: { id: true },
       });
       const documentIds = ownedDocuments.map((document) => document.id);
-      await db.documentIo.deleteMany({
+      await db.processingIo.deleteMany({
         where: { documentId: { in: documentIds } },
       });
       await db.documentArtifact.deleteMany({
         where: { documentId: { in: documentIds } },
       });
-      await db.processorAttempt.deleteMany({
+      await db.runAttempt.deleteMany({
         where: { documentId: { in: documentIds } },
       });
       await db.documentDeletion.deleteMany({
         where: { id: { in: documentIds } },
       });
-      await db.processingRun.deleteMany({
+      await db.run.deleteMany({
         where: { documentId: { in: documentIds } },
       });
       await db.sourceDocument.deleteMany({

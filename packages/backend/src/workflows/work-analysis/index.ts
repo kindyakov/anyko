@@ -68,17 +68,16 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       documentId,
     });
   };
-  return async (run: WorkRunRecord, signal: AbortSignal) => {
-    const config = await deps.connections.internal.connection(
-      run.workspaceId,
-      run.settingsRevision,
-    );
-    const selectedRun = { ...run, settingsRevision: config.revision };
-    const readConnection = () =>
-      deps.connections.internal.connection(
-        run.workspaceId,
-        selectedRun.settingsRevision,
-      );
+  return async (
+    run: WorkRunRecord,
+    signal: AbortSignal,
+    loadConnection: (
+      revision: number | null,
+    ) => ReturnType<WorkDependencies['connections']['internal']['connection']>,
+  ) => {
+    const { revision } = await loadConnection(run.settingsRevision);
+    const selectedRun = { ...run, settingsRevision: revision };
+    const readConnection = () => loadConnection(revision);
     const assertCurrent = async () => {
       await current(run);
       await readConnection();
@@ -267,6 +266,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
     }
     await continueSession({
       run: selectedRun,
+      readConnection,
       fields: pack.fields,
       candidates,
       sources,

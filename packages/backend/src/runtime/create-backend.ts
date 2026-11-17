@@ -31,7 +31,6 @@ import type {
 } from '../modules/documents';
 import { createArtifactRegistry } from '../modules/documents/infrastructure/artifact-store';
 import { createDeletionStore } from '../modules/documents/infrastructure/deletion-store';
-import { createDocumentIo } from '../modules/documents/infrastructure/document-io';
 import { createMineruParser } from '../modules/documents/infrastructure/mineru';
 import { createS3Storage } from '../modules/documents/infrastructure/s3-storage';
 import { createSourceCleanup } from '../modules/documents/infrastructure/source-cleanup';
@@ -57,7 +56,12 @@ import {
   createJobProcessing,
   createProcessingService,
 } from '../modules/processing';
+import { createProcessingIo } from '../modules/processing/infrastructure/io';
 import { createJobRunReader } from '../modules/processing/infrastructure/job-store';
+import {
+  recoverRuns,
+  runDelivery,
+} from '../modules/processing/infrastructure/run-engine';
 import { createProcessingStore } from '../modules/processing/infrastructure/store';
 import {
   createWorkProcessingStore,
@@ -70,7 +74,6 @@ import {
   createWorkStore,
   worksStoreFor,
 } from '../modules/works/infrastructure/store';
-import { createWorkIo } from '../modules/works/infrastructure/work-io';
 import { createWorksModule } from '../modules/works/module';
 import { systemClock } from '../platform/clock';
 import { uuidV7 } from '../platform/ids';
@@ -188,12 +191,13 @@ export function createBackend(
   const db = (dependencies.createDatabase ?? createDatabase)(pool);
   const locks = createResourceLocks(lockPool);
   const storage = dependencies.storage ?? createS3Storage(validated.storage);
+  const io = createProcessingIo(db, uuidV7);
   const documents = createDocumentsModule({
     store: createDocumentUnitOfWork(db),
     storage,
     artifacts: createArtifactRegistry(db),
     locks,
-    io: createDocumentIo(db, uuidV7),
+    io,
     logger,
     newId: uuidV7,
   });
@@ -214,7 +218,7 @@ export function createBackend(
   const works = createWorksModule({
     store: createWorkStore(db),
     storeFor: worksStoreFor,
-    io: createWorkIo(db),
+    io,
     newId: uuidV7,
     knownPackage: hasPackage,
   });
@@ -262,8 +266,7 @@ export function createBackend(
     agents: agentsFacade,
     documents,
     locks,
-    documentIo: createDocumentIo(db, uuidV7),
-    workIo: createWorkIo(db),
+    io,
     assertNoDocumentWriters: (workspaceId, documentId, requestKey) =>
       createDeletionStore(db).assertNoWriters(
         workspaceId,
@@ -361,12 +364,17 @@ export function createBackend(
       baseUrl: worker.mineru.baseUrl,
       timeoutMs: worker.mineru.timeoutMs,
     });
+  const notifyWork = async (
+    handle: object,
+    workspaceId: string,
+    documentId: string,
+  ) => {
+    const work = works.in(openTransaction(handle)).internal;
+    const workId = await work.workForDocument(workspaceId, documentId);
+    if (workId) await work.event(workspaceId, workId, 'documents.changed');
+  };
   const processing = createProcessingService(
-    createProcessingStore(db, async (handle, workspaceId, documentId) => {
-      const work = works.in(openTransaction(handle)).internal;
-      const workId = await work.workForDocument(workspaceId, documentId);
-      if (workId) await work.event(workspaceId, workId, 'documents.changed');
-    }),
+    createProcessingStore(db, notifyWork),
     {
       clock: systemClock,
       newId: uuidV7,
@@ -385,7 +393,7 @@ export function createBackend(
   });
   const documentDeps = {
     processing,
-    io: createDocumentIo(db, uuidV7),
+    io,
     locks,
     storage,
     logger,
@@ -403,67 +411,58 @@ export function createBackend(
   const jobProcessing = createJobProcessing(createJobRunReader(db));
   const executeWork = createWorkExecution(work);
   const cleanupWork = createWorkCleanup(work);
+  const registry = createJobRegistry({
+    processing: jobProcessing,
+    ocr: async (scope, signal) => {
+      const documentId = await processing.documentId(
+        scope.workspaceId,
+        scope.runId,
+      );
+      if (documentId)
+        await locks.run(
+          `document:${scope.workspaceId}:${documentId}`,
+          (lockSignal) =>
+            documentDeps.io.run(
+              { kind: 'document', workspaceId: scope.workspaceId, documentId },
+              () =>
+                documentDeps.execute(
+                  scope,
+                  AbortSignal.any([signal, lockSignal]),
+                ),
+            ),
+        );
+    },
+    execute: (scope, signal, connection) =>
+      executeWork(scope.workspaceId, scope.runId, signal, connection),
+    maintain: cleanupWork,
+    documents: documentDeps,
+    idempotency: createIdempotencyMaintenance({
+      store: createIdempotencyMaintenanceStore(db),
+      clock: systemClock,
+    }),
+    ocrTimeoutMs: worker.mineru.timeoutMs + 60000,
+  });
+  const delivery = runDelivery(db);
   return {
     role: 'worker',
     ready,
     stop,
     jobs: {
-      registry: createJobRegistry({
-        processing: jobProcessing,
-        ocr: async (scope, signal) => {
-          const documentId = await processing.documentId(
-            scope.workspaceId,
-            scope.runId,
-          );
-          if (documentId)
-            await locks.run(
-              `document:${scope.workspaceId}:${documentId}`,
-              (lockSignal) =>
-                documentDeps.io.run(
-                  { workspaceId: scope.workspaceId, documentId },
-                  () =>
-                    documentDeps.execute(
-                      scope,
-                      AbortSignal.any([signal, lockSignal]),
-                    ),
-                ),
-            );
-        },
-        execute: (scope, signal) =>
-          executeWork(scope.workspaceId, scope.runId, signal),
-        maintain: cleanupWork,
-        documents: documentDeps,
-        idempotency: createIdempotencyMaintenance({
-          store: createIdempotencyMaintenanceStore(db),
-          clock: systemClock,
-        }),
-        ocrTimeoutMs: worker.mineru.timeoutMs + 60000,
-      }),
-      deliveries: [
-        {
-          reserve: () => processing.reserveDelivery(),
-          describe: (item) =>
-            jobProcessing.internal.read(
-              item.workspaceId,
-              item.runId,
-              'document',
-            ),
-          delivered: processing.delivered,
-          release: processing.releaseDelivery,
-        },
-        {
-          reserve: () => processingFacade.internal.delivery(),
-          describe: (item) =>
-            jobProcessing.internal.read(item.workspaceId, item.runId, 'work'),
-          delivered: (id, token) =>
-            processingFacade.internal.delivered(id, token),
-          release: (id, token) => processingFacade.internal.release(id, token),
-        },
-      ],
-      reconcile: async () => {
-        await processing.reconcile();
-        await processingFacade.internal.reconcile();
+      registry,
+      delivery: {
+        ...delivery,
+        describe: (item) =>
+          jobProcessing.internal.read(item.workspaceId, item.runId),
       },
+      reconcile: () =>
+        db.$transaction((tx) =>
+          recoverRuns(
+            tx,
+            registry.definitions.filter((job) => job.kind === 'run'),
+            systemClock.now(),
+            notifyWork,
+          ),
+        ),
       clock: systemClock,
       newId: uuidV7,
       logger,

@@ -85,7 +85,7 @@ afterAll(async () => {
   await db.workGenerationFile.deleteMany({ where });
   await db.workGeneration.deleteMany({ where });
   await db.workEvent.deleteMany({ where });
-  await db.workRun.deleteMany({ where });
+  await db.run.deleteMany({ where });
   await db.work.deleteMany({ where });
   await db.auditEvent.deleteMany({ where });
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
@@ -110,7 +110,7 @@ test('a failed audit write rolls back the generation result, the run and the eve
   expect(
     await db.workGenerationFile.count({ where: { workspaceId, workId } }),
   ).toBe(0);
-  expect(await db.workRun.count({ where: { workspaceId, workId } })).toBe(0);
+  expect(await db.run.count({ where: { workspaceId, workId } })).toBe(0);
   expect(
     await db.workEvent.count({
       where: { workspaceId, workId, kind: 'generation.queued' },
@@ -130,7 +130,7 @@ test('the same start with a working audit writes the result, the run, the event 
   expect(
     await db.workGeneration.count({ where: { workspaceId, workId } }),
   ).toBe(1);
-  expect(await db.workRun.count({ where: { workspaceId, workId } })).toBe(1);
+  expect(await db.run.count({ where: { workspaceId, workId } })).toBe(1);
   expect(
     await db.workEvent.count({
       where: { workspaceId, workId, kind: 'generation.queued' },

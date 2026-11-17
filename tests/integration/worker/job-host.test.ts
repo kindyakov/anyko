@@ -9,6 +9,8 @@ import { createLogger } from '@anyko/logger';
 import { startJobWorker } from '@anyko/worker/queues';
 import { createQueueProbe } from '@anyko/worker/testing';
 
+import { createProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/store';
+import { createWorkProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/work-store';
 import { createBackend } from '../../../packages/backend/src/runtime';
 
 import { integrationConfig } from './support/composition';
@@ -39,8 +41,9 @@ await db.anykoWorkspace.create({
 });
 afterAll(async () => {
   await backend.stop();
-  await db.processingRun.deleteMany({ where: { workspaceId } });
+  await db.run.deleteMany({ where: { workspaceId } });
   await db.sourceDocument.deleteMany({ where: { workspaceId } });
+  await db.work.deleteMany({ where: { workspaceId } });
   await db.anykoWorkspace.delete({ where: { id: workspaceId } });
   await db.$disconnect();
   await pool.end();
@@ -61,9 +64,11 @@ async function fixture() {
       createdBy: 'test',
     },
   });
-  await db.processingRun.create({
+  await db.run.create({
     data: {
       id: runId,
+      kind: 'document.ocr',
+      revision: 1,
       workspaceId,
       documentId,
       correlationId,
@@ -88,13 +93,16 @@ async function waitFor(check: () => Promise<boolean>) {
   throw new Error('JOB_TEST_TIMEOUT');
 }
 
-test('WORKER_QUEUES=ocr leaves llm delivery waiting and executes a legacy OCR envelope', async () => {
+test('WORKER_QUEUES=ocr leaves llm delivery waiting and executes a current OCR envelope', async () => {
   const prefix = `queue-selection-${uuidV7()}`;
   const ocr = createQueueProbe(redisUrl, 'ocr', prefix);
   const llm = createQueueProbe(redisUrl, 'llm', prefix);
   let calls = 0;
   const job = defineJob({
     kind: 'run',
+    connection: 'none',
+    maxRunAttempts: null,
+    redeliverQueued: false,
     name: 'document.ocr',
     version: 1,
     queue: 'ocr',
@@ -110,6 +118,9 @@ test('WORKER_QUEUES=ocr leaves llm delivery waiting and executes a legacy OCR en
   // An llm definition ensures an incorrectly broad subscription executes rather than merely rejects it.
   const llmJob = defineJob({
     kind: 'run',
+    connection: 'none',
+    maxRunAttempts: null,
+    redeliverQueued: false,
     name: 'test.llm',
     version: 1,
     queue: 'llm',
@@ -124,7 +135,10 @@ test('WORKER_QUEUES=ocr leaves llm delivery waiting and executes a legacy OCR en
   const data = await fixture();
   const runtime = {
     ...backend.jobs,
-    deliveries: [],
+    delivery: {
+      ...backend.jobs.delivery,
+      reserve: () => Promise.resolve(null),
+    },
     reconcile: () => Promise.resolve(),
     registry: {
       ...backend.jobs.registry,
@@ -135,16 +149,11 @@ test('WORKER_QUEUES=ocr leaves llm delivery waiting and executes a legacy OCR en
   const worker = await startJobWorker(runtime, {
     queues: 'ocr',
     prefix,
-    legacy: false,
   });
   try {
     const pending = await llm.queue.add('test.llm', data);
-    const old = await ocr.queue.add('document.ocr', {
-      version: 1,
-      workspaceId,
-      runId: data.runId,
-    });
-    await waitFor(async () => await old.isCompleted());
+    const current = await ocr.queue.add('document.ocr', data);
+    await waitFor(() => current.isCompleted());
     await Bun.sleep(150);
     expect(calls).toBe(1);
     expect(await pending.getState()).toBe('waiting');
@@ -154,12 +163,15 @@ test('WORKER_QUEUES=ocr leaves llm delivery waiting and executes a legacy OCR en
   }
 });
 
-test('unknown envelope/job versions, correlation mismatch and stale attempt never invoke the handler', async () => {
+test('retired formats, missing runs, unknown versions and stale identity never invoke the handler', async () => {
   const prefix = `queue-validation-${uuidV7()}`;
   const probe = createQueueProbe(redisUrl, 'ocr', prefix);
   let calls = 0;
   const job = defineJob({
     kind: 'run',
+    connection: 'none',
+    maxRunAttempts: null,
+    redeliverQueued: false,
     name: 'document.ocr',
     version: 1,
     queue: 'ocr',
@@ -175,14 +187,19 @@ test('unknown envelope/job versions, correlation mismatch and stale attempt neve
   const worker = await startJobWorker(
     {
       ...backend.jobs,
-      deliveries: [],
+      delivery: {
+        ...backend.jobs.delivery,
+        reserve: () => Promise.resolve(null),
+      },
       reconcile: () => Promise.resolve(),
       registry: { ...backend.jobs.registry, definitions: [job], schedules: [] },
     },
-    { queues: 'ocr', prefix, legacy: false },
+    { queues: 'ocr', prefix },
   );
   try {
     for (const input of [
+      { version: 1, workspaceId, runId: data.runId },
+      { ...data, runId: uuidV7() },
       { ...data, version: 2 },
       { ...data, envelopeVersion: 2 },
       { ...data, correlationId: uuidV7() },
@@ -221,7 +238,10 @@ test('two workers share one maintenance schedule and reject unknown scheduled ve
   });
   const runtime = {
     ...backend.jobs,
-    deliveries: [],
+    delivery: {
+      ...backend.jobs.delivery,
+      reserve: () => Promise.resolve(null),
+    },
     reconcile: () => Promise.resolve(),
     registry: {
       ...backend.jobs.registry,
@@ -232,12 +252,10 @@ test('two workers share one maintenance schedule and reject unknown scheduled ve
   const first = await startJobWorker(runtime, {
     queues: 'maintenance',
     prefix,
-    legacy: false,
   });
   const second = await startJobWorker(runtime, {
     queues: 'maintenance',
     prefix,
-    legacy: false,
   });
   try {
     await waitFor(() => Promise.resolve(calls === 1));
@@ -258,47 +276,149 @@ test('two workers share one maintenance schedule and reject unknown scheduled ve
   }
 });
 
-test('rollout bridge drains the old OCR queue through the persisted run into its workload queue', async () => {
-  const old = createQueueProbe(redisUrl, 'anyko-document-ocr', 'bull');
-  const target = createQueueProbe(redisUrl, 'ocr', 'bull');
-  const data = await fixture();
-  let calls = 0;
-  const job = defineJob({
-    kind: 'run',
-    name: 'document.ocr',
-    version: 1,
-    queue: 'ocr',
-    payload: z.object({}).strict(),
-    timeoutMs: 1000,
-    retry: { attempts: 1, backoffMs: 0 },
-    handler(scope) {
-      expect(scope.correlationId).toBe(data.correlationId);
-      calls++;
-      return Promise.resolve();
-    },
-  });
-  const worker = await startJobWorker(
-    {
-      ...backend.jobs,
-      deliveries: backend.jobs.deliveries.map((port) => ({
-        ...port,
-        reserve: () => Promise.resolve(null),
-      })),
-      reconcile: () => Promise.resolve(),
-      registry: { ...backend.jobs.registry, definitions: [job], schedules: [] },
-    },
-    { queues: 'ocr' },
-  );
-  try {
-    await old.queue.add('document.ocr', {
-      version: 1,
-      workspaceId,
-      runId: data.runId,
+const runKinds = [
+  { name: 'document.ocr', queue: 'ocr' },
+  { name: 'work.analysis', queue: 'llm' },
+  { name: 'work.generation', queue: 'render' },
+] as const;
+
+test.each(runKinds)(
+  '$name reopens expired leases, fences old attempts and executes repeated delivery once',
+  async ({ name, queue }) => {
+    const data =
+      name === 'document.ocr'
+        ? await fixture()
+        : {
+            envelopeVersion: 1,
+            version: 1,
+            workspaceId,
+            runId: uuidV7(),
+            correlationId: uuidV7(),
+            payload: {},
+          };
+    if (name !== 'document.ocr') {
+      const workId = uuidV7();
+      await db.work.create({
+        data: {
+          id: workId,
+          workspaceId,
+          title: 'Run engine fixture',
+          packageVersion: 'technical-document-v1',
+          createdBy: 'test',
+        },
+      });
+      await db.run.create({
+        data: {
+          id: data.runId,
+          workspaceId,
+          kind: name,
+          workId,
+          inputRevision: 0,
+          documentIds: [],
+          modelSnapshot: {},
+          initiatedBy: 'test',
+          correlationId: data.correlationId,
+          generationId: name === 'work.generation' ? uuidV7() : null,
+        },
+      });
+    }
+    await db.runOutbox.create({
+      data: {
+        id: uuidV7(),
+        workspaceId,
+        runId: data.runId,
+        deliveredAt: new Date(),
+      },
     });
-    await waitFor(() => Promise.resolve(calls === 1));
-    expect(calls).toBe(1);
-  } finally {
-    await worker.stop();
-    await Promise.all([old.close(), target.close()]);
-  }
-});
+    const ocr = createProcessingStore(db);
+    const work = createWorkProcessingStore(db);
+    const claim = async () => {
+      if (name === 'document.ocr') {
+        const acquired = await ocr.claim(
+          data.runId,
+          workspaceId,
+          uuidV7(),
+          new Date(Date.now() + 60000),
+        );
+        if (!acquired) return null;
+        const key = `run-test/${data.runId}/${acquired.attemptToken}.json`;
+        return () => ocr.complete(acquired, key, 'fixture');
+      }
+      const acquired = await work.claim(workspaceId, data.runId);
+      return acquired ? () => work.finish(acquired, 'succeeded') : null;
+    };
+    const stale = await claim();
+    if (!stale) throw new Error('FIRST_CLAIM_MISSING');
+    const expired = await db.run.update({
+      where: { id: data.runId },
+      data: { leaseUntil: new Date(0) },
+    });
+    await backend.jobs.reconcile();
+    expect(
+      await db.run.findUniqueOrThrow({ where: { id: data.runId } }),
+    ).toMatchObject({ status: 'queued', attemptToken: null, leaseUntil: null });
+    expect(
+      (await db.runOutbox.findUniqueOrThrow({ where: { runId: data.runId } }))
+        .deliveredAt,
+    ).toBeNull();
+    const prefix = `run-engine-${uuidV7()}`;
+    const probe = createQueueProbe(redisUrl, queue, prefix);
+    const policy = backend.jobs.registry.definitions.find(
+      (job) => job.kind === 'run' && job.name === name,
+    );
+    if (!policy || policy.kind !== 'run') throw new Error('RUN_POLICY_MISSING');
+    let executions = 0;
+    let staleAccepted: boolean | undefined;
+    let freshAccepted: boolean | undefined;
+    const definition = defineJob({
+      ...policy,
+      payload: z.object({}).strict(),
+      async handler() {
+        const finish = await claim();
+        if (!finish) throw new Error('DUPLICATE_CLAIM');
+        executions++;
+        staleAccepted = await stale();
+        freshAccepted = await finish();
+      },
+    });
+    const runtime = {
+      ...backend.jobs,
+      delivery: {
+        ...backend.jobs.delivery,
+        reserve: () => Promise.resolve(null),
+      },
+      registry: {
+        ...backend.jobs.registry,
+        definitions: [definition],
+        schedules: [],
+      },
+    };
+    const worker = await startJobWorker(runtime, {
+      queues: queue,
+      prefix,
+    });
+    try {
+      const first = await probe.queue.add(name, data);
+      await waitFor(() => first.isCompleted());
+      const replay = await probe.queue.add(name, data);
+      await waitFor(() => replay.isFailed());
+      expect(executions).toBe(1);
+      expect(staleAccepted).toBe(false);
+      expect(freshAccepted).toBe(true);
+      const run = await db.run.findUniqueOrThrow({ where: { id: data.runId } });
+      expect(run).toMatchObject({
+        status: 'succeeded',
+        attempts: expired.attempts + 1,
+        attemptToken: null,
+      });
+      expect(
+        await db.runAttempt.count({
+          where: { workspaceId, runId: data.runId },
+        }),
+      ).toBe(2);
+    } finally {
+      await worker.stop();
+      await probe.close();
+    }
+  },
+);

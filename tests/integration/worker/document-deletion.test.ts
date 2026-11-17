@@ -14,8 +14,8 @@ import {
 } from '../../../packages/backend/src/modules/documents';
 import { createArtifactRegistry } from '../../../packages/backend/src/modules/documents/infrastructure/artifact-store';
 import { createDeletionStore } from '../../../packages/backend/src/modules/documents/infrastructure/deletion-store';
-import { createDocumentIo } from '../../../packages/backend/src/modules/documents/infrastructure/document-io';
 import { createProcessingService } from '../../../packages/backend/src/modules/processing';
+import { createProcessingIo } from '../../../packages/backend/src/modules/processing/infrastructure/io';
 import { createProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/store';
 import {
   brandDocumentId,
@@ -215,9 +215,9 @@ test('separate images and all document data are physically erased; unknown/activ
     expect(files.size).toBe(0);
     expect(erased.size).toBeGreaterThan(0);
     expect(await db.sourceDocument.count({ where: { workspaceId } })).toBe(0);
-    expect(await db.processingRun.count({ where: { workspaceId } })).toBe(0);
+    expect(await db.run.count({ where: { workspaceId } })).toBe(0);
     expect(await db.documentArtifact.count({ where: { workspaceId } })).toBe(0);
-    expect(await db.processorAttempt.count({ where: { workspaceId } })).toBe(0);
+    expect(await db.runAttempt.count({ where: { workspaceId } })).toBe(0);
     expect(
       await recognition.queries.deletion(
         memberScope(workspaceId),
@@ -270,8 +270,8 @@ test('separate images and all document data are physically erased; unknown/activ
     const lockKey = `document:${workspaceId}:${second.id}`;
     const outcome = locks
       .run(lockKey, (signal) =>
-        createDocumentIo(db, uuidV7).run(
-          { workspaceId, documentId: second.id },
+        createProcessingIo(db, uuidV7).run(
+          { kind: 'document', workspaceId, documentId: second.id },
           async () => {
             started();
             await gate;
@@ -328,7 +328,7 @@ test('separate images and all document data are physically erased; unknown/activ
     ).toEqual([]);
     expect(files.has(key)).toBe(true);
     // Simulated operator reconciliation AFTER the fake remote PUT has definitively settled.
-    await db.documentIo.deleteMany({
+    await db.processingIo.deleteMany({
       where: { workspaceId, documentId: second.id },
     });
     await cleanup();
@@ -347,13 +347,13 @@ test('separate images and all document data are physically erased; unknown/activ
   } finally {
     await worker?.stop();
     await api.stop();
-    await db.documentIo.deleteMany({ where: { workspaceId } });
+    await db.processingIo.deleteMany({ where: { workspaceId } });
     await db.documentArtifact.deleteMany({ where: { workspaceId } });
-    await db.processorAttempt.deleteMany({ where: { workspaceId } });
+    await db.runAttempt.deleteMany({ where: { workspaceId } });
     await db.documentDeletion.deleteMany({ where: { workspaceId } });
     await db.resultUpload.deleteMany({ where: { workspaceId } });
     await db.sourceUpload.deleteMany({ where: { workspaceId } });
-    await db.processingRun.deleteMany({ where: { workspaceId } });
+    await db.run.deleteMany({ where: { workspaceId } });
     await db.sourceDocument.deleteMany({ where: { workspaceId } });
     await db.auditEvent.deleteMany({ where: { workspaceId } });
     await db.anykoWorkspace.deleteMany({ where: { id: workspaceId } });
@@ -401,7 +401,7 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
         correlationId: crypto.randomUUID(),
       },
     );
-    const run = await db.processingRun.findFirstOrThrow({
+    const run = await db.run.findFirstOrThrow({
       where: { workspaceId, documentId: document.id },
     });
     const processing = createProcessingService(
@@ -434,8 +434,8 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
     });
     let caught: unknown;
     try {
-      await createDocumentIo(db, uuidV7).run(
-        { workspaceId, documentId: document.id },
+      await createProcessingIo(db, uuidV7).run(
+        { kind: 'document', workspaceId, documentId: document.id },
         () =>
           execute({ workspaceId, runId: run.id }, new AbortController().signal),
       );
@@ -443,7 +443,7 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
       caught = error;
     }
     expect(
-      await db.documentIo.findMany({
+      await db.processingIo.findMany({
         where: { workspaceId },
         select: { uncertain: true },
       }),
@@ -451,17 +451,16 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
     expect(caught).toBeInstanceOf(StorageWriteOutcomeUnknown);
     expect(calls).toEqual({ failure: 1, erase: 1 });
     expect(
-      (await db.processingRun.findUniqueOrThrow({ where: { id: run.id } }))
-        .resultKey,
+      (await db.run.findUniqueOrThrow({ where: { id: run.id } })).resultKey,
     ).toBeNull();
   } finally {
     await api.stop();
-    await db.documentIo.deleteMany({ where: { workspaceId } });
+    await db.processingIo.deleteMany({ where: { workspaceId } });
     await db.documentArtifact.deleteMany({ where: { workspaceId } });
-    await db.processorAttempt.deleteMany({ where: { workspaceId } });
+    await db.runAttempt.deleteMany({ where: { workspaceId } });
     await db.resultUpload.deleteMany({ where: { workspaceId } });
     await db.sourceUpload.deleteMany({ where: { workspaceId } });
-    await db.processingRun.deleteMany({ where: { workspaceId } });
+    await db.run.deleteMany({ where: { workspaceId } });
     await db.sourceDocument.deleteMany({ where: { workspaceId } });
     await db.auditEvent.deleteMany({ where: { workspaceId } });
     await db.anykoWorkspace.deleteMany({ where: { id: workspaceId } });

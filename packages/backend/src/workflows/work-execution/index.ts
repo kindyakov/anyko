@@ -1,6 +1,7 @@
 import { LlmError } from '@anyko/llm';
 
 import { isAppError } from '../../platform/errors';
+import type { RunPolicy } from '../../platform/jobs';
 import { createWorkAnalysis } from '../work-analysis';
 import type { WorkDependencies } from '../work-dependencies';
 import { createWorkGenerationRun } from '../work-generation/run-generation';
@@ -10,7 +11,12 @@ export function createWorkExecution(deps: WorkDependencies) {
   const analysis = createWorkAnalysis(deps);
   const generation = createWorkGenerationRun(deps);
 
-  return async (workspaceId: string, runId: string, signal: AbortSignal) => {
+  return async (
+    workspaceId: string,
+    runId: string,
+    signal: AbortSignal,
+    connection: RunPolicy['connection'],
+  ) => {
     await deps.locks.run(
       `work-run:${workspaceId}:${runId}`,
       async (lockSignal) => {
@@ -27,40 +33,57 @@ export function createWorkExecution(deps: WorkDependencies) {
           lockSignal,
           AbortSignal.timeout(1_500_000),
         ]);
+        const execute = () => {
+          if ((run.kind === 'analysis') !== (connection === 'required'))
+            throw new Error('RUN_CONNECTION_POLICY_MISMATCH');
+          return connection === 'required'
+            ? analysis(run, bounded, (revision) =>
+                deps.connections.internal.connection(run.workspaceId, revision),
+              )
+            : generation(run, bounded);
+        };
         const guarded = (index: number): Promise<void> => {
           const id = run.documentIds[index];
           return id
-            ? deps.documentIo.run({ workspaceId, documentId: id }, () =>
-                guarded(index + 1),
+            ? deps.io.run(
+                { kind: 'document', workspaceId, documentId: id },
+                () => guarded(index + 1),
               )
-            : run.kind === 'analysis'
-              ? analysis(run, bounded)
-              : generation(run, bounded);
+            : execute();
         };
         try {
-          await deps.workIo.run(workspaceId, run.workId, () => guarded(0));
+          await deps.io.run(
+            { kind: 'work', workspaceId, workId: run.workId },
+            () => guarded(0),
+          );
         } catch (error) {
-          await deps.processing.internal.finish(
-            run,
-            bounded.aborted ? 'cancelled' : 'failed',
+          const errorCode =
             error instanceof LlmError || isAppError(error)
               ? error.code
-              : 'WORK_PROCESSING_FAILED',
-          );
-          if (run.generationId)
-            await deps.generation.internal.fail(workspaceId, run.generationId);
-          await deps.works.internal.event(
-            workspaceId,
-            run.workId,
-            'processing.failed',
-          );
+              : 'WORK_PROCESSING_FAILED';
+          const finished = await deps.uow.run(async (tx) => {
+            const accepted = await deps.processing
+              .in(tx)
+              .internal.finish(
+                run,
+                bounded.aborted ? 'cancelled' : 'failed',
+                errorCode,
+              );
+            if (!accepted) return false;
+            if (run.generationId)
+              await deps.generation
+                .in(tx)
+                .internal.fail(workspaceId, run.generationId);
+            await deps.works
+              .in(tx)
+              .internal.event(workspaceId, run.workId, 'processing.failed');
+            return true;
+          });
+          if (!finished) return;
           deps.logger.error({
             event: 'work_processing_failed',
             correlationId: run.correlationId,
-            errorCode:
-              error instanceof LlmError || isAppError(error)
-                ? error.code
-                : 'WORK_PROCESSING_FAILED',
+            errorCode,
           });
         }
       },

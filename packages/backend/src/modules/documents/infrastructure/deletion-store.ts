@@ -8,8 +8,12 @@ export function createDeletionStore(db: Database) {
       requestKey: string,
     ) {
       if (
-        await db.documentIo.count({
-          where: { workspaceId, OR: [{ documentId }, { requestKey }] },
+        await db.processingIo.count({
+          where: {
+            kind: 'document',
+            workspaceId,
+            OR: [{ documentId }, { requestKey }],
+          },
         })
       )
         throw new Error('DOCUMENT_WRITES_PENDING');

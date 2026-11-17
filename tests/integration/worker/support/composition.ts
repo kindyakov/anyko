@@ -31,7 +31,6 @@ export async function startDocumentConsumer(
     queues: 'ocr,maintenance',
     queueNames: { ocr: options.queueName },
     prefix: options.queueName,
-    legacy: false,
   });
   return {
     async stop() {

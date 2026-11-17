@@ -61,13 +61,13 @@ model AnykoWorkspace {
  createdAt DateTime @default(now())
  memberships Membership[]
  documents SourceDocument[]
- runs ProcessingRun[]
+ runs Run[]
  sourceUploads SourceUpload[]
  resultUploads ResultUpload[]
  artifacts DocumentArtifact[]
- processorAttempts ProcessorAttempt[]
+ runAttempts RunAttempt[]
  deletions DocumentDeletion[]
- documentIo DocumentIo[]
+ processingIo ProcessingIo[]
  works Work[]
  llmSettings LlmSettings[]
  idempotencyKeys IdempotencyKey[]
@@ -95,7 +95,7 @@ model SourceDocument {
  createdAt DateTime @default(now())
  deletedAt DateTime?
  purgedAt DateTime?
- runs ProcessingRun[]
+ runs Run[]
  workDocument WorkDocument?
  @@unique([workspaceId,id])
  @@unique([workspaceId,requestKey])
@@ -117,14 +117,14 @@ model Work {
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  documents WorkDocument[]
- runs WorkRun[]
+ runs Run[]
  facts WorkFacts?
  generations WorkGeneration[]
  events WorkEvent[]
  artifacts WorkArtifact[]
  agentSession WorkAgentSession?
  agentThreads WorkAgentThread[]
- io WorkIo[]
+ io ProcessingIo[]
  @@unique([workspaceId,id])
  @@index([workspaceId,updatedAt])
 }
@@ -143,66 +143,6 @@ model WorkFacts {
  work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
  payload Json
  @@unique([workspaceId,workId])
-}
-model WorkRun {
- id String @id
- workspaceId String
- workId String
- work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
- kind String
- status String @default("queued")
- inputRevision Int
- settingsRevision Int?
- generationId String?
- documentIds Json
- modelSnapshot Json
- initiatedBy String
- correlationId String
- attemptToken String?
- leaseUntil DateTime?
- errorCode String?
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- steps WorkStep[]
- outbox WorkOutbox?
- @@unique([workspaceId,id])
- @@index([workspaceId,workId,createdAt])
- @@index([status,leaseUntil])
-}
-model WorkStep {
- id String @id
- workspaceId String
- runId String
- run WorkRun @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade)
- stage String
- documentId String @default("")
- status String
- errorCode String?
- usage Json?
- output Json?
- updatedAt DateTime @updatedAt
- @@index([workspaceId,runId])
- @@unique([workspaceId,runId,stage,documentId])
-}
-model WorkIo {
- id String @id
- workspaceId String
- workId String
- work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Restrict)
- uncertain Boolean @default(false)
- createdAt DateTime @default(now())
- @@index([workspaceId,workId])
-}
-model WorkOutbox {
- id String @id
- workspaceId String
- runId String @unique
- run WorkRun @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade)
- deliveredAt DateTime?
- leaseToken String?
- leaseUntil DateTime?
- @@index([deliveredAt,leaseUntil])
- @@unique([workspaceId,runId])
 }
 model WorkEvent {
  id BigInt @id @default(autoincrement())
@@ -306,42 +246,6 @@ model SourceUpload {
  createdAt DateTime @default(now())
  @@index([createdAt])
 }
-model ProcessingRun {
- id String @id
- workspaceId String
- documentId String
- revision Int @default(1)
- workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
- document SourceDocument @relation(fields:[workspaceId,documentId],references:[workspaceId,id],onDelete:Restrict)
- status String @default("queued")
- correlationId String
- initiatedBy String
- attempts Int @default(0)
- attemptToken String?
- leaseUntil DateTime?
- resultKey String? @unique
- processorVersion String?
- errorCode String?
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- outbox ProcessingOutbox?
- @@unique([workspaceId,id])
- @@unique([workspaceId,documentId,revision])
- @@index([workspaceId,documentId,createdAt])
- @@index([status,leaseUntil])
-}
-model ProcessingOutbox {
- id String @id
- workspaceId String
- runId String @unique
- run ProcessingRun @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade)
- deliveredAt DateTime?
- leaseUntil DateTime?
- leaseToken String?
- createdAt DateTime @default(now())
- @@index([deliveredAt,leaseUntil])
- @@unique([workspaceId,runId])
-}
 model ResultUpload {
  key String @id
  workspaceId String
@@ -367,14 +271,6 @@ model DocumentArtifact {
  @@index([workspaceId,requestKey])
  @@index([manifestKey,position])
 }
-model ProcessorAttempt {
- id String @id
- workspaceId String
- workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
- documentId String
- createdAt DateTime @default(now())
- @@index([workspaceId,documentId])
-}
 model DocumentDeletion {
  id String @id
  workspaceId String
@@ -383,17 +279,6 @@ model DocumentDeletion {
  completedAt DateTime?
  createdAt DateTime @default(now())
  @@unique([workspaceId,requestKey])
-}
-model DocumentIo {
- id String @id
- workspaceId String
- workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
- documentId String
- requestKey String?
- uncertain Boolean @default(false)
- createdAt DateTime @default(now())
- @@index([workspaceId,documentId])
- @@index([workspaceId,requestKey])
 }
 
 // Журнал действий: событие пишется в той же транзакции, что и действие. actorId пуст у операторских
@@ -458,5 +343,94 @@ model WorkAgentTurn {
  createdAt DateTime @default(now())
  @@unique([sessionId,runId])
  @@unique([sessionId,revision])
+ @@index([workspaceId,workId])
+}
+
+model Run {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ documentId String?
+ document SourceDocument? @relation(fields:[workspaceId,documentId],references:[workspaceId,id],onDelete:Restrict)
+ revision Int?
+ resultKey String? @unique
+ processorVersion String?
+ attempts Int @default(0)
+ workId String?
+ work Work? @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
+ kind String
+ status String @default("queued")
+ inputRevision Int?
+ settingsRevision Int?
+ generationId String?
+ documentIds Json?
+ modelSnapshot Json?
+ initiatedBy String
+ correlationId String
+ attemptToken String?
+ leaseUntil DateTime?
+ errorCode String?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ steps RunStep[]
+ attemptHistory RunAttempt[]
+ outbox RunOutbox?
+ @@unique([workspaceId,id])
+ @@unique([workspaceId,documentId,revision])
+ @@index([workspaceId,documentId,createdAt])
+ @@index([workspaceId,workId,createdAt])
+ @@index([status,leaseUntil])
+}
+model RunStep {
+ id String @id
+ workspaceId String
+ runId String
+ run Run @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade)
+ stage String
+ documentId String @default("")
+ status String
+ errorCode String?
+ usage Json?
+ output Json?
+ updatedAt DateTime @updatedAt
+ @@index([workspaceId,runId])
+ @@unique([workspaceId,runId,stage,documentId])
+}
+model RunAttempt {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ documentId String?
+ runId String?
+ run Run? @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade)
+ createdAt DateTime @default(now())
+ @@index([workspaceId,documentId])
+ @@index([workspaceId,runId])
+}
+model RunOutbox {
+ id String @id
+ workspaceId String
+ runId String @unique
+ run Run @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade)
+ deliveredAt DateTime?
+ leaseUntil DateTime?
+ leaseToken String?
+ createdAt DateTime @default(now())
+ @@index([deliveredAt,leaseUntil])
+ @@unique([workspaceId,runId])
+}
+model ProcessingIo {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ kind String
+ documentId String?
+ workId String?
+ work Work? @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Restrict)
+ requestKey String?
+ uncertain Boolean @default(false)
+ createdAt DateTime @default(now())
+ @@index([workspaceId,documentId])
+ @@index([workspaceId,requestKey])
  @@index([workspaceId,workId])
 }

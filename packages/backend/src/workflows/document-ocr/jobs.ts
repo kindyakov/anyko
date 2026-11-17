@@ -9,6 +9,9 @@ export function documentOcrJob(
 ) {
   return defineJob({
     kind: 'run',
+    connection: 'none',
+    maxRunAttempts: 3,
+    redeliverQueued: true,
     name: 'document.ocr',
     version: 1,
     queue: 'ocr',

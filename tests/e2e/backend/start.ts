@@ -46,9 +46,10 @@ const parser: DocumentParser = {
   async parseDocument(_bytes, _format, attemptId) {
     await delay();
     if (ocrHeld) await new Promise<void>((resolve) => ocrWaiters.add(resolve));
-    const attempt = await fixtureDb.processorAttempt.findUniqueOrThrow({
+    const attempt = await fixtureDb.runAttempt.findUniqueOrThrow({
       where: { id: attemptId },
     });
+    if (!attempt.documentId) throw new Error('OCR_ATTEMPT_DOCUMENT_MISSING');
     const document = await fixtureDb.sourceDocument.findFirstOrThrow({
       where: { id: attempt.documentId, workspaceId: attempt.workspaceId },
       select: { filename: true },
@@ -137,7 +138,6 @@ try {
   await Promise.all([api.ready(), worker.ready()]);
   const jobs = await startJobWorker(worker.jobs, {
     prefix: E2E_QUEUE_PREFIX,
-    legacy: false,
   });
   app = createApp({
     logger,

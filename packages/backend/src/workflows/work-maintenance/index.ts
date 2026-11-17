@@ -10,7 +10,7 @@ export function createWorkCleanup(deps: WorkDependencies) {
         await deps.locks.run(
           `work:${item.workspaceId}:${item.workId}`,
           async () => {
-            await deps.workIo.assertIdle(item.workspaceId, item.workId);
+            await deps.io.assertIdle(item.workspaceId, item.workId);
             for (const doc of await deps.works.internal.documents(
               item.workspaceId,
               item.workId,

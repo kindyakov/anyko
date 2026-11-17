@@ -25,6 +25,9 @@ export interface ContinuationSource {
 export function createWorkContinuation(deps: WorkDependencies) {
   return async (input: {
     run: WorkRunRecord;
+    readConnection(): ReturnType<
+      WorkDependencies['connections']['internal']['connection']
+    >;
     fields: FieldDefinition[];
     candidates: WorkFacts['candidates'];
     sources: ContinuationSource[];
@@ -83,17 +86,11 @@ export function createWorkContinuation(deps: WorkDependencies) {
         );
         const assertCurrent = async () => {
           input.signal.throwIfAborted();
-          await deps.connections.internal.connection(
-            run.workspaceId,
-            run.settingsRevision,
-          );
+          await input.readConnection();
           if ((await input.current()).revision !== snapshot.work.revision)
             throw new Error('CONTEXT_REVISION_CHANGED');
         };
-        const config = await deps.connections.internal.connection(
-          run.workspaceId,
-          run.settingsRevision,
-        );
+        const config = await input.readConnection();
         output = await callModel({
           logger: deps.logger,
           callId: snapshot.threadId,
@@ -141,10 +138,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
       } catch (error) {
         if (isAppError(error) && error.code === 'CONNECTION_REVOKED')
           throw error;
-        await deps.connections.internal.connection(
-          run.workspaceId,
-          run.settingsRevision,
-        );
+        await input.readConnection();
         input.signal.throwIfAborted();
         await input.current();
       }
@@ -228,7 +222,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
                   }
                 : { usage: validOutput.usage }),
             });
-            await processing.finish(
+            const finished = await processing.finish(
               run,
               input.completed === 0
                 ? 'failed'
@@ -236,6 +230,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
                   ? 'partial'
                   : 'succeeded',
             );
+            if (!finished) throw new Error('STALE_WORK_ATTEMPT');
             await works.event(run.workspaceId, run.workId, 'facts.changed');
           });
           return true;

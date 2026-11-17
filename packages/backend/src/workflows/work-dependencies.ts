@@ -3,14 +3,13 @@ import type { Logger } from '@anyko/logger';
 import type { AgentsModule } from '../modules/agents';
 import type { ConnectionsModule } from '../modules/connections';
 import type {
-  DocumentIo,
   DocumentsModule,
   ResourceLocks,
   SourceStorage,
 } from '../modules/documents';
 import type { FactsModule } from '../modules/facts';
 import type { GenerationModule } from '../modules/generation';
-import type { ProcessingModule } from '../modules/processing';
+import type { ProcessingIo, ProcessingModule } from '../modules/processing';
 import type { WorksModule } from '../modules/works';
 import type { UnitOfWork } from '../platform/transactions';
 
@@ -27,16 +26,7 @@ export interface WorkDependencies {
   agents: AgentsModule;
   documents: DocumentsModule;
   locks: ResourceLocks;
-  documentIo: DocumentIo;
-  workIo: {
-    run<T>(
-      workspaceId: string,
-      workId: string,
-      operation: () => Promise<T>,
-    ): Promise<T>;
-    clean(workspaceId: string, workId: string): Promise<boolean>;
-    assertIdle(workspaceId: string, workId: string): Promise<void>;
-  };
+  io: ProcessingIo;
   assertNoDocumentWriters(
     workspaceId: string,
     documentId: string,

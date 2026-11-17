@@ -29,6 +29,7 @@ export const uploadDocument = (deps: DocumentDeps) => {
         const id = deps.newId();
         return deps.io.run(
           {
+            kind: 'document',
             workspaceId: input.workspaceId,
             documentId: id,
             requestKey: input.requestKey,

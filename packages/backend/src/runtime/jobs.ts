@@ -6,7 +6,7 @@ import type {
   createJobProcessing,
   ExecutionScope,
 } from '../modules/processing';
-import type { JobRegistry } from '../platform/jobs';
+import type { JobRegistry, RunPolicy } from '../platform/jobs';
 import { documentMaintenanceJob } from '../workflows/document-maintenance/jobs';
 import { documentOcrJob } from '../workflows/document-ocr/jobs';
 import { workAnalysisJob } from '../workflows/work-analysis/jobs';
@@ -16,7 +16,11 @@ import { workMaintenanceJob } from '../workflows/work-maintenance/jobs';
 export function createJobRegistry(input: {
   processing: ReturnType<typeof createJobProcessing>;
   ocr(scope: ExecutionScope, signal: AbortSignal): Promise<void>;
-  execute(scope: ExecutionScope, signal: AbortSignal): Promise<void>;
+  execute(
+    scope: ExecutionScope,
+    signal: AbortSignal,
+    connection: RunPolicy['connection'],
+  ): Promise<void>;
   maintain(): Promise<void>;
   documents: Parameters<typeof documentMaintenanceJob>[0];
   idempotency: ReturnType<typeof createIdempotencyMaintenance>;
@@ -28,8 +32,12 @@ export function createJobRegistry(input: {
         (scope, signal) => input.ocr(scope, signal),
         input.ocrTimeoutMs,
       ),
-      workAnalysisJob((scope, signal) => input.execute(scope, signal)),
-      workGenerationJob((scope, signal) => input.execute(scope, signal)),
+      workAnalysisJob((scope, signal, connection) =>
+        input.execute(scope, signal, connection),
+      ),
+      workGenerationJob((scope, signal, connection) =>
+        input.execute(scope, signal, connection),
+      ),
       workMaintenanceJob(() => input.maintain()),
       documentMaintenanceJob(input.documents),
       idempotencyCleanupJob(input.idempotency),

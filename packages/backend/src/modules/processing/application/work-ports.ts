@@ -86,7 +86,7 @@ export interface WorkProcessingStore {
     run: WorkRunRecord,
     status: 'succeeded' | 'partial' | 'failed' | 'cancelled',
     errorCode?: string,
-  ): Promise<void>;
+  ): Promise<boolean>;
   step(
     run: WorkRunRecord,
     input: {
@@ -106,14 +106,6 @@ export interface WorkProcessingStore {
     sourceDigest: string,
   ): Promise<StepOutput | null>;
   list(workspaceId: string, workId: string): Promise<WorkRuns>;
-  delivery(): Promise<{
-    id: string;
-    workspaceId: string;
-    runId: string;
-    token: string;
-  } | null>;
-  delivered(id: string, token: string): Promise<void>;
-  release(id: string, token: string): Promise<void>;
   reconcile(): Promise<void>;
   erase(workspaceId: string, workId: string): Promise<void>;
   thread(workspaceId: string, workId: string, threadId: string): Promise<void>;

@@ -46,6 +46,8 @@ const workProcessing = createWorkProcessingStore(db);
 const actualPool = createDatabasePool(databaseUrl);
 const owned: string[] = [];
 const files = new Map<string, Uint8Array>();
+let pauseGeneratedWrite: (() => Promise<void>) | undefined;
+let pauseOcr: (() => Promise<void>) | undefined;
 const storage: SourceStorage = {
   exists: (key) => Promise.resolve(files.has(key)),
   get: (key) => {
@@ -53,7 +55,8 @@ const storage: SourceStorage = {
     if (!bytes) throw new Error('MISSING_OBJECT');
     return Promise.resolve(bytes);
   },
-  put: (key, bytes) => {
+  put: async (key, bytes) => {
+    if (key.startsWith('generated/')) await pauseGeneratedWrite?.();
     files.set(key, bytes);
     return Promise.resolve();
   },
@@ -156,12 +159,14 @@ const workerBackend = createBackend(testConfig, {
     storage,
     agents,
     parser: {
-      parseDocument: () =>
-        Promise.resolve({
+      parseDocument: async () => {
+        await pauseOcr?.();
+        return {
           markdown: 'Имя: Анна. Номер: 42.',
           processorVersion: 'fixture',
           images: imageFixture,
-        }),
+        };
+      },
       eraseAttempt: () => Promise.resolve(),
     },
   },
@@ -172,7 +177,6 @@ async function ready() {
   await workerBackend.ready();
   worker = await startJobWorker(workerBackend.jobs, {
     prefix: `test-work-${crypto.randomUUID()}`,
-    legacy: false,
   });
 }
 async function create() {
@@ -244,18 +248,18 @@ afterAll(async () => {
   await workerBackend.stop();
   await runtime.stop();
   const where = { workspaceId: { in: owned } };
-  await db.workIo.deleteMany({ where });
+  await db.processingIo.deleteMany({ where });
   await db.workArtifact.deleteMany({ where });
   await db.workAgentThread.deleteMany({ where });
   await db.work.deleteMany({ where });
   await db.llmSettings.deleteMany({ where });
-  await db.documentIo.deleteMany({ where });
+  await db.processingIo.deleteMany({ where });
   await db.documentArtifact.deleteMany({ where });
-  await db.processorAttempt.deleteMany({ where });
+  await db.runAttempt.deleteMany({ where });
   await db.documentDeletion.deleteMany({ where });
   await db.sourceUpload.deleteMany({ where });
   await db.resultUpload.deleteMany({ where });
-  await db.processingRun.deleteMany({ where });
+  await db.run.deleteMany({ where });
   await db.sourceDocument.deleteMany({ where });
   await db.auditEvent.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
@@ -327,7 +331,7 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
   );
   const id = generated.generations[0]?.id;
   if (!id) throw new Error('MISSING_GENERATION');
-  const generationRun = await db.workRun.findFirstOrThrow({
+  const generationRun = await db.run.findFirstOrThrow({
     where: { workspaceId: input.workspaceId, generationId: id },
     select: { settingsRevision: true },
   });
@@ -610,14 +614,16 @@ test('deletion during model execution hides derivatives immediately and fences t
     );
     expect(hidden.cleanupPending).toBe(true);
     expect(hidden.facts.candidates).toEqual([]);
-    expect(await db.workIo.count({ where: { workId: input.workId } })).toBe(1);
+    expect(
+      await db.processingIo.count({ where: { workId: input.workId } }),
+    ).toBe(1);
     release();
     const clean = await until(
       input,
       (state) => !state.cleanupPending && !state.documents.length,
     );
     expect(clean.facts.values).toEqual(emptyFieldValues());
-    expect(await db.workRun.count({ where: { workId: input.workId } })).toBe(0);
+    expect(await db.run.count({ where: { workId: input.workId } })).toBe(0);
     expect(
       await db.workAgentThread.count({ where: { workId: input.workId } }),
     ).toBe(0);
@@ -646,17 +652,17 @@ test('lease recovery atomically reopens the outbox and rejects a superseded atte
     });
     const old = await workProcessing.claim(input.workspaceId, runId);
     if (!old) throw new Error('CLAIM_MISSING');
-    await db.workOutbox.update({
+    await db.runOutbox.update({
       where: { runId },
       data: { deliveredAt: new Date() },
     });
-    await db.workRun.update({
+    await db.run.update({
       where: { id: runId },
       data: { leaseUntil: new Date(0) },
     });
     await workProcessing.reconcile();
     expect(
-      (await db.workOutbox.findUniqueOrThrow({ where: { runId } })).deliveredAt,
+      (await db.runOutbox.findUniqueOrThrow({ where: { runId } })).deliveredAt,
     ).toBeNull();
     const fresh = await workProcessing.claim(input.workspaceId, runId);
     if (!fresh) throw new Error('RECLAIM_MISSING');
@@ -792,7 +798,7 @@ test('rotating the workspace connection during analysis preserves the recorded r
     expect(state.runs[0]?.status).toBe('succeeded');
     expect(extractionModel).toBe('fixture');
     expect(
-      (await db.workRun.findFirstOrThrow({ where: { workId: input.workId } }))
+      (await db.run.findFirstOrThrow({ where: { workId: input.workId } }))
         .settingsRevision,
     ).toBe(1);
   } finally {
@@ -839,6 +845,96 @@ test('revoking the recorded revision stops analysis before another model call ev
     expect(extractionCount).toBe(before);
   } finally {
     visual.cleanup();
+  }
+});
+
+function pauseStep() {
+  const release = Promise.withResolvers<undefined>();
+  const entered = Promise.withResolvers<undefined>();
+  return {
+    wait: () => {
+      entered.resolve(undefined);
+      return release.promise;
+    },
+    release: () => {
+      release.resolve(undefined);
+    },
+    async entered() {
+      const timeout = AbortSignal.timeout(7000);
+      await Promise.race([
+        entered.promise,
+        new Promise<never>((_, reject) => {
+          timeout.addEventListener('abort', () => {
+            reject(new Error('STEP_NOT_ENTERED'));
+          });
+        }),
+      ]);
+    },
+  };
+}
+
+test('revoking while MinerU is processing does not stop OCR or call the model', async () => {
+  const input = await create();
+  const step = pauseStep();
+  pauseOcr = step.wait;
+  const before = extractionCount;
+  try {
+    const doc = await upload(input);
+    await step.entered();
+    await apiBackend.workHttp.settings.revoke(memberScope(input.workspaceId));
+    step.release();
+    await until(input, (view) =>
+      view.documents.some(
+        (item) => item.id === doc.id && item.status === 'succeeded',
+      ),
+    );
+    const run = await db.run.findFirstOrThrow({
+      where: { workspaceId: input.workspaceId, documentId: doc.id },
+    });
+    expect(run).toMatchObject({
+      kind: 'document.ocr',
+      settingsRevision: null,
+      status: 'succeeded',
+    });
+    expect(extractionCount).toBe(before);
+  } finally {
+    step.release();
+    pauseOcr = undefined;
+  }
+});
+
+test('revoking a recorded revision during DOCX publication does not stop local generation', async () => {
+  const input = await create();
+  const scope = memberScope(input.workspaceId);
+  const step = pauseStep();
+  pauseGeneratedWrite = step.wait;
+  const before = extractionCount;
+  try {
+    const view = await apiBackend.workHttp.views.get(
+      scope,
+      brandWorkId(input.workId),
+    );
+    await apiBackend.workHttp.generation.startGeneration(scope, {
+      workId: brandWorkId(input.workId),
+      revision: view.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    await step.entered();
+    await apiBackend.workHttp.settings.revoke(scope);
+    step.release();
+    const completed = await until(input, terminal);
+    expect(completed.runs[0]).toMatchObject({
+      kind: 'generation',
+      status: 'succeeded',
+    });
+    const run = await db.run.findFirstOrThrow({
+      where: { workId: input.workId, kind: 'work.generation' },
+    });
+    expect(run.settingsRevision).toBe(1);
+    expect(extractionCount).toBe(before);
+  } finally {
+    step.release();
+    pauseGeneratedWrite = undefined;
   }
 });
 
@@ -1074,7 +1170,7 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
     expect(sawImage).toBe(true);
     expect(sawTool).toBe(true);
     expect(sawStructured).toBe(true);
-    const vision = await db.workStep.findFirstOrThrow({
+    const vision = await db.runStep.findFirstOrThrow({
       where: { run: { workId: input.workId }, stage: 'vision' },
     });
     expect(vision.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
@@ -1310,7 +1406,7 @@ test('superseded attempt cannot commit a session checkpoint or facts', async () 
   });
   const old = await workProcessing.claim(input.workspaceId, runId);
   if (!old) throw Error('claim');
-  await db.workRun.update({
+  await db.run.update({
     where: { id: runId },
     data: { attemptToken: crypto.randomUUID() },
   });

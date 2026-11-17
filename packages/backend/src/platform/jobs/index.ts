@@ -18,9 +18,6 @@ const identity = {
   workspaceId: z.string().min(1),
   runId: z.uuid(),
 };
-const legacyEnvelope = z
-  .object({ version: z.literal(1), ...identity })
-  .strict();
 const currentEnvelope = z
   .object({
     envelopeVersion: z.literal(1),
@@ -33,16 +30,6 @@ const currentEnvelope = z
   .strict();
 
 export type JobEnvelope = z.infer<typeof currentEnvelope>;
-export type ParsedJobEnvelope =
-  | {
-      format: 'legacy';
-      version: number;
-      workspaceId: string;
-      runId: string;
-      payload: unknown;
-    }
-  | ({ format: 'current' } & JobEnvelope);
-
 /** One boundary for business envelopes; scheduled jobs carry no workspace/run authority. */
 export function parseJobEnvelope(
   input: unknown,
@@ -53,26 +40,20 @@ export function parseJobEnvelope(
   input: unknown,
   version: number,
   kind?: 'run',
-): ParsedJobEnvelope;
+): JobEnvelope;
 export function parseJobEnvelope(
   input: unknown,
   version: number,
   kind: 'run' | 'scheduled' = 'run',
-): ParsedJobEnvelope | z.infer<typeof scheduledEnvelope> {
+): JobEnvelope | z.infer<typeof scheduledEnvelope> {
   if (kind === 'scheduled') {
     const parsed = scheduledEnvelope.parse(input);
     if (parsed.version !== version) throw new Error('UNKNOWN_JOB_VERSION');
     return parsed;
   }
-  const current = currentEnvelope.safeParse(input);
-  if (current.success) {
-    if (current.data.version !== version)
-      throw new Error('UNKNOWN_JOB_VERSION');
-    return { format: 'current', ...current.data };
-  }
-  const legacy = legacyEnvelope.safeParse(input);
-  if (!legacy.success || version !== 1) throw new Error('INVALID_JOB_ENVELOPE');
-  return { format: 'legacy', ...legacy.data, payload: {} };
+  const parsed = currentEnvelope.parse(input);
+  if (parsed.version !== version) throw new Error('UNKNOWN_JOB_VERSION');
+  return parsed;
 }
 
 export interface RetryPolicy {
@@ -93,9 +74,13 @@ interface CommonDefinition<Schema extends z.ZodType> {
   timeoutMs: number;
   retry: RetryPolicy;
 }
-interface RunDefinition<
-  Schema extends z.ZodType,
-> extends CommonDefinition<Schema> {
+export interface RunPolicy {
+  connection: 'required' | 'none';
+  maxRunAttempts: number | null;
+  redeliverQueued: boolean;
+}
+interface RunDefinition<Schema extends z.ZodType>
+  extends CommonDefinition<Schema>, RunPolicy {
   kind: 'run';
   queue: WorkerQueue;
   handler(
@@ -115,7 +100,7 @@ interface ScheduledDefinition<
     signal: AbortSignal,
   ): Promise<void>;
 }
-export interface RunJob {
+export interface RunJob extends RunPolicy {
   kind: 'run';
   name: string;
   version: number;
@@ -186,10 +171,7 @@ const scheduledEnvelope = z
 export interface JobRegistry {
   definitions: readonly (RunJob | ScheduledJob)[];
   schedules: readonly { name: string; everyMs: number }[];
-  scope(
-    envelope: ParsedJobEnvelope,
-    name: string,
-  ): Promise<ExecutionScope | null>;
+  scope(envelope: JobEnvelope, name: string): Promise<ExecutionScope | null>;
 }
 export interface JobDelivery {
   id: string;
@@ -208,7 +190,7 @@ export interface DeliveryPort {
 }
 export interface JobRuntime {
   registry: JobRegistry;
-  deliveries: readonly DeliveryPort[];
+  delivery: DeliveryPort;
   reconcile(): Promise<void>;
   clock: Clock;
   newId(): string;

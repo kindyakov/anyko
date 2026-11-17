@@ -45,9 +45,6 @@ export type ProcessingInternal = Pick<
   | 'threads'
   | 'erase'
   | 'eraseThreads'
-  | 'delivery'
-  | 'delivered'
-  | 'release'
   | 'reconcile'
 >;
 export interface ProcessingPorts {
@@ -61,3 +58,5 @@ export interface ProcessingModule extends ProcessingPorts {
 
 export { createJobProcessing } from './application/job-scope';
 export type { ExecutionScope } from '../../platform/scope/execution-scope';
+
+export type { ProcessingIo } from './application/io';

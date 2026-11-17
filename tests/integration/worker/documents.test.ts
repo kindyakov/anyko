@@ -120,11 +120,11 @@ async function waitFor(
   throw new Error('DOCUMENT_STATUS_TIMEOUT');
 }
 afterAll(async () => {
-  await db.documentIo.deleteMany({ where: { workspaceId: { in: owned } } });
+  await db.processingIo.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.documentArtifact.deleteMany({
     where: { workspaceId: { in: owned } },
   });
-  await db.processorAttempt.deleteMany({
+  await db.runAttempt.deleteMany({
     where: { workspaceId: { in: owned } },
   });
   await db.documentDeletion.deleteMany({
@@ -132,7 +132,7 @@ afterAll(async () => {
   });
   await db.sourceUpload.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.resultUpload.deleteMany({ where: { workspaceId: { in: owned } } });
-  await db.processingRun.deleteMany({ where: { workspaceId: { in: owned } } });
+  await db.run.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.sourceDocument.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.auditEvent.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
@@ -147,13 +147,11 @@ test('upload atomically persists metadata, run and outbox; foreign workspace can
   const document = await upload(own);
   expect(document.status).toBe('queued');
   expect(
-    await db.processingRun.count({
+    await db.run.count({
       where: { workspaceId: own, documentId: document.id },
     }),
   ).toBe(1);
-  expect(await db.processingOutbox.count({ where: { workspaceId: own } })).toBe(
-    1,
-  );
+  expect(await db.runOutbox.count({ where: { workspaceId: own } })).toBe(1);
   expect(await db.sourceUpload.count({ where: { workspaceId: own } })).toBe(0);
   expect(await recognition.queries.list(memberScope(foreign))).toEqual([]);
   await expectRejected(
@@ -167,12 +165,12 @@ test('upload atomically persists metadata, run and outbox; foreign workspace can
     ),
     'NOT_FOUND',
   );
-  const run = await db.processingRun.findFirstOrThrow({
+  const run = await db.run.findFirstOrThrow({
     where: { workspaceId: own },
   });
   await expectRejected(
     Promise.resolve(
-      db.processingOutbox.create({
+      db.runOutbox.create({
         data: { id: crypto.randomUUID(), workspaceId: foreign, runId: run.id },
       }),
     ),
@@ -187,7 +185,7 @@ test('concurrent same-key upload returns the same document; different input conf
   expect(await db.sourceDocument.count({ where: { workspaceId: own } })).toBe(
     1,
   );
-  expect(await db.processingRun.count({ where: { workspaceId: own } })).toBe(1);
+  expect(await db.run.count({ where: { workspaceId: own } })).toBe(1);
   await expectRejected(
     upload(own, key, new TextEncoder().encode('%PDF-1.7\nother')),
     'IDEMPOTENCY_CONFLICT',
@@ -205,6 +203,48 @@ test('concurrent same-key upload returns the same document; different input conf
   await createSourceCleanup(db, storage)(new Date(Date.now() - 3600000));
   expect(files.has(document.sourceKey)).toBe(true);
   expect(await db.sourceUpload.count({ where: { workspaceId: own } })).toBe(0);
+});
+
+test('a retained document without run history is readable and can be recognized again', async () => {
+  const own = await workspace();
+  const doc = await upload(own);
+  const documentId = brandDocumentId(doc.id);
+  await db.run.deleteMany({ where: { workspaceId: own, documentId } });
+  const scope = memberScope(own);
+  expect(await recognition.queries.get(scope, documentId)).toMatchObject({
+    status: 'failed',
+    errorCode: 'OCR_RETRY_REQUIRED',
+  });
+  expect(await recognition.queries.list(scope)).toHaveLength(1);
+  await expectRejected(
+    recognition.queries.result(scope, documentId),
+    'NOT_READY',
+  );
+  expect(
+    await recognition.commands.retry(scope, documentId, crypto.randomUUID()),
+  ).toMatchObject({ status: 'queued' });
+  expect(
+    await db.run.findFirstOrThrow({ where: { workspaceId: own, documentId } }),
+  ).toMatchObject({ kind: 'document.ocr', revision: 1 });
+  const worker = await startDocumentWorker({
+    queueName: `document-reset-${crypto.randomUUID()}`,
+    parser: {
+      eraseAttempt: () => Promise.resolve(),
+      parseDocument: () =>
+        Promise.resolve({
+          markdown: 'Recognized again',
+          processorVersion: 'fixture',
+        }),
+    },
+  });
+  try {
+    await waitFor(own, doc.id, 'succeeded');
+    expect((await recognition.queries.result(scope, documentId)).markdown).toBe(
+      'Recognized again',
+    );
+  } finally {
+    await worker.stop();
+  }
 });
 
 test('outbox survives before worker start; real queue publishes result and retry preserves history', async () => {
@@ -246,7 +286,7 @@ test('outbox survives before worker start; real queue publishes result and retry
       images: [],
     });
     expect(
-      await db.processingRun.count({
+      await db.run.count({
         where: { workspaceId: own, documentId: doc.id },
       }),
     ).toBe(2);
@@ -258,7 +298,7 @@ test('outbox survives before worker start; real queue publishes result and retry
 test('a failed work notification rolls back the OCR claim and attempt', async () => {
   const own = await workspace();
   const doc = await upload(own);
-  const run = await db.processingRun.findFirstOrThrow({
+  const run = await db.run.findFirstOrThrow({
     where: { workspaceId: own, documentId: doc.id },
   });
   const store = createProcessingStore(db, () =>
@@ -272,17 +312,17 @@ test('a failed work notification rolls back the OCR claim and attempt', async ()
       new Date(Date.now() + 60000),
     ),
   );
-  const saved = await db.processingRun.findUniqueOrThrow({
+  const saved = await db.run.findUniqueOrThrow({
     where: { id: run.id },
   });
   expect(saved.status).toBe('queued');
   expect(saved.attempts).toBe(0);
   expect(
-    await db.processorAttempt.count({
+    await db.runAttempt.count({
       where: { workspaceId: own, documentId: doc.id },
     }),
   ).toBe(0);
-  await db.processingOutbox.deleteMany({
+  await db.runOutbox.deleteMany({
     where: { workspaceId: own, runId: run.id },
   });
 });
@@ -290,10 +330,10 @@ test('a failed work notification rolls back the OCR claim and attempt', async ()
 test('recovery notifies the work when an expired final OCR attempt fails', async () => {
   const own = await workspace();
   const doc = await upload(own);
-  const run = await db.processingRun.findFirstOrThrow({
+  const run = await db.run.findFirstOrThrow({
     where: { workspaceId: own, documentId: doc.id },
   });
-  await db.processingRun.update({
+  await db.run.update({
     where: { id: run.id },
     data: {
       status: 'running',
@@ -308,13 +348,13 @@ test('recovery notifies the work when an expired final OCR attempt fails', async
     return Promise.resolve();
   });
   await store.reconcile();
-  const saved = await db.processingRun.findUniqueOrThrow({
+  const saved = await db.run.findUniqueOrThrow({
     where: { id: run.id },
   });
   expect(saved.status).toBe('failed');
   expect(saved.errorCode).toBe('ATTEMPTS_EXHAUSTED');
   expect(notifications).toContain(`${own}:${doc.id}`);
-  await db.processingOutbox.deleteMany({
+  await db.runOutbox.deleteMany({
     where: { workspaceId: own, runId: run.id },
   });
 });
@@ -322,7 +362,7 @@ test('recovery notifies the work when an expired final OCR attempt fails', async
 test('expired attempt cannot publish after a new claim; database rejects impossible state', async () => {
   const own = await workspace();
   const doc = await upload(own);
-  const run = await db.processingRun.findFirstOrThrow({
+  const run = await db.run.findFirstOrThrow({
     where: { workspaceId: own, documentId: doc.id },
   });
   const store = createProcessingStore(db);
@@ -352,19 +392,19 @@ test('expired attempt cannot publish after a new claim; database rejects impossi
     await store.complete(current, 'results/duplicate-fixture', 'test-parser'),
   ).toBe(false);
   expect(
-    await db.processorAttempt.count({
+    await db.runAttempt.count({
       where: { workspaceId: own, documentId: doc.id },
     }),
   ).toBe(2);
   await expectRejected(
     Promise.resolve(
-      db.processingRun.update({
+      db.run.update({
         where: { id: run.id },
         data: { status: 'unrecognised' },
       }),
     ),
   );
-  const saved = await db.processingRun.findUniqueOrThrow({
+  const saved = await db.run.findUniqueOrThrow({
     where: { id: run.id },
   });
   expect(saved.resultKey).toBe('results/new-fixture');
@@ -373,7 +413,7 @@ test('expired attempt cannot publish after a new claim; database rejects impossi
 test('a lost Redis job is republished from the aged queued database intent', async () => {
   const own = await workspace();
   const doc = await upload(own);
-  const run = await db.processingRun.findFirstOrThrow({
+  const run = await db.run.findFirstOrThrow({
     where: { workspaceId: own, documentId: doc.id },
   });
   const store = createProcessingStore(db);
@@ -399,16 +439,16 @@ test('a lost Redis job is republished from the aged queued database intent', asy
     // A fresh delivery has a grace period and must not immediately duplicate.
     await store.reconcile();
     expect(
-      (await db.processingOutbox.findUniqueOrThrow({ where: { id: item.id } }))
+      (await db.runOutbox.findUniqueOrThrow({ where: { id: item.id } }))
         .deliveredAt,
     ).not.toBeNull();
-    await db.processingOutbox.update({
+    await db.runOutbox.update({
       where: { id: item.id },
       data: { deliveredAt: new Date(Date.now() - 31000) },
     });
     await store.reconcile();
     expect(
-      (await db.processingOutbox.findUniqueOrThrow({ where: { id: item.id } }))
+      (await db.runOutbox.findUniqueOrThrow({ where: { id: item.id } }))
         .deliveredAt,
     ).toBeNull();
     worker = await startDocumentWorker({

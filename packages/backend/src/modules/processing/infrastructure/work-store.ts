@@ -8,26 +8,48 @@ import { uuidV7 } from '../../../platform/ids';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
 import { stepOutputSchema, workRunSchema } from '../application/work-ports';
 
-type Connection = Pick<
-  Database,
-  'workRun' | 'workStep' | 'workOutbox' | 'workAgentThread' | '$executeRaw'
->;
-const kindSchema = z.enum(['analysis', 'generation']);
+import {
+  activeAttempt,
+  claimRun,
+  recoverRuns,
+  type RunConnection,
+} from './run-engine';
+
+type Connection = RunConnection & Pick<Database, 'runStep' | 'workAgentThread'>;
+const workKinds = ['work.analysis', 'work.generation'];
+const workKind = (kind: string) =>
+  z.enum(['analysis', 'generation']).parse(kind.slice('work.'.length));
 export function createWorkProcessingStore(
-  db: Connection,
+  db: Connection & Partial<Pick<Database, '$transaction'>>,
   deps: { newId(): string; clock: Clock } = {
     newId: uuidV7,
     clock: systemClock,
   },
 ): WorkProcessingStore {
+  const atomic = <T>(operation: (tx: Connection) => Promise<T>) =>
+    db.$transaction ? db.$transaction(operation) : operation(db);
+  const fence = async (
+    tx: Connection,
+    run: Parameters<WorkProcessingStore['fence']>[0],
+  ) => {
+    const now = deps.clock.now();
+    const change = await tx.run.updateMany({
+      where: {
+        ...activeAttempt(run.workspaceId, run.id, run.attemptToken, now),
+        kind: { in: workKinds },
+      },
+      data: { updatedAt: now },
+    });
+    if (change.count !== 1) throw new Error('STALE_WORK_ATTEMPT');
+  };
   return {
     async start(input) {
-      await db.workRun.create({
+      await db.run.create({
         data: {
           id: input.id,
           workspaceId: input.workspaceId,
           workId: input.workId,
-          kind: input.kind,
+          kind: `work.${input.kind}`,
           inputRevision: input.inputRevision,
           settingsRevision: input.settingsRevision,
           generationId: input.generationId,
@@ -41,27 +63,21 @@ export function createWorkProcessingStore(
     },
     async claim(workspaceId, id) {
       const token = deps.newId();
-      if (
-        !(
-          await db.workRun.updateMany({
-            where: { workspaceId, id, status: 'queued' },
-            data: {
-              status: 'running',
-              attemptToken: token,
-              leaseUntil: new Date(deps.clock.now().getTime() + 1_800_000),
-            },
-          })
-        ).count
-      )
-        return null;
-      const row = await db.workRun.findFirstOrThrow({
-        where: { workspaceId, id, attemptToken: token },
-      });
+      const row = await atomic((tx) =>
+        claimRun(tx, {
+          workspaceId,
+          id,
+          attemptToken: token,
+          kinds: workKinds,
+          leaseUntil: new Date(deps.clock.now().getTime() + 1800000),
+        }),
+      );
+      if (!row?.workId || row.inputRevision === null) return null;
       return {
         id: row.id,
         workspaceId,
         workId: row.workId,
-        kind: kindSchema.parse(row.kind),
+        kind: workKind(row.kind),
         inputRevision: row.inputRevision,
         settingsRevision: row.settingsRevision,
         generationId: row.generationId,
@@ -72,42 +88,37 @@ export function createWorkProcessingStore(
     },
     async active(workspaceId, workId) {
       return (
-        (await db.workRun.count({
+        (await db.run.count({
           where: { workspaceId, workId, status: { in: ['queued', 'running'] } },
         })) > 0
       );
     },
-    async fence(run) {
-      const changed = await db.workRun.updateMany({
-        where: {
-          workspaceId: run.workspaceId,
-          id: run.id,
-          attemptToken: run.attemptToken,
-          status: 'running',
-        },
-        data: { updatedAt: deps.clock.now() },
-      });
-      if (changed.count !== 1) throw new Error('STALE_WORK_ATTEMPT');
-    },
+    fence: (run) => fence(db, run),
     async valid(run) {
       return (
-        (await db.workRun.count({
+        (await db.run.count({
           where: {
-            workspaceId: run.workspaceId,
-            id: run.id,
-            attemptToken: run.attemptToken,
-            status: 'running',
+            ...activeAttempt(
+              run.workspaceId,
+              run.id,
+              run.attemptToken,
+              deps.clock.now(),
+            ),
+            kind: { in: workKinds },
           },
         })) === 1
       );
     },
     async finish(run, status, errorCode) {
-      await db.workRun.updateMany({
+      const updated = await db.run.updateMany({
         where: {
-          workspaceId: run.workspaceId,
-          id: run.id,
-          attemptToken: run.attemptToken,
-          status: 'running',
+          ...activeAttempt(
+            run.workspaceId,
+            run.id,
+            run.attemptToken,
+            deps.clock.now(),
+          ),
+          kind: { in: workKinds },
         },
         data: {
           status,
@@ -116,40 +127,43 @@ export function createWorkProcessingStore(
           leaseUntil: null,
         },
       });
+      return updated.count === 1;
     },
     async step(run, input) {
-      if (!(await this.valid(run))) throw new Error('STALE_WORK_ATTEMPT');
-      const documentId = input.documentId ?? '';
-      const data = {
-        status: input.status,
-        errorCode: input.errorCode ?? null,
-        ...(input.usage ? { usage: input.usage } : {}),
-        ...(input.output
-          ? { output: stepOutputSchema.parse(input.output) }
-          : {}),
-      };
-      await db.workStep.upsert({
-        where: {
-          workspaceId_runId_stage_documentId: {
+      await atomic(async (tx) => {
+        await fence(tx, run);
+        const documentId = input.documentId ?? '';
+        const data = {
+          status: input.status,
+          errorCode: input.errorCode ?? null,
+          ...(input.usage ? { usage: input.usage } : {}),
+          ...(input.output
+            ? { output: stepOutputSchema.parse(input.output) }
+            : {}),
+        };
+        await tx.runStep.upsert({
+          where: {
+            workspaceId_runId_stage_documentId: {
+              workspaceId: run.workspaceId,
+              runId: run.id,
+              stage: input.stage,
+              documentId,
+            },
+          },
+          update: data,
+          create: {
+            id: deps.newId(),
             workspaceId: run.workspaceId,
             runId: run.id,
             stage: input.stage,
             documentId,
+            ...data,
           },
-        },
-        update: data,
-        create: {
-          id: deps.newId(),
-          workspaceId: run.workspaceId,
-          runId: run.id,
-          stage: input.stage,
-          documentId,
-          ...data,
-        },
+        });
       });
     },
     async cached(run, documentId, stage, sourceDigest) {
-      const row = await db.workStep.findFirst({
+      const row = await db.runStep.findFirst({
         where: {
           workspaceId: run.workspaceId,
           documentId,
@@ -167,7 +181,7 @@ export function createWorkProcessingStore(
     },
     async list(workspaceId, workId) {
       return (
-        await db.workRun.findMany({
+        await db.run.findMany({
           where: { workspaceId, workId },
           include: { steps: { orderBy: { updatedAt: 'asc' } } },
           orderBy: { createdAt: 'desc' },
@@ -176,6 +190,7 @@ export function createWorkProcessingStore(
       ).map((row) =>
         workRunSchema.parse({
           ...row,
+          kind: workKind(row.kind),
           steps: row.steps.map((step) => ({
             ...step,
             documentId: step.documentId || null,
@@ -187,56 +202,20 @@ export function createWorkProcessingStore(
         }),
       );
     },
-    async delivery() {
-      const row = await db.workOutbox.findFirst({
-        where: {
-          deliveredAt: null,
-          OR: [{ leaseUntil: null }, { leaseUntil: { lt: deps.clock.now() } }],
-        },
-      });
-      if (!row) return null;
-      const token = deps.newId();
-      const changed = await db.workOutbox.updateMany({
-        where: {
-          id: row.id,
-          deliveredAt: null,
-          OR: [{ leaseUntil: null }, { leaseUntil: { lt: deps.clock.now() } }],
-        },
-        data: {
-          leaseToken: token,
-          leaseUntil: new Date(deps.clock.now().getTime() + 10000),
-        },
-      });
-      return changed.count
-        ? { id: row.id, workspaceId: row.workspaceId, runId: row.runId, token }
-        : null;
-    },
-    async delivered(id, token) {
-      await db.workOutbox.updateMany({
-        where: { id, leaseToken: token },
-        data: {
-          deliveredAt: deps.clock.now(),
-          leaseUntil: null,
-          leaseToken: null,
-        },
-      });
-    },
-    async release(id, token) {
-      await db.workOutbox.updateMany({
-        where: { id, leaseToken: token },
-        data: { leaseUntil: null, leaseToken: null },
-      });
-    },
-    async reconcile() {
-      // Atomic recovery: queued runs are not repeatedly republished while waiting for a consumer.
-      await db.$executeRaw`WITH expired AS (
-        UPDATE "WorkRun" SET "status"='queued', "attemptToken"=NULL, "leaseUntil"=NULL, "updatedAt"=(NOW() AT TIME ZONE 'UTC')
-        WHERE "status"='running' AND "leaseUntil" < (NOW() AT TIME ZONE 'UTC') RETURNING "id", "workspaceId"
-      ) UPDATE "WorkOutbox" AS outbox SET "deliveredAt"=NULL, "leaseUntil"=NULL, "leaseToken"=NULL
-        FROM expired WHERE outbox."runId"=expired."id" AND outbox."workspaceId"=expired."workspaceId"`;
-    },
+    reconcile: () =>
+      atomic((tx) =>
+        recoverRuns(
+          tx,
+          workKinds.map((name) => ({
+            name,
+            maxRunAttempts: null,
+            redeliverQueued: false,
+          })),
+          deps.clock.now(),
+        ),
+      ),
     async erase(workspaceId, workId) {
-      await db.workRun.deleteMany({ where: { workspaceId, workId } });
+      await db.run.deleteMany({ where: { workspaceId, workId } });
     },
     async thread(workspaceId, workId, id) {
       await db.workAgentThread.create({ data: { id, workspaceId, workId } });

@@ -61,8 +61,9 @@ try {
       `document:${document.workspaceId}:${document.id}`,
       async () => {
         const operationId = crypto.randomUUID();
-        await db.documentIo.create({
+        await db.processingIo.create({
           data: {
+            kind: 'document',
             id: operationId,
             workspaceId: document.workspaceId,
             documentId: document.id,
@@ -176,7 +177,7 @@ try {
               update: {},
             });
             await storage.put(resultKey, bytes, 'application/json');
-            await db.processingRun.update({
+            await db.run.update({
               where: { id: run.id },
               data: { resultKey },
             });
@@ -190,18 +191,18 @@ try {
           throw error;
         } finally {
           if (uncertain)
-            await db.documentIo.update({
+            await db.processingIo.update({
               where: { id: operationId },
               data: { uncertain: true },
             });
-          else await db.documentIo.deleteMany({ where: { id: operationId } });
+          else await db.processingIo.deleteMany({ where: { id: operationId } });
         }
       },
     );
   // Legacy staging is cleaned only while applications are stopped during cutover.
   const published = new Set(
     (
-      await db.processingRun.findMany({
+      await db.run.findMany({
         where: { resultKey: { not: null } },
         select: { resultKey: true },
       })
@@ -225,7 +226,7 @@ try {
     await db.sourceUpload.deleteMany({ where: { key: row.key } });
   }
   for (const row of await db.resultUpload.findMany()) {
-    if (!(await db.processingRun.count({ where: { resultKey: row.key } })))
+    if (!(await db.run.count({ where: { resultKey: row.key } })))
       await storage.delete(row.key);
     await db.resultUpload.deleteMany({ where: { key: row.key } });
   }

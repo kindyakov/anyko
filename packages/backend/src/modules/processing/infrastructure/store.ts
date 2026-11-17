@@ -1,19 +1,27 @@
 import type { Database } from '@anyko/database';
 
+import { type Clock, systemClock } from '../../../platform/clock';
 import type { ProcessingStore } from '../application/ports';
+
+import {
+  activeAttempt,
+  claimRun,
+  documentPolicy,
+  type NotifyDocumentRun,
+  recoverRuns,
+  runDelivery,
+} from './run-engine';
 
 export function createProcessingStore(
   db: Database,
-  notifyWork?: (
-    transaction: object,
-    workspaceId: string,
-    documentId: string,
-  ) => Promise<void>,
+  notifyWork?: NotifyDocumentRun,
+  clock: Clock = systemClock,
 ): ProcessingStore {
+  const delivery = runDelivery(db, clock);
   return {
     async attemptIds(workspaceId, documentId) {
       return (
-        await db.processorAttempt.findMany({
+        await db.runAttempt.findMany({
           where: { workspaceId, documentId },
           select: { id: true },
         })
@@ -22,7 +30,7 @@ export function createProcessingStore(
     async documentId(workspaceId, runId) {
       return (
         (
-          await db.processingRun.findFirst({
+          await db.run.findFirst({
             where: { workspaceId, id: runId },
             select: { documentId: true },
           })
@@ -30,7 +38,7 @@ export function createProcessingStore(
       );
     },
     async resultKeys(workspaceId, documentId) {
-      const runs = await db.processingRun.findMany({
+      const runs = await db.run.findMany({
         where: { workspaceId, documentId, resultKey: { not: null } },
         select: { resultKey: true },
       });
@@ -44,7 +52,7 @@ export function createProcessingStore(
         where: { createdAt: { lt: before } },
         take: 20,
       });
-      const owned = await db.processingRun.findMany({
+      const owned = await db.run.findMany({
         where: { resultKey: { in: staged.map((s) => s.key) } },
         select: { resultKey: true },
       });
@@ -58,30 +66,15 @@ export function createProcessingStore(
     },
     async claim(runId, workspaceId, attemptToken, leaseUntil) {
       return db.$transaction(async (tx) => {
-        const claimed = await tx.processingRun.updateMany({
-          where: {
-            id: runId,
-            workspaceId,
-            status: 'queued',
-            document: { deletedAt: null },
-            attempts: { lt: 3 },
-          },
-          data: {
-            status: 'running',
-            attemptToken,
-            leaseUntil,
-            attempts: { increment: 1 },
-            errorCode: null,
-          },
+        const run = await claimRun(tx, {
+          id: runId,
+          workspaceId,
+          attemptToken,
+          leaseUntil,
+          kinds: [documentPolicy.name],
+          maxAttempts: documentPolicy.maxRunAttempts,
         });
-        if (claimed.count !== 1) return null;
-        const run = await tx.processingRun.findUniqueOrThrow({
-          where: { workspaceId_id: { workspaceId, id: runId } },
-          include: { document: { select: { sourceKey: true } } },
-        });
-        await tx.processorAttempt.create({
-          data: { id: attemptToken, workspaceId, documentId: run.documentId },
-        });
+        if (!run?.document || !run.documentId) return null;
         await notifyWork?.(tx, workspaceId, run.documentId);
         return {
           runId,
@@ -99,13 +92,15 @@ export function createProcessingStore(
           { id: string }[]
         >`SELECT id FROM "SourceDocument" WHERE id=${claim.documentId} AND "workspaceId"=${claim.workspaceId} AND "deletedAt" IS NULL FOR UPDATE`;
         if (documents.length !== 1) return false;
-        const result = await tx.processingRun.updateMany({
+        const result = await tx.run.updateMany({
           where: {
-            id: claim.runId,
-            workspaceId: claim.workspaceId,
-            status: 'running',
-            attemptToken: claim.attemptToken,
-            leaseUntil: { gt: new Date() },
+            ...activeAttempt(
+              claim.workspaceId,
+              claim.runId,
+              claim.attemptToken,
+              clock.now(),
+            ),
+            kind: documentPolicy.name,
           },
           data: {
             status: 'succeeded',
@@ -124,12 +119,15 @@ export function createProcessingStore(
     },
     async fail(claim, errorCode) {
       await db.$transaction(async (tx) => {
-        const result = await tx.processingRun.updateMany({
+        const result = await tx.run.updateMany({
           where: {
-            id: claim.runId,
-            workspaceId: claim.workspaceId,
-            status: 'running',
-            attemptToken: claim.attemptToken,
+            ...activeAttempt(
+              claim.workspaceId,
+              claim.runId,
+              claim.attemptToken,
+              clock.now(),
+            ),
+            kind: documentPolicy.name,
           },
           data: {
             status: 'failed',
@@ -142,98 +140,13 @@ export function createProcessingStore(
           await notifyWork?.(tx, claim.workspaceId, claim.documentId);
       });
     },
-    async reserveDelivery(token, leaseUntil) {
-      const row = await db.$transaction(async (tx) => {
-        const rows = await tx.$queryRaw<
-          { id: string; workspaceId: string; runId: string }[]
-        >`SELECT o.id,o."workspaceId",o."runId" FROM "ProcessingOutbox" o JOIN "ProcessingRun" r ON r.id=o."runId" AND r."workspaceId"=o."workspaceId" WHERE o."deliveredAt" IS NULL AND (o."leaseUntil" IS NULL OR o."leaseUntil" < NOW()) AND r.status='queued' ORDER BY o."createdAt" FOR UPDATE OF o SKIP LOCKED LIMIT 1`;
-        const selected = rows[0];
-        if (!selected) return null;
-        await tx.processingOutbox.update({
-          where: { id: selected.id },
-          data: { leaseUntil, leaseToken: token },
-        });
-        return selected;
-      });
-      return row ? { ...row, token } : null;
-    },
-    async delivered(id, token) {
-      await db.processingOutbox.updateMany({
-        where: { id, leaseToken: token },
-        data: { deliveredAt: new Date(), leaseUntil: null, leaseToken: null },
-      });
-    },
-    async releaseDelivery(id, token) {
-      await db.processingOutbox.updateMany({
-        where: { id, leaseToken: token },
-        data: { leaseUntil: null, leaseToken: null },
-      });
-    },
-    async reconcile() {
-      await db.$transaction(async (tx) => {
-        // Redis acknowledgements are delivery hints, not durable execution state.
-        // A queued operation whose last delivery has aged out may have lost its
-        // Redis job; republish it without stealing an active dispatcher lease.
-        const now = new Date();
-        await tx.processingOutbox.updateMany({
-          where: {
-            deliveredAt: { lt: new Date(now.getTime() - 30000) },
-            OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }],
-            run: { status: 'queued' },
-          },
-          data: { deliveredAt: null, leaseUntil: null, leaseToken: null },
-        });
-        const exhausted = await tx.processingRun.findMany({
-          where: {
-            status: 'running',
-            leaseUntil: { lt: new Date() },
-            attempts: { gte: 3 },
-          },
-          select: { id: true, workspaceId: true, documentId: true },
-        });
-        for (const run of exhausted) {
-          const result = await tx.processingRun.updateMany({
-            where: {
-              id: run.id,
-              status: 'running',
-              leaseUntil: { lt: now },
-              attempts: { gte: 3 },
-            },
-            data: {
-              status: 'failed',
-              errorCode: 'ATTEMPTS_EXHAUSTED',
-              attemptToken: null,
-              leaseUntil: null,
-            },
-          });
-          if (result.count === 1)
-            await notifyWork?.(tx, run.workspaceId, run.documentId);
-        }
-        const expired = await tx.processingRun.findMany({
-          where: {
-            status: 'running',
-            leaseUntil: { lt: new Date() },
-            attempts: { lt: 3 },
-          },
-          select: { id: true, workspaceId: true, documentId: true },
-        });
-        for (const run of expired) {
-          const result = await tx.processingRun.updateMany({
-            where: {
-              id: run.id,
-              status: 'running',
-              leaseUntil: { lt: new Date() },
-            },
-            data: { status: 'queued', attemptToken: null, leaseUntil: null },
-          });
-          if (result.count !== 1) continue;
-          await tx.processingOutbox.updateMany({
-            where: { runId: run.id },
-            data: { deliveredAt: null, leaseUntil: null, leaseToken: null },
-          });
-          await notifyWork?.(tx, run.workspaceId, run.documentId);
-        }
-      });
-    },
+    reserveDelivery: (token, leaseUntil) =>
+      delivery.reserve(token, clock.now(), leaseUntil),
+    delivered: delivery.delivered,
+    releaseDelivery: delivery.release,
+    reconcile: () =>
+      db.$transaction((tx) =>
+        recoverRuns(tx, [documentPolicy], clock.now(), notifyWork),
+      ),
   };
 }
