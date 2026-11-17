@@ -1,11 +1,4 @@
-import type { Logger } from '@anyko/logger';
-import { startJobWorker } from '@anyko/worker/queues';
-
-import type {
-  DocumentParser,
-  SourceStorage,
-} from '../../src/modules/documents';
-import { type BackendConfig, createBackend } from '../../src/runtime';
+import type { BackendConfig } from '../../src/runtime';
 
 /** Full-mode configuration for integration suites; external endpoints are unreachable placeholders. */
 export function integrationConfig(input: {
@@ -31,36 +24,6 @@ export function integrationConfig(input: {
       redisUrl: input.redisUrl,
       mineru: { baseUrl: 'http://127.0.0.1:1', timeoutMs: 240000 },
       shutdownTimeoutMs: 10000,
-    },
-  };
-}
-
-/** Starts one document consumer in its own worker backend, as a separate process would. */
-export async function startDocumentConsumer(
-  config: BackendConfig,
-  options: {
-    logger: Logger;
-    storage: SourceStorage;
-    parser: DocumentParser;
-    queueName: string;
-  },
-) {
-  const backend = createBackend(config, {
-    logger: options.logger,
-    role: 'worker',
-    dependencies: { storage: options.storage, parser: options.parser },
-  });
-  await backend.ready();
-  const worker = await startJobWorker(backend.jobs, {
-    queues: 'ocr,maintenance',
-    queueNames: { ocr: options.queueName },
-    prefix: options.queueName,
-    legacy: false,
-  });
-  return {
-    async stop() {
-      await worker.stop();
-      await backend.stop();
     },
   };
 }

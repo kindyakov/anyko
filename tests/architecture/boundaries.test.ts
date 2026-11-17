@@ -1101,3 +1101,31 @@ test('execution scope constructor is reserved for processing', async () => {
     ).toBe(blocked);
   }
 });
+
+test('backend cannot depend on app hosts, including test-only worker aliases', async () => {
+  for (const source of [
+    'packages/backend/src/runtime/example.ts',
+    'packages/backend/tests/integration/example.test.ts',
+  ]) {
+    for (const target of [
+      '../../../../apps/worker/src/queues/index.ts',
+      '@anyko/worker',
+      '@anyko/api',
+    ]) {
+      const checked = await check({
+        [source]: `import '${target}';`,
+        ...npmModule('@anyko/worker'),
+        ...npmModule('@anyko/api'),
+        'apps/worker/src/queues/index.ts': 'export {};',
+        'apps/placeholder.ts': 'export {};',
+      });
+      expect(hasViolation(checked.result, 'backend-no-apps')).toBe(true);
+    }
+  }
+  const allowed = await check({
+    'packages/backend/src/runtime/example.ts': 'export {};',
+    'apps/worker/src/bootstrap/start-worker.ts':
+      "import '../../../../packages/backend/src/runtime/example.ts';",
+  });
+  expect(hasViolation(allowed.result, 'backend-no-apps')).toBe(false);
+});

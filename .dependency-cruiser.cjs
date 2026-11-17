@@ -261,6 +261,14 @@ module.exports = {
       from: { path: '^packages/backend/' },
       to: { path: '(^|/)node_modules/(?:elysia|bullmq|ioredis)/' },
     },
+    {
+      name: 'backend-no-apps',
+      severity: 'error',
+      from: { path: '^packages/backend/' },
+      to: {
+        path: '^(?:apps/|@anyko/(?:worker|api)(?:/|$))|(?:^|/)node_modules/@anyko/(?:worker|api)(?:/|$)',
+      },
+    },
     // Web (apps/web): правила через пути и обратные ссылки, без перечисления features.
     // Известных нарушений web-границ нет (список пуст и не пополняется): см. webKnownFeatureViolations.
     {

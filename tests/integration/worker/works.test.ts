@@ -14,21 +14,22 @@ import { LlmError } from '@anyko/llm';
 import { createLogger } from '@anyko/logger';
 import { startJobWorker } from '@anyko/worker/queues';
 
-import type { DocumentAgents } from '../../src/modules/agents';
-import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
-import type { SourceStorage } from '../../src/modules/documents';
-import { createWorkProcessingStore } from '../../src/modules/processing/infrastructure/work-store';
-import { createWorkStore } from '../../src/modules/works/infrastructure/store';
+import type { DocumentAgents } from '../../../packages/backend/src/modules/agents';
+import { createDocumentAgents } from '../../../packages/backend/src/modules/agents/infrastructure/mastra';
+import type { SourceStorage } from '../../../packages/backend/src/modules/documents';
+import { createWorkProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/work-store';
+import { createWorkStore } from '../../../packages/backend/src/modules/works/infrastructure/store';
 import {
   brandDocumentId,
   brandFileId,
   brandGenerationId,
   brandWorkId,
-} from '../../src/platform/ids';
-import { emptyFieldValues } from '../../src/profiles/bfl/fields';
-import { createBackend } from '../../src/runtime';
-import { integrationConfig } from '../support/composition';
-import { memberScope } from '../support/scope';
+} from '../../../packages/backend/src/platform/ids';
+import { emptyFieldValues } from '../../../packages/backend/src/profiles/bfl/fields';
+import { createBackend } from '../../../packages/backend/src/runtime';
+import { memberScope } from '../../../packages/backend/tests/support/scope';
+
+import { integrationConfig } from './support/composition';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')

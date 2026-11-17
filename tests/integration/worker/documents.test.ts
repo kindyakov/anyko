@@ -11,16 +11,17 @@ import type {
   DocumentView,
   SourceFormat,
   SourceStorage,
-} from '../../src/modules/documents';
-import { createSourceCleanup } from '../../src/modules/documents/infrastructure/source-cleanup';
-import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
-import { brandDocumentId } from '../../src/platform/ids';
-import { createBackend } from '../../src/runtime';
+} from '../../../packages/backend/src/modules/documents';
+import { createSourceCleanup } from '../../../packages/backend/src/modules/documents/infrastructure/source-cleanup';
+import { createProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/store';
+import { brandDocumentId } from '../../../packages/backend/src/platform/ids';
+import { createBackend } from '../../../packages/backend/src/runtime';
+import { memberScope } from '../../../packages/backend/tests/support/scope';
+
 import {
   integrationConfig,
   startDocumentConsumer,
-} from '../support/composition';
-import { memberScope } from '../support/scope';
+} from './support/composition';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')

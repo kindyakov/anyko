@@ -11,22 +11,26 @@ import {
   type DocumentParser,
   type SourceStorage,
   StorageWriteOutcomeUnknown,
-} from '../../src/modules/documents';
-import { createArtifactRegistry } from '../../src/modules/documents/infrastructure/artifact-store';
-import { createDeletionStore } from '../../src/modules/documents/infrastructure/deletion-store';
-import { createDocumentIo } from '../../src/modules/documents/infrastructure/document-io';
-import { createProcessingService } from '../../src/modules/processing';
-import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
-import { brandDocumentId, uuidV7 } from '../../src/platform/ids';
-import { createBackend } from '../../src/runtime';
-import { finishDocumentDeletion } from '../../src/runtime/documents/unit-of-work';
-import { createDocumentDeletionWorkflow } from '../../src/workflows/document-deletion';
-import { createDocumentOcrWorkflow } from '../../src/workflows/document-ocr';
+} from '../../../packages/backend/src/modules/documents';
+import { createArtifactRegistry } from '../../../packages/backend/src/modules/documents/infrastructure/artifact-store';
+import { createDeletionStore } from '../../../packages/backend/src/modules/documents/infrastructure/deletion-store';
+import { createDocumentIo } from '../../../packages/backend/src/modules/documents/infrastructure/document-io';
+import { createProcessingService } from '../../../packages/backend/src/modules/processing';
+import { createProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/store';
+import {
+  brandDocumentId,
+  uuidV7,
+} from '../../../packages/backend/src/platform/ids';
+import { createBackend } from '../../../packages/backend/src/runtime';
+import { finishDocumentDeletion } from '../../../packages/backend/src/runtime/documents/unit-of-work';
+import { createDocumentDeletionWorkflow } from '../../../packages/backend/src/workflows/document-deletion';
+import { createDocumentOcrWorkflow } from '../../../packages/backend/src/workflows/document-ocr';
+import { memberScope } from '../../../packages/backend/tests/support/scope';
+
 import {
   integrationConfig,
   startDocumentConsumer,
-} from '../support/composition';
-import { memberScope } from '../support/scope';
+} from './support/composition';
 const databaseUrl = process.env.TEST_DATABASE_URL,
   redisUrl = process.env.TEST_REDIS_URL;
 if (

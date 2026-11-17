@@ -9,8 +9,9 @@ import { createLogger } from '@anyko/logger';
 import { startJobWorker } from '@anyko/worker/queues';
 import { createQueueProbe } from '@anyko/worker/testing';
 
-import { createBackend } from '../../src/runtime';
-import { integrationConfig } from '../support/composition';
+import { createBackend } from '../../../packages/backend/src/runtime';
+
+import { integrationConfig } from './support/composition';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const redisUrl = process.env.TEST_REDIS_URL;
