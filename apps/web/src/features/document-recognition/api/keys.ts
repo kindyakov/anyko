@@ -3,6 +3,7 @@ export const documentKeys = {
   all: (workspaceId: string) => ['documents', workspaceId] as const,
   list: (workspaceId: string) =>
     [...documentKeys.all(workspaceId), 'list'] as const,
-  result: (workspaceId: string, id: string) =>
-    [...documentKeys.all(workspaceId), 'result', id] as const,
+  // Результат документа работы и распознавания читается разными адресами: владелец входит в ключ.
+  result: (workspaceId: string, id: string, workId?: string) =>
+    [...documentKeys.all(workspaceId), 'result', id, workId ?? null] as const,
 };

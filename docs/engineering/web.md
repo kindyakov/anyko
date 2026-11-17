@@ -39,7 +39,7 @@ apps/web/src/
 | `lib/api`      | contracts и платформа браузера; без features                                            |
 | `lib/server`   | только из серверных модулей: layouts, pages, route handlers, `proxy.ts`                 |
 
-Contracts импортируются по ресурсам (`@anyko/contracts/works`, `/session`, `/common`) и по месту объявления символа; корень `@anyko/contracts` в web не импортируется, `@anyko/contracts/admin` пользовательскому web недоступен. Импорт `features/<b>/ui/...` из другой feature, `app/` из feature и feature из `@anyko/ui` — ошибки проверки границ. Новое ребро между features отражается в `index.ts` поставщика; цикл устраняется переносом координации в экран.
+Contracts импортируются по ресурсам (`@anyko/contracts/works`, `/session`, `/common`) и по месту объявления символа; корневого экспорта у пакета нет (неразрешимый импорт отклоняет `workspace-imports-must-resolve`), `@anyko/contracts/admin` пользовательскому web недоступен. Импорт `features/<b>/ui/...` из другой feature, `app/` из feature и feature из `@anyko/ui` — ошибки проверки границ. Новое ребро между features отражается в `index.ts` поставщика; цикл устраняется переносом координации в экран.
 
 ## Маршруты
 
@@ -117,7 +117,6 @@ Bun выбран для компонентных тестов осознанно
 | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
 | Уровни, импорт чужой feature через `index.ts`, без циклов, `lib/server`, `contracts/admin`                       | dependency-cruiser                                         |
 | Features и app вызывают API только через `callApi`/`endpointUrl`; `client.ts` (requestApi) — только из `lib/api` | dependency-cruiser (`web-api-transport-only-in-lib`)       |
-| Корень `@anyko/contracts` не импортируется; символы берутся из subpath ресурса                                   | dependency-cruiser (`web-no-contracts-root`)               |
 | Hooks, Next, доступность                                                                                         | рекомендуемые наборы react-hooks, `@next/next`, jsx-a11y-x |
 | Тесты через роли, без прямого доступа к DOM                                                                      | рекомендуемый набор testing-library                        |
 | Features не импортируют `@tanstack/react-form` и persist Zustand, не используют browser storage                  | `no-restricted-imports`, `no-restricted-globals`           |
