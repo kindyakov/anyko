@@ -4,25 +4,30 @@ import { Queue } from 'bullmq';
 import { strToU8, zipSync } from 'fflate';
 import { Redis } from 'ioredis';
 
-import { createDatabase } from '@anyko/database';
+import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 
 import type {
+  DocumentParser,
   DocumentView,
   SourceFormat,
   SourceStorage,
 } from '../../src/modules/documents';
 import { createSourceCleanup } from '../../src/modules/documents/infrastructure/source-cleanup';
 import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
-import { createDocumentRuntime } from '../../src/runtime/documents/api';
-import { createDocumentWorker } from '../../src/runtime/documents/worker';
+import { createBackend } from '../../src/runtime';
+import {
+  integrationConfig,
+  startDocumentConsumer,
+} from '../support/composition';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
   throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
 const redisUrl = process.env.TEST_REDIS_URL;
 if (!redisUrl) throw new Error('TEST_REDIS_URL required');
-const db = createDatabase(databaseUrl);
+const pool = createDatabasePool(databaseUrl);
+const db = createDatabase(pool);
 const logger = createLogger({
   service: 'worker',
   environment: 'test',
@@ -49,7 +54,18 @@ const storage: SourceStorage = {
     return Promise.resolve();
   },
 };
-const runtime = createDocumentRuntime({ databaseUrl, storage, logger });
+// Same composition the processes use: one API backend, one worker backend per parser fixture.
+const testConfig = integrationConfig({ databaseUrl, redisUrl });
+const api = createBackend(testConfig, {
+  logger,
+  role: 'api',
+  dependencies: { storage },
+});
+const runtime = api.documentHttp.documents;
+const startDocumentWorker = (options: {
+  queueName: string;
+  parser: DocumentParser;
+}) => startDocumentConsumer(testConfig, { logger, storage, ...options });
 async function expectRejected(operation: Promise<unknown>, code?: string) {
   let caught: unknown;
   try {
@@ -113,8 +129,9 @@ afterAll(async () => {
   await db.processingRun.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.sourceDocument.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
-  await runtime.stop();
+  await api.stop();
   await db.$disconnect();
+  await pool.end();
 });
 
 test('upload atomically persists metadata, run and outbox; foreign workspace cannot read it', async () => {
@@ -184,11 +201,7 @@ test('outbox survives before worker start; real queue publishes result and retry
   const own = await workspace();
   const doc = await upload(own);
   let reject = true;
-  const worker = await createDocumentWorker({
-    databaseUrl,
-    redisUrl,
-    storage,
-    logger,
+  const worker = await startDocumentWorker({
     queueName: `document-test-${crypto.randomUUID()}`,
     parser: {
       eraseAttempt: () => Promise.resolve(),
@@ -289,7 +302,7 @@ test('a lost Redis job is republished from the aged queued database intent', asy
   const queueName = `document-lost-${crypto.randomUUID()}`;
   const connection = new Redis(redisUrl, { maxRetriesPerRequest: 1 });
   const queue = new Queue(queueName, { connection });
-  let worker: Awaited<ReturnType<typeof createDocumentWorker>> | undefined;
+  let worker: Awaited<ReturnType<typeof startDocumentWorker>> | undefined;
   let executions = 0;
   try {
     const job = await queue.add(
@@ -315,11 +328,7 @@ test('a lost Redis job is republished from the aged queued database intent', asy
       (await db.processingOutbox.findUniqueOrThrow({ where: { id: item.id } }))
         .deliveredAt,
     ).toBeNull();
-    worker = await createDocumentWorker({
-      databaseUrl,
-      redisUrl,
-      storage,
-      logger,
+    worker = await startDocumentWorker({
       queueName,
       parser: {
         eraseAttempt: () => Promise.resolve(),
@@ -430,11 +439,7 @@ test('document formats survive source storage and queue delivery independently o
     });
     documents.push({ document, format: item.format });
   }
-  const worker = await createDocumentWorker({
-    databaseUrl,
-    redisUrl,
-    storage,
-    logger,
+  const worker = await startDocumentWorker({
     queueName: `document-formats-${crypto.randomUUID()}`,
     parser: {
       eraseAttempt: () => Promise.resolve(),

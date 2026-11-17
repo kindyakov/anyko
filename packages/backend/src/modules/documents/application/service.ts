@@ -1,5 +1,7 @@
 import type { Logger } from '@anyko/logger';
 
+import { defineErrors } from '../../../platform/errors';
+
 import { checksum } from './checksum';
 import type {
   ArtifactRegistry,
@@ -15,20 +17,15 @@ import {
   sourceContentTypes,
   sourceFormatFromKey,
 } from './source-format';
-export class DocumentError extends Error {
-  constructor(
-    public readonly code:
-      | 'INVALID_DOCUMENT'
-      | 'UNSUPPORTED_DOCUMENT_FORMAT'
-      | 'NOT_FOUND'
-      | 'NOT_READY'
-      | 'RETRY_CONFLICT'
-      | 'IDEMPOTENCY_CONFLICT',
-    options?: ErrorOptions,
-  ) {
-    super(code, options);
-  }
-}
+export const DocumentErrors = defineErrors({
+  NOT_FOUND: 'not_found',
+  INVALID_DOCUMENT: 'invalid',
+  UNSUPPORTED_DOCUMENT_FORMAT: 'invalid',
+  NOT_READY: 'precondition',
+  RETRY_CONFLICT: 'conflict',
+  IDEMPOTENCY_CONFLICT: 'conflict',
+});
+export class DocumentError extends DocumentErrors.Failure {}
 export function createDocumentService(
   store: DocumentStore,
   storage: SourceStorage,

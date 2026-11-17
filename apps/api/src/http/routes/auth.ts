@@ -2,6 +2,8 @@ import { Elysia } from 'elysia';
 
 import type { createAccess } from '@anyko/backend/access';
 
+import { transportErrorCodes } from '../errors';
+
 export function authRoutes(access: ReturnType<typeof createAccess>) {
   return new Elysia()
     .all('/api/auth/*', ({ request }) => access.handle(request), {
@@ -14,7 +16,7 @@ export function authRoutes(access: ReturnType<typeof createAccess>) {
         set.status = 401;
         return {
           error: {
-            code: 'UNAUTHORIZED',
+            code: transportErrorCodes.UNAUTHORIZED,
             requestId: set.headers['x-request-id'] ?? '',
           },
         };

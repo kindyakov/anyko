@@ -1,13 +1,11 @@
-import { Pool } from 'pg';
+import type { DatabasePool } from './pool';
 
-/** Session locks serialize external I/O without holding a SQL transaction open. */
-export function createResourceLocks(url: string) {
-  const pool = new Pool({
-    connectionString: url,
-    max: 4,
-    connectionTimeoutMillis: 5000,
-    statement_timeout: 5000,
-  });
+/**
+ * Session locks serialize external I/O without holding a SQL transaction open.
+ * Pass the dedicated lock pool from `createLockPool`, never the query pool: a held lock
+ * and its waiters keep connections for a long time (see pool.ts).
+ */
+export function createResourceLocks(pool: DatabasePool) {
   return {
     async run<T>(
       key: string,
@@ -48,6 +46,5 @@ export function createResourceLocks(url: string) {
         client.release(true);
       }
     },
-    stop: () => pool.end(),
   };
 }

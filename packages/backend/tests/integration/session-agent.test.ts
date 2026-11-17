@@ -4,6 +4,7 @@ import { inspect } from 'node:util';
 import { z } from 'zod';
 
 import { fieldDefinitions } from '@anyko/contracts';
+import { createDatabasePool } from '@anyko/database';
 import { llmError } from '@anyko/llm';
 
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
@@ -14,13 +15,14 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
     .url()
     .refine((url) => new URL(url).pathname === '/anyko_test')
     .parse(process.env.TEST_DATABASE_URL);
+  const pool = createDatabasePool(databaseUrl);
   const documentId = crypto.randomUUID();
   let quote = 'Анна',
     referencedId = documentId,
     valid = true,
     checks = 0;
   const agents = createDocumentAgents({
-    databaseUrl,
+    pool,
     fetch: Object.assign(
       () =>
         Promise.resolve(
@@ -120,6 +122,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
   } finally {
     for (const threadId of threads) await agents.eraseThread(threadId);
     await agents.stop();
+    await pool.end();
   }
 });
 
@@ -128,6 +131,7 @@ test('provider failures do not leak document or provider bodies through SDK cons
     .url()
     .refine((url) => new URL(url).pathname === '/anyko_test')
     .parse(process.env.TEST_DATABASE_URL);
+  const pool = createDatabasePool(databaseUrl);
   const canary = crypto.randomUUID();
   const threadId = crypto.randomUUID();
   const logged: unknown[][] = [];
@@ -137,7 +141,7 @@ test('provider failures do not leak document or provider bodies through SDK cons
     },
   );
   const agents = createDocumentAgents({
-    databaseUrl,
+    pool,
     fetch: Object.assign(
       () =>
         Promise.resolve(
@@ -184,5 +188,6 @@ test('provider failures do not leak document or provider bodies through SDK cons
     observer.mockRestore();
     await agents.eraseThread(threadId);
     await agents.stop();
+    await pool.end();
   }
 });

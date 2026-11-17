@@ -1,6 +1,8 @@
 import type { createAccess } from '@anyko/backend/access';
 import type { WorkApi } from '@anyko/backend/works';
 
+import { transportErrorCodes } from '../errors';
+
 const connections = new Map<string, number>();
 export function workEventStream(input: {
   request: Request;
@@ -16,7 +18,10 @@ export function workEventStream(input: {
     (connections.get(key) ?? 0) >= 4 ||
     [...connections.values()].reduce((sum, count) => sum + count, 0) >= 100
   )
-    return Response.json({ error: { code: 'STREAM_LIMIT' } }, { status: 429 });
+    return Response.json(
+      { error: { code: transportErrorCodes.STREAM_LIMIT } },
+      { status: 429 },
+    );
   connections.set(key, (connections.get(key) ?? 0) + 1);
   const controller = new AbortController();
   const abort = () => {

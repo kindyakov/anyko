@@ -1,0 +1,16 @@
+import { expect, test } from 'bun:test';
+
+import { DocumentErrors } from '@anyko/backend/documents';
+import { WorkErrors } from '@anyko/backend/works';
+import { errorCodeSchema } from '@anyko/contracts';
+
+import { transportErrorCodes } from '../src/http/errors';
+
+test('error catalog lists exactly the codes the API can return', () => {
+  const returned = new Set<string>([
+    ...WorkErrors.codes,
+    ...DocumentErrors.codes,
+    ...Object.values(transportErrorCodes),
+  ]);
+  expect(new Set<string>(errorCodeSchema.options)).toEqual(returned);
+});

@@ -2,11 +2,16 @@ import { expect, test } from 'bun:test';
 
 import { z } from 'zod';
 
+import { createDatabasePool } from '@anyko/database';
+
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 test('real Mastra adapter retries a malformed OpenAI-compatible response', async () => {
   let calls = 0;
+  const pool = createDatabasePool(
+    z.string().min(1).parse(process.env.TEST_DATABASE_URL),
+  );
   const agents = createDocumentAgents({
-    databaseUrl: z.string().min(1).parse(process.env.TEST_DATABASE_URL),
+    pool,
     fetch: Object.assign(
       () => {
         calls++;
@@ -53,5 +58,6 @@ test('real Mastra adapter retries a malformed OpenAI-compatible response', async
     expect(result.usage).toEqual({ inputTokens: null, outputTokens: null });
   } finally {
     await agents.stop();
+    await pool.end();
   }
 });

@@ -6,17 +6,25 @@ import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
 import { emptyFieldValues, type WorkView } from '@anyko/contracts';
-import { createDatabase } from '@anyko/database';
+import {
+  createDatabase,
+  createDatabasePool,
+  createResourceLocks,
+} from '@anyko/database';
 import { LlmError } from '@anyko/llm';
 import { createLogger } from '@anyko/logger';
 
 import type { DocumentAgents } from '../../src/modules/agents';
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
+import { createAgentSessionStore } from '../../src/modules/agents/infrastructure/session-store';
 import type { SourceStorage } from '../../src/modules/documents';
+import { createFactsStore } from '../../src/modules/facts/infrastructure/store';
+import { createGenerationStore } from '../../src/modules/generation/infrastructure/store';
 import { createWorkProcessingStore } from '../../src/modules/processing/infrastructure/work-store';
-import { createDocumentWorker } from '../../src/runtime/documents/worker';
-import { createWorkRuntime } from '../../src/runtime/works/resources';
-import { createWorkWorker } from '../../src/runtime/works/worker';
+import { createWorkStore } from '../../src/modules/works/infrastructure/store';
+import { createBackend } from '../../src/runtime';
+import type { WorkStores } from '../../src/workflows/works/ports';
+import { integrationConfig } from '../support/composition';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
@@ -24,7 +32,23 @@ if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
 const redisUrl = process.env.TEST_REDIS_URL;
 if (!redisUrl) throw new Error('TEST_REDIS_URL required');
 const testRedisUrl: string = redisUrl;
-const db = createDatabase(databaseUrl);
+const pool = createDatabasePool(databaseUrl);
+const db = createDatabase(pool);
+const locks = createResourceLocks(pool);
+// Read-side adapters the processing assertions use directly, on the same database.
+const workProcessing = createWorkProcessingStore(db);
+const actualPool = createDatabasePool(databaseUrl);
+function transaction<T>(operation: (stores: WorkStores) => Promise<T>) {
+  return db.$transaction((tx) =>
+    operation({
+      sessions: createAgentSessionStore(tx),
+      works: createWorkStore(tx),
+      facts: createFactsStore(tx),
+      generation: createGenerationStore(tx),
+      processing: createWorkProcessingStore(tx),
+    }),
+  );
+}
 const owned: string[] = [];
 const files = new Map<string, Uint8Array>();
 const storage: SourceStorage = {
@@ -109,24 +133,29 @@ const logger = createLogger({
   release: 'work-integration',
   level: 'error',
 });
-const options = {
+// Same composition as the processes: an API backend and a worker backend over one database.
+const testConfig = integrationConfig({
   databaseUrl,
+  redisUrl: testRedisUrl,
   encryptionKey: randomBytes(32).toString('hex'),
-  storage,
+});
+const apiBackend = createBackend(testConfig, {
   logger,
-  agents,
+  role: 'api',
+  dependencies: { storage, agents },
+});
+const runtime = {
+  api: apiBackend.workHttp.works,
+  saveSettings: apiBackend.workHttp.saveSettings,
+  deps: { documents: apiBackend.documentHttp.documents },
+  stop: () => apiBackend.stop(),
 };
-const runtime = createWorkRuntime(options);
-let worker: Awaited<ReturnType<typeof createWorkWorker>> | undefined;
-let parser: Awaited<ReturnType<typeof createDocumentWorker>> | undefined;
-async function ready() {
-  if (worker) return;
-  parser = await createDocumentWorker({
-    databaseUrl: options.databaseUrl,
-    redisUrl: testRedisUrl,
+const workerBackend = createBackend(testConfig, {
+  logger,
+  role: 'worker',
+  dependencies: {
     storage,
-    logger,
-    queueName: `test-ocr-${crypto.randomUUID()}`,
+    agents,
     parser: {
       parseDocument: () =>
         Promise.resolve({
@@ -136,10 +165,17 @@ async function ready() {
         }),
       eraseAttempt: () => Promise.resolve(),
     },
+  },
+});
+let worker:
+  Awaited<ReturnType<typeof workerBackend.startWorkWorker>> | undefined;
+async function ready() {
+  if (worker) return;
+  await workerBackend.ready();
+  await workerBackend.startDocumentWorker({
+    queueName: `test-ocr-${crypto.randomUUID()}`,
   });
-  worker = await createWorkWorker({
-    ...options,
-    redisUrl: testRedisUrl,
+  worker = await workerBackend.startWorkWorker({
     queueName: `test-work-${crypto.randomUUID()}`,
   });
 }
@@ -207,8 +243,7 @@ async function rejects(operation: Promise<unknown>, code: string) {
 }
 
 afterAll(async () => {
-  await worker?.stop();
-  await parser?.stop();
+  await workerBackend.stop();
   await runtime.stop();
   const where = { workspaceId: { in: owned } };
   await db.workIo.deleteMany({ where });
@@ -226,6 +261,8 @@ afterAll(async () => {
   await db.sourceDocument.deleteMany({ where });
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
   await db.$disconnect();
+  await pool.end();
+  await actualPool.end();
 });
 
 test('persistent pipeline extracts facts, caches successful files, generates saved DOCX and denies foreign scope', async () => {
@@ -265,7 +302,7 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
   if (!xml) throw new Error('MISSING_DOCUMENT_XML');
   expect(strFromU8(xml)).toContain('Анна');
   expect(strFromU8(xml)).not.toContain('{personName}');
-  const threadIds = await runtime.deps.processing.threads(
+  const threadIds = await workProcessing.threads(
     input.workspaceId,
     input.workId,
   );
@@ -501,60 +538,53 @@ test('deletion during model execution hides derivatives immediately and fences t
 test('lease recovery atomically reopens the outbox and rejects a superseded attempt', async () => {
   const input = await create();
   const runId = crypto.randomUUID();
-  await runtime.deps.locks.run(
-    `work-run:${input.workspaceId}:${runId}`,
-    async () => {
-      await runtime.deps.processing.start({
-        ...input,
-        id: runId,
-        actorId: 'fixture',
-        kind: 'analysis',
-        inputRevision: 0,
-        documentIds: [],
-        settingsRevision: 1,
-        generationId: null,
-        correlationId: crypto.randomUUID(),
-        attemptToken: null,
-        modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
-      });
-      const old = await runtime.deps.processing.claim(input.workspaceId, runId);
-      if (!old) throw new Error('CLAIM_MISSING');
-      await db.workOutbox.update({
-        where: { runId },
-        data: { deliveredAt: new Date() },
-      });
-      await db.workRun.update({
-        where: { id: runId },
-        data: { leaseUntil: new Date(0) },
-      });
-      await runtime.deps.processing.reconcile();
-      expect(
-        (await db.workOutbox.findUniqueOrThrow({ where: { runId } }))
-          .deliveredAt,
-      ).toBeNull();
-      const fresh = await runtime.deps.processing.claim(
-        input.workspaceId,
-        runId,
-      );
-      if (!fresh) throw new Error('RECLAIM_MISSING');
-      expect(await runtime.deps.processing.valid(old)).toBe(false);
-      await runtime.deps.processing.finish(old, 'succeeded');
-      expect(await runtime.deps.processing.valid(fresh)).toBe(true);
-      await db.$transaction(async (tx) => {
-        await tx.$executeRaw`SET LOCAL TIME ZONE 'Europe/Moscow'`;
-        await createWorkProcessingStore(tx).reconcile();
-        expect(await createWorkProcessingStore(tx).valid(fresh)).toBe(true);
-      });
-      await rejects(
-        runtime.deps.processing.step(old, {
-          stage: 'extraction',
-          status: 'succeeded',
-        }),
-        'STALE_WORK_ATTEMPT',
-      );
-      await runtime.deps.processing.finish(fresh, 'cancelled');
-    },
-  );
+  await locks.run(`work-run:${input.workspaceId}:${runId}`, async () => {
+    await workProcessing.start({
+      ...input,
+      id: runId,
+      actorId: 'fixture',
+      kind: 'analysis',
+      inputRevision: 0,
+      documentIds: [],
+      settingsRevision: 1,
+      generationId: null,
+      correlationId: crypto.randomUUID(),
+      attemptToken: null,
+      modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
+    });
+    const old = await workProcessing.claim(input.workspaceId, runId);
+    if (!old) throw new Error('CLAIM_MISSING');
+    await db.workOutbox.update({
+      where: { runId },
+      data: { deliveredAt: new Date() },
+    });
+    await db.workRun.update({
+      where: { id: runId },
+      data: { leaseUntil: new Date(0) },
+    });
+    await workProcessing.reconcile();
+    expect(
+      (await db.workOutbox.findUniqueOrThrow({ where: { runId } })).deliveredAt,
+    ).toBeNull();
+    const fresh = await workProcessing.claim(input.workspaceId, runId);
+    if (!fresh) throw new Error('RECLAIM_MISSING');
+    expect(await workProcessing.valid(old)).toBe(false);
+    await workProcessing.finish(old, 'succeeded');
+    expect(await workProcessing.valid(fresh)).toBe(true);
+    await db.$transaction(async (tx) => {
+      await tx.$executeRaw`SET LOCAL TIME ZONE 'Europe/Moscow'`;
+      await createWorkProcessingStore(tx).reconcile();
+      expect(await createWorkProcessingStore(tx).valid(fresh)).toBe(true);
+    });
+    await rejects(
+      workProcessing.step(old, {
+        stage: 'extraction',
+        status: 'succeeded',
+      }),
+      'STALE_WORK_ATTEMPT',
+    );
+    await workProcessing.finish(fresh, 'cancelled');
+  });
 });
 
 test('confirmation survives added sources and repeated analysis; only the new file calls the model', async () => {
@@ -753,12 +783,12 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
     },
   });
   actualAgents = createDocumentAgents({
-    databaseUrl: options.databaseUrl,
+    pool: actualPool,
     timeoutMs: 5000,
   });
   const inspection = new PostgresStore({
     id: 'test-inspection',
-    connectionString: options.databaseUrl,
+    connectionString: databaseUrl,
     schemaName: 'anyko_agents',
   });
   let threadIds: string[] = [];
@@ -791,10 +821,7 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
       where: { run: { workId: input.workId }, stage: 'vision' },
     });
     expect(vision.usage).toEqual({ inputTokens: 10, outputTokens: 5 });
-    threadIds = await runtime.deps.processing.threads(
-      input.workspaceId,
-      input.workId,
-    );
+    threadIds = await workProcessing.threads(input.workspaceId, input.workId);
     const memory = await inspection.getStore('memory');
     if (!memory || !threadIds[0]) throw new Error('MISSING_MEMORY_FIXTURE');
     expect(
@@ -827,10 +854,15 @@ test('logical session survives reopening, extends context with a new source, and
   const sessionId = initial.session?.id;
   if (!sessionId) throw Error('Expected saved session');
   expect(initial.session?.revision).toBe(1);
-  const reopened = createWorkRuntime(options);
+  const reopened = createBackend(testConfig, {
+    logger,
+    role: 'api',
+    dependencies: { storage, agents },
+  });
   try {
     expect(
-      (await reopened.api.get(input.workspaceId, input.workId)).session?.id,
+      (await reopened.workHttp.works.get(input.workspaceId, input.workId))
+        .session?.id,
     ).toBe(sessionId);
   } finally {
     await reopened.stop();
@@ -973,7 +1005,7 @@ test('deleting during contextual reasoning removes its session, turns, and all r
       await db.workAgentTurn.count({ where: { workId: input.workId } }),
     ).toBe(0);
     expect(
-      await runtime.deps.processing.threads(input.workspaceId, input.workId),
+      await workProcessing.threads(input.workspaceId, input.workId),
     ).toEqual([]);
   } finally {
     release();
@@ -984,7 +1016,7 @@ test('deleting during contextual reasoning removes its session, turns, and all r
 test('superseded attempt cannot commit a session checkpoint or facts', async () => {
   const input = await create();
   const runId = crypto.randomUUID();
-  await runtime.deps.processing.start({
+  await workProcessing.start({
     id: runId,
     ...input,
     kind: 'analysis',
@@ -997,14 +1029,14 @@ test('superseded attempt cannot commit a session checkpoint or facts', async () 
     actorId: 'fixture',
     modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
   });
-  const old = await runtime.deps.processing.claim(input.workspaceId, runId);
+  const old = await workProcessing.claim(input.workspaceId, runId);
   if (!old) throw Error('claim');
   await db.workRun.update({
     where: { id: runId },
     data: { attemptToken: crypto.randomUUID() },
   });
   await rejects(
-    runtime.deps.transaction(async (stores) => {
+    transaction(async (stores) => {
       await stores.processing.fence(old);
       await stores.works.touch(input.workspaceId, input.workId, {});
     }),

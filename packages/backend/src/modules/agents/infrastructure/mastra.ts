@@ -10,6 +10,7 @@ import {
   fieldDefinitions,
   legacyFieldKeys,
 } from '@anyko/contracts';
+import type { DatabasePool } from '@anyko/database';
 import { createModelGateway, llmError } from '@anyko/llm';
 
 import type { DocumentAgents } from '..';
@@ -25,13 +26,14 @@ const extractionSchema = z
   .strict();
 
 export function createDocumentAgents(options: {
-  databaseUrl: string;
+  /** Shared pool: PostgresStore closes only pools it created itself. */
+  pool: DatabasePool;
   timeoutMs?: number;
   fetch?: typeof fetch;
 }): DocumentAgents {
   const storage = new PostgresStore({
     id: 'anyko-agent-storage',
-    connectionString: options.databaseUrl,
+    pool: options.pool,
     schemaName: 'anyko_agents',
   });
   const memory = new Memory({

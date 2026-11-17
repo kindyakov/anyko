@@ -10,6 +10,8 @@ import {
   revisionSchema,
 } from '@anyko/contracts';
 
+import { transportErrorCodes } from '../errors';
+
 import type { DocumentHttpOptions } from './documents';
 import { workEventStream } from './work-events';
 
@@ -46,13 +48,13 @@ export function workRoutes(options: WorkHttpOptions) {
       })
       .onBeforeHandle(({ session, request, set }) => {
         const code = !session
-          ? 'UNAUTHORIZED'
+          ? transportErrorCodes.UNAUTHORIZED
           : request.method !== 'GET' &&
               request.headers.get('origin') !== options.origin
-            ? 'INVALID_ORIGIN'
+            ? transportErrorCodes.INVALID_ORIGIN
             : null;
         if (code) {
-          set.status = code === 'UNAUTHORIZED' ? 401 : 403;
+          set.status = code === transportErrorCodes.UNAUTHORIZED ? 401 : 403;
           return {
             error: { code, requestId: set.headers['x-request-id'] ?? '' },
           };

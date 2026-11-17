@@ -1,28 +1,49 @@
 import { expect, test } from 'bun:test';
 
+import { parseBackendEnv } from '../src/bootstrap/backend-config';
 import { parseWorkerConfig } from '../src/bootstrap/config';
 
-test('document consumer is explicit and validates all of its dependencies', () => {
-  const disabled = parseWorkerConfig({ REDIS_URL: 'redis://127.0.0.1:16379' });
-  expect(disabled.documents).toBeNull();
-  expect(() =>
-    parseWorkerConfig({
-      REDIS_URL: 'redis://127.0.0.1:16379',
-      DOCUMENTS_ENABLED: 'true',
-    }),
-  ).toThrow('DATABASE_URL');
+const backendEnv = {
+  DATABASE_URL: 'postgresql://fixture:fixture@localhost/anyko_test',
+  S3_ENDPOINT: 'http://localhost:19000',
+  S3_BUCKET: 'fixture',
+  S3_ACCESS_KEY: 'fixture',
+  S3_SECRET_KEY: 'fixture',
+  LLM_CONFIG_ENCRYPTION_KEY: 'a'.repeat(64),
+  MINERU_BASE_URL: 'http://localhost:8000',
+};
+const worker = {
+  redisUrl: 'redis://127.0.0.1:16379',
+  shutdownTimeoutMs: 10000,
+};
+
+test('both mode flags default to empty and are parsed as explicit values', () => {
+  const defaults = parseWorkerConfig({ REDIS_URL: 'redis://127.0.0.1:16379' });
+  expect(defaults.DOCUMENTS_ENABLED).toBe('false');
+  expect(defaults.WORKS_ENABLED).toBe('false');
   const enabled = parseWorkerConfig({
     REDIS_URL: 'redis://127.0.0.1:16379',
     DOCUMENTS_ENABLED: 'true',
-    DATABASE_URL: 'postgresql://fixture:fixture@localhost/anyko_test',
-    S3_ENDPOINT: 'http://localhost:19000',
-    S3_BUCKET: 'fixture',
-    S3_ACCESS_KEY: 'fixture',
-    S3_SECRET_KEY: 'fixture',
-    MINERU_BASE_URL: 'http://localhost:8000',
+    WORKS_ENABLED: 'true',
   });
-  expect(enabled.documents?.MINERU_TIMEOUT_MS).toBe(240000);
+  expect(enabled.DOCUMENTS_ENABLED).toBe('true');
+  expect(enabled.WORKS_ENABLED).toBe('true');
 });
+
+test('full-mode backend environment validates every section and names missing fields', () => {
+  expect(() => parseBackendEnv({}, worker)).toThrow('DATABASE_URL');
+  expect(() =>
+    parseBackendEnv(
+      { ...backendEnv, LLM_CONFIG_ENCRYPTION_KEY: 'short' },
+      worker,
+    ),
+  ).toThrow('LLM_CONFIG_ENCRYPTION_KEY');
+  const parsed = parseBackendEnv(backendEnv, worker);
+  expect(parsed.worker.mineru.timeoutMs).toBe(240000);
+  expect(parsed.worker.redisUrl).toBe('redis://127.0.0.1:16379');
+  expect(parsed.works.encryptionKey).toBe('a'.repeat(64));
+});
+
 test('worker requires Redis and accepts explicit process configuration', () => {
   expect(() => parseWorkerConfig({})).toThrow('REDIS_URL');
   expect(
@@ -44,6 +65,7 @@ test('worker requires Redis and accepts explicit process configuration', () => {
     }),
   ).toThrow('SHUTDOWN_TIMEOUT_MS');
 });
+
 test('configuration rejects invalid values without exposing secret inputs', () => {
   const secret = 'not-a-url-sensitive-value';
   try {
@@ -54,5 +76,13 @@ test('configuration rejects invalid values without exposing secret inputs', () =
     expect(error.message).toContain('REDIS_URL');
     expect(error.message).toContain('WORKER_CONCURRENCY');
     expect(error.message).not.toContain(secret);
+  }
+  try {
+    parseBackendEnv({ ...backendEnv, S3_SECRET_KEY: undefined }, worker);
+    throw new Error('Expected rejection');
+  } catch (error) {
+    if (!(error instanceof Error)) throw error;
+    expect(error.message).toContain('S3_SECRET_KEY');
+    expect(error.message).not.toContain('localhost');
   }
 });

@@ -1,9 +1,15 @@
+export {
+  type ApiBackend,
+  createBackend,
+  type WorkerBackend,
+} from './create-backend';
+export {
+  type BackendConfig,
+  BackendConfigError,
+  resolveBackendMode,
+} from './config';
 export { createWorkerRuntime } from './diagnostics/worker';
 export { runDiagnostic } from './diagnostics/client';
-export { createDocumentRuntime, createS3Storage } from './documents/api';
-export { createDocumentWorker } from './documents/worker';
-export { createWorkRuntime } from './works/resources';
-export { createWorkWorker } from './works/worker';
-export { parseWorkConfig } from './works/config';
-export { provisionLlm } from './works/provision';
+export { createS3Storage } from '../modules/documents/infrastructure/s3-storage';
 export { createMineruParser } from '../modules/documents/infrastructure/mineru';
+export { provisionLlm } from './works/provision';

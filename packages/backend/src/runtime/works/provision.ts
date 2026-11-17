@@ -1,4 +1,8 @@
-import { createDatabase, createResourceLocks } from '@anyko/database';
+import {
+  createDatabase,
+  createDatabasePool,
+  createResourceLocks,
+} from '@anyko/database';
 
 import { createLlmSettingsStore } from '../../modules/processing/infrastructure/settings-store';
 
@@ -11,9 +15,11 @@ export async function provisionLlm(options: {
   baseURL: string;
   modelId: string;
 }) {
-  const db = createDatabase(options.databaseUrl);
-  const locks = createResourceLocks(options.databaseUrl);
+  // One-shot process: a private pool, closed here, is the whole footprint.
+  const pool = createDatabasePool(options.databaseUrl);
+  const db = createDatabase(pool);
   try {
+    const locks = createResourceLocks(pool);
     const settings = createLlmSettingsStore(db, options.encryptionKey);
     return await locks.run(`llm-settings:${options.workspaceId}`, async () => {
       if (await settings.current(options.workspaceId))
@@ -27,7 +33,7 @@ export async function provisionLlm(options: {
       return 'configured';
     });
   } finally {
-    await locks.stop();
     await db.$disconnect();
+    await pool.end();
   }
 }

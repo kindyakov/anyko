@@ -1,12 +1,22 @@
 import { Elysia } from 'elysia';
 
-import { DocumentError } from '@anyko/backend/documents';
-import { WorkError } from '@anyko/backend/works';
+import { type ErrorKind, isAppError } from '@anyko/backend/errors';
 import { createLogger, type Logger } from '@anyko/logger';
 
+import { transportErrorCodes } from './errors';
 import { authRoutes } from './routes/auth';
 import { type DocumentHttpOptions, documentRoutes } from './routes/documents';
 import { type WorkHttpOptions, workRoutes } from './routes/works';
+
+const statusByKind = {
+  invalid: 400,
+  unauthenticated: 401,
+  forbidden: 403,
+  not_found: 404,
+  conflict: 409,
+  precondition: 409,
+  unavailable: 503,
+} satisfies Record<ErrorKind, number>;
 
 export function createApp(options?: {
   logger?: Logger;
@@ -38,36 +48,23 @@ export function createApp(options?: {
     .onError(({ code, error, set, request }) => {
       const id = contexts.get(request)?.requestId ?? crypto.randomUUID();
       set.headers['x-request-id'] = id;
+      if (isAppError(error)) {
+        set.status = statusByKind[error.kind];
+        return { error: { code: error.code, requestId: id } };
+      }
       const status =
-        error instanceof WorkError
-          ? error.code === 'NOT_FOUND'
-            ? 404
-            : error.code === 'FORBIDDEN'
-              ? 403
-              : error.code === 'INVALID_WORK_INPUT'
-                ? 400
-                : 409
-          : error instanceof DocumentError
-            ? error.code === 'NOT_FOUND'
-              ? 404
-              : error.code === 'INVALID_DOCUMENT' ||
-                  error.code === 'UNSUPPORTED_DOCUMENT_FORMAT'
-                ? 400
-                : 409
-            : code === 'NOT_FOUND'
-              ? 404
-              : code === 'VALIDATION' || code === 'PARSE'
-                ? 400
-                : 500;
+        code === 'NOT_FOUND'
+          ? 404
+          : code === 'VALIDATION' || code === 'PARSE'
+            ? 400
+            : 500;
       set.status = status;
       const errorCode =
-        error instanceof DocumentError || error instanceof WorkError
-          ? error.code
-          : status === 404
-            ? 'NOT_FOUND'
-            : status === 400
-              ? 'INVALID_REQUEST'
-              : 'INTERNAL_ERROR';
+        status === 404
+          ? transportErrorCodes.NOT_FOUND
+          : status === 400
+            ? transportErrorCodes.INVALID_REQUEST
+            : transportErrorCodes.INTERNAL_ERROR;
       if (status === 500)
         logger.error({ event: 'http_failed', requestId: id, errorCode });
       return { error: { code: errorCode, requestId: id } };

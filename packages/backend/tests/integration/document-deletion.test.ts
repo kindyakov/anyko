@@ -1,9 +1,14 @@
 import { expect, test } from 'bun:test';
 
-import { createDatabase, createResourceLocks } from '@anyko/database';
+import {
+  createDatabase,
+  createDatabasePool,
+  createResourceLocks,
+} from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 
 import {
+  type DocumentParser,
   type SourceStorage,
   StorageWriteOutcomeUnknown,
 } from '../../src/modules/documents';
@@ -12,11 +17,14 @@ import { createDeletionStore } from '../../src/modules/documents/infrastructure/
 import { createDocumentIo } from '../../src/modules/documents/infrastructure/document-io';
 import { createProcessingService } from '../../src/modules/processing';
 import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
-import { createDocumentRuntime } from '../../src/runtime/documents/api';
+import { createBackend } from '../../src/runtime';
 import { finishDocumentDeletion } from '../../src/runtime/documents/unit-of-work';
-import { createDocumentWorker } from '../../src/runtime/documents/worker';
 import { createDocumentDeletionWorkflow } from '../../src/workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../../src/workflows/document-ocr';
+import {
+  integrationConfig,
+  startDocumentConsumer,
+} from '../support/composition';
 const databaseUrl = process.env.TEST_DATABASE_URL,
   redisUrl = process.env.TEST_REDIS_URL;
 if (
@@ -31,6 +39,18 @@ const logger = createLogger({
   release: 'erasure-test',
   level: 'fatal',
 });
+const testConfig = integrationConfig({ databaseUrl, redisUrl });
+function startApi(storage: SourceStorage) {
+  return createBackend(testConfig, {
+    logger,
+    role: 'api',
+    dependencies: { storage },
+  });
+}
+const startDocumentWorker = (
+  storage: SourceStorage,
+  options: { queueName: string; parser: DocumentParser },
+) => startDocumentConsumer(testConfig, { logger, storage, ...options });
 async function rejected(operation: Promise<unknown>, code: string) {
   let caught: unknown;
   try {
@@ -42,8 +62,9 @@ async function rejected(operation: Promise<unknown>, code: string) {
 }
 
 test('separate images and all document data are physically erased; unknown/active writers block completion', async () => {
-  const db = createDatabase(databaseUrl),
-    locks = createResourceLocks(databaseUrl);
+  const pool = createDatabasePool(databaseUrl),
+    db = createDatabase(pool),
+    locks = createResourceLocks(pool);
   const workspaceId = crypto.randomUUID(),
     files = new Map<string, Uint8Array>();
   const failures = { storage: false, processor: false };
@@ -65,7 +86,8 @@ test('separate images and all document data are physically erased; unknown/activ
     },
     exists: (key) => Promise.resolve(files.has(key)),
   };
-  const runtime = createDocumentRuntime({ databaseUrl, storage, logger });
+  const api = startApi(storage);
+  const runtime = api.documentHttp.documents;
   const processing = createProcessingStore(db),
     registry = createArtifactRegistry(db);
   const eraseAttempt = (id: string) => {
@@ -83,7 +105,7 @@ test('separate images and all document data are physically erased; unknown/activ
     storage,
     logger,
   });
-  let worker: Awaited<ReturnType<typeof createDocumentWorker>> | undefined;
+  let worker: Awaited<ReturnType<typeof startDocumentWorker>> | undefined;
   const input = {
     workspaceId,
     actorId: 'fixture',
@@ -98,11 +120,7 @@ test('separate images and all document data are physically erased; unknown/activ
       data: { id: workspaceId, name: 'Synthetic erasure' },
     });
     const document = await runtime.upload(input);
-    worker = await createDocumentWorker({
-      databaseUrl,
-      redisUrl,
-      storage,
-      logger,
+    worker = await startDocumentWorker(storage, {
       queueName: `erasure-${crypto.randomUUID()}`,
       parser: {
         eraseAttempt,
@@ -260,8 +278,7 @@ test('separate images and all document data are physically erased; unknown/activ
     expect(await runtime.pendingDeletions({ workspaceId })).toEqual([]);
   } finally {
     await worker?.stop();
-    await runtime.stop();
-    await locks.stop();
+    await api.stop();
     await db.documentIo.deleteMany({ where: { workspaceId } });
     await db.documentArtifact.deleteMany({ where: { workspaceId } });
     await db.processorAttempt.deleteMany({ where: { workspaceId } });
@@ -272,11 +289,13 @@ test('separate images and all document data are physically erased; unknown/activ
     await db.sourceDocument.deleteMany({ where: { workspaceId } });
     await db.anykoWorkspace.deleteMany({ where: { id: workspaceId } });
     await db.$disconnect();
+    await pool.end();
   }
 }, 30000);
 
 test('unknown PUT remains a durable erasure barrier when updating processing failure also fails', async () => {
-  const db = createDatabase(databaseUrl);
+  const pool = createDatabasePool(databaseUrl);
+  const db = createDatabase(pool);
   const workspaceId = crypto.randomUUID();
   const files = new Map<string, Uint8Array>();
   const calls = { failure: 0, erase: 0 };
@@ -298,7 +317,8 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
     },
     exists: (key) => Promise.resolve(files.has(key)),
   };
-  const runtime = createDocumentRuntime({ databaseUrl, storage, logger });
+  const api = startApi(storage);
+  const runtime = api.documentHttp.documents;
   try {
     await db.anykoWorkspace.create({
       data: { id: workspaceId, name: 'Synthetic uncertain write' },
@@ -362,7 +382,7 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
         .resultKey,
     ).toBeNull();
   } finally {
-    await runtime.stop();
+    await api.stop();
     await db.documentIo.deleteMany({ where: { workspaceId } });
     await db.documentArtifact.deleteMany({ where: { workspaceId } });
     await db.processorAttempt.deleteMany({ where: { workspaceId } });
@@ -372,5 +392,6 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
     await db.sourceDocument.deleteMany({ where: { workspaceId } });
     await db.anykoWorkspace.deleteMany({ where: { id: workspaceId } });
     await db.$disconnect();
+    await pool.end();
   }
 });

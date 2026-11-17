@@ -2,20 +2,15 @@ import { Queue, UnrecoverableError, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { z } from 'zod';
 
-import { createDatabase, createResourceLocks } from '@anyko/database';
 import type { Logger } from '@anyko/logger';
 
-import type { DocumentParser, SourceStorage } from '../../modules/documents';
-import { createArtifactRegistry } from '../../modules/documents/infrastructure/artifact-store';
-import { createDeletionStore } from '../../modules/documents/infrastructure/deletion-store';
-import { createDocumentIo } from '../../modules/documents/infrastructure/document-io';
-import { createSourceCleanup } from '../../modules/documents/infrastructure/source-cleanup';
-import { createProcessingService } from '../../modules/processing';
-import { createProcessingStore } from '../../modules/processing/infrastructure/store';
-import { createDocumentDeletionWorkflow } from '../../workflows/document-deletion';
-import { createDocumentOcrWorkflow } from '../../workflows/document-ocr';
+import type {
+  DocumentIo,
+  ResourceLocks,
+  SourceStorage,
+} from '../../modules/documents';
+import type { createProcessingService } from '../../modules/processing';
 
-import { finishDocumentDeletion } from './unit-of-work';
 const envelope = z
   .object({
     version: z.literal(1),
@@ -23,34 +18,31 @@ const envelope = z
     runId: z.uuid(),
   })
   .strict();
-export async function createDocumentWorker(options: {
-  databaseUrl: string;
-  redisUrl: string;
+
+/** Shared clients and workflows built once by `createBackend`; the consumer owns none of them. */
+interface DocumentWorkerDeps {
+  processing: ReturnType<typeof createProcessingService>;
+  io: DocumentIo;
+  locks: ResourceLocks;
   storage: SourceStorage;
-  parser: DocumentParser;
   logger: Logger;
-  queueName?: string;
-  shutdownTimeoutMs?: number;
-  leaseMs?: number;
+  execute(
+    input: { workspaceId: string; runId: string },
+    signal: AbortSignal,
+  ): Promise<void>;
+  deleteDocuments(): Promise<void>;
+  cleanupSources(before: Date): Promise<void>;
+}
+
+export async function createDocumentWorker(options: {
+  deps: DocumentWorkerDeps;
+  redisUrl: string;
+  logger: Logger;
+  queueName: string;
+  shutdownTimeoutMs: number;
 }) {
-  await options.storage.ready?.();
-  const db = createDatabase(options.databaseUrl);
-  const locks = createResourceLocks(options.databaseUrl);
-  const io = createDocumentIo(db);
-  const processing = createProcessingService(createProcessingStore(db));
-  const cleanupSources = createSourceCleanup(db, options.storage);
-  const deleteDocuments = createDocumentDeletionWorkflow({
-    ...createDeletionStore(db),
-    resultKeys: processing.resultKeys,
-    attemptIds: processing.attemptIds,
-    eraseAttempt: (id) => options.parser.eraseAttempt(id),
-    finish: (workspaceId, documentId, keys) =>
-      finishDocumentDeletion(db, workspaceId, documentId, keys),
-    locks,
-    storage: options.storage,
-    logger: options.logger,
-  });
-  const queueName = options.queueName ?? 'anyko-document-ocr';
+  const { deps } = options;
+  const { processing, io, locks } = deps;
   let state: 'starting' | 'ready' | 'degraded' | 'stopping' | 'stopped' =
     'starting';
   const isStopping = () => state === 'stopping' || state === 'stopped';
@@ -64,17 +56,9 @@ export async function createDocumentWorker(options: {
     connectTimeout: 5000,
     commandTimeout: 5000,
   });
-  const queue = new Queue(queueName, { connection: producer });
-  const execute = createDocumentOcrWorkflow({
-    processing,
-    artifacts: createArtifactRegistry(db),
-    storage: options.storage,
-    parser: options.parser,
-    logger: options.logger,
-    leaseMs: options.leaseMs ?? 300000,
-  });
+  const queue = new Queue(options.queueName, { connection: producer });
   const worker = new Worker<unknown>(
-    queueName,
+    options.queueName,
     async (job) => {
       const payload = envelope.safeParse(job.data);
       if (!payload.success || job.name !== 'document.ocr')
@@ -88,7 +72,7 @@ export async function createDocumentWorker(options: {
           `document:${payload.data.workspaceId}:${documentId}`,
           (signal) =>
             io.run({ workspaceId: payload.data.workspaceId, documentId }, () =>
-              execute(payload.data, signal),
+              deps.execute(payload.data, signal),
             ),
         );
     },
@@ -160,19 +144,14 @@ export async function createDocumentWorker(options: {
           new Promise<never>((_, reject) => {
             timer = setTimeout(() => {
               reject(new Error('DOCUMENT_SHUTDOWN_TIMEOUT'));
-            }, options.shutdownTimeoutMs ?? 10000);
+            }, options.shutdownTimeoutMs);
           }),
         ]);
       } finally {
         if (timer) clearTimeout(timer);
         connection.disconnect();
         producer.disconnect();
-        await Promise.allSettled([
-          worker.close(true),
-          queue.close(),
-          db.$disconnect(),
-          locks.stop(),
-        ]);
+        await Promise.allSettled([worker.close(true), queue.close()]);
         state = 'stopped';
       }
     })();
@@ -181,11 +160,7 @@ export async function createDocumentWorker(options: {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      Promise.all([
-        worker.waitUntilReady(),
-        queue.waitUntilReady(),
-        db.$queryRaw`SELECT 1`,
-      ]),
+      Promise.all([worker.waitUntilReady(), queue.waitUntilReady()]),
       new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
           reject(new Error('DOCUMENT_STARTUP_TIMEOUT'));
@@ -206,14 +181,14 @@ export async function createDocumentWorker(options: {
     while (!isStopping()) {
       try {
         await processing.reconcile();
-        await deleteDocuments();
+        await deps.deleteDocuments();
         const before = new Date(Date.now() - 3600000);
-        await cleanupSources(before);
+        await deps.cleanupSources(before);
         for (const artifact of await processing.orphanResults(before)) {
-          await options.storage.delete(artifact.key);
+          await deps.storage.delete(artifact.key);
           await processing.forgetResult(artifact.key);
         }
-        for (let i = 0; i < 20 && !isStopping(); i++) {
+        for (let i = 0; i < 20; i++) {
           const item = await processing.reserveDelivery();
           if (!item) break;
           try {
