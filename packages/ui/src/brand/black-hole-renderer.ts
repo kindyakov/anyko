@@ -144,6 +144,8 @@ export interface HoleFrame {
   glow: number;
 }
 
+type DiskProjection = (radius: number, angle: number) => [number, number];
+
 /** The accretion disk, lensed light, shadow and orbiting craft. */
 export function paintBlackHole(
   ctx: CanvasRenderingContext2D,
@@ -152,6 +154,8 @@ export function paintBlackHole(
   const segments = Math.max(96, Math.round(480 * quality));
   const filaments = Math.max(90, Math.round(280 * quality));
   const steps = Math.max(16, Math.round(64 * quality));
+  const shadowRadius = 0.72;
+  const innerOrbit = 0.74;
   const halo = ctx.createRadialGradient(x, y, r * 0.6, x, y, r * 2.2);
   halo.addColorStop(
     0,
@@ -172,43 +176,71 @@ export function paintBlackHole(
   // The disk is inclined; its far side bends into an arch around the shadow.
   // Closed surfaces avoid the visible endpoints of separately stroked arcs.
   function project(radius: number, angle: number): [number, number] {
-    radius = 0.74 + (radius - 0.74) * 1.28;
-    const depth = Math.sin(angle) * radius * 0.3;
+    const distance = radius - innerOrbit;
+    radius = innerOrbit + distance * 1.28;
+    const sine = Math.sin(angle);
+    const depth = sine * radius * 0.3;
     const perspective = 5 / (5 - depth);
-    const px = Math.cos(angle) * radius * r * perspective;
-    let py = Math.sin(angle) * radius * r * 0.22 * perspective;
-    if (Math.sin(angle) < 0) {
-      const arch = r * (0.68 + (radius - 0.74) * 0.27);
+    let px = Math.cos(angle) * radius * perspective;
+    let py = sine * radius * 0.22 * perspective;
+    if (sine < 0) {
+      const arch = 0.68 + (radius - innerOrbit) * 0.27;
       const square = arch * arch - px * px;
-      const softness = r * r * 0.23;
+      const softness = 0.23;
       const rounded = Math.sqrt(
         (square + Math.sqrt(square * square + softness * softness)) * 0.5,
       );
-      const fade = -Math.sin(angle);
-      const bent = -rounded * fade;
-      const smoothing = r * 0.28;
+      const fade = Math.min(-sine / 0.35, 1);
+      const bend = fade * fade * (3 - 2 * fade);
+      const bent = rounded * sine;
+      const smoothing = 0.28;
       const blend = Math.max(smoothing - Math.abs(py - bent), 0) / smoothing;
-      py = Math.min(py, bent) - blend * blend * smoothing * 0.25 * fade;
+      py +=
+        (Math.min(py, bent) - py + blend * blend * smoothing * 0.25 * sine) *
+        bend;
+
+      // Bend the inner orbits around the shadow. A smooth radial floor keeps
+      // neighboring orbits apart as they approach the silhouette.
+      const minimum = shadowRadius + distance * 0.24;
+      const projectedRadius = Math.sqrt(px * px + py * py);
+      const transition = 0.018;
+      const margin = Math.max(
+        transition - Math.abs(projectedRadius - minimum),
+        0,
+      );
+      const stretch =
+        (Math.max(projectedRadius, minimum) +
+          (margin * margin) / (4 * transition)) /
+        projectedRadius;
+      px *= stretch;
+      py *= stretch;
     }
 
-    return [px, py];
+    return [px * r, py * r];
+  }
+  function projectLowerImage(radius: number, angle: number): [number, number] {
+    // The secondary image compresses the same gas into a fainter arc. Its
+    // inner rings start behind the limb so the gas rides right up to the edge.
+    const imageRadius =
+      (shadowRadius - 0.015 + (radius - innerOrbit) * 0.16) * r;
+    return [Math.cos(angle) * imageRadius, Math.sin(angle) * imageRadius];
   }
   function annulus(
     inner: number,
     outer: number,
     color: string | CanvasGradient,
+    projectOrbit: DiskProjection,
+    sweep: number,
   ) {
     ctx.beginPath();
     for (let i = 0; i <= segments; i++) {
-      const [px, py] = project(outer, (i * Math.PI * 2) / segments);
+      const [px, py] = projectOrbit(outer, (i * sweep) / segments);
       if (i === 0) ctx.moveTo(px, py);
       else ctx.lineTo(px, py);
     }
-    ctx.closePath();
     for (let i = segments; i >= 0; i--) {
-      const [px, py] = project(inner, (i * Math.PI * 2) / segments);
-      if (i === segments) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+      const [px, py] = projectOrbit(inner, (i * sweep) / segments);
+      ctx.lineTo(px, py);
     }
     ctx.closePath();
     ctx.fillStyle = color;
@@ -220,10 +252,10 @@ export function paintBlackHole(
     const distance = band / 47;
     const light = 8 + Math.exp(-distance * 3.4) * 58;
     const alpha = String(Math.min(1, (1 - distance) * 5));
-    const inner = 0.74 + distance * 1.3;
+    const inner = innerOrbit + distance * 1.3;
     // Each ring spans its own width, so the inner, brightest gas is beamed
     // as strongly as the outer rim.
-    const reach = (0.74 + (inner - 0.74) * 1.28) * r;
+    const reach = (innerOrbit + (inner - innerOrbit) * 1.28) * r;
     const beam = ctx.createLinearGradient(-reach, 0, reach, 0);
     beam.addColorStop(0, `hsl(343 100% ${String(light * 0.45)}% / ${alpha})`);
     beam.addColorStop(0.5, `hsl(348 100% ${String(light)}% / ${alpha})`);
@@ -233,9 +265,12 @@ export function paintBlackHole(
     );
     return { inner, beam };
   }).reverse();
-  function disk() {
+  function disk(projectOrbit: DiskProjection, sweep: number, opacity: number) {
     // Smooth emission underneath advected, turbulent gas filaments.
-    for (const { inner, beam } of bands) annulus(inner, inner + 0.032, beam);
+    ctx.globalAlpha = opacity;
+    for (const { inner, beam } of bands) {
+      annulus(inner, inner + 0.032, beam, projectOrbit, sweep);
+    }
     // Each filament carries its own density pattern around the hole;
     // differential rotation shears the gas instead of rotating rigid rings.
     for (let j = 0; j < filaments; j++) {
@@ -252,7 +287,7 @@ export function paintBlackHole(
             Math.sin(progress * 9 + j) * 0.007 +
             Math.sin(progress * 17 + j * 2.7) * 0.002;
           const width = envelope * (0.005 + (j % 5) * 0.004);
-          const [px, py] = project(
+          const [px, py] = projectOrbit(
             orbit + envelope * turbulence + side * width,
             head - progress * length,
           );
@@ -264,6 +299,7 @@ export function paintBlackHole(
       ctx.fillStyle =
         j % 4 === 0 ? '#240008' : j % 3 === 0 ? '#ffb3a8' : '#ff5265';
       ctx.globalAlpha =
+        opacity *
         (j % 4 === 0 ? 0.3 : 0.5) *
         Math.exp(-(orbit - 0.8) * 1.3) *
         (1 + Math.cos(head - length / 2) * 0.6);
@@ -277,7 +313,7 @@ export function paintBlackHole(
   const shipAngle = time * 0.23 + 0.9;
   function drawSpacecraft() {
     const orbit = 1.5;
-    const span = (0.74 + (orbit - 0.74) * 1.28) * r;
+    const span = (innerOrbit + (orbit - innerOrbit) * 1.28) * r;
     const [sx, sy] = project(orbit, shipAngle);
     const [nx, ny] = project(orbit, shipAngle + 0.01);
     const perspective = 5 / (5 - Math.sin(shipAngle) * (span / r) * 0.3);
@@ -323,33 +359,48 @@ export function paintBlackHole(
   // A single luminous silhouette under the sharp rings keeps the glow soft.
   ctx.shadowColor = '#ff003f';
   ctx.shadowBlur = r * 0.18 * glow;
-  annulus(0.74, 1.3, '#ff3355');
+  annulus(innerOrbit, 1.3, '#ff3355', project, Math.PI * 2);
   ctx.shadowBlur = 0;
-  disk();
-  // Lensed light wraps below the shadow as a luminous band, not an outline.
-  const lens = ctx.createRadialGradient(0, 0, r * 0.705, 0, 0, r * 1.02);
-  lens.addColorStop(0, '#ffccd0');
-  lens.addColorStop(0.07, '#ff8697');
-  lens.addColorStop(0.22, '#f51b4bcc');
-  lens.addColorStop(0.5, '#c6003540');
-  lens.addColorStop(1, '#b0002800');
-  ctx.fillStyle = lens;
+  const bloom = ctx.createRadialGradient(
+    0,
+    0,
+    r * shadowRadius,
+    0,
+    0,
+    r * 1.12,
+  );
+  bloom.addColorStop(0, '#f51b4b55');
+  bloom.addColorStop(0.55, '#c6003533');
+  bloom.addColorStop(1, '#b0002800');
+  ctx.fillStyle = bloom;
   ctx.beginPath();
-  ctx.arc(0, 0, r * 1.02, 0, Math.PI * 2);
+  ctx.arc(0, 0, r * 1.12, 0, Math.PI * 2);
   ctx.fill();
-  // A black-hole shadow stays circular; only the accretion plane is inclined.
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.72, 0, Math.PI * 2);
-  ctx.fillStyle = '#010102';
-  ctx.fill();
-  // Redraw the exact same disk in front, clipped at its plane. The disk's
-  // inner edge lies outside the shadow at the clip boundary, avoiding notches.
   ctx.save();
   ctx.beginPath();
-  ctx.rect(-r * 3, 0, r * 6, r * 3);
+  ctx.rect(-r * 1.1, 0, r * 2.2, r * 1.1);
   ctx.clip();
-  disk();
+  disk(projectLowerImage, Math.PI, 0.78);
   ctx.restore();
+  // Scattered light softens the inside of the limb while the core stays dark.
+  const shadow = ctx.createRadialGradient(
+    -r * 0.065,
+    -r * 0.085,
+    r * 0.19,
+    0,
+    0,
+    r * shadowRadius,
+  );
+  shadow.addColorStop(0, '#010102');
+  shadow.addColorStop(0.48, '#010102');
+  shadow.addColorStop(0.76, '#090609');
+  shadow.addColorStop(0.92, '#1f131b');
+  shadow.addColorStop(1, '#38202b');
+  ctx.beginPath();
+  ctx.arc(0, 0, r * shadowRadius, 0, Math.PI * 2);
+  ctx.fillStyle = shadow;
+  ctx.fill();
+  disk(project, Math.PI * 2, 1);
   // Both the near pass and the lensed far image lie in front of the shadow.
   if (ship) drawSpacecraft();
   ctx.restore();
