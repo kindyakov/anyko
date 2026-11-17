@@ -1,4 +1,6 @@
 import type { createAccess } from '@anyko/backend/access';
+import type { WorkId } from '@anyko/backend/ids';
+import type { WorkspaceScope } from '@anyko/backend/scope';
 import type { WorkApi } from '@anyko/backend/works';
 
 import { transportErrorCodes } from '../../errors';
@@ -6,14 +8,13 @@ import { transportErrorCodes } from '../../errors';
 const connections = new Map<string, number>();
 export function workEventStream(input: {
   request: Request;
-  workId: string;
-  workspaceId: string;
-  userId: string;
+  scope: WorkspaceScope;
+  workId: WorkId;
   after: string;
   works: WorkApi;
   access: ReturnType<typeof createAccess>;
 }) {
-  const key = `${input.workspaceId}:${input.userId}`;
+  const key = `${input.scope.workspaceId}:${input.scope.userId}`;
   if (
     (connections.get(key) ?? 0) >= 4 ||
     [...connections.values()].reduce((sum, count) => sum + count, 0) >= 100
@@ -36,17 +37,12 @@ export function workEventStream(input: {
       const end = Date.now() + 25000;
       try {
         while (!controller.signal.aborted && Date.now() < end) {
+          // Область пересчитывается на каждом круге: отозванное участие или право прерывают поток.
           const session = await input.access.session(input.request.headers);
-          if (
-            session?.workspace.id !== input.workspaceId ||
-            session.user.id !== input.userId
-          )
-            break;
-          const events = await input.works.events(
-            input.workspaceId,
-            input.workId,
-            cursor,
-          );
+          const scope =
+            session && input.access.scope(session, input.scope.workspaceId);
+          if (!scope || scope.userId !== input.scope.userId) break;
+          const events = await input.works.events(scope, input.workId, cursor);
           for (const event of events) {
             output.enqueue(
               encoder.encode(

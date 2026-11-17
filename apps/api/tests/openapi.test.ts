@@ -27,19 +27,43 @@ test('OpenAPI document is built from the endpoint descriptions outside productio
   expect(response.status).toBe(200);
   const document = (await response.json()) as {
     openapi: string;
-    paths: Record<string, Record<string, { 'x-error-codes': string[] }>>;
+    paths: Record<
+      string,
+      Record<
+        string,
+        {
+          'x-error-codes': string[];
+          parameters: { name: string; in: string }[];
+        }
+      >
+    >;
   };
   expect(document.openapi).toBe('3.1.0');
+  const getWork =
+    document.paths['/api/v1/workspaces/{workspaceId}/works/{workId}']?.get;
+  expect(getWork?.['x-error-codes']).toContain('NOT_FOUND');
+  expect(getWork?.['x-error-codes']).toContain('FORBIDDEN');
+  // Область описана параметром пути: web и клиенты видят её в документе, а не только в коде.
   expect(
-    document.paths['/api/v1/works/{workId}']?.get?.['x-error-codes'],
-  ).toContain('NOT_FOUND');
+    getWork?.parameters.some(
+      (parameter) =>
+        parameter.name === 'workspaceId' && parameter.in === 'path',
+    ),
+  ).toBe(true);
   expect(
-    document.paths['/api/v1/works/{workId}/documents/{documentId}']?.delete?.[
-      'x-error-codes'
-    ],
+    document.paths[
+      '/api/v1/workspaces/{workspaceId}/works/{workId}/documents/{documentId}'
+    ]?.delete?.['x-error-codes'],
   ).toContain('INVALID_WORK_INPUT');
   expect(Object.keys(document.paths)).toContain(
-    '/api/v1/documents/{documentId}/images/{index}',
+    '/api/v1/workspaces/{workspaceId}/works/{workId}/documents/{documentId}/source',
+  );
+  expect(Object.keys(document.paths)).toContain(
+    '/api/v1/workspaces/{workspaceId}/recognitions/{documentId}/images/{index}',
+  );
+  expect(Object.keys(document.paths)).toContain('/api/v1/session');
+  expect(Object.keys(document.paths)).toContain(
+    '/api/v1/workspaces/{workspaceId}/settings/llm',
   );
 });
 

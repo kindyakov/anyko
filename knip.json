@@ -17,7 +17,8 @@
         "tests/integration/*.test.ts",
         "tests/portable-template-probe.ts",
         "tests/templates.test.ts",
-        "src/modules/**/*.test.ts"
+        "src/modules/**/*.test.ts",
+        "src/platform/**/*.test.ts"
       ]
     },
     "packages/database": {

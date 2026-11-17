@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-import { endpoint, fileDownload, json, multipart } from '../common';
+import {
+  endpoint,
+  fileDownload,
+  json,
+  multipart,
+  workspaceParams,
+} from '../common';
 
 import {
   deletingStatusSchema,
@@ -11,105 +17,112 @@ import {
   uploadFileSchema,
 } from './schemas';
 
-// Идентификатор документа не проверяется по формату: как и прежде, неизвестный ID даёт NOT_FOUND.
-const documentParams = z.object({ documentId: z.string() });
+// Распознавание вне работы (термин глоссария). Неизвестный или не-UUID идентификатор даёт NOT_FOUND.
+const documentParams = workspaceParams.extend({ documentId: z.uuid() });
+const recognitionsPath = '/workspaces/:workspaceId/recognitions';
 
 export const listDocuments = endpoint({
   method: 'GET',
-  path: '/documents',
+  path: recognitionsPath,
+  params: workspaceParams,
   response: json(documentsResponseSchema),
   status: 200,
-  errors: [],
+  errors: ['FORBIDDEN', 'NOT_FOUND'],
+  invalid: 'NOT_FOUND',
 });
 
 export const uploadDocument = endpoint({
   method: 'POST',
-  path: '/documents',
-  headers: z.object({ 'idempotency-key': z.uuid() }),
+  path: recognitionsPath,
+  params: workspaceParams,
   body: multipart({ file: uploadFileSchema }),
   response: json(documentResponseSchema),
   status: 202,
   errors: [
+    'FORBIDDEN',
+    'NOT_FOUND',
     'INVALID_DOCUMENT',
     'UNSUPPORTED_DOCUMENT_FORMAT',
-    'IDEMPOTENCY_CONFLICT',
     'INVALID_IDEMPOTENCY_KEY',
+    'IDEMPOTENCY_CONFLICT',
+    'IDEMPOTENCY_IN_PROGRESS',
   ],
   invalid: 'INVALID_DOCUMENT',
-  invalidHeaders: 'INVALID_IDEMPOTENCY_KEY',
-  // Повтор с тем же ключом возвращает тот же документ (хранилище ключей в документах).
-  idempotent: true,
+  // Повтор с тем же ключом возвращает сохранённый ответ (модуль idempotency); внутренний
+  // requestKey документов защищает запись файла.
+  idempotency: 'key',
 });
 
 export const getDocument = endpoint({
   method: 'GET',
-  path: '/documents/:documentId',
+  path: '/workspaces/:workspaceId/recognitions/:documentId',
   params: documentParams,
   response: json(documentResponseSchema),
   status: 200,
-  errors: ['NOT_FOUND'],
+  errors: ['FORBIDDEN', 'NOT_FOUND'],
   invalid: 'NOT_FOUND',
 });
 
 export const getDocumentResult = endpoint({
   method: 'GET',
-  path: '/documents/:documentId/result',
+  path: '/workspaces/:workspaceId/recognitions/:documentId/result',
   params: documentParams,
   response: json(documentResultSchema),
   status: 200,
-  errors: ['NOT_FOUND', 'NOT_READY'],
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'NOT_READY'],
   invalid: 'NOT_FOUND',
 });
 
 export const getDocumentSource = endpoint({
   method: 'GET',
-  path: '/documents/:documentId/source',
+  path: '/workspaces/:workspaceId/recognitions/:documentId/source',
   params: documentParams,
   response: fileDownload(),
   status: 200,
-  errors: ['NOT_FOUND', 'UNSUPPORTED_DOCUMENT_FORMAT'],
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'UNSUPPORTED_DOCUMENT_FORMAT'],
   invalid: 'NOT_FOUND',
 });
 
 export const getDocumentImage = endpoint({
   method: 'GET',
-  path: '/documents/:documentId/images/:index',
+  path: '/workspaces/:workspaceId/recognitions/:documentId/images/:index',
   params: documentParams.extend({ index: z.string() }),
   response: fileDownload(),
   status: 200,
-  errors: ['NOT_FOUND'],
+  errors: ['FORBIDDEN', 'NOT_FOUND'],
   invalid: 'NOT_FOUND',
 });
 
 export const getDocumentDeletion = endpoint({
   method: 'GET',
-  path: '/documents/:documentId/deletion',
+  path: '/workspaces/:workspaceId/recognitions/:documentId/deletion',
   params: documentParams,
   response: json(documentDeletionSchema),
   status: 200,
-  errors: ['NOT_FOUND'],
+  errors: ['FORBIDDEN', 'NOT_FOUND'],
   invalid: 'NOT_FOUND',
 });
 
 export const deleteDocument = endpoint({
   method: 'DELETE',
-  path: '/documents/:documentId',
+  path: '/workspaces/:workspaceId/recognitions/:documentId',
   params: documentParams,
   response: json(deletingStatusSchema),
   status: 202,
-  errors: ['NOT_FOUND'],
+  errors: ['FORBIDDEN', 'NOT_FOUND'],
   invalid: 'NOT_FOUND',
   // Повтор после принятого удаления даёт NOT_FOUND, состояние остаётся тем же.
-  idempotent: true,
+  idempotency: 'natural',
 });
 
 export const retryDocument = endpoint({
   method: 'POST',
-  path: '/documents/:documentId/retry',
+  path: '/workspaces/:workspaceId/recognitions/:documentId/retry',
   params: documentParams,
   response: json(documentResponseSchema),
   status: 202,
-  errors: ['NOT_FOUND', 'RETRY_CONFLICT'],
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'RETRY_CONFLICT'],
   invalid: 'NOT_FOUND',
-  idempotent: false,
+  // Прежняя классификация: повтор не проверен как безопасный; ключ в v1 для этой команды не вводится.
+  idempotency: 'none',
 });

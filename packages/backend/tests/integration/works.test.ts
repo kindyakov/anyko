@@ -25,6 +25,7 @@ import { createWorkStore } from '../../src/modules/works/infrastructure/store';
 import { createBackend } from '../../src/runtime';
 import type { WorkStores } from '../../src/workflows/works/ports';
 import { integrationConfig } from '../support/composition';
+import { recognitionsAs, settingsAs, workApiAs } from '../support/scoped';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
@@ -145,9 +146,9 @@ const apiBackend = createBackend(testConfig, {
   dependencies: { storage, agents },
 });
 const runtime = {
-  api: apiBackend.workHttp.works,
-  saveSettings: apiBackend.workHttp.saveSettings,
-  deps: { documents: apiBackend.documentHttp.documents },
+  api: workApiAs(apiBackend.workHttp.works),
+  saveSettings: settingsAs(apiBackend.workHttp.settings).save,
+  deps: { documents: recognitionsAs(apiBackend.documentHttp.documents) },
   stop: () => apiBackend.stop(),
 };
 const workerBackend = createBackend(testConfig, {
@@ -861,8 +862,12 @@ test('logical session survives reopening, extends context with a new source, and
   });
   try {
     expect(
-      (await reopened.workHttp.works.get(input.workspaceId, input.workId))
-        .session?.id,
+      (
+        await workApiAs(reopened.workHttp.works).get(
+          input.workspaceId,
+          input.workId,
+        )
+      ).session?.id,
     ).toBe(sessionId);
   } finally {
     await reopened.stop();

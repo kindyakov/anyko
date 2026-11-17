@@ -10,6 +10,7 @@ const moduleEdges = {
   facts: [],
   templates: [],
   generation: [],
+  idempotency: [],
 };
 const knownModules = Object.keys(moduleEdges).join('|');
 const { existsSync, readdirSync } = require('node:fs');
@@ -249,6 +250,19 @@ module.exports = {
         path: '^packages/backend/src/(modules|workflows|platform|profiles)/',
       },
       to: { path: '^packages/database/', dependencyTypesNot: ['type-only'] },
+    },
+    {
+      name: 'backend-scope-issued-by-access',
+      comment:
+        'WorkspaceScope выдаёт только modules/access после проверки участия (ADR 0009): выдающий файл platform/scope/issue.ts импортирует только access.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^packages/backend/src/modules/access/',
+          '^packages/backend/src/platform/scope/issue[.]ts$',
+        ],
+      },
+      to: { path: '^packages/backend/src/platform/scope/issue[.]ts$' },
     },
     // Web (apps/web): правила через пути и обратные ссылки, без перечисления features.
     // Известных нарушений web-границ нет (списки пусты и не пополняются):

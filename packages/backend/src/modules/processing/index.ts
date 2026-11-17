@@ -1,4 +1,8 @@
 export { createProcessingService } from './application/service';
+export {
+  createLlmSettings,
+  type LlmSettingsApi,
+} from './application/llm-settings';
 export type {
   WorkProcessingStore,
   WorkRunRecord,

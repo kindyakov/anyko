@@ -18,7 +18,7 @@ export interface LlmSettingsStore {
       baseURL: string;
       visionModel: string;
       extractionModel: string;
-      apiKey?: string;
+      apiKey?: string | undefined;
     },
   ): Promise<void>;
 }

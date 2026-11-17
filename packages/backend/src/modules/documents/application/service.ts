@@ -183,9 +183,10 @@ export function createDocumentService(
       return {
         markdown: result.markdown,
         processorVersion: result.processorVersion,
+        // Адрес изображения строит транспорт: версия пути у v1 и временного слоя разная.
         images: result.images.map((image, index) => ({
           path: image.path,
-          url: `/api/documents/${encodeURIComponent(input.documentId)}/images/${String(index)}`,
+          index,
         })),
       };
     },

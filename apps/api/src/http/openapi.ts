@@ -92,9 +92,9 @@ function operation(endpoint: Endpoint): Json {
     },
     // Коды ошибок, которые endpoint может вернуть сверх общих (UNAUTHORIZED и т. п.).
     'x-error-codes': endpoint.errors,
-    ...(endpoint.method !== 'GET'
-      ? { 'x-idempotent': endpoint.idempotent }
-      : {}),
+    ...(endpoint.idempotency === undefined
+      ? {}
+      : { 'x-idempotency': endpoint.idempotency }),
   };
 }
 

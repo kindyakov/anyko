@@ -14,8 +14,9 @@ import { createDocumentAgents } from '../modules/agents/infrastructure/mastra';
 import { createAgentSessionStore } from '../modules/agents/infrastructure/session-store';
 import {
   createDocumentService,
+  createRecognitions,
   type DocumentParser,
-  type DocumentService,
+  type RecognitionService,
   type SourceStorage,
 } from '../modules/documents';
 import { createArtifactRegistry } from '../modules/documents/infrastructure/artifact-store';
@@ -26,9 +27,12 @@ import { createS3Storage } from '../modules/documents/infrastructure/s3-storage'
 import { createSourceCleanup } from '../modules/documents/infrastructure/source-cleanup';
 import { createFactsStore } from '../modules/facts/infrastructure/store';
 import { createGenerationStore } from '../modules/generation/infrastructure/store';
+import { createIdempotency, type IdempotencyApi } from '../modules/idempotency';
+import { createIdempotencyStore } from '../modules/idempotency/infrastructure/store';
 import {
+  createLlmSettings,
   createProcessingService,
-  type LlmSettingsStore,
+  type LlmSettingsApi,
 } from '../modules/processing';
 import { createLlmSettingsStore } from '../modules/processing/infrastructure/settings-store';
 import { createProcessingStore } from '../modules/processing/infrastructure/store';
@@ -36,6 +40,8 @@ import { createWorkProcessingStore } from '../modules/processing/infrastructure/
 import type { WorkApi } from '../modules/works';
 import { createWorkStore } from '../modules/works/infrastructure/store';
 import { createWorkIo } from '../modules/works/infrastructure/work-io';
+import { systemClock } from '../platform/clock';
+import { uuidV7 } from '../platform/ids';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
 import { createWorkApi } from '../workflows/works/api';
@@ -80,20 +86,18 @@ export interface BackendOptions<Role extends 'api' | 'worker'> {
 export interface ApiBackend {
   readonly role: 'api';
   readonly documentHttp: {
-    documents: DocumentService;
+    documents: RecognitionService;
     access: ReturnType<typeof createAccess>;
     origin: string;
+    idempotency: IdempotencyApi;
   };
   readonly workHttp: {
     works: WorkApi;
-    settings: Pick<LlmSettingsStore, 'current' | 'save'>;
-    saveSettings: (
-      workspaceId: string,
-      input: Parameters<LlmSettingsStore['save']>[1],
-    ) => Promise<void>;
-    documents: DocumentService;
+    settings: LlmSettingsApi;
+    documents: RecognitionService;
     access: ReturnType<typeof createAccess>;
     origin: string;
+    idempotency: IdempotencyApi;
   };
   ready(): Promise<void>;
   stop(): Promise<void>;
@@ -211,13 +215,8 @@ export function createBackend(
     storage,
     logger,
   };
-  const saveSettings = (
-    workspaceId: string,
-    input: Parameters<LlmSettingsStore['save']>[1],
-  ) =>
-    locks.run(`llm-settings:${workspaceId}`, () =>
-      work.settings.save(workspaceId, input),
-    );
+  const recognitions = createRecognitions(documents);
+  const llmSettings = createLlmSettings({ settings: work.settings, locks });
 
   const started: { stop(): Promise<void> }[] = [];
   let stopping: Promise<void> | undefined;
@@ -255,16 +254,27 @@ export function createBackend(
       baseURL: auth.baseUrl,
       origin: auth.origin,
     });
+    const idempotency = createIdempotency({
+      store: createIdempotencyStore(db),
+      clock: systemClock,
+      newToken: uuidV7,
+      logger,
+    });
     return {
       role: 'api',
-      documentHttp: { documents, access, origin: auth.origin },
-      workHttp: {
-        works: createWorkApi(work),
-        settings: work.settings,
-        saveSettings,
-        documents,
+      documentHttp: {
+        documents: recognitions,
         access,
         origin: auth.origin,
+        idempotency,
+      },
+      workHttp: {
+        works: createWorkApi(work),
+        settings: llmSettings,
+        documents: recognitions,
+        access,
+        origin: auth.origin,
+        idempotency,
       },
       ready,
       stop,

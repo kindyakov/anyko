@@ -5,10 +5,13 @@
   "exports": {
     "./runtime": "./src/runtime/index.ts",
     "./documents": "./src/modules/documents/index.ts",
+    "./idempotency": "./src/modules/idempotency/index.ts",
     "./access": "./src/modules/access/index.ts",
     "./works": "./src/modules/works/index.ts",
     "./processing": "./src/modules/processing/index.ts",
-    "./errors": "./src/platform/errors/index.ts"
+    "./errors": "./src/platform/errors/index.ts",
+    "./ids": "./src/platform/ids.ts",
+    "./scope": "./src/platform/scope/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
