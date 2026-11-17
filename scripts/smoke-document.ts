@@ -5,8 +5,8 @@ import { z } from 'zod';
 import {
   documentResponseSchema,
   documentResultSchema,
-  sessionResponseSchema,
-} from '@anyko/contracts';
+} from '@anyko/contracts/documents';
+import { sessionResponseSchema } from '@anyko/contracts/session';
 const config = z
   .object({
     LOCAL_USER_EMAIL: z.email(),

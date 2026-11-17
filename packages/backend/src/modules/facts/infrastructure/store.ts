@@ -1,4 +1,4 @@
-import { factsSchema } from '@anyko/contracts';
+import { factsSchema } from '@anyko/contracts/works';
 import type { Database } from '@anyko/database';
 
 import { emptyFacts, type FactsStore } from '..';

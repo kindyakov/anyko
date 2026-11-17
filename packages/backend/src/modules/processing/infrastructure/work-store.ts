@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { workRunSchema } from '@anyko/contracts';
+import { workRunSchema } from '@anyko/contracts/works';
 import type { Database } from '@anyko/database';
 
 import type { WorkProcessingStore } from '..';

@@ -5,7 +5,7 @@ import {
   type DocumentPackage,
   documentPackageSchema,
   fieldDefinitions,
-} from '@anyko/contracts';
+} from '@anyko/contracts/catalog';
 
 import manifest from './assets/package.json';
 import { technicalBytes, technicalPackage } from './technical';

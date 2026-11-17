@@ -4,8 +4,8 @@ import type {
   AgentSession,
   AgentSessionContext,
   WorkFacts,
-} from '@anyko/contracts';
-import { candidateSchema } from '@anyko/contracts';
+} from '@anyko/contracts/works';
+import { candidateSchema } from '@anyko/contracts/works';
 
 export const reconciliationSchema = z
   .object({

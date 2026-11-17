@@ -1,4 +1,4 @@
-import type { WorkFacts } from '@anyko/contracts';
+import type { WorkFacts } from '@anyko/contracts/works';
 import { LlmError } from '@anyko/llm';
 
 import { checksum, DocumentError } from '../../modules/documents';

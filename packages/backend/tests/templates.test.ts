@@ -3,11 +3,8 @@ import { createHash } from 'node:crypto';
 
 import PizZip from 'pizzip';
 
-import {
-  candidateSchema,
-  emptyFieldValues,
-  fieldValuesSchema,
-} from '@anyko/contracts';
+import { emptyFieldValues, fieldValuesSchema } from '@anyko/contracts/catalog';
+import { candidateSchema } from '@anyko/contracts/works';
 
 import { generateDocument } from '../src/modules/generation';
 import {

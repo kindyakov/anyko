@@ -4,7 +4,7 @@ import { createTool } from '@mastra/core/tools';
 import type { Memory } from '@mastra/memory';
 import { z } from 'zod';
 
-import { fieldKeySchema } from '@anyko/contracts';
+import { fieldKeySchema } from '@anyko/contracts/catalog';
 import { createModelGateway, llmError } from '@anyko/llm';
 
 import type { DocumentAgents } from '..';

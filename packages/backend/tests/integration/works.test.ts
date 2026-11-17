@@ -5,7 +5,8 @@ import { PostgresStore } from '@mastra/pg';
 import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
-import { emptyFieldValues, type WorkView } from '@anyko/contracts';
+import { emptyFieldValues } from '@anyko/contracts/catalog';
+import { type WorkView } from '@anyko/contracts/works';
 import {
   createDatabase,
   createDatabasePool,

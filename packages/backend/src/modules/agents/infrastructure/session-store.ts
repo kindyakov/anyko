@@ -1,7 +1,7 @@
 import {
   agentSessionContextSchema,
   agentSessionSchema,
-} from '@anyko/contracts';
+} from '@anyko/contracts/works';
 import type { Database } from '@anyko/database';
 
 import { transactionHandle, type Tx } from '../../../platform/transactions';

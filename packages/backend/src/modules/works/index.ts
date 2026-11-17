@@ -1,4 +1,4 @@
-import type { WorkView } from '@anyko/contracts';
+import type { WorkView } from '@anyko/contracts/works';
 
 import { defineErrors } from '../../platform/errors';
 import type { DocumentId, WorkId } from '../../platform/ids';
@@ -129,4 +129,4 @@ export interface WorksModule extends WorksPorts {
   in(tx: Tx): WorksPorts;
 }
 
-export type { WorkFacts } from '@anyko/contracts';
+export type { WorkFacts } from '@anyko/contracts/works';

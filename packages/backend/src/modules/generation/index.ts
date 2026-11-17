@@ -1,4 +1,5 @@
-import type { FieldValues, WorkView } from '@anyko/contracts';
+import type { FieldValues } from '@anyko/contracts/catalog';
+import type { WorkView } from '@anyko/contracts/works';
 
 import type { GenerationId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
@@ -100,4 +101,4 @@ export interface GenerationModule extends GenerationPorts {
   in(tx: Tx): GenerationPorts;
 }
 
-export type { FieldValues } from '@anyko/contracts';
+export type { FieldValues } from '@anyko/contracts/catalog';

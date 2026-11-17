@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import { DocumentErrors } from '@anyko/backend/documents';
 import { IdempotencyErrors } from '@anyko/backend/idempotency';
 import { WorkErrors } from '@anyko/backend/works';
-import { errorCodeSchema } from '@anyko/contracts';
+import { errorCodeSchema } from '@anyko/contracts/common';
 
 import { transportErrorCodes } from '../src/http/errors';
 

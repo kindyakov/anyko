@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
-import type { WorkView } from '@anyko/contracts';
-import { candidateSchema } from '@anyko/contracts';
+import type { WorkView } from '@anyko/contracts/works';
+import { candidateSchema } from '@anyko/contracts/works';
 
 // Запуски работы в форме представления: тип контракта выражен здесь, файл уже в списке исключений.
 export type WorkRuns = WorkView['runs'];

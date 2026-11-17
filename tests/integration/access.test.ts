@@ -2,17 +2,17 @@ import { expect, test } from 'bun:test';
 
 import { provisionLocalAccess } from '@anyko/backend/access';
 import { type BackendConfig, createBackend } from '@anyko/backend/runtime';
+import { emptyFieldValues } from '@anyko/contracts/catalog';
+import { llmSettingsResponseSchema } from '@anyko/contracts/connections';
 import {
   documentResponseSchema,
   documentsResponseSchema,
-  emptyFieldValues,
-  llmSettingsResponseSchema,
-  workResponseSchema,
-} from '@anyko/contracts';
+} from '@anyko/contracts/documents';
 import {
   sessionCookieNames,
   sessionResponseSchema,
 } from '@anyko/contracts/session';
+import { workResponseSchema } from '@anyko/contracts/works';
 import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 

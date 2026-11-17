@@ -12,7 +12,6 @@ test('every contract subpath is listed in the registry test', async () => {
     new URL('../../../packages/contracts/package.json', import.meta.url),
   ).json()) as { exports: Record<string, string> };
   const subpaths = Object.keys(manifest.exports)
-    .filter((key) => key !== '.')
     .map((key) => key.slice(2))
     .sort();
   expect(subpaths).toEqual(Object.keys(contractModules).sort());

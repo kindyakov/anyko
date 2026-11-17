@@ -1,4 +1,4 @@
-import { workSummarySchema } from '@anyko/contracts';
+import { workSummarySchema } from '@anyko/contracts/works';
 import type { Database } from '@anyko/database';
 
 import type { WorkStore } from '..';

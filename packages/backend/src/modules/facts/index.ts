@@ -1,14 +1,13 @@
 import {
   emptyFieldValues,
-  factsSchema,
   fieldDefinitions,
   fieldIdentity,
   type FieldRow,
   type FieldValue,
   type FieldValues,
   readFieldValues,
-  type WorkFacts,
-} from '@anyko/contracts';
+} from '@anyko/contracts/catalog';
+import { factsSchema, type WorkFacts } from '@anyko/contracts/works';
 
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
@@ -160,4 +159,4 @@ export interface FactsModule extends FactsPorts {
   in(tx: Tx): FactsPorts;
 }
 
-export type { FieldValues } from '@anyko/contracts';
+export type { FieldValues } from '@anyko/contracts/catalog';

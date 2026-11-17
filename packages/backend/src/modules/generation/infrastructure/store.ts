@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 import {
   generationFileSchema,
-  generationSchema,
   readFieldValues,
-} from '@anyko/contracts';
+} from '@anyko/contracts/catalog';
+import { generationSchema } from '@anyko/contracts/works';
 import type { Database } from '@anyko/database';
 
 import type { GenerationStore } from '..';
