@@ -32,6 +32,7 @@ const workParams = workspaceParams.extend({ workId: uuid });
 const workDocumentParams = workParams.extend({ documentId: uuid });
 
 export const listWorks = endpoint({
+  summary: 'Возвращает страницу работ рабочей области',
   method: 'GET',
   path: '/workspaces/:workspaceId/works',
   params: workspaceParams,
@@ -62,6 +63,7 @@ export const listWorks = endpoint({
 });
 
 export const createWork = endpoint({
+  summary: 'Создаёт работу по выбранному шаблону',
   method: 'POST',
   path: '/workspaces/:workspaceId/works',
   params: workspaceParams,
@@ -102,6 +104,7 @@ export const getWorkDeletion = endpoint({
 });
 
 export const getWork = endpoint({
+  summary: 'Возвращает данные работы и состояние её подготовки',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId',
   params: workParams,
@@ -112,6 +115,7 @@ export const getWork = endpoint({
 });
 
 export const streamWorkEvents = endpoint({
+  summary: 'Передаёт поток событий работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/events',
   params: workParams,
@@ -124,6 +128,7 @@ export const streamWorkEvents = endpoint({
 });
 
 export const uploadWorkDocument = endpoint({
+  summary: 'Добавляет исходный документ к работе и запускает распознавание',
   method: 'POST',
   path: '/workspaces/:workspaceId/works/:workId/documents',
   params: workParams,
@@ -147,6 +152,7 @@ export const uploadWorkDocument = endpoint({
 
 // Исходный документ работы: документ должен принадлежать этой работе, иначе NOT_FOUND.
 export const getWorkDocumentSource = endpoint({
+  summary: 'Скачивает исходный документ работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/documents/:documentId/source',
   params: workDocumentParams,
@@ -164,6 +170,7 @@ export const getWorkDocumentSource = endpoint({
 // Результат распознавания исходного документа работы: та же схема, что у распознавания вне работы.
 // Ссылки на изображения ведут на изображения этой работы (getWorkDocumentImage).
 export const getWorkDocumentResult = endpoint({
+  summary: 'Возвращает результат распознавания исходного документа работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/documents/:documentId/result',
   params: workDocumentParams,
@@ -174,6 +181,7 @@ export const getWorkDocumentResult = endpoint({
 });
 
 export const getWorkDocumentImage = endpoint({
+  summary: 'Скачивает изображение из результата распознавания документа работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/documents/:documentId/images/:index',
   params: workDocumentParams.extend({ index: z.string() }),
@@ -184,6 +192,7 @@ export const getWorkDocumentImage = endpoint({
 });
 
 export const analyzeWork = endpoint({
+  summary: 'Запускает анализ исходных документов работы',
   method: 'POST',
   path: '/workspaces/:workspaceId/works/:workId/analyze',
   params: workParams,
@@ -205,6 +214,7 @@ export const analyzeWork = endpoint({
 });
 
 export const removeWorkDocument = endpoint({
+  summary: 'Принимает запрос на удаление исходного документа из работы',
   method: 'DELETE',
   path: '/workspaces/:workspaceId/works/:workId/documents/:documentId',
   params: workDocumentParams,
@@ -217,6 +227,7 @@ export const removeWorkDocument = endpoint({
 });
 
 export const editWork = endpoint({
+  summary: 'Сохраняет правки полей работы',
   method: 'POST',
   path: '/workspaces/:workspaceId/works/:workId/fields',
   params: workParams,
@@ -236,6 +247,7 @@ export const editWork = endpoint({
 });
 
 export const confirmWork = endpoint({
+  summary: 'Подтверждает сведения работы',
   method: 'POST',
   path: '/workspaces/:workspaceId/works/:workId/confirm',
   params: workParams,
@@ -256,6 +268,7 @@ export const confirmWork = endpoint({
 });
 
 export const generateWork = endpoint({
+  summary: 'Запускает формирование выходных документов работы',
   method: 'POST',
   path: '/workspaces/:workspaceId/works/:workId/generate',
   params: workParams,
@@ -278,6 +291,7 @@ export const generateWork = endpoint({
 });
 
 export const downloadGeneratedFile = endpoint({
+  summary: 'Скачивает сформированный файл работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/generations/:generationId/files/:fileId',
   params: workParams.extend({ generationId: uuid, fileId: uuid }),

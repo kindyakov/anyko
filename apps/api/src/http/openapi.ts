@@ -74,6 +74,7 @@ const successResponse = (endpoint: Endpoint): Json => {
 function operation(endpoint: Endpoint): Json {
   const body = requestBody(endpoint);
   return {
+    summary: endpoint.summary,
     parameters: parameters(endpoint),
     ...(body ? { requestBody: body } : {}),
     responses: {

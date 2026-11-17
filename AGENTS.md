@@ -12,6 +12,8 @@
 
 При добавлении, изменении или удалении тестов применяйте [правила проверки тестов](docs/engineering/test-review.md). При изменении процесса review проверяйте его на [контрольных примерах](docs/engineering/review-cases/README.md).
 
+Перед добавлением или изменением HTTP-запроса сверяйтесь с [каталогом API](docs/engineering/api-catalog.md) и [правилами проектирования адресов](docs/engineering/backend.md#проектирование-адресов).
+
 ### Issue tracker
 
 Для агентских команд GitHub и Git push в Anyko используйте `bun run agent:github` по [инструкции доступа](docs/engineering/github-protection.md). При ошибке App не переходите на обычный `gh` или пользовательские credentials. Административные изменения выполняются только по явному поручению пользователя; launcher не изолирует текущую среду от человеческого доступа.

@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "agent:github": "bun scripts/agent-github.mjs",
+    "api:catalog": "bun scripts/api-catalog.ts",
     "dev:web": "bun run --filter @anyko/web dev",
     "dev:api": "bun run --filter @anyko/api dev",
     "dev:worker": "bun run --filter @anyko/worker dev",

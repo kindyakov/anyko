@@ -22,6 +22,7 @@ const documentParams = workspaceParams.extend({ documentId: z.uuid() });
 const recognitionsPath = '/workspaces/:workspaceId/recognitions';
 
 export const listDocuments = endpoint({
+  summary: 'Возвращает список распознаваний вне работы',
   method: 'GET',
   path: recognitionsPath,
   params: workspaceParams,
@@ -32,6 +33,7 @@ export const listDocuments = endpoint({
 });
 
 export const uploadDocument = endpoint({
+  summary: 'Загружает документ и запускает распознавание вне работы',
   method: 'POST',
   path: recognitionsPath,
   params: workspaceParams,
@@ -54,6 +56,7 @@ export const uploadDocument = endpoint({
 });
 
 export const getDocument = endpoint({
+  summary: 'Возвращает состояние распознавания вне работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/recognitions/:documentId',
   params: documentParams,
@@ -64,6 +67,7 @@ export const getDocument = endpoint({
 });
 
 export const getDocumentResult = endpoint({
+  summary: 'Возвращает результат распознавания вне работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/recognitions/:documentId/result',
   params: documentParams,
@@ -74,6 +78,7 @@ export const getDocumentResult = endpoint({
 });
 
 export const getDocumentSource = endpoint({
+  summary: 'Скачивает исходный документ распознавания вне работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/recognitions/:documentId/source',
   params: documentParams,
@@ -84,6 +89,7 @@ export const getDocumentSource = endpoint({
 });
 
 export const getDocumentImage = endpoint({
+  summary: 'Скачивает изображение из результата распознавания вне работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/recognitions/:documentId/images/:index',
   params: documentParams.extend({ index: z.string() }),
@@ -94,6 +100,7 @@ export const getDocumentImage = endpoint({
 });
 
 export const getDocumentDeletion = endpoint({
+  summary: 'Возвращает состояние удаления распознавания вне работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/recognitions/:documentId/deletion',
   params: documentParams,
@@ -104,6 +111,7 @@ export const getDocumentDeletion = endpoint({
 });
 
 export const deleteDocument = endpoint({
+  summary: 'Принимает запрос на удаление распознавания вне работы',
   method: 'DELETE',
   path: '/workspaces/:workspaceId/recognitions/:documentId',
   params: documentParams,
@@ -116,6 +124,7 @@ export const deleteDocument = endpoint({
 });
 
 export const retryDocument = endpoint({
+  summary: 'Повторно запускает распознавание вне работы',
   method: 'POST',
   path: '/workspaces/:workspaceId/recognitions/:documentId/retry',
   params: documentParams,

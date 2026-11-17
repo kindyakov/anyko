@@ -9,6 +9,7 @@ import {
 } from './schemas';
 
 export const getLlmSettings = endpoint({
+  summary: 'Возвращает настройки подключения языковой модели',
   method: 'GET',
   path: '/workspaces/:workspaceId/settings/llm',
   params: workspaceParams,
@@ -19,6 +20,7 @@ export const getLlmSettings = endpoint({
 });
 
 export const saveLlmSettings = endpoint({
+  summary: 'Сохраняет настройки подключения языковой модели',
   method: 'POST',
   path: '/workspaces/:workspaceId/settings/llm',
   params: workspaceParams,
@@ -33,6 +35,7 @@ export const saveLlmSettings = endpoint({
 });
 
 export const revokeLlmSettings = endpoint({
+  summary: 'Отзывает подключение языковой модели',
   method: 'DELETE',
   path: '/workspaces/:workspaceId/settings/llm',
   params: workspaceParams,
