@@ -129,6 +129,7 @@ afterAll(async () => {
   await db.resultUpload.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.processingRun.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.sourceDocument.deleteMany({ where: { workspaceId: { in: owned } } });
+  await db.auditEvent.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
   await api.stop();
   await db.$disconnect();

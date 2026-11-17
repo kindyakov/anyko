@@ -31,7 +31,7 @@ export function createLlmSettings(deps: {
     async save(scope: WorkspaceScope, input: LlmSettingsInput) {
       scope.require('connections.manage');
       await deps.locks.run(`llm-settings:${scope.workspaceId}`, () =>
-        deps.settings.save(scope.workspaceId, input),
+        deps.settings.save(scope.workspaceId, input, scope.userId),
       );
     },
   };

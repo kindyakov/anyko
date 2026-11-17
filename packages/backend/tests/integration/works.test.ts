@@ -17,6 +17,7 @@ import { createLogger } from '@anyko/logger';
 import type { DocumentAgents } from '../../src/modules/agents';
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 import { createAgentSessionStore } from '../../src/modules/agents/infrastructure/session-store';
+import { record } from '../../src/modules/audit';
 import type { SourceStorage } from '../../src/modules/documents';
 import { createFactsStore } from '../../src/modules/facts/infrastructure/store';
 import { createGenerationStore } from '../../src/modules/generation/infrastructure/store';
@@ -47,6 +48,7 @@ function transaction<T>(operation: (stores: WorkStores) => Promise<T>) {
       facts: createFactsStore(tx),
       generation: createGenerationStore(tx),
       processing: createWorkProcessingStore(tx),
+      audit: { record: (event) => record(tx, event) },
     }),
   );
 }
@@ -260,6 +262,7 @@ afterAll(async () => {
   await db.resultUpload.deleteMany({ where });
   await db.processingRun.deleteMany({ where });
   await db.sourceDocument.deleteMany({ where });
+  await db.auditEvent.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
   await db.$disconnect();
   await pool.end();
@@ -296,6 +299,13 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
   );
   const id = generated.generations[0]?.id;
   if (!id) throw new Error('MISSING_GENERATION');
+  // Запуск генерации пишет событие журнала в той же транзакции, что и постановку.
+  expect(
+    await db.auditEvent.findMany({
+      where: { workspaceId: input.workspaceId, action: 'generation.started' },
+      select: { actorId: true, targetKind: true, targetId: true },
+    }),
+  ).toEqual([{ actorId: 'fixture', targetKind: 'generation', targetId: id }]);
   const bytes = (
     await runtime.api.download(input.workspaceId, input.workId, id)
   ).bytes;

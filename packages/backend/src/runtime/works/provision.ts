@@ -24,12 +24,16 @@ export async function provisionLlm(options: {
     return await locks.run(`llm-settings:${options.workspaceId}`, async () => {
       if (await settings.current(options.workspaceId))
         return 'already-configured';
-      await settings.save(options.workspaceId, {
-        baseURL: options.baseURL,
-        apiKey: options.apiKey,
-        visionModel: options.modelId,
-        extractionModel: options.modelId,
-      });
+      await settings.save(
+        options.workspaceId,
+        {
+          baseURL: options.baseURL,
+          apiKey: options.apiKey,
+          visionModel: options.modelId,
+          extractionModel: options.modelId,
+        },
+        null,
+      );
       return 'configured';
     });
   } finally {

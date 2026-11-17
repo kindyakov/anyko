@@ -1,5 +1,6 @@
 import type { Database } from '@anyko/database';
 
+import { record } from '../../modules/audit';
 import type { DocumentStore } from '../../modules/documents';
 import { createDocumentCommands } from '../../modules/documents/infrastructure/commands';
 import { createDocumentReadModel } from '../../modules/documents/infrastructure/read-model';
@@ -15,7 +16,7 @@ export function createDocumentUnitOfWork(db: Database): DocumentStore {
       documents.assertUploadAllowed(scope, key),
     forgetSource: (key) => documents.forgetSource(key),
     stageSource: (key, workspaceId) => documents.stageSource(key, workspaceId),
-    async remove(workspaceId, documentId) {
+    async remove(workspaceId, documentId, actorId) {
       return db.$transaction(async (tx) => {
         const commands = createDocumentCommands(tx);
         const exists = await commands.lock(workspaceId, documentId);
@@ -28,6 +29,12 @@ export function createDocumentUnitOfWork(db: Database): DocumentStore {
           workspaceId,
           documentId,
         );
+        await record(tx, {
+          workspaceId,
+          actorId,
+          action: 'documents.deleted',
+          target: { kind: 'document', id: documentId },
+        });
         return true;
       });
     },

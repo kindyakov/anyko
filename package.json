@@ -38,6 +38,7 @@
     "test:worker:integration": "bun test packages/backend/tests/integration/diagnostic-worker.test.ts",
     "test:idempotency": "bun test packages/backend/src/modules/idempotency/application/fingerprint.test.ts",
     "test:idempotency:integration": "bun test --timeout 60000 packages/backend/tests/integration/idempotency.test.ts",
+    "test:audit:integration": "bun test --timeout 60000 packages/backend/tests/integration/audit.test.ts",
     "test:diagnostics": "python -B -m unittest discover -s tests/diagnostics -v",
     "test:local-logs": "bun test tests/tooling/run-local.test.mjs",
     "db:generate": "bun run --filter @anyko/database generate",

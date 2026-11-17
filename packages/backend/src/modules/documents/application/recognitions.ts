@@ -60,7 +60,11 @@ export function createRecognitions(service: DocumentServiceApi) {
     },
     async remove(scope: WorkspaceScope, documentId: DocumentId) {
       scope.require('recognitions.use');
-      return service.remove({ workspaceId: scope.workspaceId, documentId });
+      return service.remove({
+        workspaceId: scope.workspaceId,
+        documentId,
+        actorId: scope.userId,
+      });
     },
     async retry(
       scope: WorkspaceScope,

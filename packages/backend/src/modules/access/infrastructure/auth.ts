@@ -4,6 +4,7 @@ import { betterAuth } from 'better-auth';
 import type { Database } from '@anyko/database';
 
 import type { WorkspaceScope } from '../../../platform/scope/workspace-scope';
+import { type AuditWriter, record } from '../../audit';
 import { rightsForRole } from '../domain/roles';
 import { type AccessSession, issueScope, scopeFor } from '../domain/scope';
 
@@ -105,9 +106,41 @@ export async function provisionLocalAccess(
     create: { id: 'local', name: 'Локальная команда' },
     update: {},
   });
-  await db.membership.upsert({
-    where: { workspaceId_userId: { workspaceId: 'local', userId: user.id } },
-    create: { workspaceId: 'local', userId: user.id, role: 'owner' },
-    update: {},
+  await grantMembership(db, {
+    workspaceId: 'local',
+    userId: user.id,
+    role: 'owner',
+  });
+}
+
+// Выдача участия: изменение доступа и событие журнала в одной транзакции. Если запись события
+// не удалась, участие не выдаётся. write подменяется только тестами, проверяющими откат.
+export async function grantMembership(
+  db: Pick<Database, '$transaction'>,
+  grant: { workspaceId: string; userId: string; role: string },
+  write: AuditWriter = record,
+): Promise<void> {
+  await db.$transaction(async (tx) => {
+    await tx.membership.upsert({
+      where: {
+        workspaceId_userId: {
+          workspaceId: grant.workspaceId,
+          userId: grant.userId,
+        },
+      },
+      create: {
+        workspaceId: grant.workspaceId,
+        userId: grant.userId,
+        role: grant.role,
+      },
+      update: {},
+    });
+    await write(tx, {
+      workspaceId: grant.workspaceId,
+      actorId: null,
+      action: 'access.membership_granted',
+      target: { kind: 'user', id: grant.userId },
+      data: { role: grant.role },
+    });
   });
 }

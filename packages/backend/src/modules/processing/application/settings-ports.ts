@@ -20,5 +20,7 @@ export interface LlmSettingsStore {
       extractionModel: string;
       apiKey?: string | undefined;
     },
+    // Инициатор для журнала; null — операторская команда без пользователя.
+    actorId: string | null,
   ): Promise<void>;
 }

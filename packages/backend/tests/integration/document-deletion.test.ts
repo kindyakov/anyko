@@ -288,6 +288,7 @@ test('separate images and all document data are physically erased; unknown/activ
     await db.sourceUpload.deleteMany({ where: { workspaceId } });
     await db.processingRun.deleteMany({ where: { workspaceId } });
     await db.sourceDocument.deleteMany({ where: { workspaceId } });
+    await db.auditEvent.deleteMany({ where: { workspaceId } });
     await db.anykoWorkspace.deleteMany({ where: { id: workspaceId } });
     await db.$disconnect();
     await pool.end();
@@ -391,6 +392,7 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
     await db.sourceUpload.deleteMany({ where: { workspaceId } });
     await db.processingRun.deleteMany({ where: { workspaceId } });
     await db.sourceDocument.deleteMany({ where: { workspaceId } });
+    await db.auditEvent.deleteMany({ where: { workspaceId } });
     await db.anykoWorkspace.deleteMany({ where: { id: workspaceId } });
     await db.$disconnect();
     await pool.end();

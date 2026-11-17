@@ -1,32 +1,14 @@
 import { expect, test } from 'bun:test';
 
-import {
-  type AccessSession,
-  type createAccess,
-  scopeFor,
-} from '@anyko/backend/access';
-import { rightCatalog } from '@anyko/backend/scope';
 import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../src/http/app';
 
 import { describedEndpoints } from './support/endpoints';
+import { memberAccess } from './support/member-access';
 import { stubHttpOptions } from './support/stub-http';
 
 const origin = 'http://localhost:3000';
-const member: AccessSession = {
-  user: { id: 'member-1', name: 'Member', email: 'member@example.test' },
-  memberships: [
-    { workspace: { id: 'local', name: 'Local' }, rights: [...rightCatalog] },
-  ],
-};
-const access: ReturnType<typeof createAccess> = {
-  handle: () => Promise.resolve(new Response(null, { status: 404 })),
-  session: (headers: Headers) =>
-    Promise.resolve(headers.get('cookie') === 'session=ok' ? member : null),
-  scope: scopeFor,
-  legacyScope: () => Promise.resolve(null),
-};
 
 // Адрес по описанию: область — участника, прочие параметры — случайные значения.
 // Тело не передаётся: заголовок Idempotency-Key проверяется раньше тела и до сценария.
@@ -51,8 +33,8 @@ test('every endpoint in the key mode answers 400 without Idempotency-Key', async
       level: 'fatal',
     }),
     environment: 'test',
-    documentHttp: { ...options.documentHttp, access },
-    workHttp: { ...options.workHttp, access },
+    documentHttp: { ...options.documentHttp, access: memberAccess },
+    workHttp: { ...options.workHttp, access: memberAccess },
   });
   const keyed = describedEndpoints().filter(
     (item) => item.idempotency === 'key',

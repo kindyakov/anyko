@@ -212,8 +212,18 @@ export function createDocumentService(
         contentType: image.contentType,
       };
     },
-    async remove(input: { workspaceId: string; documentId: string }) {
-      if (!(await store.remove(input.workspaceId, input.documentId)))
+    async remove(input: {
+      workspaceId: string;
+      documentId: string;
+      actorId: string;
+    }) {
+      if (
+        !(await store.remove(
+          input.workspaceId,
+          input.documentId,
+          input.actorId,
+        ))
+      )
         throw new DocumentError('NOT_FOUND');
     },
     async deletion(input: { workspaceId: string; documentId: string }) {

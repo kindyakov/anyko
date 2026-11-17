@@ -1,6 +1,7 @@
 import type { Logger } from '@anyko/logger';
 
 import type { AgentSessionStore, DocumentAgents } from '../../modules/agents';
+import type { AuditSink } from '../../modules/audit';
 import type {
   DocumentIo,
   DocumentService,
@@ -21,6 +22,8 @@ export interface WorkStores {
   facts: FactsStore;
   processing: WorkProcessingStore;
   generation: GenerationStore;
+  // Журнал привязан к той же транзакции, что и действие сценария.
+  audit: AuditSink;
 }
 export interface WorkDependencies extends WorkStores {
   transaction<T>(operation: (stores: WorkStores) => Promise<T>): Promise<T>;
