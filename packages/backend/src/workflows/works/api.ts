@@ -99,6 +99,7 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
         await deps.documents.remove({
           workspaceId: scope.workspaceId,
           documentId: input.documentId,
+          actorId: scope.userId,
         });
         await deps.works.event(
           scope.workspaceId,
@@ -283,44 +284,54 @@ export function createWorkApi(deps: WorkDependencies): WorkApi {
         const values = (await deps.facts.get(scope.workspaceId, input.workId))
           .values;
         const id = crypto.randomUUID();
-        await deps.transaction(async ({ works, processing, generation }) => {
-          await generation.create({
-            id,
-            workspaceId: scope.workspaceId,
-            workId: input.workId,
-            revision: work.revision,
-            confirmed: work.confirmedRevision === work.revision,
-            values,
-            packageVersion: work.packageVersion,
-            files: requirePackage(work.packageVersion).documents.map(
-              (template) => ({
-                id: crypto.randomUUID(),
-                templateVersion: template.version,
-                title: template.title,
-                filename: template.filename,
-              }),
-            ),
-          });
-          await processing.start({
-            id: crypto.randomUUID(),
-            workspaceId: scope.workspaceId,
-            workId: input.workId,
-            kind: 'generation',
-            inputRevision: work.inputRevision,
-            documentIds: docs.map((doc) => doc.id),
-            settingsRevision: null,
-            generationId: id,
-            correlationId: input.correlationId,
-            attemptToken: null,
-            actorId: scope.userId,
-            modelSnapshot: { vision: '', extraction: '' },
-          });
-          await works.event(
-            scope.workspaceId,
-            input.workId,
-            'generation.queued',
-          );
-        });
+        await deps.transaction(
+          async ({ works, processing, generation, audit }) => {
+            await generation.create({
+              id,
+              workspaceId: scope.workspaceId,
+              workId: input.workId,
+              revision: work.revision,
+              confirmed: work.confirmedRevision === work.revision,
+              values,
+              packageVersion: work.packageVersion,
+              files: requirePackage(work.packageVersion).documents.map(
+                (template) => ({
+                  id: crypto.randomUUID(),
+                  templateVersion: template.version,
+                  title: template.title,
+                  filename: template.filename,
+                }),
+              ),
+            });
+            await processing.start({
+              id: crypto.randomUUID(),
+              workspaceId: scope.workspaceId,
+              workId: input.workId,
+              kind: 'generation',
+              inputRevision: work.inputRevision,
+              documentIds: docs.map((doc) => doc.id),
+              settingsRevision: null,
+              generationId: id,
+              correlationId: input.correlationId,
+              attemptToken: null,
+              actorId: scope.userId,
+              modelSnapshot: { vision: '', extraction: '' },
+            });
+            await works.event(
+              scope.workspaceId,
+              input.workId,
+              'generation.queued',
+            );
+            await audit.record({
+              workspaceId: scope.workspaceId,
+              actorId: scope.userId,
+              action: 'generation.started',
+              target: { kind: 'generation', id },
+              data: { workId: input.workId },
+              correlationId: input.correlationId,
+            });
+          },
+        );
       });
     },
     async download(scope, workId, generationId, fileId) {

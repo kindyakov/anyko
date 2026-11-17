@@ -71,6 +71,7 @@ model AnykoWorkspace {
  works Work[]
  llmSettings LlmSettings[]
  idempotencyKeys IdempotencyKey[]
+ auditEvents AuditEvent[]
 }
 model Membership {
  workspaceId String
@@ -392,6 +393,22 @@ model DocumentIo {
  createdAt DateTime @default(now())
  @@index([workspaceId,documentId])
  @@index([workspaceId,requestKey])
+}
+
+// Журнал действий: событие пишется в той же транзакции, что и действие. actorId пуст у операторских
+// команд без пользователя. Данные — закрытый перечень полей, секреты и содержимое не хранятся.
+model AuditEvent {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ actorId String?
+ action String
+ targetKind String
+ targetId String
+ data Json?
+ correlationId String?
+ createdAt DateTime @default(now())
+ @@index([workspaceId,createdAt])
 }
 
 // Повтор команды с Idempotency-Key (ADR 0009). Ключ действует в пределах области и команды;

@@ -101,7 +101,12 @@ export interface DocumentStore {
   >;
   get(workspaceId: string, documentId: string): Promise<DocumentView | null>;
   resultKey(workspaceId: string, documentId: string): Promise<string | null>;
-  remove(workspaceId: string, documentId: string): Promise<boolean>;
+  // Инициатор нужен журналу: удаление и событие записываются в одной транзакции.
+  remove(
+    workspaceId: string,
+    documentId: string,
+    actorId: string,
+  ): Promise<boolean>;
   deletion(
     workspaceId: string,
     documentId: string,

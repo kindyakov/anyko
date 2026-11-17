@@ -4,10 +4,12 @@ import type { Database } from '@anyko/database';
 import { createModelGateway } from '@anyko/llm';
 
 import type { LlmSettingsStore } from '..';
+import { type AuditWriter, record } from '../../audit';
 
 export function createLlmSettingsStore(
-  db: Pick<Database, 'llmSettings'>,
+  db: Pick<Database, 'llmSettings' | '$transaction'>,
   encryptionKey: string,
+  write: AuditWriter = record,
 ): LlmSettingsStore {
   if (!/^[a-f\d]{64}$/i.test(encryptionKey))
     throw new Error('INVALID_LLM_ENCRYPTION_KEY');
@@ -69,7 +71,7 @@ export function createLlmSettingsStore(
         },
       };
     },
-    async save(workspaceId, input) {
+    async save(workspaceId, input, actorId) {
       const previous = await db.llmSettings.findFirst({
         where: { workspaceId },
         orderBy: { revision: 'desc' },
@@ -84,15 +86,27 @@ export function createLlmSettingsStore(
           { id: 'routerai', baseURL: input.baseURL, apiKey },
           { id, images: true, tools: true, structuredOutput: true },
         );
-      await db.llmSettings.create({
-        data: {
+      const revision = (previous?.revision ?? 0) + 1;
+      // Настройки и событие журнала в одной транзакции. В журнал попадают только ревизия,
+      // не ключ API и не адрес провайдера.
+      await db.$transaction(async (tx) => {
+        await tx.llmSettings.create({
+          data: {
+            workspaceId,
+            revision,
+            baseURL: input.baseURL,
+            visionModel: input.visionModel,
+            extractionModel: input.extractionModel,
+            encryptedKey: encrypt(workspaceId, apiKey),
+          },
+        });
+        await write(tx, {
           workspaceId,
-          revision: (previous?.revision ?? 0) + 1,
-          baseURL: input.baseURL,
-          visionModel: input.visionModel,
-          extractionModel: input.extractionModel,
-          encryptedKey: encrypt(workspaceId, apiKey),
-        },
+          actorId,
+          action: 'connections.settings_saved',
+          target: { kind: 'workspace', id: workspaceId },
+          data: { revision },
+        });
       });
     },
   };

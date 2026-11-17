@@ -1,16 +1,17 @@
 // Add an explicit edge here only after review. Values name modules whose public
 // index may be imported by the owning module.
 const moduleEdges = {
-  access: [],
+  access: ['audit'],
   agents: [],
   works: ['documents'],
   cases: [],
   documents: [],
-  processing: [],
+  processing: ['audit'],
   facts: [],
   templates: [],
   generation: [],
   idempotency: [],
+  audit: [],
 };
 const knownModules = Object.keys(moduleEdges).join('|');
 const { existsSync, readdirSync } = require('node:fs');

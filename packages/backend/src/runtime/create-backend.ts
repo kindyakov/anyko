@@ -12,6 +12,7 @@ import { createAccess } from '../modules/access';
 import type { DocumentAgents } from '../modules/agents';
 import { createDocumentAgents } from '../modules/agents/infrastructure/mastra';
 import { createAgentSessionStore } from '../modules/agents/infrastructure/session-store';
+import { record } from '../modules/audit';
 import {
   createDocumentService,
   createRecognitions,
@@ -130,6 +131,7 @@ type StoreConnection = Pick<
   | 'workAgentThread'
   | 'workAgentSession'
   | 'workAgentTurn'
+  | 'auditEvent'
   | '$executeRaw'
 >;
 
@@ -140,6 +142,7 @@ function stores(db: StoreConnection): WorkStores {
     facts: createFactsStore(db),
     generation: createGenerationStore(db),
     processing: createWorkProcessingStore(db),
+    audit: { record: (event) => record(db, event) },
   };
 }
 
