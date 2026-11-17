@@ -52,9 +52,9 @@ function json(status: number, body: unknown) {
   });
 }
 
-// Сеть подменяется на уровне fetch. GET отдаёт текущие настройки сервера, успешный POST
+// Сеть подменяется на уровне fetch. GET отдаёт текущие настройки сервера, успешный PATCH
 // заменяет их; так проверяется, что форма показывает версию после сохранения.
-const settingsAddress = '/api/v1/workspaces/workspace-1/settings/llm';
+const settingsAddress = '/api/v1/workspaces/workspace-1/connections/llm';
 
 function serveSettings(initial: Settings, saveStatus = 200) {
   let current = initial;
@@ -151,7 +151,7 @@ test('saves the changed address and shows the stored version afterwards', async 
     ),
   ).toBeTruthy();
   // Пустое поле ключа не отправляется: сервер сохраняет текущий ключ.
-  expect(requests.find((request) => request.method === 'POST')).toMatchObject({
+  expect(requests.find((request) => request.method === 'PATCH')).toMatchObject({
     url: settingsAddress,
     body: {
       baseURL: 'https://new.example.test/v1',
@@ -226,7 +226,7 @@ test('an empty address is refused on the client: nothing is sent and the address
   expect(await screen.findByText('Введите адрес API')).toBeTruthy();
   expect(address.getAttribute('aria-invalid')).toBe('true');
   expectFocused(address);
-  expect(requests.some((request) => request.method === 'POST')).toBe(false);
+  expect(requests.some((request) => request.method === 'PATCH')).toBe(false);
 });
 
 test('a field error from the server lands on its field, which takes focus', async () => {
@@ -316,7 +316,7 @@ test('without the manage right the connection is read-only: no save or revoke bu
   expect(
     screen.getByText('Изменять подключение может владелец рабочей области.'),
   ).toBeTruthy();
-  expect(requests.some((request) => request.method === 'POST')).toBe(false);
+  expect(requests.some((request) => request.method === 'PATCH')).toBe(false);
 });
 
 test('reverting an edit to the saved value removes the leave warning', async () => {

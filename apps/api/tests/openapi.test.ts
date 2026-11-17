@@ -66,7 +66,7 @@ test('OpenAPI document is built from the endpoint descriptions outside productio
   );
   expect(Object.keys(document.paths)).toContain('/api/v1/session');
   expect(Object.keys(document.paths)).toContain(
-    '/api/v1/workspaces/{workspaceId}/settings/llm',
+    '/api/v1/workspaces/{workspaceId}/connections/llm',
   );
 });
 

@@ -11,7 +11,7 @@ import {
 export const getLlmSettings = endpoint({
   summary: 'Возвращает настройки подключения языковой модели',
   method: 'GET',
-  path: '/workspaces/:workspaceId/settings/llm',
+  path: '/workspaces/:workspaceId/connections/llm',
   params: workspaceParams,
   response: json(llmSettingsResponseSchema),
   status: 200,
@@ -21,8 +21,8 @@ export const getLlmSettings = endpoint({
 
 export const saveLlmSettings = endpoint({
   summary: 'Сохраняет настройки подключения языковой модели',
-  method: 'POST',
-  path: '/workspaces/:workspaceId/settings/llm',
+  method: 'PATCH',
+  path: '/workspaces/:workspaceId/connections/llm',
   params: workspaceParams,
   body: json(llmSettingsInputSchema),
   response: json(savedStatusSchema),
@@ -37,7 +37,7 @@ export const saveLlmSettings = endpoint({
 export const revokeLlmSettings = endpoint({
   summary: 'Отзывает подключение языковой модели',
   method: 'DELETE',
-  path: '/workspaces/:workspaceId/settings/llm',
+  path: '/workspaces/:workspaceId/connections/llm',
   params: workspaceParams,
   response: json(z.object({ status: z.literal('revoked') }).strict()),
   status: 200,

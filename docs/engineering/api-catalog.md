@@ -11,11 +11,11 @@
 
 ## connections
 
-| Метод  | Путь                                           | Операция            | Описание                                         | Идемпотентность | Статус | Ответ                              | Коды ошибок                              |
-| ------ | ---------------------------------------------- | ------------------- | ------------------------------------------------ | --------------- | ------ | ---------------------------------- | ---------------------------------------- |
-| GET    | `/api/v1/workspaces/:workspaceId/settings/llm` | `getLlmSettings`    | Возвращает настройки подключения языковой модели | —               | 200    | json (`llmSettingsResponseSchema`) | FORBIDDEN, NOT_FOUND                     |
-| DELETE | `/api/v1/workspaces/:workspaceId/settings/llm` | `revokeLlmSettings` | Отзывает подключение языковой модели             | natural         | 200    | json                               | FORBIDDEN, NOT_FOUND                     |
-| POST   | `/api/v1/workspaces/:workspaceId/settings/llm` | `saveLlmSettings`   | Сохраняет настройки подключения языковой модели  | natural         | 200    | json (`savedStatusSchema`)         | FORBIDDEN, NOT_FOUND, INVALID_WORK_INPUT |
+| Метод  | Путь                                              | Операция            | Описание                                         | Идемпотентность | Статус | Ответ                              | Коды ошибок                              |
+| ------ | ------------------------------------------------- | ------------------- | ------------------------------------------------ | --------------- | ------ | ---------------------------------- | ---------------------------------------- |
+| GET    | `/api/v1/workspaces/:workspaceId/connections/llm` | `getLlmSettings`    | Возвращает настройки подключения языковой модели | —               | 200    | json (`llmSettingsResponseSchema`) | FORBIDDEN, NOT_FOUND                     |
+| DELETE | `/api/v1/workspaces/:workspaceId/connections/llm` | `revokeLlmSettings` | Отзывает подключение языковой модели             | natural         | 200    | json                               | FORBIDDEN, NOT_FOUND                     |
+| PATCH  | `/api/v1/workspaces/:workspaceId/connections/llm` | `saveLlmSettings`   | Сохраняет настройки подключения языковой модели  | natural         | 200    | json (`savedStatusSchema`)         | FORBIDDEN, NOT_FOUND, INVALID_WORK_INPUT |
 
 ## documents
 

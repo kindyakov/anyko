@@ -15,6 +15,7 @@ const collections = new Map([
   ['workspaces', 'workspace'],
   ['document-packages', 'document-package'],
   ['works', 'work'],
+  ['connections', 'connection'],
   ['recognitions', 'document'],
   ['documents', 'document'],
   ['images', 'image'],
@@ -28,6 +29,7 @@ const singletons = new Set([
   'source',
   'fields',
   'deletion',
+  'llm',
 ]);
 const actions = new Set(['analyze', 'confirm', 'generate', 'retry']);
 const globals = new Map([
@@ -36,13 +38,6 @@ const globals = new Map([
 ]);
 
 const legacy = {
-  connections: {
-    path: '/workspaces/:workspaceId/settings/llm',
-    methods: ['GET', 'POST', 'DELETE'],
-    reason: 'Адрес появился до выделения модуля connections',
-    action:
-      'Согласовать адрес /connections/llm и переход на PUT для сохранения',
-  },
   lists: {
     listDocuments: {
       address: 'GET /workspaces/:workspaceId/recognitions',
@@ -113,16 +108,6 @@ test('static path segments use kebab-case', () => {
       );
 });
 
-function isLegacyConnection(entry: Entry) {
-  return (
-    entry.resource === 'connections' &&
-    entry.endpoint.path === legacy.connections.path &&
-    legacy.connections.methods.some(
-      (method) => method === entry.endpoint.method,
-    )
-  );
-}
-
 function unknownPathSegment({ segments }: Entry) {
   return segments.find(
     (segment, index) =>
@@ -135,7 +120,6 @@ function unknownPathSegment({ segments }: Entry) {
 
 test('resource paths use the agreed collections and nouns', () => {
   for (const entry of entries) {
-    if (isLegacyConnection(entry)) continue;
     const segment = unknownPathSegment(entry);
     if (segment !== undefined)
       throw new Error(
@@ -209,7 +193,6 @@ test('POST creates a collection member or invokes an action', () => {
   for (const entry of entries.filter(
     ({ endpoint }) => endpoint.method === 'POST',
   )) {
-    if (isLegacyConnection(entry)) continue;
     expect(
       endsWithCollectionOrAction(entry),
       `${label(entry)}: создавайте через POST в коллекцию, правьте через PATCH, заменяйте через PUT`,
@@ -382,18 +365,6 @@ test('list responses use shared pagination schemas and matching query fields', (
 });
 
 test('legacy API exceptions still cover violations at their declared addresses', () => {
-  for (const method of legacy.connections.methods) {
-    const connection = entries.find(
-      (entry) => isLegacyConnection(entry) && entry.endpoint.method === method,
-    );
-    expect(
-      connection !== undefined &&
-        (unknownPathSegment(connection) !== undefined ||
-          (method === 'POST' && !endsWithCollectionOrAction(connection))),
-      `${method} ${legacy.connections.path}: удалите устаревший метод из legacy.connections`,
-    ).toBe(true);
-  }
-
   for (const [name, exception] of Object.entries(legacy.lists)) {
     const list = entries.find(
       (entry) =>

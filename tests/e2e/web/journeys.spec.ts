@@ -276,7 +276,13 @@ test('an owner revokes the configured connection and sees that it is no longer c
   const dialog = page.getByRole('alertdialog', {
     name: 'Отозвать подключение модели?',
   });
+  const revoked = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/workspaces/e2e-south/connections/llm') &&
+      response.request().method() === 'DELETE',
+  );
   await dialog.getByRole('button', { name: 'Отозвать подключение' }).click();
+  expect((await revoked).status()).toBe(200);
 
   await expect(page.getByText('Не настроено', { exact: true })).toBeVisible();
   await expect(dialog).toBeHidden();

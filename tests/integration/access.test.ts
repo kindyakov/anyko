@@ -27,7 +27,7 @@ const scopedRoot = '/api/v1/workspaces/local';
 const sessionPath = '/api/v1/session';
 const worksRoot = `${scopedRoot}/works`;
 const documentsRoot = `${scopedRoot}/recognitions`;
-const settingsPath = `${scopedRoot}/settings/llm`;
+const settingsPath = `${scopedRoot}/connections/llm`;
 test('real sessions enforce closed signup, mutation origin and document workspace scope', async () => {
   const fixtureId = crypto.randomUUID();
   const emails = [
@@ -281,7 +281,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     expect(
       (
         await request(settingsPath, {
-          method: 'POST',
+          method: 'PATCH',
           headers,
           body: JSON.stringify(connection),
         })
@@ -332,7 +332,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     expect(
       (
         await request(settingsPath, {
-          method: 'POST',
+          method: 'PATCH',
           headers,
           body: JSON.stringify(connection),
         })
