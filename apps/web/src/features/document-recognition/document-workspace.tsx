@@ -1,12 +1,9 @@
 'use client';
+import { useQuery } from '@tanstack/react-query';
 import { Eye, RefreshCw, RotateCw, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { z } from 'zod';
+import { useState } from 'react';
 
-import {
-  documentsResponseSchema,
-  type DocumentSummary,
-} from '@anyko/contracts/documents';
+import { type DocumentSummary } from '@anyko/contracts/documents';
 
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';
@@ -21,16 +18,21 @@ import {
   DocumentViewer,
   type ViewedDocument,
 } from '@/features/document-recognition/document-viewer';
-import { ApiError, describeApiError } from '@/lib/api/errors';
-import { useExpireSession } from '@/lib/api/query-client';
+import { newIdempotencyKey } from '@/lib/api/call';
+import {
+  ApiError,
+  describeApiError,
+  isUnauthorized,
+  sharedCodeTexts,
+} from '@/lib/api/errors';
+import { useWorkspaceId } from '@/lib/api/workspace';
 
 import {
-  documentDeletionProgress,
-  listDocuments,
-  retryDocument,
-  startDocumentDeletion,
-  uploadDocument,
+  useDeleteDocument,
+  useRetryDocument,
+  useUploadDocument,
 } from './api/commands';
+import { documentsQueryOptions } from './api/queries';
 
 const accept =
   '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff';
@@ -48,6 +50,7 @@ const tones: Record<DocumentSummary['status'], Tone> = {
 };
 const documentTexts = {
   codes: {
+    ...sharedCodeTexts,
     DELETION_PENDING:
       'Удаление ещё выполняется. Файлы пока не считаются удалёнными; повторите проверку позже.',
     DELETION_NEEDS_RECOVERY:
@@ -69,71 +72,34 @@ function message(error: unknown) {
   return error.requestId ? `${text} Код обращения: ${error.requestId}` : text;
 }
 export function DocumentWorkspace() {
-  const expireSession = useExpireSession();
-  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
-  const [deletions, setDeletions] = useState<
-    z.infer<typeof documentsResponseSchema>['deletions']
-  >([]);
-  const [loaded, setLoaded] = useState(false);
+  const workspaceId = useWorkspaceId();
+  const list = useQuery(documentsQueryOptions(workspaceId));
+  const documents = list.data?.documents ?? [];
+  const deletions = list.data?.deletions ?? [];
+  const uploadMutation = useUploadDocument(workspaceId);
+  const retryMutation = useRetryDocument(workspaceId);
+  const deleteMutation = useDeleteDocument(workspaceId);
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [pendingId, setPendingId] = useState<string>();
   const [viewing, setViewing] = useState<ViewedDocument>();
   const [deleting, setDeleting] = useState<DocumentSummary>();
-  const alive = useRef(true);
-  const handleError = useCallback(
-    (failure: unknown) => {
-      if (!alive.current) return;
-      if (failure instanceof ApiError && failure.status === 401) {
-        expireSession();
-        return;
-      }
-      setError(message(failure));
-    },
-    [expireSession],
-  );
-  const refresh = useCallback(
-    async (signal?: AbortSignal) => {
-      try {
-        const response = await listDocuments(signal);
-        if (!signal?.aborted && alive.current) {
-          setDocuments(response.documents);
-          setDeletions(response.deletions);
-          setLoaded(true);
-        }
-      } catch (failure) {
-        if (!signal?.aborted) {
-          setLoaded(true);
-          handleError(failure);
-        }
-      }
-    },
-    [handleError],
-  );
-  useEffect(() => {
-    alive.current = true;
-    const controller = new AbortController();
-    void refresh(controller.signal);
-    return () => {
-      alive.current = false;
-      controller.abort();
-    };
-  }, [refresh]);
+  const pendingId = retryMutation.isPending
+    ? retryMutation.variables
+    : deleteMutation.isPending
+      ? deleteMutation.variables
+      : undefined;
+  const listError =
+    list.error && !isUnauthorized(list.error) ? message(list.error) : '';
+  const shownError = error || listError;
+  // Сессия истекла: ошибка не показывается, оболочка перенаправит на вход.
+  function fail(failure: unknown) {
+    if (isUnauthorized(failure)) return;
+    setError(message(failure));
+  }
   const processing = documents.filter(
     (document) => document.status === 'queued' || document.status === 'running',
   ).length;
-  useEffect(() => {
-    if (!processing && deletions.length === 0) return;
-    const controller = new AbortController();
-    const timer = setInterval(() => {
-      void refresh(controller.signal);
-    }, 2000);
-    return () => {
-      clearInterval(timer);
-      controller.abort();
-    };
-  }, [processing, deletions.length, refresh]);
   async function upload(files: File[]) {
     if (uploading) return;
     setError('');
@@ -150,78 +116,35 @@ export function DocumentWorkspace() {
         );
         continue;
       }
+      // Каждый файл — отдельное действие с собственным ключом идемпотентности.
       try {
-        const response = await uploadDocument(file);
-        if (alive.current)
-          setDocuments((items) => [
-            response.document,
-            ...items.filter((item) => item.id !== response.document.id),
-          ]);
+        await uploadMutation.mutateAsync({
+          file,
+          idempotencyKey: newIdempotencyKey(),
+        });
       } catch (failure) {
-        if (failure instanceof ApiError && failure.status === 401) {
-          handleError(failure);
-          break;
-        }
+        if (isUnauthorized(failure)) break;
         problems.push(`${file.name}: ${message(failure)}`);
       }
     }
-    if (alive.current) {
-      setUploading(false);
-      if (problems.length) setError(problems.join(' '));
-    }
+    setUploading(false);
+    if (problems.length) setError(problems.join(' '));
   }
-  async function retry(document: DocumentSummary) {
-    setPendingId(document.id);
+  function retry(document: DocumentSummary) {
     setError('');
-    try {
-      const response = await retryDocument(document.id);
-      if (alive.current)
-        setDocuments((items) =>
-          items.map((item) =>
-            item.id === document.id ? response.document : item,
-          ),
-        );
-    } catch (failure) {
-      handleError(failure);
-    } finally {
-      if (alive.current) setPendingId(undefined);
-    }
+    retryMutation.mutate(document.id, { onError: fail });
   }
-  async function remove(document: DocumentSummary) {
-    setPendingId(document.id);
+  function removeDocument(document: DocumentSummary) {
     setError('');
-    try {
-      await startDocumentDeletion(document.id);
-      await refresh();
-      if (alive.current)
-        setViewing((current) =>
-          current?.id === document.id ? undefined : current,
-        );
-      let complete = false;
-      const deadline = Date.now() + 120000;
-      while (alive.current && Date.now() < deadline) {
-        const progress = await documentDeletionProgress(document.id);
-        if (progress.status === 'needs-recovery')
-          throw new ApiError('DELETION_NEEDS_RECOVERY', 409, '');
-        if (progress.status === 'deleted') {
-          complete = true;
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-      if (!complete) throw new ApiError('DELETION_PENDING', 202, '');
-      if (alive.current) {
-        setDocuments((items) =>
-          items.filter((item) => item.id !== document.id),
-        );
+    setViewing((current) =>
+      current?.id === document.id ? undefined : current,
+    );
+    deleteMutation.mutate(document.id, {
+      onSuccess: () => {
         setDeleting(undefined);
-        await refresh();
-      }
-    } catch (failure) {
-      handleError(failure);
-    } finally {
-      if (alive.current) setPendingId(undefined);
-    }
+      },
+      onError: fail,
+    });
   }
   return (
     <>
@@ -241,7 +164,7 @@ export function DocumentWorkspace() {
           onClick={() => {
             setError('');
             setRefreshing(true);
-            void refresh().finally(() => {
+            void list.refetch().finally(() => {
               setRefreshing(false);
             });
           }}
@@ -262,10 +185,10 @@ export function DocumentWorkspace() {
           }}
         />
       </div>
-      {error && (
+      {shownError && (
         <div className="mt-6">
           <Notice tone="danger" role="alert" title="Не всё получилось">
-            {error}
+            {shownError}
           </Notice>
         </div>
       )}
@@ -309,7 +232,7 @@ export function DocumentWorkspace() {
             <StatusPill tone="progress">Распознаётся: {processing}</StatusPill>
           )}
         </div>
-        {!loaded ? (
+        {list.isPending ? (
           <ul className="grid gap-3" aria-busy aria-label="Файлы загружаются">
             {[0, 1, 2].map((item) => (
               <li
@@ -363,10 +286,13 @@ export function DocumentWorkspace() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        loading={pendingId === document.id && !deleting}
+                        loading={
+                          retryMutation.isPending &&
+                          retryMutation.variables === document.id
+                        }
                         disabled={pendingId !== undefined}
                         onClick={() => {
-                          void retry(document);
+                          retry(document);
                         }}
                       >
                         <RotateCw size={15} />
@@ -378,7 +304,11 @@ export function DocumentWorkspace() {
                         variant="secondary"
                         size="sm"
                         onClick={() => {
-                          setViewing(document);
+                          setViewing({
+                            id: document.id,
+                            filename: document.filename,
+                            owner: { kind: 'recognition' },
+                          });
                         }}
                       >
                         <Eye size={15} />
@@ -416,7 +346,7 @@ export function DocumentWorkspace() {
         confirmLabel="Удалить документ"
         pending={pendingId !== undefined}
         onConfirm={() => {
-          if (deleting) void remove(deleting);
+          if (deleting) removeDocument(deleting);
         }}
         onCancel={() => {
           setDeleting(undefined);

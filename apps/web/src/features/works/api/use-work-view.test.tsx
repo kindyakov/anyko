@@ -1,104 +1,28 @@
-import { afterEach, expect, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
-import type { Session } from '@anyko/contracts/session';
-
 import { createQueryClient } from '@/lib/api/query-client';
 import { sessionKeys } from '@/lib/api/session';
 
+import {
+  installEventSource,
+  json,
+  networkError,
+  serveApi,
+} from '../../../../test/api';
+import {
+  session,
+  titled,
+  workAddress,
+  workId,
+  workspaceId,
+  workView,
+} from '../../../../test/fixtures';
+
 import { useWorkView } from './use-work-view';
-
-const originalFetch = globalThis.fetch;
-const originalEventSource = globalThis.EventSource;
-
-afterEach(() => {
-  globalThis.fetch = originalFetch;
-  globalThis.EventSource = originalEventSource;
-});
-
-const workId = '0b6f4e3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
-const session: Session = {
-  user: { id: 'user-1', name: 'Test', email: 'user@example.test' },
-  memberships: [
-    {
-      workspace: { id: 'workspace-1', name: 'Workspace' },
-      rights: ['works.read', 'works.edit'],
-    },
-  ],
-};
-
-// Минимальный вид работы, который проходит workResponseSchema из contracts.
-const workView = {
-  work: {
-    id: workId,
-    title: 'Работа клиента',
-    packageVersion: 'v1',
-    revision: 1,
-    inputRevision: 0,
-    confirmedRevision: null,
-    createdAt: '2026-11-01T10:00:00.000Z',
-    updatedAt: '2026-11-01T10:00:00.000Z',
-  },
-  package: {
-    id: 'package-1',
-    version: 'v1',
-    title: 'Пакет',
-    technical: false,
-    fields: [],
-    documents: [
-      {
-        id: 'template-1',
-        version: 'v1',
-        title: 'Шаблон',
-        filename: 'template.docx',
-        checksum: 'a'.repeat(64),
-        blocks: [],
-      },
-    ],
-  },
-  documents: [],
-  facts: { version: 1, values: {}, manual: [], confirmed: [], candidates: [] },
-  runs: [],
-  generations: [],
-  cursor: '0',
-  cleanupPending: false,
-};
-
-// Сеть подменяется на уровне fetch: все запросы получают один и тот же ответ.
-function answerWith(status: number, body: unknown) {
-  const requested: string[] = [];
-  globalThis.fetch = ((input: RequestInfo | URL) => {
-    requested.push(
-      typeof input === 'string'
-        ? input
-        : input instanceof URL
-          ? input.href
-          : input.url,
-    );
-    return Promise.resolve(
-      new Response(JSON.stringify(body), {
-        status,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-  }) as typeof fetch;
-  return requested;
-}
-
-// Поток событий не нужен этим проверкам: хук только открывает его и закрывает.
-function silentEvents() {
-  globalThis.EventSource = class {
-    addEventListener() {
-      /* events are not delivered in these tests */
-    }
-    close() {
-      /* nothing to close */
-    }
-  } as unknown as typeof EventSource;
-}
 
 function wrapperFor(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -108,60 +32,142 @@ function wrapperFor(client: QueryClient) {
   };
 }
 
-test('loads the work, reports it to the caller and reads it from the work address', async () => {
-  silentEvents();
-  const requested = answerWith(200, workView);
-  const loaded: string[] = [];
-  const client = createQueryClient();
-  const { result } = renderHook(
-    () =>
-      useWorkView({
-        workId,
-        onLoaded: (view) => {
-          loaded.push(view.work.title);
-        },
-      }),
-    { wrapper: wrapperFor(client) },
-  );
+// Сервер отдаёт текущий ответ; тест меняет его, как меняется работа на сервере.
+function serveWork(initial: Response | typeof networkError) {
+  let current = initial;
+  const exchanges = serveApi(() => current);
+  return {
+    exchanges,
+    respond(next: Response | typeof networkError) {
+      current = next;
+    },
+  };
+}
+
+test('loads the work from its API v1 address in the workspace and subscribes to its events', async () => {
+  const sources = installEventSource();
+  const server = serveWork(json(200, workView));
+  const { result } = renderHook(() => useWorkView({ workspaceId, workId }), {
+    wrapper: wrapperFor(createQueryClient()),
+  });
   await waitFor(() => {
     expect(result.current.view?.work.title).toBe('Работа клиента');
   });
-  await act(async () => {
-    await result.current.load();
+  await waitFor(() => {
+    expect(sources).toHaveLength(1);
   });
-  expect(loaded).toEqual(['Работа клиента']);
+  expect(server.exchanges.map((item) => item.url)).toEqual([workAddress]);
+  expect(sources[0]?.url).toBe(`${workAddress}/events?after=0`);
   expect(result.current.loadError).toBe('');
-  expect(requested[0]).toBe(`/api/works/${workId}`);
 });
 
-test('reports a missing work without expiring the session', async () => {
-  silentEvents();
-  answerWith(404, {});
+test('a changed event refetches the work, so the screen shows what the server now holds', async () => {
+  const sources = installEventSource();
+  const server = serveWork(json(200, workView));
+  const { result } = renderHook(() => useWorkView({ workspaceId, workId }), {
+    wrapper: wrapperFor(createQueryClient()),
+  });
+  await waitFor(() => {
+    expect(sources).toHaveLength(1);
+  });
+  server.respond(json(200, titled('Новое название')));
+  act(() => {
+    sources[0]?.emit('changed');
+  });
+  await waitFor(() => {
+    expect(result.current.view?.work.title).toBe('Новое название');
+  });
+  expect(server.exchanges.map((item) => item.url)).toEqual([
+    workAddress,
+    workAddress,
+  ]);
+});
+
+test('the live state follows the stream: open refetches and reports live, an error reports reconnecting', async () => {
+  const sources = installEventSource();
+  const server = serveWork(json(200, workView));
+  const { result } = renderHook(() => useWorkView({ workspaceId, workId }), {
+    wrapper: wrapperFor(createQueryClient()),
+  });
+  await waitFor(() => {
+    expect(sources).toHaveLength(1);
+  });
+  expect(result.current.live).toBe('connecting');
+  act(() => {
+    sources[0]?.onopen?.();
+  });
+  await waitFor(() => {
+    expect(result.current.live).toBe('live');
+  });
+  await waitFor(() => {
+    expect(server.exchanges).toHaveLength(2);
+  });
+  act(() => {
+    sources[0]?.onerror?.();
+  });
+  await waitFor(() => {
+    expect(result.current.live).toBe('reconnecting');
+  });
+  await waitFor(() => {
+    expect(server.exchanges).toHaveLength(3);
+  });
+  expect(sources).toHaveLength(1);
+});
+
+test('the stream closes when the screen leaves the work', async () => {
+  const sources = installEventSource();
+  serveWork(json(200, workView));
+  const { unmount } = renderHook(() => useWorkView({ workspaceId, workId }), {
+    wrapper: wrapperFor(createQueryClient()),
+  });
+  await waitFor(() => {
+    expect(sources).toHaveLength(1);
+  });
+  unmount();
+  expect(sources[0]?.closed).toBe(true);
+});
+
+test('a missing work reports not found and opens no stream', async () => {
+  const sources = installEventSource();
+  serveWork(json(404, {}));
   const client = createQueryClient();
   client.setQueryData(sessionKeys.all, session);
-  const { result } = renderHook(
-    () => useWorkView({ workId, onLoaded: () => undefined }),
-    { wrapper: wrapperFor(client) },
-  );
+  const { result } = renderHook(() => useWorkView({ workspaceId, workId }), {
+    wrapper: wrapperFor(client),
+  });
   await waitFor(() => {
     expect(result.current.loadError).toBe('Работа не найдена.');
   });
   expect(result.current.view).toBeUndefined();
+  expect(sources).toHaveLength(0);
   expect(client.getQueryData(sessionKeys.all)).toEqual(session);
 });
 
+test('a failed request other than not found reports a retryable load error', async () => {
+  installEventSource();
+  serveWork(networkError);
+  const { result } = renderHook(() => useWorkView({ workspaceId, workId }), {
+    wrapper: wrapperFor(createQueryClient()),
+  });
+  await waitFor(() => {
+    expect(result.current.loadError).toBe(
+      'Не удалось обновить работу. Повторите попытку.',
+    );
+  });
+});
+
 test('an unauthorized work request expires the session once and shows no load error', async () => {
-  silentEvents();
-  answerWith(401, {});
+  const sources = installEventSource();
+  serveWork(json(401, {}));
   const client = createQueryClient();
   client.setQueryData(sessionKeys.all, session);
-  const { result } = renderHook(
-    () => useWorkView({ workId, onLoaded: () => undefined }),
-    { wrapper: wrapperFor(client) },
-  );
+  const { result } = renderHook(() => useWorkView({ workspaceId, workId }), {
+    wrapper: wrapperFor(client),
+  });
   await waitFor(() => {
     expect(client.getQueryData(sessionKeys.all)).toBeNull();
   });
   expect(result.current.loadError).toBe('');
   expect(result.current.view).toBeUndefined();
+  expect(sources).toHaveLength(0);
 });

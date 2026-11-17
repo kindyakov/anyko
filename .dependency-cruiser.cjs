@@ -25,14 +25,6 @@ const presentModules = existsSync(moduleRoot)
 // Известные нарушения web-правил. Списки только сокращаются: новое нарушение в список не добавляется.
 // Известных нарушений feature-границ нет (список только сокращается).
 const webKnownFeatureViolations = [];
-// requestApi допустим из api/ своей feature, из lib/ и из тестов.
-const webClientAllowed = [
-  '^apps/web/src/lib/',
-  '^apps/web/src/features/[^/]+/api/',
-  '[.]test[.]tsx?$',
-];
-// Известных нарушений нет: список пуст и не пополняется.
-const webKnownClientImporters = [];
 
 module.exports = {
   forbidden: [
@@ -266,8 +258,7 @@ module.exports = {
       to: { path: '^packages/backend/src/platform/scope/issue[.]ts$' },
     },
     // Web (apps/web): правила через пути и обратные ссылки, без перечисления features.
-    // Известных нарушений web-границ нет (списки пусты и не пополняются):
-    // см. webKnownFeatureViolations и webKnownClientImporters ниже.
+    // Известных нарушений web-границ нет (список пуст и не пополняется): см. webKnownFeatureViolations.
     {
       name: 'web-feature-public-api',
       comment:
@@ -310,14 +301,11 @@ module.exports = {
       to: { path: '^apps/web/src/(?:features/|lib/api/)' },
     },
     {
-      name: 'web-api-client-in-api',
+      name: 'web-api-transport-only-in-lib',
       comment:
-        'requestApi вызывается только из features/<name>/api/ и lib/. Вынесите запрос в api/ своей feature через queryOptions или useMutation.',
+        'features и app ходят в API только через callApi или endpointUrl из lib/api/call (endpoint-описание задаёт путь, схемы и ключ). requestApi из lib/api/client — внутренний транспорт lib/api.',
       severity: 'error',
-      from: {
-        path: '^apps/web/',
-        pathNot: [...webClientAllowed, ...webKnownClientImporters],
-      },
+      from: { path: '^apps/web/src/(?:features|app)/' },
       to: { path: '^apps/web/src/lib/api/client[.]ts$' },
     },
     {

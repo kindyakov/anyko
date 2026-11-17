@@ -1,14 +1,26 @@
-import { z } from 'zod';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { requestApi } from '@/lib/api/client';
+import { generateWork } from '@anyko/contracts/works';
 
-const accepted = z.object({ status: z.string() });
+import { invalidateWork } from '@/features/works';
+import { callApi } from '@/lib/api/call';
 
 // Запуск формирования комплекта на указанной ревизии сведений: сервер отвечает постановкой в очередь.
-export function generateWork(workId: string, revision: number) {
-  return requestApi(`/works/${workId}/generate`, accepted, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ revision }),
+export function useGenerateWork(workspaceId: string, workId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      revision,
+      idempotencyKey,
+    }: {
+      revision: number;
+      idempotencyKey: string;
+    }) =>
+      callApi(generateWork, {
+        params: { workspaceId, workId },
+        body: { revision },
+        idempotencyKey,
+      }),
+    onSuccess: () => invalidateWork(client, workspaceId, workId),
   });
 }

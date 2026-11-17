@@ -7,7 +7,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-import { type WorkView } from '@anyko/contracts/works';
+import { downloadGeneratedFile, type WorkView } from '@anyko/contracts/works';
 
 import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button, buttonStyles } from '@/components/ui/button';
@@ -16,6 +16,8 @@ import { RelativeTime } from '@/components/ui/relative-time';
 import { Spinner } from '@/components/ui/spinner';
 import { stagger } from '@/components/ui/stagger';
 import { Notice, StatusPill, type Tone } from '@/components/ui/status';
+import { endpointUrl } from '@/lib/api/call';
+import { useWorkspaceId } from '@/lib/api/workspace';
 
 type Generation = WorkView['generations'][number];
 const generationTones: Record<Generation['status'], [string, Tone]> = {
@@ -34,6 +36,7 @@ function Files({
   generation: Generation;
   large?: boolean;
 }) {
+  const workspaceId = useWorkspaceId();
   return (
     <ul
       className={`grid gap-3 ${large ? 'md:grid-cols-2 xl:grid-cols-3' : ''}`}
@@ -67,7 +70,14 @@ function Files({
           </div>
           {file.status === 'succeeded' && (
             <a
-              href={`/api/works/${workId}/generations/${generation.id}/files/${file.id}`}
+              href={endpointUrl(downloadGeneratedFile, {
+                params: {
+                  workspaceId,
+                  workId,
+                  generationId: generation.id,
+                  fileId: file.id,
+                },
+              })}
               className={buttonStyles({
                 variant: 'secondary',
                 size: 'icon-sm',

@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Notice, StatusPill } from '@/components/ui/status';
 import { useSaveLlmSettings } from '@/features/connections/api/mutations';
 import { llmSettingsQueryOptions } from '@/features/connections/api/queries';
+import { sharedCodeTexts } from '@/lib/api/errors';
 import { applyServerErrors } from '@/lib/api/form-errors';
 import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 
@@ -172,6 +173,7 @@ function ConnectionForm({
         });
       } catch (error) {
         applyServerErrors(formApi, error, {
+          codes: sharedCodeTexts,
           fallback: saveFailure,
           technical: saveFailure,
         });

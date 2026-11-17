@@ -25,6 +25,8 @@ afterEach(() => {
 
 const workId = '11111111-1111-4111-8111-111111111111';
 const createdId = '22222222-2222-4222-8222-222222222222';
+const worksAddress = '/api/v1/workspaces/workspace-1/works';
+const documentPackagesAddress = '/api/v1/document-packages';
 const template = {
   id: 'doc-1',
   version: '1',
@@ -102,11 +104,13 @@ function serveWorkList(creation: { status: number; body: unknown }) {
     requests.push({ method, url, body });
     if (method === 'POST')
       return Promise.resolve(json(creation.status, creation.body));
-    if (url.includes('/document-packages'))
+    if (url === documentPackagesAddress)
       return Promise.resolve(json(200, { packages }));
-    return Promise.resolve(
-      json(200, { works: [existingWork], nextCursor: null }),
-    );
+    if (url === worksAddress)
+      return Promise.resolve(
+        json(200, { works: [existingWork], nextCursor: null }),
+      );
+    return Promise.resolve(json(404, {}));
   }) as typeof fetch;
   return requests;
 }
@@ -145,6 +149,10 @@ test('without the create right no creation button is offered, the list still sho
   ).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Новая работа' })).toBeNull();
   expect(requests.filter((request) => request.method === 'POST')).toEqual([]);
+  // Список и каталог читаются по адресам API v1: список — в области рабочего пространства.
+  expect(requests.map((request) => request.url).sort()).toEqual(
+    [documentPackagesAddress, worksAddress].sort(),
+  );
 });
 
 test('without the create right the empty list offers no creation either', async () => {
@@ -155,9 +163,11 @@ test('without the create right the empty list offers no creation either', async 
         : input instanceof URL
           ? input.href
           : input.url;
-    if (url.includes('/document-packages'))
+    if (url === documentPackagesAddress)
       return Promise.resolve(json(200, { packages }));
-    return Promise.resolve(json(200, { works: [], nextCursor: null }));
+    if (url === worksAddress)
+      return Promise.resolve(json(200, { works: [], nextCursor: null }));
+    return Promise.resolve(json(404, {}));
   }) as typeof fetch;
   renderWorkList(['works.read']);
 
@@ -211,7 +221,7 @@ test('the chosen package and title are sent and the new work is opened', async (
     ]);
   });
   expect(requests.find((request) => request.method === 'POST')).toMatchObject({
-    url: '/api/works',
+    url: worksAddress,
     body: { title: 'Петров', packageVersion: 'test-1' },
   });
 });

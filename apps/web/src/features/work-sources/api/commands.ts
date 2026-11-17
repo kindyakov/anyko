@@ -1,10 +1,11 @@
-import type { Dispatch, SetStateAction } from 'react';
-import { z } from 'zod';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { type Dispatch, type SetStateAction } from 'react';
 
-import { documentResponseSchema } from '@anyko/contracts/documents';
+import { removeWorkDocument, uploadWorkDocument } from '@anyko/contracts/works';
 
-import { requestApi } from '@/lib/api/client';
-import { ApiError } from '@/lib/api/errors';
+import { invalidateWork } from '@/features/works';
+import { callApi, newIdempotencyKey } from '@/lib/api/call';
+import { isUnauthorized } from '@/lib/api/errors';
 
 import { uploadFailureMessage } from '../upload-errors';
 
@@ -15,15 +16,45 @@ export interface Upload {
   reason?: string;
 }
 
-const accepted = z.object({ status: z.string() });
+// Загрузка файла в работу: ключ создаёт вызывающий на каждый файл при выборе.
+export function useUploadWorkDocument(workspaceId: string, workId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      file,
+      idempotencyKey,
+    }: {
+      file: File;
+      idempotencyKey: string;
+    }) =>
+      callApi(uploadWorkDocument, {
+        params: { workspaceId, workId },
+        body: { file },
+        idempotencyKey,
+        timeoutMs: 60000,
+      }),
+    onSuccess: () => invalidateWork(client, workspaceId, workId),
+  });
+}
 
-// Загружает файлы по одному. Ошибка одного файла отмечается в списке и не прерывает остальные;
-// 401 останавливает загрузку и возвращается вызывающему для истечения сессии.
+export function useDeleteWorkDocument(workspaceId: string, workId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (documentId: string) =>
+      callApi(removeWorkDocument, {
+        params: { workspaceId, workId, documentId },
+      }),
+    onSuccess: () => invalidateWork(client, workspaceId, workId),
+  });
+}
+
+// Загружает файлы по одному и на каждый создаёт свой ключ. Ошибка одного файла отмечается в списке
+// и не прерывает остальные; 401 останавливает загрузку, сессию истекает кэш.
 export async function uploadWorkFiles(
-  workId: string,
   files: File[],
+  send: (file: File, idempotencyKey: string) => Promise<unknown>,
   setUploads: Dispatch<SetStateAction<Upload[]>>,
-): Promise<'finished' | 'unauthorized'> {
+): Promise<void> {
   const batch: Upload[] = files.map((file) => ({
     id: crypto.randomUUID(),
     name: file.name,
@@ -37,30 +68,15 @@ export async function uploadWorkFiles(
   setUploads(batch);
   for (const [index, file] of files.entries()) {
     const id = batch[index]?.id ?? '';
-    const data = new FormData();
-    data.set('file', file);
     try {
-      await requestApi(`/works/${workId}/documents`, documentResponseSchema, {
-        method: 'POST',
-        body: data,
-        headers: { 'idempotency-key': crypto.randomUUID() },
-        timeoutMs: 60000,
-      });
+      await send(file, newIdempotencyKey());
       mark(id, { state: 'done' });
     } catch (failure) {
-      if (failure instanceof ApiError && failure.status === 401)
-        return 'unauthorized';
+      if (isUnauthorized(failure)) return;
       mark(id, {
         state: 'failed',
         reason: uploadFailureMessage(file.name, failure),
       });
     }
   }
-  return 'finished';
-}
-
-export function deleteWorkDocument(workId: string, documentId: string) {
-  return requestApi(`/works/${workId}/documents/${documentId}`, accepted, {
-    method: 'DELETE',
-  });
 }

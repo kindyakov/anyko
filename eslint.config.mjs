@@ -167,10 +167,7 @@ export default [
   // Известные нарушения: список только сокращается; новые файлы сюда не добавляются.
   // Эти эффекты и вызов в рендере меняют поведение, поэтому исправляются отдельно от настройки правил.
   {
-    files: [
-      'apps/web/src/features/document-recognition/document-workspace.tsx',
-      'apps/web/src/features/fact-review/package-preview.tsx',
-    ],
+    files: ['apps/web/src/features/fact-review/package-preview.tsx'],
     rules: { 'react-hooks/set-state-in-effect': 'off' },
   },
   {
