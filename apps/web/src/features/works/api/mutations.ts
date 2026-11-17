@@ -3,7 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { workResponseSchema } from '@anyko/contracts';
 
 import { requestApi } from '@/lib/api/client';
-import { useWorkspaceId } from '@/lib/api/session';
+import { useWorkspaceId } from '@/lib/api/workspace';
 
 import { workKeys } from './keys';
 

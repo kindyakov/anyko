@@ -1,11 +1,17 @@
-import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
+import {
+  MutationCache,
+  QueryCache,
+  QueryClient,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useCallback } from 'react';
 
 import { ApiError } from '@/lib/api/errors';
 import { sessionKeys } from '@/lib/api/session';
 
 // Истечение сессии: отменяет запросы, сбрасывает сессию в null и удаляет остальные данные,
 // чтобы следующий пользователь не увидел чужой кэш.
-export function expireSession(client: QueryClient) {
+function expireSession(client: QueryClient) {
   void client.cancelQueries();
   client.setQueryData(sessionKeys.all, null);
   client.removeQueries({
@@ -38,4 +44,13 @@ export function createQueryClient(): QueryClient {
     }),
   });
   return client;
+}
+
+// Для запросов, которые features выполняют вне TanStack Query (команды и загрузки с собственным
+// состоянием): 401 истекает сессию так же, как 401 из кэша. Переход на вход делает оболочка.
+export function useExpireSession(): () => void {
+  const client = useQueryClient();
+  return useCallback(() => {
+    expireSession(client);
+  }, [client]);
 }

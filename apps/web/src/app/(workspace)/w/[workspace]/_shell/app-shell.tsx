@@ -1,67 +1,47 @@
 'use client';
+import { useQuery } from '@tanstack/react-query';
 import { FolderKanban, ScanText, Settings2 } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { type ReactNode, useState } from 'react';
-import type { z } from 'zod';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { type ReactNode, useEffect, useState } from 'react';
 
-import type { sessionResponseSchema } from '@anyko/contracts';
-
+import { Logo } from '@/components/brand/logo';
 import { DeepSkyBackdrop } from '@/components/cosmos/deep-sky-backdrop';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { SignOut } from '@/features/auth';
 import { LlmSettings } from '@/features/works';
+import { sessionQueryOptions } from '@/lib/api/session';
+import { useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 
-const navigation = [
-  {
-    href: routes.works(),
-    label: 'Работы',
-    hint: 'Дела и комплекты документов',
-    Icon: FolderKanban,
-  },
-  {
-    href: routes.recognition(),
-    label: 'Распознавание',
-    hint: 'Текст из любого файла',
-    Icon: ScanText,
-  },
-] as const;
-
-export function Logo() {
-  return (
-    <Link
-      href={routes.works()}
-      aria-label="Anyko, главная"
-      className="group focus-visible:outline-brand-hot flex w-fit items-center gap-2.5 rounded-lg text-2xl font-semibold tracking-tight focus-visible:outline-2 focus-visible:outline-offset-4"
-    >
-      <img
-        src="/brand/anyko-mark-source.svg"
-        width="32"
-        height="32"
-        alt=""
-        className="transition-transform duration-500 group-hover:-rotate-12"
-      />
-      anyko
-      <span className="bg-brand-hot animate-blink ml-0.5 size-1.5 rounded-full shadow-[0_0_8px_#ff3b62]" />
-    </Link>
-  );
-}
-
-export function AppShell({
-  session,
-  section,
-  onUnauthorized,
-  children,
-}: {
-  session: z.infer<typeof sessionResponseSchema>;
-  section: '/' | '/documents';
-  onUnauthorized: () => void;
-  children: ReactNode;
-}) {
-  const [settingsOpen, setSettingsOpen] = useState(false);
+export function AppShell({ children }: { children: ReactNode }) {
+  const workspace = useWorkspaceId();
   const pathname = usePathname();
+  const search = useSearchParams().toString();
+  const router = useRouter();
+  const session = useQuery(sessionQueryOptions()).data;
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const current = search ? `${pathname}?${search}` : pathname;
+  // Сессии нет: она истекла (401 из запроса) или пользователь вышел. Вход вернёт на текущий адрес.
+  useEffect(() => {
+    if (session === null) router.replace(routes.signIn(current));
+  }, [session, current, router]);
+  if (!session) return null;
+  const navigation = [
+    {
+      href: routes.works(workspace),
+      label: 'Работы',
+      hint: 'Дела и комплекты документов',
+      Icon: FolderKanban,
+    },
+    {
+      href: routes.recognition(workspace),
+      label: 'Распознавание',
+      hint: 'Текст из любого файла',
+      Icon: ScanText,
+    },
+  ];
   const person = session.user.name || session.user.email;
   const settingsButton = (
     <Button
@@ -87,10 +67,10 @@ export function AppShell({
       </a>
       <aside className="sticky top-0 z-30 border-b border-white/[0.06] bg-black/60 backdrop-blur-xl md:flex md:h-dvh md:flex-col md:border-r md:border-b-0 md:bg-black/30">
         <div className="flex h-16 items-center justify-between gap-3 px-4 md:h-24 md:px-6">
-          <Logo />
+          <Logo href={routes.works(workspace)} />
           <div className="flex items-center gap-1 md:hidden">
             {settingsButton}
-            <SignOut onSignedOut={onUnauthorized} />
+            <SignOut />
           </div>
         </div>
         <nav
@@ -98,12 +78,12 @@ export function AppShell({
           className="flex gap-1.5 px-3 pb-3 md:flex-col md:px-4"
         >
           {navigation.map(({ href, label, hint, Icon }) => {
-            const active = section === href;
+            const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <Link
                 key={href}
                 href={href}
-                aria-current={active && pathname === href ? 'page' : undefined}
+                aria-current={pathname === href ? 'page' : undefined}
                 className={`group focus-visible:outline-brand-hot relative flex min-h-11 flex-1 items-center gap-3 overflow-hidden rounded-xl px-3 py-2 transition-[background-color,color] duration-200 focus-visible:outline-2 md:flex-none md:py-2.5 ${active ? 'text-ink bg-[linear-gradient(90deg,#db143c26,#db143c08_70%,transparent)]' : 'text-muted hover:text-ink hover:bg-white/[0.04]'}`}
               >
                 <span
@@ -140,7 +120,7 @@ export function AppShell({
             </div>
             <div className="mt-3 flex items-center justify-between border-t border-white/[0.06] pt-2">
               {settingsButton}
-              <SignOut onSignedOut={onUnauthorized} />
+              <SignOut />
             </div>
           </div>
         </div>

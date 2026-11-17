@@ -1,4 +1,4 @@
-import { queryOptions, useQuery } from '@tanstack/react-query';
+import { queryOptions } from '@tanstack/react-query';
 
 import { sessionResponseSchema } from '@anyko/contracts';
 
@@ -23,18 +23,4 @@ export function sessionQueryOptions() {
     },
     refetchOnWindowFocus: false,
   });
-}
-
-// Читает уже загруженную сессию и не запрашивает её заново (enabled: false).
-// Вне открытой сессии рабочей области нет, поэтому хук бросает ошибку.
-// На этапе #9 идентификатор придёт из параметра маршрута /w/[workspace].
-export function useWorkspaceId(): string {
-  const { data } = useQuery({
-    ...sessionQueryOptions(),
-    enabled: false,
-    select: (session) => session?.workspace.id,
-  });
-  if (!data)
-    throw new Error('Рабочая область доступна только при открытой сессии');
-  return data;
 }

@@ -13,4 +13,5 @@ export const sessionResponseSchema = z.object({
 });
 export type Session = z.infer<typeof sessionResponseSchema>;
 export * from './documents';
+export * from './session-cookie';
 export * from './works';

@@ -44,6 +44,8 @@ import { WorkReview } from '@/features/works/work-review';
 import { type Upload, WorkSources } from '@/features/works/work-sources';
 import { requestApi } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
+import { useExpireSession } from '@/lib/api/query-client';
+import { useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 
 const accepted = z.object({ status: z.string() });
@@ -249,13 +251,9 @@ function Stepper({ current }: { current: StepKey }) {
   );
 }
 
-export function WorkDetail({
-  workId,
-  onUnauthorized,
-}: {
-  workId: string;
-  onUnauthorized: () => void;
-}) {
+export function WorkDetail({ workId }: { workId: string }) {
+  const workspaceId = useWorkspaceId();
+  const expireSession = useExpireSession();
   const [view, setView] = useState<WorkView>();
   const [draft, setDraft] = useState<{
     values: FieldValues;
@@ -280,7 +278,7 @@ export function WorkDetail({
       if (result.cleanupPending) setDraft(null);
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 401)
-        onUnauthorized();
+        expireSession();
       else
         setLoadError(
           failure instanceof ApiError && failure.status === 404
@@ -288,7 +286,7 @@ export function WorkDetail({
             : 'Не удалось обновить работу. Повторите попытку.',
         );
     }
-  }, [workId, onUnauthorized]);
+  }, [workId, expireSession]);
   useEffect(() => {
     let active = true;
     let events: EventSource | undefined;
@@ -340,7 +338,7 @@ export function WorkDetail({
       return true;
     } catch (failure) {
       if (failure instanceof ApiError && failure.status === 401)
-        onUnauthorized();
+        expireSession();
       else
         setError(
           failure instanceof ApiError && failure.code === 'REVISION_CONFLICT'
@@ -387,7 +385,7 @@ export function WorkDetail({
           mark(id, { state: 'done' });
         } catch (failure) {
           if (failure instanceof ApiError && failure.status === 401) {
-            onUnauthorized();
+            expireSession();
             return;
           }
           mark(id, {
@@ -411,7 +409,7 @@ export function WorkDetail({
         <h1 className="font-heading mt-8 text-2xl font-bold">{loadError}</h1>
         <div className="mt-7 flex gap-3">
           <Link
-            href={routes.works()}
+            href={routes.works(workspaceId)}
             className="text-muted hover:text-ink self-center"
           >
             Все работы
@@ -473,7 +471,7 @@ export function WorkDetail({
     <>
       <div className="animate-rise">
         <Link
-          href={routes.works()}
+          href={routes.works(workspaceId)}
           className="text-muted hover:text-ink group inline-flex items-center gap-1.5 text-sm transition-colors"
         >
           <ArrowLeft
