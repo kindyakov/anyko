@@ -49,6 +49,7 @@ const access = {
 const authed = { cookie: 'session=ok' };
 
 const item = endpoint({
+  summary: 'Возвращает элемент',
   method: 'GET',
   path: '/items/:itemId',
   params: z.object({ itemId: z.uuid() }),
@@ -59,6 +60,7 @@ const item = endpoint({
 });
 // Ответ с условием: заведомо нарушенная схема даёт 500, а не ответ без проверки.
 const broken = endpoint({
+  summary: 'Возвращает тестовый ответ',
   method: 'GET',
   path: '/broken',
   response: json(z.object({ ok: z.boolean().refine((value) => value) })),
@@ -66,6 +68,7 @@ const broken = endpoint({
   errors: [],
 });
 const file = endpoint({
+  summary: 'Скачивает файл',
   method: 'GET',
   path: '/files/:itemId',
   params: z.object({ itemId: z.uuid() }),
@@ -75,6 +78,7 @@ const file = endpoint({
   invalid: 'INVALID_WORK_INPUT',
 });
 const upload = endpoint({
+  summary: 'Загружает файл',
   method: 'POST',
   path: '/uploads',
   body: multipart({ file: z.file().max(4) }),
@@ -86,6 +90,7 @@ const upload = endpoint({
 });
 // Маршрут с областью: plugin проверяет участие до разбора тела.
 const scoped = endpoint({
+  summary: 'Проверяет доступ к рабочей области',
   method: 'POST',
   path: '/workspaces/:workspaceId/items',
   params: z.object({ workspaceId: z.string() }),
@@ -203,6 +208,7 @@ test('invalid input answers with the code the description declares', async () =>
 
 test('body field errors retain dotted keys and array indexes, while path errors have no fields', async () => {
   const nested = endpoint({
+    summary: 'Проверяет вложенные поля запроса',
     method: 'POST',
     path: '/nested',
     body: json(

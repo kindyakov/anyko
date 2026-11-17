@@ -47,6 +47,7 @@ export const eventStream = (): EventsResponse => ({ kind: 'events' });
 export type Idempotency = 'key' | 'natural' | 'none';
 
 export interface EndpointSpec {
+  readonly summary: string;
   readonly method: HttpMethod;
   readonly path: `/${string}`;
   readonly params?: z.ZodObject;

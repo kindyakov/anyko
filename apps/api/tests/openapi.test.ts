@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { getWork as getWorkEndpoint } from '@anyko/contracts/works';
 import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../src/http/app';
@@ -32,6 +33,7 @@ test('OpenAPI document is built from the endpoint descriptions outside productio
       Record<
         string,
         {
+          summary: string;
           'x-error-codes': string[];
           parameters: { name: string; in: string }[];
         }
@@ -41,6 +43,7 @@ test('OpenAPI document is built from the endpoint descriptions outside productio
   expect(document.openapi).toBe('3.1.0');
   const getWork =
     document.paths['/api/v1/workspaces/{workspaceId}/works/{workId}']?.get;
+  expect(getWork?.summary).toBe(getWorkEndpoint.summary);
   expect(getWork?.['x-error-codes']).toContain('NOT_FOUND');
   expect(getWork?.['x-error-codes']).toContain('FORBIDDEN');
   // Область описана параметром пути: web и клиенты видят её в документе, а не только в коде.
