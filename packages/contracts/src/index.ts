@@ -1,11 +1,8 @@
-import { z } from 'zod';
-
-export const healthResponseSchema = z.object({ status: z.literal('ok') });
-export const sessionResponseSchema = z.object({
-  user: z.object({ id: z.string(), name: z.string(), email: z.email() }),
-  workspace: z.object({ id: z.string(), name: z.string() }),
-});
-export type Session = z.infer<typeof sessionResponseSchema>;
+// Временный корневой экспорт: web ещё импортирует `@anyko/contracts`. Удаляется в web #11,
+// новый код импортирует subpath (`@anyko/contracts/works` и т. д.).
+export * from './common';
+export * from './catalog';
+export * from './connections';
 export * from './documents';
-export * from './errors';
+export * from './session';
 export * from './works';

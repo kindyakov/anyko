@@ -23,6 +23,8 @@ export const errorCodeSchema = z.enum([
   'INTERNAL_ERROR',
 ]);
 
+export type ErrorCode = z.infer<typeof errorCodeSchema>;
+
 export const httpErrorSchema = z.object({
   error: z.object({
     code: errorCodeSchema,

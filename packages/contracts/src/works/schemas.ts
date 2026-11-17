@@ -1,21 +1,19 @@
 import { z } from 'zod';
 
-import { agentSessionSchema } from './agent-session';
-export * from './agent-session';
 import {
   documentPackageSchema,
-  generationFileSchema,
-} from './document-packages';
-import { documentSchema } from './documents';
-import {
   fieldKeySchema,
   fieldValueIssue,
   fieldValueSchema,
   fieldValuesSchema,
+  generationFileSchema,
   readFieldValues,
-} from './work-fields';
-export * from './work-fields';
-export * from './document-packages';
+} from '../catalog';
+import { documentSchema } from '../documents';
+
+import { agentSessionSchema } from './agent-session';
+
+export * from './agent-session';
 
 export const evidenceSchema = z
   .object({
@@ -144,23 +142,4 @@ export const editWorkSchema = z
 export const revisionSchema = z
   .object({ revision: z.number().int().nonnegative() })
   .strict();
-export const llmSettingsInputSchema = z
-  .object({
-    baseURL: z.url().max(500),
-    visionModel: z.string().min(1).max(200),
-    extractionModel: z.string().min(1).max(200),
-    apiKey: z.string().min(1).max(8192).optional(),
-  })
-  .strict();
-export const llmSettingsResponseSchema = z.object({
-  settings: z
-    .object({
-      revision: z.number().int(),
-      baseURL: z.string(),
-      visionModel: z.string(),
-      extractionModel: z.string(),
-      configured: z.boolean(),
-    })
-    .nullable(),
-  canManage: z.boolean(),
-});
+export const queuedStatusSchema = z.object({ status: z.literal('queued') });

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { fieldKeySchema } from './work-fields';
+import { fieldKeySchema } from '../catalog';
 
 export const agentSessionContextSchema = z
   .object({

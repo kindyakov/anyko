@@ -23,4 +23,10 @@ export const documentResultSchema = z.object({
   processorVersion: z.string(),
   images: z.array(z.object({ path: z.string(), url: z.string() })).default([]),
 });
+// Файл исходного документа; общий предел для загрузки в работу и в документы.
+export const uploadFileSchema = z.file().max(20 * 1024 * 1024);
+export const deletingStatusSchema = z.object({ status: z.literal('deleting') });
+export const documentDeletionSchema = z.object({
+  status: z.enum(['deleting', 'deleted', 'needs-recovery']),
+});
 export type DocumentSummary = z.infer<typeof documentSchema>;

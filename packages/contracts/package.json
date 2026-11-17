@@ -3,7 +3,13 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./common": "./src/common/index.ts",
+    "./session": "./src/session/index.ts",
+    "./works": "./src/works/index.ts",
+    "./documents": "./src/documents/index.ts",
+    "./catalog": "./src/catalog/index.ts",
+    "./connections": "./src/connections/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
