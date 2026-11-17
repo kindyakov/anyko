@@ -3,6 +3,10 @@ import { betterAuth } from 'better-auth';
 
 import type { Database } from '@anyko/database';
 
+import type { WorkspaceScope } from '../../../platform/scope/workspace-scope';
+import { rightsForRole } from '../domain/roles';
+import { type AccessSession, issueScope, scopeFor } from '../domain/scope';
+
 export interface AccessOptions {
   /** Shared client owned by the composition root; access never connects or disconnects it. */
   db: Database;
@@ -35,35 +39,44 @@ export function createAccess(options: AccessOptions) {
   const auth = buildAuth(options);
   return {
     handle: (request: Request) => auth.handler(request),
-    async canManage(userId: string, workspaceId: string) {
-      return (
-        (
-          await db.membership.findUnique({
-            where: { workspaceId_userId: { workspaceId, userId } },
-          })
-        )?.role === 'owner'
-      );
-    },
-    async session(headers: Headers) {
+    // Сессия Better Auth без участий — тоже сессия: web получает пустой список и не зацикливается.
+    async session(headers: Headers): Promise<AccessSession | null> {
       const session = await auth.api.getSession({ headers });
       if (!session) return null;
-      const membership = await db.membership.findFirst({
+      const memberships = await db.membership.findMany({
         where: { userId: session.user.id },
         include: { workspace: true },
-        orderBy: { workspaceId: 'asc' },
+        orderBy: [{ workspace: { name: 'asc' } }, { workspaceId: 'asc' }],
       });
-      if (!membership) return null;
       return {
         user: {
           id: session.user.id,
           name: session.user.name,
           email: session.user.email,
         },
-        workspace: {
-          id: membership.workspace.id,
-          name: membership.workspace.name,
-        },
+        memberships: memberships.map((membership) => ({
+          workspace: {
+            id: membership.workspace.id,
+            name: membership.workspace.name,
+          },
+          rights: [...rightsForRole(membership.role)],
+        })),
       };
+    },
+    scope: scopeFor,
+    // Временно (удаляется вместе с web #11): первое участие по workspaceId, как прежний маршрут
+    // без области в адресе.
+    async legacyScope(userId: string): Promise<WorkspaceScope | null> {
+      const membership = await db.membership.findFirst({
+        where: { userId },
+        orderBy: { workspaceId: 'asc' },
+      });
+      if (!membership) return null;
+      return issueScope(
+        userId,
+        membership.workspaceId,
+        rightsForRole(membership.role),
+      );
     },
   };
 }

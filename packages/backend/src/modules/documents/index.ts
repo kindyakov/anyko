@@ -16,6 +16,10 @@ export {
 export type DocumentService = ReturnType<
   typeof import('./application/service').createDocumentService
 >;
+export {
+  createRecognitions,
+  type RecognitionService,
+} from './application/recognitions';
 export { documentResultSchema } from './application/result-schema';
 export type { SourceFormat } from './application/source-format';
 export { sourceFormatFromKey } from './application/source-format';

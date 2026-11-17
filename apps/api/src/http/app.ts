@@ -3,13 +3,17 @@ import { Elysia } from 'elysia';
 import type { Endpoint } from '@anyko/contracts/common';
 import { createLogger, type Logger } from '@anyko/logger';
 
+import { legacyLayer } from './legacy/paths';
+import { legacyWorkspaceScopeGuard } from './legacy/scope';
+import { legacySessionRoutes } from './legacy/session';
 import { buildOpenApi } from './openapi';
 import { errorHandling } from './plugins/errors';
 import { noStore } from './plugins/no-store';
 import { originGuard } from './plugins/origin';
 import { requestContext } from './plugins/request-context';
 import { sessionGuard } from './plugins/session';
-import { createRoute } from './route';
+import { workspaceScopeGuard } from './plugins/workspace-scope';
+import { createRoute, type Route, versionedLayer } from './route';
 import { authRoutes } from './routes/auth';
 import { catalogRoutes } from './routes/catalog';
 import { connectionRoutes } from './routes/connections';
@@ -49,20 +53,16 @@ export function createApp(options?: AppOptions) {
     app.get('/api/v1/openapi.json', () => buildOpenApi([...endpoints]));
   const api = options?.workHttp ?? options?.documentHttp;
   if (api) {
-    // Один набор маршрутов под двумя префиксами. Временный префикс без версии
-    // удаляется вместе с web #11.
-    for (const prefix of ['/api/v1', '/api'])
-      app.use(
-        apiRoutes({
-          prefix,
-          logger,
-          strictErrors,
-          endpoints,
-          api,
-          documentHttp: options?.documentHttp,
-          workHttp: options?.workHttp,
-        }),
-      );
+    const input = {
+      logger,
+      strictErrors,
+      api,
+      documentHttp: options?.documentHttp,
+      workHttp: options?.workHttp,
+    };
+    app.use(versionedRoutes({ ...input, endpoints }));
+    // Временный слой без версии (web #11): те же обработчики, другой адрес и источник области.
+    app.use(legacyRoutes(input));
   }
   return app
     .get('/health', () => ({ status: 'ok' }))
@@ -74,33 +74,55 @@ export function createApp(options?: AppOptions) {
     });
 }
 
-// Hooks API живут в собственном экземпляре: они не попадают на health и на Better Auth.
-function apiRoutes(input: {
-  prefix: string;
+interface ApiInput {
   logger: Logger;
   strictErrors: boolean;
-  endpoints: Set<Endpoint>;
   api: DocumentHttpOptions;
   documentHttp: DocumentHttpOptions | undefined;
   workHttp: WorkHttpOptions | undefined;
-}): Elysia {
-  const { api } = input;
+}
+
+// Hooks API живут в собственном экземпляре: они не попадают на health и на Better Auth.
+// Порядок hooks: сессия → origin → область → разбор входа (внутри route()).
+function versionedRoutes(input: ApiInput & { endpoints: Set<Endpoint> }) {
   const route = createRoute({
+    layer: versionedLayer,
     logger: input.logger,
     strictErrors: input.strictErrors,
     endpoints: input.endpoints,
-    prefix: input.prefix,
   });
   const app = new Elysia();
   noStore(app);
-  sessionGuard(app, api.access);
-  originGuard(app, api.origin);
+  sessionGuard(app, input.api.access);
+  originGuard(app, input.api.origin);
+  workspaceScopeGuard(app, input.api.access);
   sessionRoutes(route, app);
+  registerScopedRoutes(route, app, input);
+  return app;
+}
+
+function legacyRoutes(input: ApiInput) {
+  const route = createRoute({
+    layer: legacyLayer,
+    logger: input.logger,
+    strictErrors: input.strictErrors,
+  });
+  const app = new Elysia();
+  noStore(app);
+  sessionGuard(app, input.api.access);
+  originGuard(app, input.api.origin);
+  legacyWorkspaceScopeGuard(app, input.api.access);
+  legacySessionRoutes(route, app);
+  registerScopedRoutes(route, app, input);
+  return app;
+}
+
+// Одни и те же функции регистрируют маршруты обоих слоев: слой решает адрес и область.
+function registerScopedRoutes(route: Route, app: Elysia, input: ApiInput) {
   if (input.documentHttp) documentRoutes(route, app, input.documentHttp);
   if (input.workHttp) {
     catalogRoutes(route, app, input.workHttp.works);
     worksRoutes(route, app, input.workHttp);
     connectionRoutes(route, app, input.workHttp);
   }
-  return app;
 }

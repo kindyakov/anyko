@@ -2,6 +2,7 @@ import type { Elysia } from 'elysia';
 import type { z } from 'zod';
 
 import { AppError, isAppError } from '@anyko/backend/errors';
+import type { WorkspaceScope } from '@anyko/backend/scope';
 import type {
   Endpoint,
   ErrorCode,
@@ -15,16 +16,28 @@ import type { Logger } from '@anyko/logger';
 import { requestState } from './request-state';
 
 // route() регистрирует маршрут по endpoint-описанию из contracts (ADR 0009): разбирает вход,
-// проверяет ответ и выставляет статус успеха. Сценарий получает уже проверенные значения.
+// проверяет ответ и выставляет статус успеха. Сценарий получает уже проверенные значения и
+// доверенную область, если адрес её содержит. Порядок: сессия → origin → область → вход → сценарий.
+
+// Слой адресов: версия API или временный префикс без версии (его удалит web #11).
+export interface RouteLayer {
+  readonly prefix: string;
+  // Путь маршрута внутри слоя или null: слой не регистрирует это описание.
+  pathOf(endpoint: Endpoint): string | null;
+}
+
+export const versionedLayer: RouteLayer = {
+  prefix: '/api/v1',
+  pathOf: (endpoint) => endpoint.path,
+};
 
 export interface RouteEnv {
-  // Описания, зарегистрированные маршрутами; из них строится OpenAPI.
-  readonly endpoints: Set<Endpoint>;
-  // Префикс версии или временный префикс без версии: в описании путь без него.
-  readonly prefix: string;
+  readonly layer: RouteLayer;
   readonly logger: Logger;
   // В тестах код ошибки, не объявленный в описании, даёт 500: тест ловит расхождение.
   readonly strictErrors: boolean;
+  // Описания версии v1, из них строится OpenAPI; временный слой не добавляет туда ничего.
+  readonly endpoints?: Set<Endpoint>;
 }
 
 interface FileResult {
@@ -50,7 +63,12 @@ type ResponseOf<E> = E extends { response: JsonPart<infer S> }
     ? FileResult
     : Response;
 
-interface RouteContext<E extends Endpoint> {
+// Маршрут с :workspaceId получает область, которую уже проверил plugin; остальным она не передаётся.
+type ScopeOf<E> = E extends { path: `${string}:workspaceId${string}` }
+  ? { readonly scope: WorkspaceScope }
+  : { readonly scope?: WorkspaceScope };
+
+type RouteContext<E extends Endpoint> = ScopeOf<E> & {
   readonly session: Session;
   readonly requestId: string;
   readonly request: Request;
@@ -59,33 +77,39 @@ interface RouteContext<E extends Endpoint> {
   readonly query: ParsedPart<E, 'query'>;
   readonly headers: ParsedPart<E, 'headers'>;
   readonly body: BodyOf<E>;
-}
+  // Адрес другого описания в этом слое: ссылки в ответе строятся тем же префиксом, что и вызов.
+  readonly link: (target: Endpoint, params: Record<string, string>) => string;
+};
 
 type RouteHandler<E extends Endpoint> = (
   context: RouteContext<E>,
 ) => ResponseOf<E> | Promise<ResponseOf<E>>;
 
-// Проверка доступа до разбора входа (как прежние маршруты: сначала право, потом тело).
-interface RouteOptions {
-  readonly guard?: (context: {
-    session: Session;
-    requestId: string;
-  }) => Promise<void> | void;
-}
-
 export type Route = <E extends Endpoint>(
   app: Elysia,
   endpoint: E,
   handler: RouteHandler<E>,
-  options?: RouteOptions,
 ) => Elysia;
 
 export function createRoute(env: RouteEnv): Route {
-  return function route(app, endpoint, handler, options) {
-    env.endpoints.add(endpoint);
+  const { layer } = env;
+  const link = (target: Endpoint, params: Record<string, string>) => {
+    const path = layer.pathOf(target);
+    if (path === null) throw new Error('LINK_TARGET_NOT_IN_LAYER');
+    const filled = path.replaceAll(/:(\w+)/g, (_match, name: string) => {
+      const value = params[name];
+      if (value === undefined) throw new Error(`LINK_PARAM_MISSING:${name}`);
+      return encodeURIComponent(value);
+    });
+    return `${layer.prefix}${filled}`;
+  };
+  return function route(app, endpoint, handler) {
+    const path = layer.pathOf(endpoint);
+    if (path === null) return app;
+    env.endpoints?.add(endpoint);
     app.route(
       endpoint.method,
-      `${env.prefix}${endpoint.path}`,
+      `${layer.prefix}${path}`,
       async ({ request, params, query, set }) => {
         const state = requestState(request);
         const session = state?.session;
@@ -93,14 +117,19 @@ export function createRoute(env: RouteEnv): Route {
         const requestId = state.requestId;
         const allowed = new Set<string>(endpoint.errors);
         try {
-          await options?.guard?.({ session, requestId });
-          const input = await readInput(endpoint, request, params, query);
+          // Во временном слое области нет в адресе: её идентификатор берётся из scope. В v1 он совпадает с адресом.
+          const pathParams = state.scope
+            ? { ...params, workspaceId: state.scope.workspaceId }
+            : params;
+          const input = await readInput(endpoint, request, pathParams, query);
           const value = await handler({
             ...input,
             session,
+            scope: state.scope,
             requestId,
             request,
             signal: request.signal,
+            link,
           } as RouteContext<typeof endpoint>);
           return await respond(endpoint, value, set, env.logger, requestId);
         } catch (error) {

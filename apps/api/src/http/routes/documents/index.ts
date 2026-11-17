@@ -1,7 +1,8 @@
 import type { Elysia } from 'elysia';
 
 import type { createAccess } from '@anyko/backend/access';
-import type { createDocumentService } from '@anyko/backend/documents';
+import type { RecognitionService } from '@anyko/backend/documents';
+import { brandDocumentId } from '@anyko/backend/ids';
 import {
   deleteDocument,
   getDocument,
@@ -16,97 +17,88 @@ import {
 
 import type { Route } from '../../route';
 
+import { imageHeaders, imageIndex, sourceFileHeaders } from './files';
+
 export interface DocumentHttpOptions {
-  documents: ReturnType<typeof createDocumentService>;
+  documents: RecognitionService;
   access: ReturnType<typeof createAccess>;
   origin: string;
 }
 
-const sandboxed = "default-src 'none'; sandbox";
-
+// Распознавание вне работы: сценарии на модуле documents. Адреса и область строит маршрут,
+// право recognitions.use проверяет сценарий.
 export function documentRoutes(
   route: Route,
   app: Elysia,
   options: Pick<DocumentHttpOptions, 'documents'>,
 ) {
   const { documents } = options;
-  route(app, listDocuments, async ({ session }) => ({
-    documents: await documents.list({ workspaceId: session.workspace.id }),
-    deletions: await documents.pendingDeletions({
-      workspaceId: session.workspace.id,
-    }),
+  route(app, listDocuments, async ({ scope }) => ({
+    documents: await documents.list(scope),
+    deletions: await documents.pendingDeletions(scope),
   }));
-  route(app, uploadDocument, async ({ session, headers, body, requestId }) => ({
-    document: await documents.upload({
-      workspaceId: session.workspace.id,
-      actorId: session.user.id,
-      filename: body.file.name,
+  route(app, uploadDocument, async ({ scope, headers, body, requestId }) => ({
+    document: await documents.upload(scope, {
       requestKey: headers['idempotency-key'],
+      filename: body.file.name,
       bytes: new Uint8Array(await body.file.arrayBuffer()),
       correlationId: requestId,
     }),
   }));
-  route(app, getDocument, async ({ session, params }) => ({
-    document: await documents.get({
-      workspaceId: session.workspace.id,
-      documentId: params.documentId,
-    }),
+  route(app, getDocument, async ({ scope, params }) => ({
+    document: await documents.get(scope, brandDocumentId(params.documentId)),
   }));
-  route(app, getDocumentResult, ({ session, params }) =>
-    documents.result({
-      workspaceId: session.workspace.id,
-      documentId: params.documentId,
-    }),
-  );
-  route(app, getDocumentSource, async ({ session, params }) => {
-    const source = await documents.source({
-      workspaceId: session.workspace.id,
-      documentId: params.documentId,
-    });
+  route(app, getDocumentResult, async ({ scope, params, link }) => {
+    const result = await documents.result(
+      scope,
+      brandDocumentId(params.documentId),
+    );
+    return {
+      markdown: result.markdown,
+      processorVersion: result.processorVersion,
+      images: result.images.map((image) => ({
+        path: image.path,
+        url: link(getDocumentImage, {
+          workspaceId: scope.workspaceId,
+          documentId: params.documentId,
+          index: String(image.index),
+        }),
+      })),
+    };
+  });
+  route(app, getDocumentSource, async ({ scope, params }) => {
+    const source = await documents.source(
+      scope,
+      brandDocumentId(params.documentId),
+    );
     return {
       bytes: source.bytes,
-      headers: {
-        'content-type': source.contentType,
-        'content-disposition': `inline; filename*=UTF-8''${encodeURIComponent(source.filename)}`,
-        'content-security-policy': sandboxed,
-      },
+      headers: sourceFileHeaders(source),
     };
   });
-  route(app, getDocumentImage, async ({ session, params }) => {
-    // Индекс не в диапазоне даёт -1: сервис вернёт NOT_FOUND, как и раньше.
-    const index = /^\d{1,2}$/.test(params.index) ? Number(params.index) : -1;
-    const image = await documents.image({
-      workspaceId: session.workspace.id,
-      documentId: params.documentId,
-      index,
-    });
+  route(app, getDocumentImage, async ({ scope, params }) => {
+    const image = await documents.image(
+      scope,
+      brandDocumentId(params.documentId),
+      imageIndex(params.index),
+    );
     return {
       bytes: image.bytes,
-      headers: {
-        'content-type': image.contentType,
-        'content-security-policy': sandboxed,
-      },
+      headers: imageHeaders(image.contentType),
     };
   });
-  route(app, getDocumentDeletion, ({ session, params }) =>
-    documents.deletion({
-      workspaceId: session.workspace.id,
-      documentId: params.documentId,
-    }),
+  route(app, getDocumentDeletion, ({ scope, params }) =>
+    documents.deletion(scope, brandDocumentId(params.documentId)),
   );
-  route(app, deleteDocument, async ({ session, params }) => {
-    await documents.remove({
-      workspaceId: session.workspace.id,
-      documentId: params.documentId,
-    });
+  route(app, deleteDocument, async ({ scope, params }) => {
+    await documents.remove(scope, brandDocumentId(params.documentId));
     return { status: 'deleting' as const };
   });
-  route(app, retryDocument, async ({ session, params, requestId }) => ({
-    document: await documents.retry({
-      workspaceId: session.workspace.id,
-      documentId: params.documentId,
-      actorId: session.user.id,
-      correlationId: requestId,
-    }),
+  route(app, retryDocument, async ({ scope, params, requestId }) => ({
+    document: await documents.retry(
+      scope,
+      brandDocumentId(params.documentId),
+      requestId,
+    ),
   }));
 }
