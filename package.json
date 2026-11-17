@@ -11,7 +11,7 @@
     "dev:api": "bun run --filter @anyko/api dev",
     "dev:worker": "bun run --filter @anyko/worker dev",
     "format:check": "bun fmt --check apps packages scripts tests .github package.json eslint.config.mjs knip.json .dependency-cruiser.cjs .jscpd.json",
-    "lint": "eslint apps packages tests",
+    "lint": "node --max-old-space-size=8192 node_modules/eslint/bin/eslint.js apps packages tests",
     "typecheck": "bun run --filter '@anyko/*' typecheck && tsc -p tests/architecture/tsconfig.json && tsc -p scripts/tsconfig.json && tsc -p tests/integration/tsconfig.json",
     "boundaries": "depcruise --config .dependency-cruiser.cjs apps packages",
     "knip": "knip",
