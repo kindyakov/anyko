@@ -112,14 +112,12 @@ export function createConnectionsStore(
     async revoke(workspaceId, now) {
       await lock(workspaceId);
       const row = await latest(workspaceId);
-      if (!row || row.revokedAt) return null;
-      await db.llmSettings.update({
-        where: {
-          workspaceId_revision: { workspaceId, revision: row.revision },
-        },
+      if (!row) return null;
+      const { count } = await db.llmSettings.updateMany({
+        where: { workspaceId, revokedAt: null },
         data: { revokedAt: now, encryptedKey: '' },
       });
-      return row.revision;
+      return count === 0 ? null : { revision: row.revision, count };
     },
   };
 }

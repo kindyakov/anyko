@@ -11,16 +11,16 @@ export const revokeConnection =
   }) =>
   async (scope: WorkspaceScope) => {
     scope.require('connections.manage');
-    const revision = await deps.store.revoke(
+    const revoked = await deps.store.revoke(
       scope.workspaceId,
       deps.clock.now(),
     );
-    if (revision === null) return;
+    if (revoked === null) return;
     await deps.audit.commands.record({
       workspaceId: scope.workspaceId,
       actorId: scope.userId,
       action: 'connections.revoked',
       target: { kind: 'workspace', id: scope.workspaceId },
-      data: { revision },
+      data: revoked,
     });
   };

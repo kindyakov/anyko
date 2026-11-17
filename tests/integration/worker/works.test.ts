@@ -827,7 +827,7 @@ test('revoking the recorded revision stops analysis before another model call ev
       where: { workspaceId: input.workspaceId, action: 'connections.revoked' },
       select: { data: true },
     });
-    expect(events).toEqual([{ data: { revision: 1 } }]);
+    expect(events).toEqual([{ data: { revision: 1, count: 1 } }]);
     // A replacement makes the test catch an accidental latest-revision fallback.
     await runtime.saveSettings(input.workspaceId, rotatedConnection());
     visual.release();
@@ -837,6 +837,50 @@ test('revoking the recorded revision stops analysis before another model call ev
       errorCode: 'CONNECTION_REVOKED',
     });
     expect(extractionCount).toBe(before);
+  } finally {
+    visual.cleanup();
+  }
+});
+
+test('rotation followed by revocation stops a run pinned to the old revision before the next model call', async () => {
+  const input = await create();
+  const visual = holdFirstVisual();
+  const scope = memberScope(input.workspaceId);
+  const before = extractionCount;
+  try {
+    await upload(input);
+    await analyze(input);
+    await visual.started();
+    await runtime.saveSettings(input.workspaceId, rotatedConnection());
+    await apiBackend.workHttp.settings.revoke(scope);
+    visual.release();
+    const state = await until(input, terminal);
+    expect(state.runs[0]).toMatchObject({
+      status: 'failed',
+      errorCode: 'CONNECTION_REVOKED',
+    });
+    expect(extractionCount).toBe(before);
+    expect(
+      await db.llmSettings.count({ where: { workspaceId: input.workspaceId } }),
+    ).toBe(2);
+    expect(
+      await db.llmSettings.count({
+        where: {
+          workspaceId: input.workspaceId,
+          revokedAt: { not: null },
+          encryptedKey: '',
+        },
+      }),
+    ).toBe(2);
+    expect(
+      await db.auditEvent.findMany({
+        where: {
+          workspaceId: input.workspaceId,
+          action: 'connections.revoked',
+        },
+        select: { data: true },
+      }),
+    ).toEqual([{ data: { revision: 2, count: 2 } }]);
   } finally {
     visual.cleanup();
   }

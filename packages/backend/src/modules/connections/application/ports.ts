@@ -8,7 +8,10 @@ export interface LlmConfiguration {
 }
 export interface LlmSettingsStore {
   lock(workspaceId: string): Promise<void>;
-  revoke(workspaceId: string, now: Date): Promise<number | null>;
+  revoke(
+    workspaceId: string,
+    now: Date,
+  ): Promise<{ revision: number; count: number } | null>;
   current(workspaceId: string): Promise<LlmConfiguration | null>;
   connection(
     workspaceId: string,

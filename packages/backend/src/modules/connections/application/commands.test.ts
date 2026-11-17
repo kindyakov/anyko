@@ -21,7 +21,7 @@ function fixture() {
     },
     revoke: () => {
       revoked++;
-      return Promise.resolve(revoked === 1 ? 2 : null);
+      return Promise.resolve(revoked === 1 ? { revision: 2, count: 2 } : null);
     },
   };
   const audit = {
@@ -62,7 +62,7 @@ test('revoking without connections.manage is forbidden before persistence', asyn
   expect(deps.revoked()).toBe(0);
   expect(deps.writes).toEqual([]);
 });
-test('revocation records only its revision and a repeat records nothing', async () => {
+test('revocation records its latest revision and count and a repeat records nothing', async () => {
   const deps = fixture();
   const revoke = revokeConnection({
     ...deps,
@@ -77,7 +77,7 @@ test('revocation records only its revision and a repeat records nothing', async 
       actorId: 'owner',
       action: 'connections.revoked',
       target: { kind: 'workspace', id: 'local' },
-      data: { revision: 2 },
+      data: { revision: 2, count: 2 },
     },
   ]);
   expect(JSON.stringify(deps.writes)).not.toContain('secret');

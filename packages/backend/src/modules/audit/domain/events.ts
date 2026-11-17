@@ -21,9 +21,14 @@ type AuditEvent =
       readonly data: { readonly role: string };
     }
   | {
-      readonly action: 'connections.settings_saved' | 'connections.revoked';
+      readonly action: 'connections.settings_saved';
       readonly target: AuditTarget;
       readonly data: { readonly revision: number };
+    }
+  | {
+      readonly action: 'connections.revoked';
+      readonly target: AuditTarget;
+      readonly data: { readonly revision: number; readonly count: number };
     }
   | {
       readonly action: 'documents.deleted';
