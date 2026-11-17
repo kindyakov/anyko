@@ -43,6 +43,7 @@ const legacy = {
   },
   connections: {
     path: '/workspaces/:workspaceId/settings/llm',
+    methods: ['GET', 'POST', 'DELETE'],
     reason: 'Адрес появился до выделения модуля connections',
     action:
       'Согласовать адрес /connections/llm и переход на PUT для сохранения',
@@ -122,27 +123,40 @@ test('static path segments use kebab-case', () => {
       );
 });
 
+function isLegacyConnection(entry: Entry) {
+  return (
+    entry.resource === 'connections' &&
+    entry.endpoint.path === legacy.connections.path &&
+    legacy.connections.methods.some(
+      (method) => method === entry.endpoint.method,
+    )
+  );
+}
+
+function unknownPathSegment({ segments }: Entry) {
+  return segments.find(
+    (segment, index) =>
+      !isParameter(segment) &&
+      !collections.has(segment) &&
+      (isParameter(segments[index + 1] ?? '') ||
+        !(singletons.has(segment) || actions.has(segment))),
+  );
+}
+
 test('resource paths use the agreed collections and nouns', () => {
   for (const entry of entries) {
-    const { endpoint, segments } = entry;
     if (
-      address(endpoint) === legacy.deletion.address ||
-      (entry.resource === 'connections' &&
-        endpoint.path === legacy.connections.path)
+      address(entry.endpoint) === legacy.deletion.address ||
+      isLegacyConnection(entry)
     )
       continue;
-    for (const [index, segment] of segments.entries()) {
-      if (isParameter(segment)) continue;
-      expect(
-        collections.has(segment) ||
-          (!isParameter(segments[index + 1] ?? '') &&
-            (singletons.has(segment) || actions.has(segment))),
-        `${label(entry)}: «${segment}» отсутствует в словаре, согласуйте ресурс во множественном числе, одиночный ресурс или действие`,
-      ).toBe(true);
-    }
+    const segment = unknownPathSegment(entry);
+    expect(
+      segment,
+      `${label(entry)}: «${segment}» отсутствует в словаре, согласуйте ресурс во множественном числе, одиночный ресурс или действие`,
+    ).toBeUndefined();
   }
 });
-
 test('path parameters use camelCase resourceId or index', () => {
   for (const entry of entries)
     for (const parameter of entry.segments.filter(isParameter))
@@ -169,15 +183,18 @@ test('path nesting fits within the deepest existing address', () => {
     ).toBeLessThanOrEqual(8);
 });
 
+function endsWithReadResource(entry: Entry) {
+  const last = entry.segments.at(-1) ?? '';
+  return last !== 'deletion' && !actions.has(last);
+}
+
 test('GET ends with a noun or an identifier', () => {
   for (const entry of entries.filter(
     ({ endpoint }) => endpoint.method === 'GET',
   )) {
-    const last = entry.segments.at(-1) ?? '';
     expect(
-      !actions.has(last) &&
-        (last !== 'deletion' ||
-          address(entry.endpoint) === legacy.deletion.address),
+      endsWithReadResource(entry) ||
+        address(entry.endpoint) === legacy.deletion.address,
       `${label(entry)}: дайте читаемому ресурсу имя существительное`,
     ).toBe(true);
   }
@@ -198,20 +215,22 @@ test('actions use POST after an identifier and one verb', () => {
   }
 });
 
+function endsWithCollectionOrAction(entry: Entry) {
+  const last = entry.segments.at(-1) ?? '';
+  return actions.has(last) || collections.has(last);
+}
+
 test('POST creates a collection member or invokes an action', () => {
   for (const entry of entries.filter(
     ({ endpoint }) => endpoint.method === 'POST',
   )) {
-    const { endpoint, segments } = entry;
     if (
-      address(endpoint) === legacy.fields.address ||
-      (entry.resource === 'connections' &&
-        endpoint.path === legacy.connections.path)
+      address(entry.endpoint) === legacy.fields.address ||
+      isLegacyConnection(entry)
     )
       continue;
-    const last = segments.at(-1) ?? '';
     expect(
-      actions.has(last) || collections.has(last),
+      endsWithCollectionOrAction(entry),
       `${label(entry)}: создавайте через POST в коллекцию, правьте через PATCH, заменяйте через PUT`,
     ).toBe(true);
   }
@@ -345,32 +364,88 @@ test('query uses at most one pagination mode', () => {
   }
 });
 
+function hasListItems(entry: Entry) {
+  const { response } = entry.endpoint;
+  return (
+    response.kind === 'json' &&
+    response.schema instanceof z.ZodObject &&
+    'items' in response.schema.shape
+  );
+}
+
+function listViolation(entry: Entry) {
+  const { endpoint, name } = entry;
+  if (endpoint.response.kind !== 'json') return;
+  if (
+    !hasListItems(entry) &&
+    !(endpoint.method === 'GET' && name.startsWith('list'))
+  )
+    return;
+  const mode = listResponseMode(endpoint.response.schema);
+  if (!mode)
+    return 'создайте ответ через pageResponseSchema или cursorResponseSchema';
+  const shared = mode === 'page' ? pageQuerySchema : cursorQuerySchema;
+  for (const [key, field] of Object.entries(shared.shape))
+    if (endpoint.query?.shape[key] !== field)
+      return `возьмите ${key} из общей схемы query, расширив её фильтрами`;
+}
+
 test('list responses use shared pagination schemas and matching query fields', () => {
   for (const entry of entries) {
-    const { endpoint, name } = entry;
-    if (endpoint.response.kind !== 'json') continue;
-    const { schema } = endpoint.response;
-    const hasItems = schema instanceof z.ZodObject && 'items' in schema.shape;
-    if (!hasItems && !(endpoint.method === 'GET' && name.startsWith('list')))
-      continue;
     const exception = Object.entries(legacy.lists).find(
-      ([key]) => key === name,
+      ([name]) => name === entry.name,
     )?.[1];
-    if (!hasItems && exception?.address === address(endpoint)) continue;
-    const mode = listResponseMode(schema);
-    const shared = mode === 'page' ? pageQuerySchema : cursorQuerySchema;
-    expect(
-      mode,
-      `${label(entry)}: создайте ответ через pageResponseSchema или cursorResponseSchema`,
-    ).toBeDefined();
-    for (const [key, field] of Object.entries(shared.shape))
-      expect(
-        endpoint.query?.shape[key],
-        `${label(entry)}: возьмите ${key} из общей схемы query, расширив её фильтрами`,
-      ).toBe(field);
+    if (!hasListItems(entry) && exception?.address === address(entry.endpoint))
+      continue;
+    const violation = listViolation(entry);
+    if (violation) throw new Error(`${label(entry)}: ${violation}`);
   }
 });
 
+test('legacy API exceptions still cover violations at their declared addresses', () => {
+  const deletion = entries.find(
+    (entry) => address(entry.endpoint) === legacy.deletion.address,
+  );
+  expect(
+    deletion !== undefined &&
+      (unknownPathSegment(deletion) !== undefined ||
+        !endsWithReadResource(deletion)),
+    `${legacy.deletion.address}: удалите устаревшую запись из legacy.deletion`,
+  ).toBe(true);
+
+  const fields = entries.find(
+    (entry) => address(entry.endpoint) === legacy.fields.address,
+  );
+  expect(
+    fields !== undefined && !endsWithCollectionOrAction(fields),
+    `${legacy.fields.address}: удалите устаревшую запись из legacy.fields`,
+  ).toBe(true);
+
+  for (const method of legacy.connections.methods) {
+    const connection = entries.find(
+      (entry) => isLegacyConnection(entry) && entry.endpoint.method === method,
+    );
+    expect(
+      connection !== undefined &&
+        (unknownPathSegment(connection) !== undefined ||
+          (method === 'POST' && !endsWithCollectionOrAction(connection))),
+      `${method} ${legacy.connections.path}: удалите устаревший метод из legacy.connections`,
+    ).toBe(true);
+  }
+
+  for (const [name, exception] of Object.entries(legacy.lists)) {
+    const list = entries.find(
+      (entry) =>
+        entry.name === name && address(entry.endpoint) === exception.address,
+    );
+    expect(
+      list !== undefined &&
+        !hasListItems(list) &&
+        listViolation(list) !== undefined,
+      `${name} (${exception.address}): удалите устаревшую запись из legacy.lists`,
+    ).toBe(true);
+  }
+});
 test('summaries describe each operation in one Russian line', () => {
   for (const entry of entries)
     expect(
