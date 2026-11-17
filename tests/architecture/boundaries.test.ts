@@ -593,6 +593,29 @@ test('backend-contracts-only-zod permits zod and rejects other external or Node 
   }
 });
 
+test('backend-scope-issued-by-access rejects scope issuance outside access and permits access', async () => {
+  const issuer = 'packages/backend/src/platform/scope/issue.ts';
+  const issuerSource = 'export const issueWorkspaceScope = () => 1;';
+  const rejected = await check({
+    [issuer]: issuerSource,
+    'packages/backend/src/modules/works/application/example.ts':
+      "import { issueWorkspaceScope } from '../../../platform/scope/issue.ts';\nexport const scope = issueWorkspaceScope;",
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(rejected.result, 'backend-scope-issued-by-access')).toBe(
+    true,
+  );
+  const allowed = await check({
+    [issuer]: issuerSource,
+    'packages/backend/src/modules/access/infrastructure/example.ts':
+      "import { issueWorkspaceScope } from '../../../platform/scope/issue.ts';\nexport const scope = issueWorkspaceScope;",
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(allowed.result, 'backend-scope-issued-by-access')).toBe(
+    false,
+  );
+});
+
 test('ESLint rejects request body parsing in HTTP routes and permits passed-in values', async () => {
   const filename = 'apps/api/src/http/routes/example.js';
   const rejected = await lintSnippet(

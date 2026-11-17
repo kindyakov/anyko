@@ -254,6 +254,19 @@ module.exports = {
       },
       to: { path: '^packages/database/', dependencyTypesNot: ['type-only'] },
     },
+    {
+      name: 'backend-scope-issued-by-access',
+      comment:
+        'WorkspaceScope выдаёт только modules/access после проверки участия (ADR 0009): выдающий файл platform/scope/issue.ts импортирует только access.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^packages/backend/src/modules/access/',
+          '^packages/backend/src/platform/scope/issue[.]ts$',
+        ],
+      },
+      to: { path: '^packages/backend/src/platform/scope/issue[.]ts$' },
+    },
     // Web (apps/web): правила через пути и обратные ссылки, без перечисления features.
     // Известные нарушения (списки только сокращаются; убираются в #10/#11):
     // см. webKnownFeatureViolations и webKnownClientImporters ниже.
