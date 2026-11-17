@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import {
-  documentResponseSchema,
   documentsResponseSchema,
   type DocumentSummary,
 } from '@anyko/contracts';
@@ -21,10 +20,17 @@ import { Notice, StatusPill, type Tone } from '@/components/ui/status';
 import {
   DocumentViewer,
   type ViewedDocument,
-} from '@/features/documents/document-viewer';
-import { requestApi } from '@/lib/api/client';
+} from '@/features/document-recognition/document-viewer';
 import { ApiError, describeApiError } from '@/lib/api/errors';
 import { useExpireSession } from '@/lib/api/query-client';
+
+import {
+  documentDeletionProgress,
+  listDocuments,
+  retryDocument,
+  startDocumentDeletion,
+  uploadDocument,
+} from './api/commands';
 
 const accept =
   '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff';
@@ -90,11 +96,7 @@ export function DocumentWorkspace() {
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
       try {
-        const response = await requestApi(
-          '/documents',
-          documentsResponseSchema,
-          signal ? { signal } : {},
-        );
+        const response = await listDocuments(signal);
         if (!signal?.aborted && alive.current) {
           setDocuments(response.documents);
           setDeletions(response.deletions);
@@ -148,18 +150,8 @@ export function DocumentWorkspace() {
         );
         continue;
       }
-      const body = new FormData();
-      body.set('file', file);
       try {
-        const response = await requestApi(
-          '/documents',
-          documentResponseSchema,
-          {
-            method: 'POST',
-            body,
-            headers: { 'idempotency-key': crypto.randomUUID() },
-          },
-        );
+        const response = await uploadDocument(file);
         if (alive.current)
           setDocuments((items) => [
             response.document,
@@ -182,11 +174,7 @@ export function DocumentWorkspace() {
     setPendingId(document.id);
     setError('');
     try {
-      const response = await requestApi(
-        `/documents/${encodeURIComponent(document.id)}/retry`,
-        documentResponseSchema,
-        { method: 'POST', headers: { 'idempotency-key': crypto.randomUUID() } },
-      );
+      const response = await retryDocument(document.id);
       if (alive.current)
         setDocuments((items) =>
           items.map((item) =>
@@ -203,11 +191,7 @@ export function DocumentWorkspace() {
     setPendingId(document.id);
     setError('');
     try {
-      await requestApi(
-        `/documents/${encodeURIComponent(document.id)}`,
-        z.object({ status: z.literal('deleting') }),
-        { method: 'DELETE' },
-      );
+      await startDocumentDeletion(document.id);
       await refresh();
       if (alive.current)
         setViewing((current) =>
@@ -216,12 +200,7 @@ export function DocumentWorkspace() {
       let complete = false;
       const deadline = Date.now() + 120000;
       while (alive.current && Date.now() < deadline) {
-        const progress = await requestApi(
-          `/documents/${encodeURIComponent(document.id)}/deletion`,
-          z.object({
-            status: z.enum(['deleting', 'deleted', 'needs-recovery']),
-          }),
-        );
+        const progress = await documentDeletionProgress(document.id);
         if (progress.status === 'needs-recovery')
           throw new ApiError('DELETION_NEEDS_RECOVERY', 409, '');
         if (progress.status === 'deleted') {

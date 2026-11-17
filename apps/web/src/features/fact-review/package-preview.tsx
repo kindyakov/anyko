@@ -23,7 +23,8 @@ import {
 
 import { Button } from '@/components/ui/button';
 import { Disclosure } from '@/components/ui/disclosure';
-import { FieldEditor, TextSlot } from '@/features/works/work-fields';
+
+import { FieldEditor, TextSlot } from './work-fields';
 
 // Literal zoom classes so Tailwind can see them.
 const zooms = [

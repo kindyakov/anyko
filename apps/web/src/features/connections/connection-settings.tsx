@@ -1,61 +1,52 @@
 'use client';
 import { Form } from '@base-ui/react/form';
+import { useQuery } from '@tanstack/react-query';
 import { Cpu, Save } from 'lucide-react';
-import { type SyntheticEvent, useEffect, useState } from 'react';
-import { z } from 'zod';
-
-import { llmSettingsResponseSchema } from '@anyko/contracts';
+import { type SyntheticEvent, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { FormField } from '@/components/ui/form-field';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Notice, StatusPill } from '@/components/ui/status';
-import { requestApi } from '@/lib/api/client';
+import { useSaveLlmSettings } from '@/features/connections/api/mutations';
+import { llmSettingsQueryOptions } from '@/features/connections/api/queries';
+import { useWorkspaceId } from '@/lib/api/workspace';
 
-export function LlmSettings() {
-  const [current, setCurrent] =
-    useState<z.infer<typeof llmSettingsResponseSchema>>();
-  const [message, setMessage] = useState<{
-    tone: 'success' | 'danger';
-    text: string;
-  }>();
-  const [pending, setPending] = useState(false);
-  const load = () =>
-    requestApi('/settings/llm', llmSettingsResponseSchema).then(setCurrent);
-  useEffect(() => {
-    void load().catch(() => {
-      setMessage({
-        tone: 'danger',
-        text: 'Не удалось загрузить настройки модели.',
-      });
-    });
-  }, []);
+type Message = { tone: 'success' | 'danger'; text: string };
+
+// FormData отдаёт строки для текстовых полей; обязательные поля всегда присутствуют.
+function text(data: FormData, name: string): string {
+  const value = data.get(name);
+  return typeof value === 'string' ? value : '';
+}
+
+export function ConnectionSettings() {
+  const workspaceId = useWorkspaceId();
+  const query = useQuery(llmSettingsQueryOptions(workspaceId));
+  const save = useSaveLlmSettings(workspaceId);
+  const [message, setMessage] = useState<Message>();
+  const settings = query.data;
+  const notice: Message | undefined =
+    message ??
+    (query.isError
+      ? { tone: 'danger', text: 'Не удалось загрузить настройки модели.' }
+      : undefined);
   async function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
-    setPending(true);
     setMessage(undefined);
     try {
       const entry = data.get('apiKey');
       const key = typeof entry === 'string' ? entry : '';
-      await requestApi(
-        '/settings/llm',
-        z.object({ status: z.literal('saved') }),
-        {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            baseURL: data.get('baseURL'),
-            visionModel: data.get('visionModel'),
-            extractionModel: data.get('extractionModel'),
-            ...(key ? { apiKey: key } : {}),
-          }),
-        },
-      );
+      await save.mutateAsync({
+        baseURL: text(data, 'baseURL'),
+        visionModel: text(data, 'visionModel'),
+        extractionModel: text(data, 'extractionModel'),
+        ...(key ? { apiKey: key } : {}),
+      });
       form.reset();
-      await load();
       setMessage({
         tone: 'success',
         text: 'Настройки сохранены. Новые запуски используют эту версию.',
@@ -65,8 +56,6 @@ export function LlmSettings() {
         tone: 'danger',
         text: 'Не удалось сохранить настройки. Проверьте адрес, модели и ключ.',
       });
-    } finally {
-      setPending(false);
     }
   }
   return (
@@ -81,8 +70,8 @@ export function LlmSettings() {
             OpenAI-совместимый API для анализа изображений и извлечения сведений
           </p>
         </div>
-        {current ? (
-          current.settings ? (
+        {settings ? (
+          settings.settings ? (
             <StatusPill tone="success">Подключено</StatusPill>
           ) : (
             <StatusPill tone="warning">Не настроено</StatusPill>
@@ -91,7 +80,7 @@ export function LlmSettings() {
           <Skeleton className="h-6 w-24 rounded-full" />
         )}
       </div>
-      {!current && !message ? (
+      {!settings && !notice ? (
         <div className="grid gap-5" aria-hidden>
           {[0, 1, 2, 3].map((item) => (
             <div key={item} className="grid gap-2">
@@ -100,9 +89,9 @@ export function LlmSettings() {
             </div>
           ))}
         </div>
-      ) : current?.canManage ? (
+      ) : settings?.canManage ? (
         <Form
-          key={current.settings?.revision ?? 0}
+          key={settings.settings?.revision ?? 0}
           className="grid gap-5"
           onSubmit={(event) => {
             void submit(event);
@@ -114,7 +103,7 @@ export function LlmSettings() {
               type="url"
               required
               defaultValue={
-                current.settings?.baseURL ?? 'https://routerai.ru/api/v1'
+                settings.settings?.baseURL ?? 'https://routerai.ru/api/v1'
               }
             />
           </FormField>
@@ -126,7 +115,7 @@ export function LlmSettings() {
               name="visionModel"
               required
               defaultValue={
-                current.settings?.visionModel ??
+                settings.settings?.visionModel ??
                 '~deepseek/deepseek-v4-flash-latest'
               }
             />
@@ -139,7 +128,7 @@ export function LlmSettings() {
               name="extractionModel"
               required
               defaultValue={
-                current.settings?.extractionModel ??
+                settings.settings?.extractionModel ??
                 '~deepseek/deepseek-v4-flash-latest'
               }
             />
@@ -147,7 +136,7 @@ export function LlmSettings() {
           <FormField
             label="API-ключ"
             description={
-              current.settings
+              settings.settings
                 ? 'Оставьте пустым, чтобы сохранить текущий ключ'
                 : undefined
             }
@@ -156,26 +145,31 @@ export function LlmSettings() {
               name="apiKey"
               type="password"
               autoComplete="new-password"
-              placeholder={current.settings ? '••••••••••••' : undefined}
-              required={!current.settings}
+              placeholder={settings.settings ? '••••••••••••' : undefined}
+              required={!settings.settings}
             />
           </FormField>
-          <Button type="submit" size="lg" loading={pending} className="w-fit">
+          <Button
+            type="submit"
+            size="lg"
+            loading={save.isPending}
+            className="w-fit"
+          >
             <Save size={17} />
             Сохранить подключение
           </Button>
         </Form>
-      ) : current ? (
+      ) : settings ? (
         <Notice tone="neutral">
           Настройки подключения меняет владелец рабочей области.
         </Notice>
       ) : null}
-      {message && (
+      {notice && (
         <Notice
-          tone={message.tone}
-          role={message.tone === 'danger' ? 'alert' : 'status'}
+          tone={notice.tone}
+          role={notice.tone === 'danger' ? 'alert' : 'status'}
         >
-          {message.text}
+          {notice.text}
         </Notice>
       )}
     </div>

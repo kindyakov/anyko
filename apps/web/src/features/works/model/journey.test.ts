@@ -2,7 +2,11 @@ import { expect, test } from 'bun:test';
 
 import type { WorkView } from '@anyko/contracts';
 
-import { conflictingFields, stepOf, workStage } from '@/features/works/journey';
+import {
+  conflictingFields,
+  stepOf,
+  workStage,
+} from '@/features/works/model/journey';
 
 const id = () => crypto.randomUUID();
 function view(patch: Partial<WorkView> = {}): WorkView {

@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { SessionContext } from '@/features/works/session-context';
+import { SessionContext } from './session-context';
 
 test('shows persisted context and explicitly warns after the underlying work changes', () => {
   const view = renderToStaticMarkup(

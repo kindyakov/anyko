@@ -31,7 +31,7 @@ import {
   runStatusLabels,
   stageLabels,
   stepStatusLabels,
-} from '@/features/works/journey';
+} from '@/features/works';
 
 type Run = WorkView['runs'][number];
 type Step = Run['steps'][number];

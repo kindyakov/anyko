@@ -13,15 +13,11 @@ import { RelativeTime } from '@/components/ui/relative-time';
 import { Spinner } from '@/components/ui/spinner';
 import { stagger } from '@/components/ui/stagger';
 import { StatusPill, type Tone } from '@/components/ui/status';
-import type { WorkStage } from '@/features/works/journey';
+import type { WorkStage } from '@/features/works';
+
+import type { Upload } from './api/commands';
 
 type Document = WorkView['documents'][number];
-export interface Upload {
-  id: string;
-  name: string;
-  state: 'uploading' | 'done' | 'failed';
-  reason?: string;
-}
 
 const accept = '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff';
 const labels: Record<Document['status'], [string, Tone]> = {

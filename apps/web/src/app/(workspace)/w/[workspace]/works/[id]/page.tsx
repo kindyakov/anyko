@@ -1,4 +1,4 @@
-import { WorkDetail } from '@/features/works';
+import { WorkScreen } from './_screen/work-screen';
 
 export default async function WorkPage({
   params,
@@ -6,5 +6,5 @@ export default async function WorkPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <WorkDetail key={id} workId={id} />;
+  return <WorkScreen key={id} workId={id} />;
 }

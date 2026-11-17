@@ -13,6 +13,8 @@ export const routes = {
     `/w/${segment(workspace)}/works/${segment(id)}` as const,
   recognition: (workspace: string) =>
     `/w/${segment(workspace)}/recognition` as const,
+  connections: (workspace: string) =>
+    `/w/${segment(workspace)}/settings/connections` as const,
 };
 
 const MAX_NEXT_LENGTH = 2048;

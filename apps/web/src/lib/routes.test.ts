@@ -44,5 +44,6 @@ test('workspace routes sit under /w/[workspace]', () => {
   expect(routes.works('ws-1')).toBe('/w/ws-1/works');
   expect(routes.work('ws-1', 'work-2')).toBe('/w/ws-1/works/work-2');
   expect(routes.recognition('ws-1')).toBe('/w/ws-1/recognition');
+  expect(routes.connections('ws-1')).toBe('/w/ws-1/settings/connections');
   expect(routes.works('a/b')).toBe('/w/a%2Fb/works');
 });

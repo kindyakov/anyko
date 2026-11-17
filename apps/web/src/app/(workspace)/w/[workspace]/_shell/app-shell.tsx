@@ -3,14 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { FolderKanban, ScanText, Settings2 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect } from 'react';
 
 import { Logo } from '@/components/brand/logo';
 import { DeepSkyBackdrop } from '@/components/cosmos/deep-sky-backdrop';
-import { Button } from '@/components/ui/button';
-import { Modal } from '@/components/ui/modal';
+import { buttonStyles } from '@/components/ui/button';
 import { SignOut } from '@/features/auth';
-import { LlmSettings } from '@/features/works';
 import { sessionQueryOptions } from '@/lib/api/session';
 import { useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
@@ -21,7 +19,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const search = useSearchParams().toString();
   const router = useRouter();
   const session = useQuery(sessionQueryOptions()).data;
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const current = search ? `${pathname}?${search}` : pathname;
   // Сессии нет: она истекла (401 из запроса) или пользователь вышел. Вход вернёт на текущий адрес.
   useEffect(() => {
@@ -43,18 +40,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     },
   ];
   const person = session.user.name || session.user.email;
-  const settingsButton = (
-    <Button
-      variant="ghost"
-      size="icon-sm"
+  const settingsLink = (
+    <Link
+      href={routes.connections(workspace)}
       aria-label="Настройки пространства"
       title="Настройки пространства"
-      onClick={() => {
-        setSettingsOpen(true);
-      }}
+      className={buttonStyles({ variant: 'ghost', size: 'icon-sm' })}
     >
       <Settings2 size={17} />
-    </Button>
+    </Link>
   );
   return (
     <div className="bg-canvas relative isolate min-h-dvh md:grid md:grid-cols-[264px_minmax(0,1fr)]">
@@ -69,7 +63,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="flex h-16 items-center justify-between gap-3 px-4 md:h-24 md:px-6">
           <Logo href={routes.works(workspace)} />
           <div className="flex items-center gap-1 md:hidden">
-            {settingsButton}
+            {settingsLink}
             <SignOut />
           </div>
         </div>
@@ -119,7 +113,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             </div>
             <div className="mt-3 flex items-center justify-between border-t border-white/[0.06] pt-2">
-              {settingsButton}
+              {settingsLink}
               <SignOut />
             </div>
           </div>
@@ -131,16 +125,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         {children}
       </main>
-      <Modal
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        size="sheet"
-        title="Настройки пространства"
-        description="Подключение модели, которая читает изображения и извлекает сведения."
-        closeLabel="Закрыть настройки"
-      >
-        <LlmSettings />
-      </Modal>
     </div>
   );
 }

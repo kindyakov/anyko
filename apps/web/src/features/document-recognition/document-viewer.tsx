@@ -8,8 +8,8 @@ import { Modal } from '@/components/ui/modal';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Notice } from '@/components/ui/status';
-import { documentResultQueryOptions } from '@/features/documents/api/queries';
-import { ResultPreview } from '@/features/documents/result-preview';
+import { documentResultQueryOptions } from '@/features/document-recognition/api/queries';
+import { ResultPreview } from '@/features/document-recognition/result-preview';
 import { useWorkspaceId } from '@/lib/api/workspace';
 
 type Mode = 'split' | 'text' | 'source' | 'markdown';

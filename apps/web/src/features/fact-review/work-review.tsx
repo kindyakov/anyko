@@ -21,10 +21,11 @@ import { Button } from '@/components/ui/button';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { stagger } from '@/components/ui/stagger';
 import { StatusPill } from '@/components/ui/status';
-import { conflictingFields } from '@/features/works/journey';
-import { PackagePreview } from '@/features/works/package-preview';
-import { SessionContext } from '@/features/works/session-context';
-import { CandidateValue } from '@/features/works/work-fields';
+import { conflictingFields } from '@/features/works';
+
+import { PackagePreview } from './package-preview';
+import { SessionContext } from './session-context';
+import { CandidateValue } from './work-fields';
 
 type Document = WorkView['documents'][number];
 type Filter = 'all' | 'conflicts' | 'pending';
@@ -82,8 +83,9 @@ export function WorkReview({
   const complete = view.package.fields.filter((field) =>
     filled(values[field.key]),
   ).length;
+  // Каждый переход получает новый nonce: повторный переход к тому же полю снова его подсвечивает.
   const jump = (key: FieldKey) => {
-    setFocus({ key, nonce: Date.now() });
+    setFocus((previous) => ({ key, nonce: (previous?.nonce ?? 0) + 1 }));
   };
   return (
     <div className="grid grid-cols-1 gap-8">

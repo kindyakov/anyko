@@ -29,12 +29,8 @@ const webClientAllowed = [
   '^apps/web/src/features/[^/]+/api/',
   '[.]test[.]tsx?$',
 ];
-const webKnownClientImporters = [
-  // Известные нарушения: только сокращается; убираются в #10/#11
-  '^apps/web/src/features/works/work-detail[.]tsx$',
-  '^apps/web/src/features/works/llm-settings[.]tsx$',
-  '^apps/web/src/features/documents/document-workspace[.]tsx$',
-];
+// Известных нарушений нет: список пуст и не пополняется.
+const webKnownClientImporters = [];
 
 module.exports = {
   forbidden: [
@@ -255,7 +251,7 @@ module.exports = {
       to: { path: '^packages/database/', dependencyTypesNot: ['type-only'] },
     },
     // Web (apps/web): правила через пути и обратные ссылки, без перечисления features.
-    // Известные нарушения (списки только сокращаются; убираются в #10/#11):
+    // Известных нарушений web-границ нет (списки пусты и не пополняются):
     // см. webKnownFeatureViolations и webKnownClientImporters ниже.
     {
       name: 'web-feature-public-api',
