@@ -1,4 +1,4 @@
-import type { DocumentService, ResourceLocks } from '../../modules/documents';
+import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import { WorkError, type WorksModule } from '../../modules/works';
 import { brandDocumentId, type WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
@@ -12,7 +12,7 @@ export const uploadDocument =
   (deps: {
     uow: UnitOfWork;
     works: WorksModule;
-    documents: DocumentService;
+    documents: DocumentsModule;
     locks: ResourceLocks;
   }) =>
   async (
@@ -37,7 +37,7 @@ export const uploadDocument =
         );
         if (sources.length >= sourceLimit)
           throw new WorkError('INVALID_WORK_INPUT');
-        const document = await deps.documents.upload({
+        const document = await deps.documents.internal.commands.upload({
           workspaceId: scope.workspaceId,
           actorId: scope.userId,
           filename: input.filename,

@@ -67,12 +67,12 @@ export function createWorkExecution(deps: WorkDependencies) {
     signal: AbortSignal,
   ) => {
     await step(run, { stage: 'parsing', documentId, status: 'running' });
-    let doc = await deps.documents.get({
+    let doc = await deps.documents.internal.queries.get({
       workspaceId: run.workspaceId,
       documentId,
     });
     if (doc.status === 'failed')
-      doc = await deps.documents.retry({
+      doc = await deps.documents.internal.commands.retry({
         workspaceId: run.workspaceId,
         documentId,
         actorId: 'work-pipeline',
@@ -82,14 +82,14 @@ export function createWorkExecution(deps: WorkDependencies) {
       signal.throwIfAborted();
       await current(run);
       await delay(signal);
-      doc = await deps.documents.get({
+      doc = await deps.documents.internal.queries.get({
         workspaceId: run.workspaceId,
         documentId,
       });
     }
     if (doc.status !== 'succeeded') throw new Error('PARSING_FAILED');
     await step(run, { stage: 'parsing', documentId, status: 'succeeded' });
-    return deps.documents.analysis({
+    return deps.documents.internal.queries.analysis({
       workspaceId: run.workspaceId,
       documentId,
     });

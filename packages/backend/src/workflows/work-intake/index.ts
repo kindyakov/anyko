@@ -1,4 +1,4 @@
-import type { DocumentService, ResourceLocks } from '../../modules/documents';
+import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import type { ProcessingModule } from '../../modules/processing';
 import type { WorksModule } from '../../modules/works';
 import type { UnitOfWork } from '../../platform/transactions';
@@ -14,7 +14,7 @@ export interface WorkIntakeDeps {
   works: WorksModule;
   processing: ProcessingModule;
   sessions: WorkSessionPort;
-  documents: DocumentService;
+  documents: DocumentsModule;
   locks: ResourceLocks;
 }
 

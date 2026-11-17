@@ -137,12 +137,12 @@ test('connection settings and recognitions are guarded by their own rights', asy
     canManage: false,
   });
   await expectForbidden(
-    api.documentHttp.documents.list(
+    api.documentHttp.documents.queries.list(
       memberScope(ws, 'works-only', ['works.read']),
     ),
   );
   expect(
-    await api.documentHttp.documents.list(
+    await api.documentHttp.documents.queries.list(
       memberScope(ws, 'user', ['recognitions.use']),
     ),
   ).toEqual([]);

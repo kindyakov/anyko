@@ -15,12 +15,13 @@ import type {
 } from '../../src/modules/documents';
 import { createSourceCleanup } from '../../src/modules/documents/infrastructure/source-cleanup';
 import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
+import { brandDocumentId } from '../../src/platform/ids';
 import { createBackend } from '../../src/runtime';
 import {
   integrationConfig,
   startDocumentConsumer,
 } from '../support/composition';
-import { recognitionsAs } from '../support/scoped';
+import { memberScope } from '../support/scope';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
@@ -62,7 +63,7 @@ const api = createBackend(testConfig, {
   role: 'api',
   dependencies: { storage },
 });
-const runtime = recognitionsAs(api.documentHttp.documents);
+const recognition = api.documentHttp.documents;
 const startDocumentWorker = (options: {
   queueName: string;
   parser: DocumentParser;
@@ -92,14 +93,15 @@ async function upload(
   requestKey = crypto.randomUUID(),
   bytes = pdf,
 ) {
-  return runtime.upload({
-    workspaceId,
-    actorId: 'synthetic-actor',
-    filename: 'fixture.pdf',
-    bytes,
-    requestKey,
-    correlationId: crypto.randomUUID(),
-  });
+  return recognition.commands.upload(
+    memberScope(workspaceId, 'synthetic-actor'),
+    {
+      filename: 'fixture.pdf',
+      bytes,
+      requestKey,
+      correlationId: crypto.randomUUID(),
+    },
+  );
 }
 async function waitFor(
   workspaceId: string,
@@ -108,7 +110,10 @@ async function waitFor(
 ) {
   const deadline = Date.now() + 8000;
   while (Date.now() < deadline) {
-    const doc = await runtime.get({ workspaceId, documentId });
+    const doc = await recognition.queries.get(
+      memberScope(workspaceId),
+      brandDocumentId(documentId),
+    );
     if (doc.status === status) return doc;
     await Bun.sleep(20);
   }
@@ -150,13 +155,16 @@ test('upload atomically persists metadata, run and outbox; foreign workspace can
     1,
   );
   expect(await db.sourceUpload.count({ where: { workspaceId: own } })).toBe(0);
-  expect(await runtime.list({ workspaceId: foreign })).toEqual([]);
+  expect(await recognition.queries.list(memberScope(foreign))).toEqual([]);
   await expectRejected(
-    runtime.get({ workspaceId: foreign, documentId: document.id }),
+    recognition.queries.get(memberScope(foreign), brandDocumentId(document.id)),
     'NOT_FOUND',
   );
   await expectRejected(
-    runtime.result({ workspaceId: foreign, documentId: document.id }),
+    recognition.queries.result(
+      memberScope(foreign),
+      brandDocumentId(document.id),
+    ),
     'NOT_FOUND',
   );
   const run = await db.processingRun.findFirstOrThrow({
@@ -220,16 +228,18 @@ test('outbox survives before worker start; real queue publishes result and retry
   try {
     await waitFor(own, doc.id, 'failed');
     reject = false;
-    const retried = await runtime.retry({
-      workspaceId: own,
-      documentId: doc.id,
-      actorId: 'synthetic-actor',
-      correlationId: crypto.randomUUID(),
-    });
+    const retried = await recognition.commands.retry(
+      memberScope(own, 'synthetic-actor'),
+      brandDocumentId(doc.id),
+      crypto.randomUUID(),
+    );
     expect(retried.status).toBe('queued');
     await waitFor(own, doc.id, 'succeeded');
     expect(
-      await runtime.result({ workspaceId: own, documentId: doc.id }),
+      await recognition.queries.result(
+        memberScope(own),
+        brandDocumentId(doc.id),
+      ),
     ).toEqual({
       markdown: '# extracted fixture',
       processorVersion: 'test-parser-1',
@@ -346,7 +356,12 @@ test('a lost Redis job is republished from the aged queued database intent', asy
     await waitFor(own, doc.id, 'succeeded');
     expect(executions).toBe(1);
     expect(
-      (await runtime.result({ workspaceId: own, documentId: doc.id })).markdown,
+      (
+        await recognition.queries.result(
+          memberScope(own),
+          brandDocumentId(doc.id),
+        )
+      ).markdown,
     ).toBe('Recovered after Redis loss');
   } finally {
     await worker?.stop();
@@ -362,9 +377,7 @@ test('document formats survive source storage and queue delivery independently o
     ['unsupported.heic', 'UNSUPPORTED_DOCUMENT_FORMAT'],
   ] as const) {
     await expectRejected(
-      runtime.upload({
-        workspaceId: own,
-        actorId: 'synthetic-actor',
+      recognition.commands.upload(memberScope(own, 'synthetic-actor'), {
         filename,
         bytes: pdf,
         requestKey: crypto.randomUUID(),
@@ -415,14 +428,15 @@ test('document formats survive source storage and queue delivery independently o
     ];
   const documents = [];
   for (const item of cases) {
-    const document = await runtime.upload({
-      workspaceId: own,
-      actorId: 'synthetic-actor',
-      filename: item.filename,
-      bytes: item.bytes,
-      requestKey: crypto.randomUUID(),
-      correlationId: crypto.randomUUID(),
-    });
+    const document = await recognition.commands.upload(
+      memberScope(own, 'synthetic-actor'),
+      {
+        filename: item.filename,
+        bytes: item.bytes,
+        requestKey: crypto.randomUUID(),
+        correlationId: crypto.randomUUID(),
+      },
+    );
     const source = await db.sourceDocument.findUniqueOrThrow({
       where: { id: document.id },
     });
@@ -457,8 +471,12 @@ test('document formats survive source storage and queue delivery independently o
     for (const { document, format } of documents) {
       await waitFor(own, document.id, 'succeeded');
       expect(
-        (await runtime.result({ workspaceId: own, documentId: document.id }))
-          .markdown,
+        (
+          await recognition.queries.result(
+            memberScope(own),
+            brandDocumentId(document.id),
+          )
+        ).markdown,
       ).toBe(`Extracted ${format}`);
     }
   } finally {

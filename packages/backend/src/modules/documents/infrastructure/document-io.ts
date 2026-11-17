@@ -2,10 +2,16 @@ import type { Database } from '@anyko/database';
 
 import type { DocumentIo } from '../application/ports';
 import { StorageWriteOutcomeUnknown } from '../application/ports';
-export function createDocumentIo(db: Database): DocumentIo {
+
+// Durable барьер записи по документу: строка создаётся до записи в хранилище и снимается после неё.
+// Неизвестный исход записи оставляет строку помеченной для восстановления.
+export function createDocumentIo(
+  db: Database,
+  newId: () => string,
+): DocumentIo {
   return {
     async run(input, operation) {
-      const id = crypto.randomUUID();
+      const id = newId();
       await db.documentIo.create({ data: { id, ...input } });
       let uncertain = false;
       try {

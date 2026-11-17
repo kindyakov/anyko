@@ -1,4 +1,4 @@
-import type { DocumentService } from '../../modules/documents';
+import type { DocumentsModule } from '../../modules/documents';
 import { WorkError, type WorksModule } from '../../modules/works';
 import type { DocumentId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
@@ -6,12 +6,12 @@ import { requireWork } from '../work-guards';
 
 // Исходный файл документа работы. Документ другой работы и удалённый документ не существуют.
 export const getSource =
-  (deps: { works: WorksModule; documents: DocumentService }) =>
+  (deps: { works: WorksModule; documents: DocumentsModule }) =>
   async (scope: WorkspaceScope, workId: WorkId, documentId: DocumentId) => {
     scope.require('works.read');
     await requireWork(deps.works.queries, scope, workId);
     await requireAttachedDocument(deps.works, scope, workId, documentId);
-    return deps.documents.source({
+    return deps.documents.internal.queries.source({
       workspaceId: scope.workspaceId,
       documentId,
     });

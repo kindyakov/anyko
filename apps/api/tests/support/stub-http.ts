@@ -1,5 +1,5 @@
 import type { createAccess } from '@anyko/backend/access';
-import type { RecognitionService } from '@anyko/backend/documents';
+import type { DocumentsModule } from '@anyko/backend/documents';
 import type { LlmSettingsApi } from '@anyko/backend/processing';
 import type {
   WorkGeneration,
@@ -29,17 +29,27 @@ export function stubHttpOptions(): {
     session: unused,
     scope: unused,
   };
-  const documents: RecognitionService = {
-    list: unused,
-    pendingDeletions: unused,
-    upload: unused,
-    get: unused,
-    result: unused,
-    source: unused,
-    image: unused,
-    deletion: unused,
-    remove: unused,
-    retry: unused,
+  const documents: DocumentsModule = {
+    commands: { upload: unused, remove: unused, retry: unused },
+    queries: {
+      list: unused,
+      pendingDeletions: unused,
+      get: unused,
+      result: unused,
+      source: unused,
+      image: unused,
+      deletion: unused,
+    },
+    internal: {
+      commands: { upload: unused, remove: unused, retry: unused },
+      queries: {
+        get: unused,
+        result: unused,
+        source: unused,
+        image: unused,
+        analysis: unused,
+      },
+    },
   };
   const works: WorksModule = {
     commands: {

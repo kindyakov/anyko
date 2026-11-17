@@ -1,4 +1,4 @@
-import type { DocumentService, ResourceLocks } from '../../modules/documents';
+import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import { WorkError, type WorksModule } from '../../modules/works';
 import type { DocumentId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
@@ -8,7 +8,7 @@ import { requireWork, workLockKey } from '../work-guards';
 export const removeDocument =
   (deps: {
     works: WorksModule;
-    documents: DocumentService;
+    documents: DocumentsModule;
     locks: ResourceLocks;
   }) =>
   async (
@@ -26,7 +26,7 @@ export const removeDocument =
         );
         if (!documents.some((doc) => doc.id === input.documentId))
           throw new WorkError('NOT_FOUND');
-        await deps.documents.remove({
+        await deps.documents.internal.commands.remove({
           workspaceId: scope.workspaceId,
           documentId: input.documentId,
           actorId: scope.userId,

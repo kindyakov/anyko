@@ -65,7 +65,6 @@ export default [
     ],
     ignores: [
       // Временно: сокращается этапами #19/#21 (часы и ID сценариев).
-      'packages/backend/src/modules/documents/application/service.ts',
       'packages/backend/src/modules/processing/application/service.ts',
     ],
     rules: {

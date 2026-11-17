@@ -1,3 +1,5 @@
+import type { Logger } from '@anyko/logger';
+
 import type { SourceFormat } from './source-format';
 
 type DocumentStatus = 'queued' | 'running' | 'succeeded' | 'failed';
@@ -128,4 +130,15 @@ export interface DocumentStore {
     actorId: string,
     correlationId: string,
   ): Promise<DocumentView | null>;
+}
+
+// Зависимости команд и запросов модуля: часы не нужны (даты приходят из хранилища), ID — генератор.
+export interface DocumentDeps {
+  store: DocumentStore;
+  storage: SourceStorage;
+  artifacts: ArtifactRegistry;
+  locks: ResourceLocks;
+  io: DocumentIo;
+  logger: Logger;
+  newId: () => string;
 }

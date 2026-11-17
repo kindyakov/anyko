@@ -34,7 +34,6 @@ import { createBackend } from '../../src/runtime';
 import type { WorkStores } from '../../src/workflows/works/ports';
 import { integrationConfig } from '../support/composition';
 import { memberScope } from '../support/scope';
-import { recognitionsAs, settingsAs } from '../support/scoped';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
@@ -156,8 +155,11 @@ const apiBackend = createBackend(testConfig, {
   dependencies: { storage, agents },
 });
 const runtime = {
-  saveSettings: settingsAs(apiBackend.workHttp.settings).save,
-  deps: { documents: recognitionsAs(apiBackend.documentHttp.documents) },
+  saveSettings: (
+    workspaceId: string,
+    input: Parameters<typeof apiBackend.workHttp.settings.save>[1],
+  ) => apiBackend.workHttp.settings.save(memberScope(workspaceId), input),
+  deps: { documents: apiBackend.documentHttp.documents },
   stop: () => apiBackend.stop(),
 };
 const workerBackend = createBackend(testConfig, {
@@ -365,10 +367,10 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
     input.workspaceId,
     input.workId,
   );
-  await runtime.deps.documents.remove({
-    workspaceId: input.workspaceId,
-    documentId: doc.id,
-  });
+  await runtime.deps.documents.commands.remove(
+    memberScope(input.workspaceId),
+    brandDocumentId(doc.id),
+  );
   const hidden = await apiBackend.workHttp.views.get(
     memberScope(input.workspaceId),
     brandWorkId(input.workId),

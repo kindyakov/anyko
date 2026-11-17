@@ -17,6 +17,7 @@ import { createDeletionStore } from '../../src/modules/documents/infrastructure/
 import { createDocumentIo } from '../../src/modules/documents/infrastructure/document-io';
 import { createProcessingService } from '../../src/modules/processing';
 import { createProcessingStore } from '../../src/modules/processing/infrastructure/store';
+import { brandDocumentId, uuidV7 } from '../../src/platform/ids';
 import { createBackend } from '../../src/runtime';
 import { finishDocumentDeletion } from '../../src/runtime/documents/unit-of-work';
 import { createDocumentDeletionWorkflow } from '../../src/workflows/document-deletion';
@@ -25,7 +26,7 @@ import {
   integrationConfig,
   startDocumentConsumer,
 } from '../support/composition';
-import { recognitionsAs } from '../support/scoped';
+import { memberScope } from '../support/scope';
 const databaseUrl = process.env.TEST_DATABASE_URL,
   redisUrl = process.env.TEST_REDIS_URL;
 if (
@@ -88,7 +89,7 @@ test('separate images and all document data are physically erased; unknown/activ
     exists: (key) => Promise.resolve(files.has(key)),
   };
   const api = startApi(storage);
-  const runtime = recognitionsAs(api.documentHttp.documents);
+  const recognition = api.documentHttp.documents;
   const processing = createProcessingStore(db),
     registry = createArtifactRegistry(db);
   const eraseAttempt = (id: string) => {
@@ -120,7 +121,10 @@ test('separate images and all document data are physically erased; unknown/activ
     await db.anykoWorkspace.create({
       data: { id: workspaceId, name: 'Synthetic erasure' },
     });
-    const document = await runtime.upload(input);
+    const document = await recognition.commands.upload(
+      memberScope(input.workspaceId, input.actorId),
+      input,
+    );
     worker = await startDocumentWorker(storage, {
       queueName: `erasure-${crypto.randomUUID()}`,
       parser: {
@@ -137,8 +141,12 @@ test('separate images and all document data are physically erased; unknown/activ
     });
     const deadline = Date.now() + 8000;
     while (
-      (await runtime.get({ workspaceId, documentId: document.id })).status !==
-      'succeeded'
+      (
+        await recognition.queries.get(
+          memberScope(workspaceId),
+          brandDocumentId(document.id),
+        )
+      ).status !== 'succeeded'
     ) {
       if (Date.now() > deadline) throw new Error('PROCESSING_TIMEOUT');
       await Bun.sleep(20);
@@ -159,27 +167,44 @@ test('separate images and all document data are physically erased; unknown/activ
     expect(json).not.toContain('base64');
     expect(json).toContain('"key":');
     expect(
-      await runtime.image({ workspaceId, documentId: document.id, index: 0 }),
+      await recognition.queries.image(
+        memberScope(workspaceId),
+        brandDocumentId(document.id),
+        0,
+      ),
     ).toEqual({ bytes: png, contentType: 'image/png' });
     await rejected(
-      runtime.remove({
-        workspaceId: crypto.randomUUID(),
-        documentId: document.id,
-      }),
+      recognition.commands.remove(
+        memberScope(crypto.randomUUID()),
+        brandDocumentId(document.id),
+      ),
       'NOT_FOUND',
     );
-    await runtime.remove({ workspaceId, documentId: document.id });
+    await recognition.commands.remove(
+      memberScope(workspaceId),
+      brandDocumentId(document.id),
+    );
     failures.processor = true;
     await cleanup();
     expect(
-      (await runtime.deletion({ workspaceId, documentId: document.id })).status,
+      (
+        await recognition.queries.deletion(
+          memberScope(workspaceId),
+          brandDocumentId(document.id),
+        )
+      ).status,
     ).toBe('deleting');
     expect(files.size).toBe(3);
     failures.processor = false;
     failures.storage = true;
     await cleanup();
     expect(
-      (await runtime.deletion({ workspaceId, documentId: document.id })).status,
+      (
+        await recognition.queries.deletion(
+          memberScope(workspaceId),
+          brandDocumentId(document.id),
+        )
+      ).status,
     ).toBe('deleting');
     failures.storage = false;
     await cleanup();
@@ -190,20 +215,36 @@ test('separate images and all document data are physically erased; unknown/activ
     expect(await db.documentArtifact.count({ where: { workspaceId } })).toBe(0);
     expect(await db.processorAttempt.count({ where: { workspaceId } })).toBe(0);
     expect(
-      await runtime.deletion({ workspaceId, documentId: document.id }),
+      await recognition.queries.deletion(
+        memberScope(workspaceId),
+        brandDocumentId(document.id),
+      ),
     ).toEqual({ status: 'deleted' });
-    await runtime.remove({ workspaceId, documentId: document.id });
-    await rejected(runtime.upload(input), 'IDEMPOTENCY_CONFLICT');
+    await recognition.commands.remove(
+      memberScope(workspaceId),
+      brandDocumentId(document.id),
+    );
     await rejected(
-      runtime.image({ workspaceId, documentId: document.id, index: 0 }),
+      recognition.commands.upload(
+        memberScope(input.workspaceId, input.actorId),
+        input,
+      ),
+      'IDEMPOTENCY_CONFLICT',
+    );
+    await rejected(
+      recognition.queries.image(
+        memberScope(workspaceId),
+        brandDocumentId(document.id),
+        0,
+      ),
       'NOT_FOUND',
     );
 
     // A lost SQL lock must not let deletion overtake an active/unknown remote PUT.
-    const second = await runtime.upload({
-      ...input,
-      requestKey: crypto.randomUUID(),
-    });
+    const second = await recognition.commands.upload(
+      memberScope(input.workspaceId, input.actorId),
+      { ...input, requestKey: crypto.randomUUID() },
+    );
     const key = `results/${workspaceId}/${second.id}/late.json`;
     await registry.stage({
       key,
@@ -225,7 +266,7 @@ test('separate images and all document data are physically erased; unknown/activ
     const lockKey = `document:${workspaceId}:${second.id}`;
     const outcome = locks
       .run(lockKey, (signal) =>
-        createDocumentIo(db).run(
+        createDocumentIo(db, uuidV7).run(
           { workspaceId, documentId: second.id },
           async () => {
             started();
@@ -247,24 +288,39 @@ test('separate images and all document data are physically erased; unknown/activ
     const owner = owners[0];
     if (!owner) throw new Error('Lock owner missing');
     await db.$queryRaw`SELECT pg_terminate_backend(${owner.pid})`;
-    await runtime.remove({ workspaceId, documentId: second.id });
+    await recognition.commands.remove(
+      memberScope(workspaceId),
+      brandDocumentId(second.id),
+    );
     await cleanup();
     expect(
-      (await runtime.deletion({ workspaceId, documentId: second.id })).status,
+      (
+        await recognition.queries.deletion(
+          memberScope(workspaceId),
+          brandDocumentId(second.id),
+        )
+      ).status,
     ).toBe('deleting');
     release();
     expect(await outcome).toBeInstanceOf(StorageWriteOutcomeUnknown);
     await cleanup();
     expect(
-      (await runtime.deletion({ workspaceId, documentId: second.id })).status,
+      (
+        await recognition.queries.deletion(
+          memberScope(workspaceId),
+          brandDocumentId(second.id),
+        )
+      ).status,
     ).toBe('needs-recovery');
     expect(
-      (await runtime.pendingDeletions({ workspaceId })).map(
-        ({ id, status }) => ({ id, status }),
-      ),
+      (
+        await recognition.queries.pendingDeletions(memberScope(workspaceId))
+      ).map(({ id, status }) => ({ id, status })),
     ).toEqual([{ id: second.id, status: 'needs-recovery' }]);
     expect(
-      await runtime.pendingDeletions({ workspaceId: crypto.randomUUID() }),
+      await recognition.queries.pendingDeletions(
+        memberScope(crypto.randomUUID()),
+      ),
     ).toEqual([]);
     expect(files.has(key)).toBe(true);
     // Simulated operator reconciliation AFTER the fake remote PUT has definitively settled.
@@ -274,9 +330,16 @@ test('separate images and all document data are physically erased; unknown/activ
     await cleanup();
     expect(files.size).toBe(0);
     expect(
-      (await runtime.deletion({ workspaceId, documentId: second.id })).status,
+      (
+        await recognition.queries.deletion(
+          memberScope(workspaceId),
+          brandDocumentId(second.id),
+        )
+      ).status,
     ).toBe('deleted');
-    expect(await runtime.pendingDeletions({ workspaceId })).toEqual([]);
+    expect(
+      await recognition.queries.pendingDeletions(memberScope(workspaceId)),
+    ).toEqual([]);
   } finally {
     await worker?.stop();
     await api.stop();
@@ -320,19 +383,20 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
     exists: (key) => Promise.resolve(files.has(key)),
   };
   const api = startApi(storage);
-  const runtime = recognitionsAs(api.documentHttp.documents);
+  const recognition = api.documentHttp.documents;
   try {
     await db.anykoWorkspace.create({
       data: { id: workspaceId, name: 'Synthetic uncertain write' },
     });
-    const document = await runtime.upload({
-      workspaceId,
-      actorId: 'fixture',
-      filename: 'fixture.pdf',
-      bytes: new TextEncoder().encode('%PDF-1.7 fixture'),
-      requestKey: crypto.randomUUID(),
-      correlationId: crypto.randomUUID(),
-    });
+    const document = await recognition.commands.upload(
+      memberScope(workspaceId, 'fixture'),
+      {
+        filename: 'fixture.pdf',
+        bytes: new TextEncoder().encode('%PDF-1.7 fixture'),
+        requestKey: crypto.randomUUID(),
+        correlationId: crypto.randomUUID(),
+      },
+    );
     const run = await db.processingRun.findFirstOrThrow({
       where: { workspaceId, documentId: document.id },
     });
@@ -363,7 +427,7 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
     });
     let caught: unknown;
     try {
-      await createDocumentIo(db).run(
+      await createDocumentIo(db, uuidV7).run(
         { workspaceId, documentId: document.id },
         () =>
           execute({ workspaceId, runId: run.id }, new AbortController().signal),

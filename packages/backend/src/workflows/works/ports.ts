@@ -4,7 +4,7 @@ import type { AgentSessionStore, DocumentAgents } from '../../modules/agents';
 import type { AuditSink } from '../../modules/audit';
 import type {
   DocumentIo,
-  DocumentService,
+  DocumentsModule,
   ResourceLocks,
   SourceStorage,
 } from '../../modules/documents';
@@ -30,7 +30,7 @@ export interface WorkDependencies extends WorkStores {
   // Реализация в runtime — uow.run(tx => операция с хранилищами storeFor(tx)); сценарии 5a используют
   // module.in(tx) и UnitOfWork напрямую.
   transaction<T>(operation: (stores: WorkStores) => Promise<T>): Promise<T>;
-  documents: DocumentService;
+  documents: DocumentsModule;
   settings: LlmSettingsStore;
   locks: ResourceLocks;
   documentIo: DocumentIo;

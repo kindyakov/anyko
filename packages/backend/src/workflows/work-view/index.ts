@@ -1,5 +1,5 @@
 import type { AgentSessionStore } from '../../modules/agents';
-import type { DocumentService, ResourceLocks } from '../../modules/documents';
+import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import type { FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
@@ -16,7 +16,7 @@ export interface WorkViewDeps {
   facts: FactsModule;
   processing: ProcessingModule;
   generation: GenerationModule;
-  documents: DocumentService;
+  documents: DocumentsModule;
   sessions: AgentSessionStore;
   locks: ResourceLocks;
 }

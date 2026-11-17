@@ -1,7 +1,7 @@
 import type { Elysia } from 'elysia';
 
 import type { createAccess } from '@anyko/backend/access';
-import type { RecognitionService } from '@anyko/backend/documents';
+import type { DocumentsModule } from '@anyko/backend/documents';
 import type { IdempotencyApi } from '@anyko/backend/idempotency';
 import { brandDocumentId } from '@anyko/backend/ids';
 import {
@@ -21,7 +21,7 @@ import type { Route } from '../../route';
 import { imageHeaders, imageIndex, sourceFileHeaders } from './files';
 
 export interface DocumentHttpOptions {
-  documents: RecognitionService;
+  documents: DocumentsModule;
   access: ReturnType<typeof createAccess>;
   origin: string;
   idempotency: IdempotencyApi;
@@ -36,11 +36,11 @@ export function documentRoutes(
 ) {
   const { documents } = options;
   route(app, listDocuments, async ({ scope }) => ({
-    documents: await documents.list(scope),
-    deletions: await documents.pendingDeletions(scope),
+    documents: await documents.queries.list(scope),
+    deletions: await documents.queries.pendingDeletions(scope),
   }));
   route(app, uploadDocument, async ({ scope, headers, body, requestId }) => ({
-    document: await documents.upload(scope, {
+    document: await documents.commands.upload(scope, {
       requestKey: headers['idempotency-key'],
       filename: body.file.name,
       bytes: new Uint8Array(await body.file.arrayBuffer()),
@@ -48,10 +48,13 @@ export function documentRoutes(
     }),
   }));
   route(app, getDocument, async ({ scope, params }) => ({
-    document: await documents.get(scope, brandDocumentId(params.documentId)),
+    document: await documents.queries.get(
+      scope,
+      brandDocumentId(params.documentId),
+    ),
   }));
   route(app, getDocumentResult, async ({ scope, params, link }) => {
-    const result = await documents.result(
+    const result = await documents.queries.result(
       scope,
       brandDocumentId(params.documentId),
     );
@@ -69,7 +72,7 @@ export function documentRoutes(
     };
   });
   route(app, getDocumentSource, async ({ scope, params }) => {
-    const source = await documents.source(
+    const source = await documents.queries.source(
       scope,
       brandDocumentId(params.documentId),
     );
@@ -79,7 +82,7 @@ export function documentRoutes(
     };
   });
   route(app, getDocumentImage, async ({ scope, params }) => {
-    const image = await documents.image(
+    const image = await documents.queries.image(
       scope,
       brandDocumentId(params.documentId),
       imageIndex(params.index),
@@ -90,14 +93,14 @@ export function documentRoutes(
     };
   });
   route(app, getDocumentDeletion, ({ scope, params }) =>
-    documents.deletion(scope, brandDocumentId(params.documentId)),
+    documents.queries.deletion(scope, brandDocumentId(params.documentId)),
   );
   route(app, deleteDocument, async ({ scope, params }) => {
-    await documents.remove(scope, brandDocumentId(params.documentId));
+    await documents.commands.remove(scope, brandDocumentId(params.documentId));
     return { status: 'deleting' as const };
   });
   route(app, retryDocument, async ({ scope, params, requestId }) => ({
-    document: await documents.retry(
+    document: await documents.commands.retry(
       scope,
       brandDocumentId(params.documentId),
       requestId,

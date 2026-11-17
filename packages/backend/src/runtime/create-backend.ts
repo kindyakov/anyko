@@ -17,12 +17,10 @@ import {
 } from '../modules/agents/infrastructure/session-store';
 import { type AuditWriter, record } from '../modules/audit';
 import { createAuditModule } from '../modules/audit/module';
-import {
-  createDocumentService,
-  createRecognitions,
-  type DocumentParser,
-  type RecognitionService,
-  type SourceStorage,
+import type {
+  DocumentParser,
+  DocumentsModule,
+  SourceStorage,
 } from '../modules/documents';
 import { createArtifactRegistry } from '../modules/documents/infrastructure/artifact-store';
 import { createDeletionStore } from '../modules/documents/infrastructure/deletion-store';
@@ -30,6 +28,7 @@ import { createDocumentIo } from '../modules/documents/infrastructure/document-i
 import { createMineruParser } from '../modules/documents/infrastructure/mineru';
 import { createS3Storage } from '../modules/documents/infrastructure/s3-storage';
 import { createSourceCleanup } from '../modules/documents/infrastructure/source-cleanup';
+import { createDocumentsModule } from '../modules/documents/module';
 import {
   createFactsStore,
   factsStoreFor,
@@ -118,7 +117,7 @@ export interface BackendOptions<Role extends 'api' | 'worker'> {
 export interface ApiBackend {
   readonly role: 'api';
   readonly documentHttp: {
-    documents: RecognitionService;
+    documents: DocumentsModule;
     access: ReturnType<typeof createAccess>;
     origin: string;
     idempotency: IdempotencyApi;
@@ -131,7 +130,7 @@ export interface ApiBackend {
     review: WorkReview;
     generation: WorkGeneration;
     settings: LlmSettingsApi;
-    documents: RecognitionService;
+    documents: DocumentsModule;
     access: ReturnType<typeof createAccess>;
     origin: string;
     idempotency: IdempotencyApi;
@@ -186,14 +185,15 @@ export function createBackend(
   const db = (dependencies.createDatabase ?? createDatabase)(pool);
   const locks = createResourceLocks(lockPool);
   const storage = dependencies.storage ?? createS3Storage(validated.storage);
-  const documents = createDocumentService(
-    createDocumentUnitOfWork(db),
+  const documents = createDocumentsModule({
+    store: createDocumentUnitOfWork(db),
     storage,
-    logger,
-    createArtifactRegistry(db),
+    artifacts: createArtifactRegistry(db),
     locks,
-    createDocumentIo(db),
-  );
+    io: createDocumentIo(db, uuidV7),
+    logger,
+    newId: uuidV7,
+  });
 
   // Единица работы и фасады модулей: сценарии получают их, а не клиента БД.
   const uow = createUnitOfWork(db);
@@ -247,7 +247,7 @@ export function createBackend(
     documents,
     settings: llmSettings,
     locks,
-    documentIo: createDocumentIo(db),
+    documentIo: createDocumentIo(db, uuidV7),
     workIo: createWorkIo(db),
     assertNoDocumentWriters: (workspaceId, documentId, requestKey) =>
       createDeletionStore(db).assertNoWriters(
@@ -268,7 +268,6 @@ export function createBackend(
     storage,
     logger,
   };
-  const recognitions = createRecognitions(documents);
 
   const started: { stop(): Promise<void> }[] = [];
   let stopping: Promise<void> | undefined;
@@ -326,7 +325,7 @@ export function createBackend(
     return {
       role: 'api',
       documentHttp: {
-        documents: recognitions,
+        documents,
         access,
         origin: auth.origin,
         idempotency,
@@ -344,7 +343,7 @@ export function createBackend(
         review: createWorkReview(workflows),
         generation: createWorkGeneration(workflows),
         settings: createLlmSettings({ settings: llmSettings, locks }),
-        documents: recognitions,
+        documents,
         access,
         origin: auth.origin,
         idempotency,
@@ -375,7 +374,7 @@ export function createBackend(
   });
   const documentDeps = {
     processing,
-    io: createDocumentIo(db),
+    io: createDocumentIo(db, uuidV7),
     locks,
     storage,
     logger,
