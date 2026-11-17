@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Notice } from '@/components/ui/status';
 import { documentResultQueryOptions } from '@/features/documents/api/queries';
 import { ResultPreview } from '@/features/documents/result-preview';
-import { useWorkspaceId } from '@/lib/api/session';
+import { useWorkspaceId } from '@/lib/api/workspace';
 
 type Mode = 'split' | 'text' | 'source' | 'markdown';
 export type ViewedDocument = { id: string; filename: string };

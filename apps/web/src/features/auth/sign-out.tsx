@@ -3,8 +3,9 @@ import { LogOut } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { routes } from '@/lib/routes';
 
-export function SignOut({ onSignedOut }: { onSignedOut: () => void }) {
+export function SignOut() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
   async function signOut() {
@@ -23,8 +24,13 @@ export function SignOut({ onSignedOut }: { onSignedOut: () => void }) {
         credentials: 'same-origin',
         signal: controller.signal,
       });
-      if (response.ok) onSignedOut();
-      else setError('Не удалось выйти.');
+      if (response.ok) {
+        // Полная загрузка страницы входа сбрасывает весь кэш в памяти. Адрес без `next`:
+        // следующий пользователь не должен попасть в рабочую область прежнего.
+        window.location.replace(routes.signIn());
+        return;
+      }
+      setError('Не удалось выйти.');
     } catch {
       setError('Не удалось связаться с сервером.');
     } finally {

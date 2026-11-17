@@ -37,7 +37,8 @@ import {
 import { journeySteps } from '@/features/works/journey';
 import { useListPreferences } from '@/features/works/list-preferences';
 import { ApiError } from '@/lib/api/errors';
-import { useWorkspaceId } from '@/lib/api/session';
+import { useExpireSession } from '@/lib/api/query-client';
+import { useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 
 function Journey({ compact = false }: { compact?: boolean }) {
@@ -66,8 +67,9 @@ function formText(data: FormData, name: string) {
   return typeof value === 'string' ? value : '';
 }
 
-export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
+export function WorkList() {
   const router = useRouter();
+  const expireSession = useExpireSession();
   const packageLabel = useId();
   const [creating, setCreating] = useState(false);
   const { search, filter, setSearch, setFilter } = useListPreferences();
@@ -80,8 +82,8 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
   const create = useCreateWork();
   const error = list.error ?? catalog.error ?? create.error;
   useEffect(() => {
-    if (error instanceof ApiError && error.status === 401) onUnauthorized();
-  }, [error, onUnauthorized]);
+    if (error instanceof ApiError && error.status === 401) expireSession();
+  }, [error, expireSession]);
   const works = list.data?.pages.flatMap((page) => page.works) ?? [];
   const visible = works.filter(
     (work) =>
@@ -253,7 +255,7 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
             return (
               <li key={work.id} className={`animate-rise ${stagger(index)}`}>
                 <Link
-                  href={routes.work(work.id)}
+                  href={routes.work(workspaceId, work.id)}
                   className="group group/mist focus-visible:outline-brand-hot glass relative isolate flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] p-6 transition-[border-color,box-shadow] duration-500 ease-out hover:border-[#ff3b62]/40 hover:shadow-[0_20px_60px_-20px_#db143c88] focus-visible:outline-2 focus-visible:outline-offset-2"
                 >
                   <HoverMist />
@@ -356,7 +358,7 @@ export function WorkList({ onUnauthorized }: { onUnauthorized: () => void }) {
                 },
                 {
                   onSuccess: (result) => {
-                    router.push(routes.work(result.work.id));
+                    router.push(routes.work(workspaceId, result.work.id));
                   },
                 },
               );

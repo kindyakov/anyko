@@ -24,6 +24,7 @@ import {
 } from '@/features/documents/document-viewer';
 import { requestApi } from '@/lib/api/client';
 import { ApiError, describeApiError } from '@/lib/api/errors';
+import { useExpireSession } from '@/lib/api/query-client';
 
 const accept =
   '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff';
@@ -61,11 +62,8 @@ function message(error: unknown) {
   const text = describeApiError(error, documentTexts);
   return error.requestId ? `${text} Код обращения: ${error.requestId}` : text;
 }
-export function DocumentWorkspace({
-  onUnauthorized,
-}: {
-  onUnauthorized: () => void;
-}) {
+export function DocumentWorkspace() {
+  const expireSession = useExpireSession();
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [deletions, setDeletions] = useState<
     z.infer<typeof documentsResponseSchema>['deletions']
@@ -82,12 +80,12 @@ export function DocumentWorkspace({
     (failure: unknown) => {
       if (!alive.current) return;
       if (failure instanceof ApiError && failure.status === 401) {
-        onUnauthorized();
+        expireSession();
         return;
       }
       setError(message(failure));
     },
-    [onUnauthorized],
+    [expireSession],
   );
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
