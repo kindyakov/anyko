@@ -28,7 +28,6 @@ export function stubHttpOptions(): {
     handle: unused,
     session: unused,
     scope: unused,
-    legacyScope: unused,
   };
   const documents: RecognitionService = {
     list: unused,

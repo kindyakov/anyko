@@ -17,6 +17,4 @@ export const memberAccess: ReturnType<typeof createAccess> = {
       headers.get('cookie') === 'session=ok' ? memberSession : null,
     ),
   scope: scopeFor,
-  // Временный слой без версии работает с первым участием: здесь это та же область local.
-  legacyScope: () => Promise.resolve(scopeFor(memberSession, 'local')),
 };

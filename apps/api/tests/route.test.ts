@@ -23,7 +23,7 @@ import { originGuard } from '../src/http/plugins/origin';
 import { requestContext } from '../src/http/plugins/request-context';
 import { sessionGuard } from '../src/http/plugins/session';
 import { workspaceScopeGuard } from '../src/http/plugins/workspace-scope';
-import { createRoute, type Route, versionedLayer } from '../src/http/route';
+import { createRoute, type Route } from '../src/http/route';
 
 import { memoryIdempotency } from './support/memory-idempotency';
 
@@ -44,7 +44,6 @@ const access = {
   session: (headers: Headers) =>
     Promise.resolve(headers.get('cookie') === 'session=ok' ? session : null),
   scope: scopeFor,
-  legacyScope: () => Promise.resolve(null),
 } satisfies ReturnType<typeof createAccess>;
 const authed = { cookie: 'session=ok' };
 
@@ -113,7 +112,6 @@ function build(
   const route = createRoute({
     logger,
     strictErrors,
-    layer: versionedLayer,
     endpoints: new Set(),
     idempotency: memoryIdempotency(),
   });

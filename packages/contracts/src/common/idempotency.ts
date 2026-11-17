@@ -5,9 +5,3 @@ import { z } from 'zod';
 export const idempotencyKeyHeaders = z.object({
   'idempotency-key': z.uuid(),
 });
-
-// Временный слой без версии (web #11): там ключ для части команд необязателен; если он пришёл,
-// проверяется той же схемой.
-export const optionalIdempotencyKeyHeaders = z.object({
-  'idempotency-key': z.uuid().optional(),
-});

@@ -201,41 +201,7 @@ test('a failed command releases the key so the same key runs again', async () =>
   expect(calls).toBe(2);
 });
 
-test('the temporary unversioned layer runs analyze without a key as before', async () => {
-  let calls = 0;
-  const app = appWith(() => {
-    calls++;
-    return Promise.resolve();
-  });
-  await withServer(app, async (base) => {
-    const workId = crypto.randomUUID();
-    const response = await analyzeRequest(base, `/api/works/${workId}/analyze`);
-    expect(response.status).toBe(202);
-  });
-  expect(calls).toBe(1);
-});
-
-test('the temporary layer applies the same replay when a key is sent', async () => {
-  let calls = 0;
-  const app = appWith(() => {
-    calls++;
-    return Promise.resolve();
-  });
-  await withServer(app, async (base) => {
-    const workId = crypto.randomUUID();
-    const key = crypto.randomUUID();
-    const path = `/api/works/${workId}/analyze`;
-    expect(
-      (await analyzeRequest(base, path, { 'idempotency-key': key })).status,
-    ).toBe(202);
-    expect(
-      (await analyzeRequest(base, path, { 'idempotency-key': key })).status,
-    ).toBe(202);
-  });
-  expect(calls).toBe(1);
-});
-
-test('the temporary layer does not require a key for work creation: an invalid body reports the input code', async () => {
+test('work creation with an invalid body reports the input code before the command runs', async () => {
   const options = stubHttpOptions();
   const app = createApp({
     logger: createLogger({
@@ -252,12 +218,13 @@ test('the temporary layer does not require a key for work creation: an invalid b
     },
   });
   await withServer(app, async (base) => {
-    const response = await fetch(`${base}/api/works`, {
+    const response = await fetch(`${base}/api/v1/workspaces/local/works`, {
       method: 'POST',
       headers: {
         cookie: 'session=ok',
         origin,
         'content-type': 'application/json',
+        'idempotency-key': crypto.randomUUID(),
       },
       body: JSON.stringify({ title: 1 }),
     });
