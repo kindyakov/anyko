@@ -108,11 +108,21 @@ module.exports = {
     },
     {
       name: 'ui-no-business',
+      comment:
+        '@anyko/ui не знает о приложениях, контрактах, сервере и Next: данные и обработчики приходят пропсами, маршрутизация и изображения остаются в apps/web.',
       severity: 'error',
       from: { path: '^packages/ui/' },
       to: {
-        path: '^(?:packages/(?:backend|database|contracts|llm)/|apps/web/src/(?:features|lib/api)/)',
+        path: '^(?:packages/(?:backend|database|contracts|llm)/|apps/|next(?:/|$))|(?:^|/)node_modules/next/',
       },
+    },
+    {
+      name: 'ui-brand-isolated',
+      comment:
+        'Фоновая графика бренда тянет WebGL и canvas. Корень @anyko/ui и @anyko/ui/form её не импортируют, чтобы примитивы не утяжеляли каждую страницу; графика подключается только через @anyko/ui/brand.',
+      severity: 'error',
+      from: { path: '^packages/ui/src/(?!brand/)' },
+      to: { path: '^packages/ui/src/brand/' },
     },
     {
       name: 'domain-no-infrastructure',
@@ -280,18 +290,10 @@ module.exports = {
     {
       name: 'web-features-no-app',
       comment:
-        'features и components не импортируют app/. Передайте данные или обработчики пропсами; маршрутные файлы остаются в app/.',
+        'features не импортируют app/. Передайте данные или обработчики пропсами; маршрутные файлы остаются в app/.',
       severity: 'error',
-      from: { path: '^apps/web/src/(?:features|components)/' },
+      from: { path: '^apps/web/src/features/' },
       to: { path: '^apps/web/src/app/' },
-    },
-    {
-      name: 'web-components-no-features',
-      comment:
-        'components/ — общие примитивы без предметного смысла. Не импортируйте features/ и lib/api/: передайте данные пропсами, а предметную логику оставьте в feature.',
-      severity: 'error',
-      from: { path: '^apps/web/src/components/' },
-      to: { path: '^apps/web/src/(?:features/|lib/api/)' },
     },
     {
       name: 'web-api-transport-only-in-lib',
@@ -304,9 +306,9 @@ module.exports = {
     {
       name: 'web-server-only',
       comment:
-        'lib/server содержит server-only конфигурацию и сессию. Из features, components и lib/api читайте данные через API или пропсы серверного компонента.',
+        'lib/server содержит server-only конфигурацию и сессию. Из features и lib/api читайте данные через API или пропсы серверного компонента.',
       severity: 'error',
-      from: { path: '^apps/web/src/(?:features/|components/|lib/api/)' },
+      from: { path: '^apps/web/src/(?:features/|lib/api/)' },
       to: { path: '^apps/web/src/lib/server/' },
     },
     {

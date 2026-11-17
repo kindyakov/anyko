@@ -31,15 +31,15 @@ apps/web/src/
 
 ## Уровни и импорты
 
-| Откуда         | Разрешено                                                                               |
-| -------------- | --------------------------------------------------------------------------------------- |
-| `app/`         | `features/*/index.ts`, `@anyko/ui`, `lib/`, `@anyko/contracts`                          |
-| `features/<a>` | свои файлы, `features/<b>/index.ts` без цикла, `@anyko/ui`, `lib/api`, contracts        |
-| `@anyko/ui`    | React, Base UI, Tailwind, TanStack Form (в `form`); без contracts, `lib/api` и features |
-| `lib/api`      | contracts и платформа браузера; без features                                            |
-| `lib/server`   | только из серверных модулей: layouts, pages, route handlers, `proxy.ts`                 |
+| Откуда         | Разрешено                                                                         |
+| -------------- | --------------------------------------------------------------------------------- |
+| `app/`         | `features/*/index.ts`, `@anyko/ui`, `lib/`, `@anyko/contracts`                    |
+| `features/<a>` | свои файлы, `features/<b>/index.ts` без цикла, `@anyko/ui`, `lib/api`, contracts  |
+| `@anyko/ui`    | React, Base UI, Tailwind, TanStack Form (в `form`); без contracts, `apps/` и Next |
+| `lib/api`      | contracts и платформа браузера; без features                                      |
+| `lib/server`   | только из серверных модулей: layouts, pages, route handlers, `proxy.ts`           |
 
-Contracts импортируются по ресурсам (`@anyko/contracts/works`, `/session`, `/common`) и по месту объявления символа; корневого экспорта у пакета нет (неразрешимый импорт отклоняет `workspace-imports-must-resolve`), `@anyko/contracts/admin` пользовательскому web недоступен. Импорт `features/<b>/ui/...` из другой feature, `app/` из feature и feature из `@anyko/ui` — ошибки проверки границ. Новое ребро между features отражается в `index.ts` поставщика; цикл устраняется переносом координации в экран.
+Contracts импортируются по ресурсам (`@anyko/contracts/works`, `/session`, `/common`) и по месту объявления символа; корневого экспорта у пакета нет (неразрешимый импорт отклоняет `workspace-imports-must-resolve`), `@anyko/contracts/admin` пользовательскому web недоступен. Импорт `features/<b>/ui/...` из другой feature, `app/` из feature, импорт `apps/`, Next или contracts из `@anyko/ui` и графики `brand` из корня `@anyko/ui` или `form` — ошибки проверки границ. Новое ребро между features отражается в `index.ts` поставщика; цикл устраняется переносом координации в экран.
 
 ## Маршруты
 
@@ -76,7 +76,7 @@ Feature — один пользовательский сценарий в тер
 
 ## Формы
 
-- Каждая форма строится на TanStack Form через `useAppForm` из `@/components/ui/form` (до переноса пакета — `@anyko/ui/form`). Features не импортируют `@tanstack/react-form` напрямую: состояние формы читается через `useFormSelector` из того же модуля. Ручные `useState` на поля и собственная разводка ошибок не пишутся.
+- Каждая форма строится на TanStack Form через `useAppForm` из `@anyko/ui/form`. Features не импортируют `@tanstack/react-form` напрямую: состояние формы читается через `useFormSelector` из того же модуля. Ручные `useState` на поля и собственная разводка ошибок не пишутся.
 - Предметные правила формы (перенос правок на новую редакцию, вычисление конфликтов) — чистые функции в `model/` с unit-тестами; форма только принимает их результат. Перенос сведений (`fact-review/model/rebase.ts`): `base` — серверные значения, от которых начаты правки, `mine` — форма, `theirs` — новая редакция. Форма получает серверные значения через `reset`, затем `setFieldValue` только для полей, которые отличаются от них; конфликтные поля остаются с правкой пользователя, и сохранение недоступно до решения по каждому.
 - Поля сведений строятся по каталогу полей, который API отдаёт вместе с пакетом документов. Web не перечисляет ключи полей профиля в коде.
 - Ввод проверяется локальными схемами feature для обратной связи: тексты по-русски, ограничения повторяют contracts; сервер проверяет его снова. Ошибка поля показывается после потери фокуса или отправки. Ошибки `invalid` с `fields` раскладывает `applyServerErrors` (`lib/api/form-errors`): к полям с тем же именем, остальное — в общую ошибку формы; тексты — из таблицы кодов feature.
@@ -95,7 +95,7 @@ Feature — один пользовательский сценарий в тер
 | Компоненты и хуки: формы, состояния, команды      | `bun test` + happy-dom + React Testing Library + user-event         | рядом с кодом |
 | Маршруты, сессия, перенаправления, async RSC, SSE | Playwright, runner на Node, приложение через `bun --bun next start` | `tests/e2e`   |
 
-- Web-тесты запускаются по маске файлов `src` с изоляцией файлов (`--isolate`), а не списком. Тесты `src/lib` запускаются без DOM, тесты `src/features`, `src/app` и `src/components` — с happy-dom через preload `test/setup.ts`.
+- Web-тесты запускаются по маске файлов `src` с изоляцией файлов (`--isolate`), а не списком. Тесты `src/lib` запускаются без DOM, тесты `src/features` и `src/app` — с happy-dom через preload `test/setup.ts`.
 - Компонент проверяется через роли и доступные названия, как его использует человек. Внутреннее состояние, имена классов и вызовы хуков не проверяются.
 - Каждый тест создаёт свой `QueryClient`. Сеть подменяется на уровне `fetch` ответами, проходящими схемы contracts; модули features не мокируются.
 - `next/navigation` и `next/link` подменяются общим помощником web-тестов, а не в каждом файле по-своему.
