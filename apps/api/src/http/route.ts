@@ -2,6 +2,10 @@ import type { Elysia } from 'elysia';
 import type { z } from 'zod';
 
 import { AppError, isAppError } from '@anyko/backend/errors';
+import {
+  fingerprintInput,
+  type IdempotencyApi,
+} from '@anyko/backend/idempotency';
 import type { WorkspaceScope } from '@anyko/backend/scope';
 import {
   type Endpoint,
@@ -42,6 +46,8 @@ export interface RouteEnv {
   readonly strictErrors: boolean;
   // Описания версии v1, из них строится OpenAPI; временный слой не добавляет туда ничего.
   readonly endpoints?: Set<Endpoint>;
+  // Хранилище повтора команд (модуль idempotency): маршруты режима key выполняются через него.
+  readonly idempotency: IdempotencyApi;
 }
 
 interface FileResult {
@@ -137,7 +143,7 @@ export function createRoute(env: RouteEnv): Route {
             query,
             headers,
           );
-          const value = await handler({
+          const context = {
             ...input,
             session,
             scope: state.scope,
@@ -145,8 +151,40 @@ export function createRoute(env: RouteEnv): Route {
             request,
             signal: request.signal,
             link,
-          } as RouteContext<typeof endpoint>);
-          return await respond(endpoint, value, set, env.logger, requestId);
+          } as RouteContext<typeof endpoint>;
+          const key =
+            endpoint.idempotency === 'key'
+              ? idempotencyKeyOf(input.headers)
+              : undefined;
+          // Без ключа команда выполняется как прежде: так работает только временный слой (ADR 0009).
+          if (key === undefined || endpoint.idempotency !== 'key') {
+            const value = await handler(context);
+            return await respond(endpoint, value, set, env.logger, requestId);
+          }
+          if (!state.scope) throw new Error('KEYED_ROUTE_WITHOUT_SCOPE');
+          // Повтор с тем же ключом, областью, командой и входом отдаёт сохранённый ответ, сценарий
+          // не запускается. Отпечаток — от разобранного входа, поэтому порядок полей не важен.
+          const stored = await env.idempotency.run(
+            {
+              workspaceId: state.scope.workspaceId,
+              command: `${endpoint.method} ${endpoint.path}`,
+              key,
+              fingerprint: await fingerprintInput({
+                params: input.params,
+                query: input.query,
+                body: input.body,
+              }),
+            },
+            async () => {
+              const value = await handler(context);
+              return {
+                status: endpoint.status,
+                body: await checkedJson(endpoint, value, env.logger, requestId),
+              };
+            },
+          );
+          set.status = stored.status;
+          return stored.body;
         } catch (error) {
           if (isAppError(error) && !allowed.has(error.code)) {
             env.logger.error({
@@ -272,7 +310,21 @@ async function respond(
       },
     });
   }
-  const check = await response.schema['~standard'].validate(value);
+  await checkedJson(endpoint, value, logger, requestId);
+  set.status = endpoint.status;
+  return value;
+}
+
+// Ответ json проверяется схемой описания до отправки; нарушение — внутренняя ошибка.
+async function checkedJson(
+  endpoint: Endpoint,
+  value: unknown,
+  logger: Logger,
+  requestId: string,
+): Promise<unknown> {
+  if (endpoint.response.kind !== 'json')
+    throw new Error('JSON_RESPONSE_EXPECTED');
+  const check = await endpoint.response.schema['~standard'].validate(value);
   if (check.issues !== undefined) {
     logger.error({
       event: 'http_response_invalid',
@@ -281,8 +333,14 @@ async function respond(
     });
     throw new Error('RESPONSE_CONTRACT_VIOLATION');
   }
-  set.status = endpoint.status;
   return value;
+}
+
+// Заголовок Idempotency-Key уже проверен схемой; здесь только выбор значения.
+function idempotencyKeyOf(headers: unknown): string | undefined {
+  if (typeof headers !== 'object' || headers === null) return undefined;
+  const value: unknown = Reflect.get(headers, 'idempotency-key');
+  return typeof value === 'string' ? value : undefined;
 }
 
 function isFileResult(value: unknown): value is FileResult {

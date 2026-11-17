@@ -25,6 +25,8 @@ import { sessionGuard } from '../src/http/plugins/session';
 import { workspaceScopeGuard } from '../src/http/plugins/workspace-scope';
 import { createRoute, type Route, versionedLayer } from '../src/http/route';
 
+import { memoryIdempotency } from './support/memory-idempotency';
+
 const origin = 'http://localhost:3000';
 const session: AccessSession = {
   user: {
@@ -113,6 +115,7 @@ function build(
     strictErrors,
     layer: versionedLayer,
     endpoints: new Set(),
+    idempotency: memoryIdempotency(),
   });
   const api = new Elysia();
   noStore(api);

@@ -90,6 +90,7 @@ function versionedRoutes(input: ApiInput & { endpoints: Set<Endpoint> }) {
     logger: input.logger,
     strictErrors: input.strictErrors,
     endpoints: input.endpoints,
+    idempotency: input.api.idempotency,
   });
   const app = new Elysia();
   noStore(app);
@@ -106,6 +107,7 @@ function legacyRoutes(input: ApiInput) {
     layer: legacyLayer,
     logger: input.logger,
     strictErrors: input.strictErrors,
+    idempotency: input.api.idempotency,
   });
   const app = new Elysia();
   noStore(app);

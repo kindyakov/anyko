@@ -2,6 +2,7 @@ import type { Elysia } from 'elysia';
 
 import type { createAccess } from '@anyko/backend/access';
 import type { RecognitionService } from '@anyko/backend/documents';
+import type { IdempotencyApi } from '@anyko/backend/idempotency';
 import { brandDocumentId } from '@anyko/backend/ids';
 import {
   deleteDocument,
@@ -23,6 +24,7 @@ export interface DocumentHttpOptions {
   documents: RecognitionService;
   access: ReturnType<typeof createAccess>;
   origin: string;
+  idempotency: IdempotencyApi;
 }
 
 // Распознавание вне работы: сценарии на модуле documents. Адреса и область строит маршрут,

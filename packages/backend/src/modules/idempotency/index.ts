@@ -4,3 +4,10 @@ export { fingerprintInput } from './application/fingerprint';
 export type { IdempotentCommand, IdempotentResult } from './application/run';
 export { IdempotencyErrors, IdempotencyFailure } from './errors';
 export { createIdempotency, type IdempotencyApi } from './module';
+export type {
+  AcquireInput,
+  AcquireOutcome,
+  IdempotencyKeyRef,
+  IdempotencyStore,
+  StoredResponse,
+} from './application/ports';

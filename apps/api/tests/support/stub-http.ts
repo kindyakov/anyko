@@ -6,6 +6,8 @@ import type { WorkApi } from '@anyko/backend/works';
 import type { DocumentHttpOptions } from '../../src/http/routes/documents';
 import type { WorkHttpOptions } from '../../src/http/routes/works';
 
+import { memoryIdempotency } from './memory-idempotency';
+
 // Тесты описаний не исполняют сценарии: маршруты регистрируются без вызова зависимостей.
 // Заглушки только повторяют форму типов; если маршрут всё же вызван, тест падает явно.
 const unused = (): never => {
@@ -55,7 +57,12 @@ export function stubHttpOptions(): {
     save: unused,
   };
   const origin = 'http://localhost:3000';
-  const documentHttp = { documents, access, origin };
+  const documentHttp = {
+    documents,
+    access,
+    origin,
+    idempotency: memoryIdempotency(),
+  };
   return {
     documentHttp,
     workHttp: {
