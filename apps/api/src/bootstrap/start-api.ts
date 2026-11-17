@@ -33,6 +33,7 @@ export async function startApi() {
     let ready = false;
     const app = createApp({
       logger,
+      environment: config.NODE_ENV,
       ready: () => ready,
       ...(backend
         ? {

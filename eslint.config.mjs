@@ -46,11 +46,6 @@ export default [
   },
   {
     files: ['apps/api/src/http/routes/**/*.{js,mjs,cjs,ts,tsx}'],
-    ignores: [
-      // Временно: разбор входа ещё в маршрутах; сокращается этапом #17 (ADR 0009).
-      'apps/api/src/http/routes/works.ts',
-      'apps/api/src/http/routes/documents.ts',
-    ],
     rules: {
       'no-restricted-syntax': [
         'error',

@@ -1,7 +1,7 @@
 import type { createAccess } from '@anyko/backend/access';
 import type { WorkApi } from '@anyko/backend/works';
 
-import { transportErrorCodes } from '../errors';
+import { transportErrorCodes } from '../../errors';
 
 const connections = new Map<string, number>();
 export function workEventStream(input: {

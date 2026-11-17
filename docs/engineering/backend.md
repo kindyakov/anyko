@@ -157,24 +157,37 @@ export const WorkErrors = defineErrors({
 // contracts/src/works/endpoints.ts
 export const confirmWork = endpoint({
   method: 'POST',
-  path: '/workspaces/:workspaceId/works/:workId/confirm',
-  params: workParamsSchema,
-  body: revisionSchema,
-  response: workViewSchema,
-  errors: ['WORK_NOT_FOUND', 'REVISION_CONFLICT', 'WORK_BUSY'],
+  path: '/works/:workId/confirm',
+  params: z.object({ workId: z.uuid() }),
+  body: json(revisionSchema),
+  response: json(workResponseSchema),
+  status: 200,
+  errors: [
+    'NOT_FOUND',
+    'CLEANUP_PENDING',
+    'REVISION_CONFLICT',
+    'WORK_BUSY',
+    'INVALID_WORK_INPUT',
+  ],
+  invalid: 'INVALID_WORK_INPUT',
+  idempotent: false,
 });
 
 // apps/api/src/http/routes/works/index.ts
-route(confirmWork, async ({ scope, params, body }, { workView, facts }) => {
-  await facts.commands.confirm(scope, {
+route(app, confirmWork, async ({ session, params, body }) =>
+  works.confirm({
+    ...body,
+    workspaceId: session.workspace.id,
     workId: params.workId,
-    revision: body.revision,
-  });
-  return presentWorkView(await workView.queries.get(scope, params.workId));
-});
+  }),
+);
 ```
 
-`route()` подставляет схемы в Elysia через Standard Schema, требует `scope` для путей с `:workspaceId`, проверяет ответ схемой и отклоняет код ошибки вне списка endpoint в тестах. Presenter — чистая функция в папке ресурса. Маршрут не содержит SQL, проверки ролей и предметных ветвлений. Файлы и SSE описываются видом ответа `file` и `events` с отдельной схемой событий.
+`endpoint()` принимает `json(schema)` или `multipart({ поле: схема })` как тело, `json`, `fileDownload()` или `eventStream()` как ответ. Поле `invalid` обязательно, если есть любой вход (`params`, `query`, `headers`, тело), и указывает код ошибки входа; `invalidHeaders` задаёт код для заголовков, если он отличается. Поле `idempotent` обязательно у POST, PUT, PATCH и DELETE и запрещено у GET; значение описывает, безопасен ли повтор запроса. Код ошибки вне `errors` не компилируется.
+
+`route()` проверяет заголовки, параметры, query и тело через Standard Schema в порядке, который задаёт описание, и отклоняет неверный вход кодом `invalid` без вызова обработчика. Права проверяет `guard` до разбора тела. Ответ `json` проверяется схемой `response`: при нарушении ответ становится `INTERNAL_ERROR` и пишется `http_response_invalid`. Ответ `file` получает `cache-control: no-store` и `x-content-type-options: nosniff`; обработчик задаёт остальные заголовки. Код `AppError` вне `errors` в `NODE_ENV=test` даёт 500 и событие `http_undeclared_error_code`; в остальных средах ответ прежний, событие пишется. Tест по реестру проверяет, что каждое описание зарегистрировано ровно один раз под `/api/v1`. Рабочая область в адресе и заголовок `Idempotency-Key` появятся с этапами #18; до них `route()` не знает `scope`.
+
+Presenter не вводится: маршрут возвращает объекты формы контракта. OpenAPI строится из тех же описаний и доступен вне production по `/api/v1/openapi.json`.
 
 ## Задания
 
