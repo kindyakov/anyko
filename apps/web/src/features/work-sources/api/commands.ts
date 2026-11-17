@@ -3,6 +3,7 @@ import { type Dispatch, type SetStateAction } from 'react';
 
 import { removeWorkDocument, uploadWorkDocument } from '@anyko/contracts/works';
 
+import { useRetryDocument } from '@/features/document-recognition';
 import { invalidateWork } from '@/features/works';
 import { callApi, newIdempotencyKey } from '@/lib/api/call';
 import { isUnauthorized } from '@/lib/api/errors';
@@ -46,6 +47,13 @@ export function useDeleteWorkDocument(workspaceId: string, workId: string) {
       }),
     onSuccess: () => invalidateWork(client, workspaceId, workId),
   });
+}
+
+export function useRetryWorkDocument(workspaceId: string, workId: string) {
+  const client = useQueryClient();
+  return useRetryDocument(workspaceId, () =>
+    invalidateWork(client, workspaceId, workId),
+  );
 }
 
 // Загружает файлы по одному и на каждый создаёт свой ключ. Ошибка одного файла отмечается в списке

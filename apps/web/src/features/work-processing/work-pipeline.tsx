@@ -253,6 +253,12 @@ function RunView({
           </div>
         );
       })}
+      {run.errorCode === 'CONNECTION_REVOKED' &&
+        !failures.some((step) => step.errorCode === run.errorCode) && (
+          <Notice tone="warning" role="status">
+            {errorText(run.errorCode)}
+          </Notice>
+        )}
       {failures.map((step) => (
         <Notice
           key={step.id}

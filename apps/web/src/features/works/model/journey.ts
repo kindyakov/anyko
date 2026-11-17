@@ -1,6 +1,8 @@
 import { type FieldKey } from '@anyko/contracts/catalog';
 import { type WorkView } from '@anyko/contracts/works';
 
+import { connectionRevokedText } from './command-errors';
+
 export type StepKey = 'files' | 'extraction' | 'review' | 'documents';
 
 export const journeySteps: {
@@ -125,6 +127,7 @@ export const stageLabels: Record<Run['steps'][number]['stage'], string> = {
   generation: 'Формирование DOCX',
 };
 const errors: Record<string, string> = {
+  CONNECTION_REVOKED: connectionRevokedText,
   OCR_FAILED: 'Не удалось распознать текст файла.',
   PARSING_FAILED: 'Не удалось прочитать содержимое файла.',
   MODEL_CALL_FAILED: 'Модель не ответила. Проверьте подключение в настройках.',

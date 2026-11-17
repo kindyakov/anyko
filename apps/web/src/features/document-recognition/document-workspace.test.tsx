@@ -2,7 +2,7 @@ import '../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { createQueryClient } from '@/lib/api/query-client';
@@ -139,3 +139,51 @@ test('a deletion that is still pending stops polling when the screen leaves the 
   await new Promise((resolve) => setTimeout(resolve, 1600));
   expect(polls()).toBe(atLeave);
 }, 15000);
+
+test('an old result asks for new recognition and a 409 keeps the preview usable', async () => {
+  let document = {
+    ...doc('old', 'scan.docx', 'failed'),
+    errorCode: 'OCR_RETRY_REQUIRED',
+  };
+  const address = `${recognitionsAddress}/old`;
+  const exchanges = serveApi(({ method, url }) => {
+    if (url === `${address}/result`)
+      return json(409, { error: { code: 'NOT_READY', requestId: 'ocr' } });
+    if (method === 'POST' && url === `${address}/retry`) {
+      document = { ...document, status: 'queued', errorCode: '' };
+      return json(202, { document });
+    }
+    return json(200, { documents: [document], deletions: [] });
+  });
+  const user = userEvent.setup();
+  renderWorkspace();
+
+  const row = within(await screen.findByRole('listitem'));
+  expect(row.getByText('Документ нужно распознать заново')).toBeTruthy();
+  expect(
+    row.getByRole('button', { name: 'Повторить' }).hasAttribute('disabled'),
+  ).toBe(false);
+  await user.click(row.getByRole('button', { name: 'Открыть' }));
+
+  const preview = within(
+    await screen.findByRole('dialog', { name: 'scan.docx' }),
+  );
+  expect(
+    await preview.findByText('Документ нужно распознать заново'),
+  ).toBeTruthy();
+  expect(
+    preview.getByRole('link', { name: 'Оригинал в новой вкладке' }),
+  ).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+  await user.click(preview.getByRole('button', { name: 'Повторить' }));
+
+  expect(await screen.findByText('В очереди')).toBeTruthy();
+  expect(exchanges.slice(0, 4).map(({ method, url }) => [method, url])).toEqual(
+    [
+      ['GET', recognitionsAddress],
+      ['GET', `${address}/result`],
+      ['POST', `${address}/retry`],
+      ['GET', recognitionsAddress],
+    ],
+  );
+});

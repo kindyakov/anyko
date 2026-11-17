@@ -26,7 +26,11 @@ import {
 } from '@/features/document-recognition/api/queries';
 import { ResultPreview } from '@/features/document-recognition/result-preview';
 import { endpointUrl } from '@/lib/api/call';
+import { ApiError } from '@/lib/api/errors';
 import { useWorkspaceId } from '@/lib/api/workspace';
+
+import { recognitionRetryText } from './model/error-texts';
+import { DocumentRetryButton } from './retry-button';
 
 type Mode = 'split' | 'text' | 'source' | 'markdown';
 
@@ -132,9 +136,15 @@ function Original({ filename, source }: { filename: string; source: string }) {
 
 export function DocumentViewer({
   document,
+  requiresRetry,
+  retryDisabled,
+  onRetry,
   onClose,
 }: {
   document: ViewedDocument | undefined;
+  requiresRetry: boolean;
+  retryDisabled: boolean;
+  onRetry: (documentId: string) => void;
   onClose: () => void;
 }) {
   const [mode, setMode] = useState<Mode>('split');
@@ -153,6 +163,24 @@ export function DocumentViewer({
   const text = (viewed: ViewedDocument) =>
     result.isPending ? (
       <PaperSkeleton />
+    ) : requiresRetry &&
+      result.error instanceof ApiError &&
+      result.error.status === 409 &&
+      result.error.code === 'NOT_READY' ? (
+      <Notice
+        tone="warning"
+        role="status"
+        title={recognitionRetryText}
+        action={
+          <DocumentRetryButton
+            disabled={retryDisabled}
+            onRetry={() => {
+              onClose();
+              onRetry(viewed.id);
+            }}
+          />
+        }
+      />
     ) : result.isError ? (
       <Notice
         tone="warning"

@@ -10,6 +10,7 @@ import { EventHorizon } from '@anyko/ui/brand';
 
 import {
   DocumentViewer,
+  recognitionRetryCode,
   type ViewedDocument,
 } from '@/features/document-recognition';
 import {
@@ -23,11 +24,13 @@ import {
   type Upload,
   uploadWorkFiles,
   useDeleteWorkDocument,
+  useRetryWorkDocument,
   useUploadWorkDocument,
   WorkSources,
 } from '@/features/work-sources';
 import {
   describeWorkCommandError,
+  errorText,
   type StepKey,
   stepOf,
   useAnalyzeWork,
@@ -119,6 +122,7 @@ function WorkBody({
   const generation = useGenerateWork(workspaceId, workId);
   const uploadDocument = useUploadWorkDocument(workspaceId, workId);
   const deletion = useDeleteWorkDocument(workspaceId, workId);
+  const retry = useRetryWorkDocument(workspaceId, workId);
   // Ключ каждой команды живёт на всё действие: повтор после неизвестного исхода передаёт тот же ключ.
   const analysisKey = useIdempotencyKey();
   const generationKey = useIdempotencyKey();
@@ -138,6 +142,7 @@ function WorkBody({
     confirmation.isPending ||
     facts.saving ||
     generation.isPending ||
+    retry.isPending ||
     deletion.isPending;
   // Сессия истекла: ошибка не показывается, оболочка перенаправит на вход.
   function fail(failure: unknown) {
@@ -165,6 +170,10 @@ function WorkBody({
     } catch (failure) {
       fail(failure);
     }
+  }
+  function retryDocument(documentId: string) {
+    setError('');
+    retry.mutate(documentId, { onError: fail });
   }
   const locked =
     view.cleanupPending ||
@@ -266,6 +275,16 @@ function WorkBody({
             {error || loadError}
           </Notice>
         )}
+        {stage.kind === 'review' &&
+          current !== 'extraction' &&
+          (stage.run.errorCode === 'CONNECTION_REVOKED' ||
+            stage.run.steps.some(
+              (item) => item.errorCode === 'CONNECTION_REVOKED',
+            )) && (
+            <Notice tone="warning" role="status">
+              {errorText('CONNECTION_REVOKED')}
+            </Notice>
+          )}
         {view.cleanupPending && (
           <Notice tone="progress" role="status" title="Удаляем данные файла">
             Удаляем исходник и всё, что из него извлечено. Работа временно
@@ -310,6 +329,8 @@ function WorkBody({
               onOpen={openDocument}
               onAnalyze={analyze}
               onDelete={deleteDocument}
+              onRetry={retryDocument}
+              retryingId={retry.isPending ? retry.variables : undefined}
             />
           </Tabs.Panel>
           <Tabs.Panel value="extraction" className="animate-rise outline-none">
@@ -348,6 +369,13 @@ function WorkBody({
       <UnsavedFactsBar facts={facts} busy={busy} />
       <DocumentViewer
         document={viewing}
+        requiresRetry={
+          viewing !== undefined &&
+          view.documents.find((item) => item.id === viewing.id)?.errorCode ===
+            recognitionRetryCode
+        }
+        retryDisabled={busy || locked}
+        onRetry={retryDocument}
         onClose={() => {
           setViewing(undefined);
         }}

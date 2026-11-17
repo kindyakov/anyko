@@ -1,3 +1,4 @@
+'use client';
 import {
   type QueryClient,
   useMutation,
@@ -44,12 +45,16 @@ export function useUploadDocument(workspaceId: string) {
   });
 }
 
-export function useRetryDocument(workspaceId: string) {
+export function useRetryDocument(
+  workspaceId: string,
+  refreshWork?: () => Promise<void>,
+) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (documentId: string) =>
       callApi(retryDocument, { params: { workspaceId, documentId } }),
-    onSuccess: () => refreshList(client, workspaceId),
+    onSuccess: () =>
+      Promise.all([refreshList(client, workspaceId), refreshWork?.()]),
   });
 }
 

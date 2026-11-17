@@ -16,6 +16,11 @@ import {
 } from '@anyko/ui';
 import { DropZone } from '@anyko/ui/brand';
 
+import {
+  DocumentRetryButton,
+  recognitionRetryCode,
+  recognitionRetryText,
+} from '@/features/document-recognition';
 import type { WorkStage } from '@/features/works';
 
 import type { Upload } from './api/commands';
@@ -39,6 +44,8 @@ export function WorkSources({
   onUpload,
   onDelete,
   onOpen,
+  onRetry,
+  retryingId,
   onAnalyze,
 }: {
   view: WorkView;
@@ -50,6 +57,8 @@ export function WorkSources({
   onUpload: (files: File[]) => void;
   onDelete: (document: Document) => Promise<void>;
   onOpen: (document: Document) => void;
+  onRetry: (documentId: string) => void;
+  retryingId: string | undefined;
   onAnalyze: () => void;
 }) {
   const [deleting, setDeleting] = useState<Document>();
@@ -120,31 +129,45 @@ export function WorkSources({
           <ul className="grid gap-3 lg:grid-cols-2">
             {view.documents.map((doc, index) => {
               const [label, tone] = labels[doc.status];
+              const requiresRetry =
+                doc.status === 'failed' &&
+                doc.errorCode === recognitionRetryCode;
               return (
                 <li
                   key={doc.id}
-                  className={`animate-rise glass group/mist relative isolate flex items-center gap-4 overflow-hidden rounded-2xl border border-white/[0.07] p-4 transition-[border-color,box-shadow] duration-500 ease-out hover:border-[#ff3b62]/30 hover:shadow-[0_16px_50px_-24px_#db143c88] ${stagger(index)}`}
+                  className={`animate-rise glass group/mist relative isolate flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl border border-white/[0.07] p-4 transition-[border-color,box-shadow] duration-500 ease-out hover:border-[#ff3b62]/30 hover:shadow-[0_16px_50px_-24px_#db143c88] ${stagger(index)}`}
                 >
                   <HoverMist />
                   <FileIcon filename={doc.filename} />
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 basis-32">
                     <p className="text-sm font-medium wrap-anywhere">
                       {doc.filename}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <StatusPill tone={tone}>{label}</StatusPill>
+                      <StatusPill tone={tone}>
+                        {requiresRetry ? recognitionRetryText : label}
+                      </StatusPill>
                       <span className="text-muted text-xs">
                         <RelativeTime value={doc.createdAt} />
                       </span>
                     </div>
                   </div>
-                  <div className="flex shrink-0 gap-1">
+                  <div className="ml-auto flex shrink-0 gap-1">
+                    {doc.status === 'failed' && (
+                      <DocumentRetryButton
+                        loading={retryingId === doc.id}
+                        disabled={busy || locked}
+                        onRetry={() => {
+                          onRetry(doc.id);
+                        }}
+                      />
+                    )}
                     <Button
                       variant="ghost"
                       size="icon-sm"
                       aria-label={`Просмотреть ${doc.filename}`}
                       title="Просмотреть"
-                      disabled={doc.status !== 'succeeded'}
+                      disabled={doc.status !== 'succeeded' && !requiresRetry}
                       onClick={() => {
                         onOpen(doc);
                       }}

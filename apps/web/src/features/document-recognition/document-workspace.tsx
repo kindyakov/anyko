@@ -1,6 +1,6 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { Eye, RefreshCw, RotateCw, Trash2 } from 'lucide-react';
+import { Eye, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { type DocumentSummary } from '@anyko/contracts/documents';
@@ -37,6 +37,11 @@ import {
   useUploadDocument,
 } from './api/commands';
 import { documentsQueryOptions } from './api/queries';
+import {
+  recognitionRetryCode,
+  recognitionRetryText,
+} from './model/error-texts';
+import { DocumentRetryButton } from './retry-button';
 
 const accept =
   '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff';
@@ -134,9 +139,9 @@ export function DocumentWorkspace() {
     setUploading(false);
     if (problems.length) setError(problems.join(' '));
   }
-  function retry(document: DocumentSummary) {
+  function retry(documentId: string) {
     setError('');
-    retryMutation.mutate(document.id, { onError: fail });
+    retryMutation.mutate(documentId, { onError: fail });
   }
   function removeDocument(document: DocumentSummary) {
     setError('');
@@ -261,6 +266,9 @@ export function DocumentWorkspace() {
             {documents.map((document, index) => {
               const busy =
                 document.status === 'queued' || document.status === 'running';
+              const requiresRetry =
+                document.status === 'failed' &&
+                document.errorCode === recognitionRetryCode;
               return (
                 <li
                   key={document.id}
@@ -283,27 +291,24 @@ export function DocumentWorkspace() {
                     </p>
                   </div>
                   <StatusPill tone={tones[document.status]}>
-                    {labels[document.status]}
+                    {requiresRetry
+                      ? recognitionRetryText
+                      : labels[document.status]}
                   </StatusPill>
                   <div className="flex gap-2">
                     {document.status === 'failed' && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
+                      <DocumentRetryButton
                         loading={
                           retryMutation.isPending &&
                           retryMutation.variables === document.id
                         }
                         disabled={pendingId !== undefined}
-                        onClick={() => {
-                          retry(document);
+                        onRetry={() => {
+                          retry(document.id);
                         }}
-                      >
-                        <RotateCw size={15} />
-                        Повторить
-                      </Button>
+                      />
                     )}
-                    {document.status === 'succeeded' && (
+                    {(document.status === 'succeeded' || requiresRetry) && (
                       <Button
                         variant="secondary"
                         size="sm"
@@ -340,6 +345,13 @@ export function DocumentWorkspace() {
       </section>
       <DocumentViewer
         document={viewing}
+        requiresRetry={
+          viewing !== undefined &&
+          documents.find((item) => item.id === viewing.id)?.errorCode ===
+            recognitionRetryCode
+        }
+        retryDisabled={pendingId !== undefined}
+        onRetry={retry}
         onClose={() => {
           setViewing(undefined);
         }}
