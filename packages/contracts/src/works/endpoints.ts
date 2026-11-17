@@ -11,6 +11,7 @@ import {
 import {
   deletingStatusSchema,
   documentResponseSchema,
+  documentResultSchema,
   uploadFileSchema,
 } from '../documents';
 
@@ -115,6 +116,18 @@ export const getWorkDocumentSource = endpoint({
     'INVALID_WORK_INPUT',
     'UNSUPPORTED_DOCUMENT_FORMAT',
   ],
+  invalid: 'INVALID_WORK_INPUT',
+});
+
+// Результат распознавания исходного документа работы: та же схема, что у распознавания вне работы.
+// Ссылки на изображения ведут на изображения этой работы (getWorkDocumentImage).
+export const getWorkDocumentResult = endpoint({
+  method: 'GET',
+  path: '/workspaces/:workspaceId/works/:workId/documents/:documentId/result',
+  params: workDocumentParams,
+  response: json(documentResultSchema),
+  status: 200,
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT', 'NOT_READY'],
   invalid: 'INVALID_WORK_INPUT',
 });
 

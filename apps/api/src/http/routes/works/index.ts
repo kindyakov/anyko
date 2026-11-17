@@ -22,6 +22,7 @@ import {
   generateWork,
   getWork,
   getWorkDocumentImage,
+  getWorkDocumentResult,
   getWorkDocumentSource,
   listWorks,
   removeWorkDocument,
@@ -99,6 +100,27 @@ export function worksRoutes(
       brandDocumentId(params.documentId),
     );
     return { bytes: source.bytes, headers: sourceFileHeaders(source) };
+  });
+  route(app, getWorkDocumentResult, async ({ scope, params, link }) => {
+    const result = await views.result(
+      scope,
+      brandWorkId(params.workId),
+      brandDocumentId(params.documentId),
+    );
+    return {
+      markdown: result.markdown,
+      processorVersion: result.processorVersion,
+      // Изображения адресуются через работу: ссылка ведёт на изображение исходного документа работы.
+      images: result.images.map((image) => ({
+        path: image.path,
+        url: link(getWorkDocumentImage, {
+          workspaceId: scope.workspaceId,
+          workId: params.workId,
+          documentId: params.documentId,
+          index: String(image.index),
+        }),
+      })),
+    };
   });
   route(app, getWorkDocumentImage, async ({ scope, params }) => {
     const image = await views.image(

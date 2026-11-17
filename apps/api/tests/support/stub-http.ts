@@ -62,6 +62,7 @@ export function stubHttpOptions(): {
     get: unused,
     source: unused,
     image: unused,
+    result: unused,
   };
   const intake: WorkIntake = {
     createWork: unused,

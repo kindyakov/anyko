@@ -451,14 +451,15 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     );
     expect(foreignAfterDelete.deletions).toEqual([]);
     // Документ работы адресуется через свою работу: документ, не связанный с ней, — 404.
-    expect(
-      (
-        await request(
-          `${worksRoot}/${work.work.id}/documents/${uploaded.document.id}/source`,
-          { headers: { cookie: ownerCookie } },
-        )
-      ).status,
-    ).toBe(404);
+    for (const suffix of ['source', 'result'])
+      expect(
+        (
+          await request(
+            `${worksRoot}/${work.work.id}/documents/${uploaded.document.id}/${suffix}`,
+            { headers: { cookie: ownerCookie } },
+          )
+        ).status,
+      ).toBe(404);
     // Участие второго пользователя удалено: сессия без участий отвечает 200 с пустым списком.
     await db.membership.deleteMany({ where: { userId: secondUser.id } });
     const emptySession = await request(sessionPath, {

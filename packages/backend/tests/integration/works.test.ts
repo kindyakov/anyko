@@ -285,6 +285,25 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
   const view = await until(input, terminal);
   expect(view.runs[0]?.status).toBe('succeeded');
   expect(view.facts.values.personName).toBe('Анна');
+  // Результат исходного документа работы: тот же текст, что у распознавания; документ другой работы — NOT_FOUND.
+  const documentResult = await apiBackend.workHttp.views.result(
+    memberScope(input.workspaceId),
+    brandWorkId(input.workId),
+    brandDocumentId(doc.id),
+  );
+  expect(documentResult.markdown).toBe('Имя: Анна. Номер: 42.');
+  const otherWorkId = await apiBackend.workHttp.intake.createWork(
+    memberScope(input.workspaceId, 'fixture'),
+    { packageVersion: 'technical-document-v1', title: 'Другая работа' },
+  );
+  await rejects(
+    apiBackend.workHttp.views.result(
+      memberScope(input.workspaceId),
+      brandWorkId(otherWorkId),
+      brandDocumentId(doc.id),
+    ),
+    'NOT_FOUND',
+  );
   const count = extractionCount;
   await analyze(input);
   await until(input, terminal);
