@@ -8,7 +8,7 @@ import { invalidateWork } from '@/features/works';
 import { callApi, newIdempotencyKey } from '@/lib/api/call';
 import { isUnauthorized } from '@/lib/api/errors';
 
-import { uploadFailureMessage } from '../upload-errors';
+import { uploadFailureMessage } from '../model/upload-errors';
 
 export interface Upload {
   id: string;

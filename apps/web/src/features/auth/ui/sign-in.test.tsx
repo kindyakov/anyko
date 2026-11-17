@@ -4,7 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { expectFocused } from '../../../test/focus';
+import { expectFocused } from '../../../../test/focus';
 
 import { SignIn } from './sign-in';
 

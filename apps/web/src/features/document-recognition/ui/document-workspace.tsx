@@ -21,7 +21,7 @@ import { DropZone } from '@anyko/ui/brand';
 import {
   DocumentViewer,
   type ViewedDocument,
-} from '@/features/document-recognition/document-viewer';
+} from '@/features/document-recognition/ui/document-viewer';
 import { newIdempotencyKey } from '@/lib/api/call';
 import {
   ApiError,
@@ -35,12 +35,13 @@ import {
   useDeleteDocument,
   useRetryDocument,
   useUploadDocument,
-} from './api/commands';
-import { documentsQueryOptions } from './api/queries';
+} from '../api/commands';
+import { documentsQueryOptions } from '../api/queries';
 import {
   recognitionRetryCode,
   recognitionRetryText,
-} from './model/error-texts';
+} from '../model/error-texts';
+
 import { DocumentRetryButton } from './retry-button';
 
 const accept =

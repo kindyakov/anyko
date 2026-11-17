@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -1128,4 +1129,42 @@ test('backend cannot depend on app hosts, including test-only worker aliases', a
       "import '../../../../packages/backend/src/runtime/example.ts';",
   });
   expect(hasViolation(allowed.result, 'backend-no-apps')).toBe(false);
+});
+
+const featureRootEntries = new Set(['index.ts', 'ui', 'api', 'model']);
+const maxUiFiles = 10;
+
+test('web features follow the folder layout and UI size limits', async () => {
+  const features = join(root, 'apps/web/src/features');
+  const errors: string[] = [];
+  async function checkUi(directory: string): Promise<void> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    const files = entries.filter(
+      (entry) => entry.isFile() && !/\.test\.tsx?$/.test(entry.name),
+    );
+    if (files.length > maxUiFiles)
+      errors.push(
+        `${directory}: ${String(files.length)} files; group components in subfolders by screen part (maximum ${String(maxUiFiles)}).`,
+      );
+    for (const entry of entries)
+      if (entry.isDirectory()) await checkUi(join(directory, entry.name));
+  }
+  for (const feature of await readdir(features, { withFileTypes: true })) {
+    if (!feature.isDirectory()) continue;
+    const directory = join(features, feature.name);
+    const entries = await readdir(directory, { withFileTypes: true });
+    if (!entries.some((entry) => entry.name === 'index.ts' && entry.isFile()))
+      errors.push(`${directory}: add the required public index.ts.`);
+    for (const entry of entries) {
+      if (!featureRootEntries.has(entry.name))
+        errors.push(
+          `${join(directory, entry.name)}: move this entry into ui/, api/, or model/.`,
+        );
+      else if (entry.name !== 'index.ts' && !entry.isDirectory())
+        errors.push(`${join(directory, entry.name)}: expected a directory.`);
+      if (entry.name === 'ui' && entry.isDirectory())
+        await checkUi(join(directory, entry.name));
+    }
+  }
+  expect(errors).toEqual([]);
 });

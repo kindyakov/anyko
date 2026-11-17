@@ -24,12 +24,13 @@ import {
   type DocumentOwner,
   documentResultQueryOptions,
 } from '@/features/document-recognition/api/queries';
-import { ResultPreview } from '@/features/document-recognition/result-preview';
+import { ResultPreview } from '@/features/document-recognition/ui/result-preview';
 import { endpointUrl } from '@/lib/api/call';
 import { ApiError } from '@/lib/api/errors';
 import { useWorkspaceId } from '@/lib/api/workspace';
 
-import { recognitionRetryText } from './model/error-texts';
+import { recognitionRetryText } from '../model/error-texts';
+
 import { DocumentRetryButton } from './retry-button';
 
 type Mode = 'split' | 'text' | 'source' | 'markdown';

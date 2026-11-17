@@ -1,4 +1,4 @@
-import '../../../test/next-navigation';
+import '../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -7,9 +7,9 @@ import userEvent from '@testing-library/user-event';
 
 import { createQueryClient } from '@/lib/api/query-client';
 
-import { json, serveApi } from '../../../test/api';
-import { workspaceId } from '../../../test/fixtures';
-import { navigation } from '../../../test/next-navigation';
+import { json, serveApi } from '../../../../test/api';
+import { workspaceId } from '../../../../test/fixtures';
+import { navigation } from '../../../../test/next-navigation';
 
 import { DocumentWorkspace } from './document-workspace';
 

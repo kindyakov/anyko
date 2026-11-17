@@ -23,7 +23,7 @@ import {
 } from '@/features/document-recognition';
 import type { WorkStage } from '@/features/works';
 
-import type { Upload } from './api/commands';
+import type { Upload } from '../api/commands';
 
 type Document = WorkView['documents'][number];
 

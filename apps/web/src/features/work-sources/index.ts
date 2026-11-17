@@ -5,4 +5,4 @@ export {
   useRetryWorkDocument,
   useUploadWorkDocument,
 } from '@/features/work-sources/api/commands';
-export { WorkSources } from '@/features/work-sources/work-sources';
+export { WorkSources } from '@/features/work-sources/ui/work-sources';

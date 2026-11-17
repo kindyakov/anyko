@@ -1,2 +1,2 @@
-export { SignIn } from '@/features/auth/sign-in';
-export { SignOut } from '@/features/auth/sign-out';
+export { SignIn } from '@/features/auth/ui/sign-in';
+export { SignOut } from '@/features/auth/ui/sign-out';

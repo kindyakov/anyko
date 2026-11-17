@@ -140,6 +140,27 @@ export default [
     ...config,
     files: ['apps/web/**/*.{ts,tsx}'],
   })),
+  {
+    files: ['apps/web/src/features/*/ui/**/*.{ts,tsx}'],
+    ignores: ['**/*.test.{ts,tsx}'],
+    rules: {
+      'max-lines': [
+        'error',
+        { max: 300, skipBlankLines: true, skipComments: true },
+      ],
+    },
+  },
+  {
+    // Known oversized components: this list only shrinks; split them in a follow-up.
+    files: [
+      'apps/web/src/features/document-recognition/ui/document-workspace.tsx',
+      'apps/web/src/features/work-processing/ui/work-pipeline.tsx',
+      'apps/web/src/features/fact-review/ui/package-preview.tsx',
+      'apps/web/src/features/works/ui/work-list.tsx',
+      'apps/web/src/features/fact-review/ui/work-review.tsx',
+    ],
+    rules: { 'max-lines': 'off' },
+  },
   // packages/ui: React-правила без Next; браузерное хранилище запрещено так же, как в features.
   ...frontendLibrary.map((config) => ({
     ...config,

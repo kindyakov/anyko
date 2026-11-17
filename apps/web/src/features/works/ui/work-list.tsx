@@ -37,8 +37,8 @@ import {
   documentPackagesQueryOptions,
   worksQueryOptions,
 } from '@/features/works/api/queries';
-import { useListPreferences } from '@/features/works/list-preferences';
 import { journeySteps } from '@/features/works/model/journey';
+import { useListPreferences } from '@/features/works/ui/list-preferences';
 import { sharedCodeTexts } from '@/lib/api/errors';
 import { applyServerErrors } from '@/lib/api/form-errors';
 import { useIdempotencyKey } from '@/lib/api/idempotency';

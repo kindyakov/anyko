@@ -1,4 +1,4 @@
-import '../../../test/next-navigation';
+import '../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -10,9 +10,9 @@ import type { Right, Session } from '@anyko/contracts/session';
 import { createQueryClient } from '@/lib/api/query-client';
 import { sessionKeys } from '@/lib/api/session';
 
-import { networkError, serveApi } from '../../../test/api';
-import { expectFocused } from '../../../test/focus';
-import { navigation } from '../../../test/next-navigation';
+import { networkError, serveApi } from '../../../../test/api';
+import { expectFocused } from '../../../../test/focus';
+import { navigation } from '../../../../test/next-navigation';
 
 import { ConnectionSettings } from './connection-settings';
 

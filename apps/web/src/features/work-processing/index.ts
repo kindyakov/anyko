@@ -1,1 +1,1 @@
-export { WorkPipeline } from '@/features/work-processing/work-pipeline';
+export { WorkPipeline } from '@/features/work-processing/ui/work-pipeline';

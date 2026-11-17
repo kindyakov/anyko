@@ -1,4 +1,4 @@
-import '../../../test/next-navigation';
+import '../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
 import { QueryClientProvider } from '@tanstack/react-query';
@@ -19,14 +19,14 @@ import {
   installEventSource,
   json,
   serveApi,
-} from '../../../test/api';
+} from '../../../../test/api';
 import {
   workAddress,
   workId,
   workspaceId,
   workView,
-} from '../../../test/fixtures';
-import { navigation } from '../../../test/next-navigation';
+} from '../../../../test/fixtures';
+import { navigation } from '../../../../test/next-navigation';
 
 import { useFactsForm } from './facts-form';
 import { emptyFieldValues, fieldDefinitions } from './test-fields';

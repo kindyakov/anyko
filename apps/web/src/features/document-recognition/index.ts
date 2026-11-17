@@ -3,10 +3,10 @@ export {
   recognitionRetryCode,
   recognitionRetryText,
 } from './model/error-texts';
-export { DocumentRetryButton } from './retry-button';
+export { DocumentRetryButton } from './ui/retry-button';
 
-export { DocumentWorkspace } from '@/features/document-recognition/document-workspace';
+export { DocumentWorkspace } from '@/features/document-recognition/ui/document-workspace';
 export {
   DocumentViewer,
   type ViewedDocument,
-} from '@/features/document-recognition/document-viewer';
+} from '@/features/document-recognition/ui/document-viewer';

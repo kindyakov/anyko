@@ -1,1 +1,1 @@
-export { ConnectionSettings } from '@/features/connections/connection-settings';
+export { ConnectionSettings } from '@/features/connections/ui/connection-settings';

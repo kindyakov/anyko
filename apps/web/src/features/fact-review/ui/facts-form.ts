@@ -18,9 +18,9 @@ import { invalidateWork, useSaveFacts } from '@/features/works';
 import { ApiError, isUnauthorized } from '@/lib/api/errors';
 import { useWorkspaceId } from '@/lib/api/workspace';
 
-import { describeFactsSaveError } from './model/facts-messages';
-import { sameFieldValue, sameFieldValues } from './model/field-value';
-import { rebaseFacts } from './model/rebase';
+import { describeFactsSaveError } from '../model/facts-messages';
+import { sameFieldValue, sameFieldValues } from '../model/field-value';
+import { rebaseFacts } from '../model/rebase';
 
 type Sync = {
   // Ревизия работы и режим очистки, с которыми форма синхронизирована.

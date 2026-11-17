@@ -3,8 +3,9 @@ import { Save, Undo2 } from 'lucide-react';
 
 import { Button } from '@anyko/ui';
 
+import { conflictSummary } from '../model/facts-messages';
+
 import type { FactsForm } from './facts-form';
-import { conflictSummary } from './model/facts-messages';
 
 // Полоса несохранённых правок: видна, пока форма расходится с сервером. Конфликтные поля блокируют сохранение,
 // пока пользователь не выберет значение для каждого из них.
