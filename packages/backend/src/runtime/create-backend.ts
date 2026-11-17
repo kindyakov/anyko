@@ -15,6 +15,7 @@ import {
   agentSessionStoreFor,
   createAgentSessionStore,
 } from '../modules/agents/infrastructure/session-store';
+import { createAgentsModule } from '../modules/agents/module';
 import { type AuditWriter, record } from '../modules/audit';
 import { createAuditModule } from '../modules/audit/module';
 import type {
@@ -218,6 +219,10 @@ export function createBackend(
     storeFor: generationStoreFor,
     newId: uuidV7,
   });
+  const agentsFacade = createAgentsModule({
+    store: createAgentSessionStore(db),
+    storeFor: agentSessionStoreFor,
+  });
   const processingFacade = createProcessingModule({
     store: createWorkProcessingStore(db),
     storeFor: workProcessingStoreFor,
@@ -321,6 +326,7 @@ export function createBackend(
       storage,
       locks,
       documents,
+      agents: agentsFacade,
     };
     return {
       role: 'api',
@@ -332,14 +338,8 @@ export function createBackend(
       },
       workHttp: {
         works,
-        views: createWorkView({
-          ...workflows,
-          sessions: createAgentSessionStore(db),
-        }),
-        intake: createWorkIntake({
-          ...workflows,
-          sessions: { in: agentSessionStoreFor },
-        }),
+        views: createWorkView(workflows),
+        intake: createWorkIntake(workflows),
         review: createWorkReview(workflows),
         generation: createWorkGeneration(workflows),
         settings: createLlmSettings({ settings: llmSettings, locks }),

@@ -1,4 +1,4 @@
-import type { AgentSessionStore } from '../../modules/agents';
+import type { AgentsModule } from '../../modules/agents';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import { emptyFacts, type FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
@@ -18,7 +18,7 @@ export const getWork =
     processing: ProcessingModule;
     generation: GenerationModule;
     documents: DocumentsModule;
-    sessions: AgentSessionStore;
+    agents: AgentsModule;
     locks: ResourceLocks;
   }) =>
   async (scope: WorkspaceScope, workId: WorkId) => {
@@ -47,7 +47,7 @@ export const getWork =
         work,
         session: cleanupPending
           ? null
-          : await deps.sessions.get(scope.workspaceId, workId),
+          : await deps.agents.internal.get(scope.workspaceId, workId),
         package: requirePackage(work.packageVersion),
         documents,
         facts: cleanupPending

@@ -22,6 +22,19 @@ const work: WorkSummary = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 const unused = () => Promise.reject(new Error('UNUSED'));
+const unusedWorkInternal: WorksPorts['internal'] = {
+  get: unused,
+  documents: unused,
+  dirty: unused,
+  touch: unused,
+  event: unused,
+  detachDeleted: unused,
+};
+const unusedFactsInternal: FactsModule['internal'] = {
+  get: unused,
+  save: unused,
+  erase: unused,
+};
 
 // Заглушки: порты записывают вызовы в журнал. Транзакция здесь не открывает хранилище.
 function ports(calls: string[]): {
@@ -30,6 +43,7 @@ function ports(calls: string[]): {
 } {
   return {
     works: {
+      internal: unusedWorkInternal,
       commands: {
         create: unused,
         attachDocument: unused,
@@ -69,7 +83,12 @@ function scenario(calls: string[]) {
   const factsModule: FactsModule = {
     commands: built.facts.commands,
     queries: { get: unused },
-    in: () => ({ commands: built.facts.commands, queries: { get: unused } }),
+    internal: unusedFactsInternal,
+    in: () => ({
+      commands: built.facts.commands,
+      queries: { get: unused },
+      internal: unusedFactsInternal,
+    }),
   };
   return {
     edit: editValues({

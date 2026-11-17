@@ -14,6 +14,7 @@ export interface FactsDeps {
 
 export function createFactsModule(deps: FactsDeps): FactsModule {
   const bind = (store: FactsStore): FactsPorts => ({
+    internal: store,
     commands: {
       edit: editValues({ store }),
       confirm: confirmValues({ store }),

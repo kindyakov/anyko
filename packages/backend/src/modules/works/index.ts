@@ -122,6 +122,11 @@ export interface WorksQueries {
 export interface WorksPorts {
   readonly commands: WorksCommands;
   readonly queries: WorksQueries;
+  // Внутренний порт исполнения (worker и процессы после проверки права): ревизия, события, очистка.
+  readonly internal: Pick<
+    WorkStore,
+    'get' | 'documents' | 'dirty' | 'touch' | 'event' | 'detachDeleted'
+  >;
 }
 
 // Фасад модуля: те же команды и запросы внутри транзакции через in(tx).

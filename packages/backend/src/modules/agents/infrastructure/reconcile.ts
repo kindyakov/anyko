@@ -8,7 +8,7 @@ import { fieldKeySchema } from '@anyko/contracts/catalog';
 import { createModelGateway, llmError } from '@anyko/llm';
 
 import type { DocumentAgents } from '..';
-import { reconciliationSchema } from '../session';
+import { reconciliationSchema } from '../application/session';
 
 export function createReconciliationAgent(options: {
   memory: Memory;

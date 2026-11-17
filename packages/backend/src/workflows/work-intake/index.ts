@@ -1,3 +1,4 @@
+import type { AgentsModule } from '../../modules/agents';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import type { ProcessingModule } from '../../modules/processing';
 import type { WorksModule } from '../../modules/works';
@@ -5,7 +6,6 @@ import type { UnitOfWork } from '../../platform/transactions';
 
 import { analyzeWork } from './analyze-work';
 import { createWork } from './create-work';
-import type { WorkSessionPort } from './ports';
 import { removeDocument } from './remove-document';
 import { uploadDocument } from './upload-document';
 
@@ -13,7 +13,7 @@ export interface WorkIntakeDeps {
   uow: UnitOfWork;
   works: WorksModule;
   processing: ProcessingModule;
-  sessions: WorkSessionPort;
+  agents: AgentsModule;
   documents: DocumentsModule;
   locks: ResourceLocks;
 }

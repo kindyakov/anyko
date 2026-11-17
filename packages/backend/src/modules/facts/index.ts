@@ -154,6 +154,8 @@ interface FactsQueries {
 export interface FactsPorts {
   readonly commands: FactsCommands;
   readonly queries: FactsQueries;
+  // Внутренний порт исполнения: снимок и запись сведений вызывает процесс, который проверил право.
+  readonly internal: Pick<FactsStore, 'get' | 'save' | 'erase'>;
 }
 export interface FactsModule extends FactsPorts {
   in(tx: Tx): FactsPorts;

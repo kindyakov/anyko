@@ -96,6 +96,18 @@ interface GenerationQueries {
 export interface GenerationPorts {
   readonly commands: GenerationCommands;
   readonly queries: GenerationQueries;
+  // Внутренний порт исполнения генерации: файлы, публикация и итог вызывает процесс worker.
+  readonly internal: Pick<
+    GenerationStore,
+    | 'get'
+    | 'keys'
+    | 'stage'
+    | 'failFile'
+    | 'fail'
+    | 'publish'
+    | 'finish'
+    | 'erase'
+  >;
 }
 export interface GenerationModule extends GenerationPorts {
   in(tx: Tx): GenerationPorts;

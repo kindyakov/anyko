@@ -23,6 +23,7 @@ export interface WorksDeps {
 
 export function createWorksModule(deps: WorksDeps): WorksModule {
   const bind = (store: WorkStore): WorksPorts => ({
+    internal: store,
     commands: {
       create: createWork({
         store,

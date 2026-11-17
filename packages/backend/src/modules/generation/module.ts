@@ -19,6 +19,7 @@ export interface GenerationDeps {
 
 export function createGenerationModule(deps: GenerationDeps): GenerationModule {
   const bind = (store: GenerationStore): GenerationPorts => ({
+    internal: store,
     commands: { create: createGeneration({ store, newId: deps.newId }) },
     queries: {
       get: readGeneration({ store }),

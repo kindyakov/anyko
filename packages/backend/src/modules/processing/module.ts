@@ -22,6 +22,11 @@ export interface ProcessingDeps {
 
 export function createProcessingModule(deps: ProcessingDeps): ProcessingModule {
   const bind = (store: WorkProcessingStore): ProcessingPorts => ({
+    internal: {
+      ...store,
+      connection: (workspaceId, revision) =>
+        deps.settings.connection(workspaceId, revision),
+    },
     commands: { start: startRun({ store, newId: deps.newId }) },
     queries: {
       isActive: isActive({ store }),

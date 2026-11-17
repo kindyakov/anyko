@@ -52,6 +52,14 @@ export function stubHttpOptions(): {
     },
   };
   const works: WorksModule = {
+    internal: {
+      get: unused,
+      documents: unused,
+      dirty: unused,
+      touch: unused,
+      event: unused,
+      detachDeleted: unused,
+    },
     commands: {
       create: unused,
       attachDocument: unused,
