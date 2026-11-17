@@ -1,5 +1,8 @@
 import type { Endpoint } from '@anyko/contracts/common';
 import {
+  analyzeWork,
+  createWork,
+  generateWork,
   getWorkDocumentImage,
   getWorkDocumentSource,
 } from '@anyko/contracts/works';
@@ -12,6 +15,13 @@ import type { RouteLayer } from '../route';
 const versionedOnly = new Set<Endpoint>([
   getWorkDocumentSource,
   getWorkDocumentImage,
+]);
+// Web пока не присылает Idempotency-Key для этих команд (ADR 0008); ключ остаётся необязательным,
+// если пришёл — применяется тот же механизм. Загрузки этого списка не содержат: они требуют ключ.
+const optionalKeyEndpoints = new Set<Endpoint>([
+  createWork,
+  analyzeWork,
+  generateWork,
 ]);
 
 const scopePrefix = '/workspaces/:workspaceId';
@@ -31,4 +41,5 @@ export function legacyPathOf(endpoint: Endpoint): string | null {
 export const legacyLayer: RouteLayer = {
   prefix: '/api',
   pathOf: legacyPathOf,
+  keyOptional: (endpoint) => optionalKeyEndpoints.has(endpoint),
 };

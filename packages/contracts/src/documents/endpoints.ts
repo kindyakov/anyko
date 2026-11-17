@@ -35,7 +35,6 @@ export const uploadDocument = endpoint({
   method: 'POST',
   path: recognitionsPath,
   params: workspaceParams,
-  headers: z.object({ 'idempotency-key': z.uuid() }),
   body: multipart({ file: uploadFileSchema }),
   response: json(documentResponseSchema),
   status: 202,
@@ -44,13 +43,14 @@ export const uploadDocument = endpoint({
     'NOT_FOUND',
     'INVALID_DOCUMENT',
     'UNSUPPORTED_DOCUMENT_FORMAT',
-    'IDEMPOTENCY_CONFLICT',
     'INVALID_IDEMPOTENCY_KEY',
+    'IDEMPOTENCY_CONFLICT',
+    'IDEMPOTENCY_IN_PROGRESS',
   ],
   invalid: 'INVALID_DOCUMENT',
-  invalidHeaders: 'INVALID_IDEMPOTENCY_KEY',
-  // Повтор с тем же ключом возвращает тот же документ (хранилище ключей в документах).
-  idempotent: true,
+  // Повтор с тем же ключом возвращает сохранённый ответ (модуль idempotency); внутренний
+  // requestKey документов защищает запись файла.
+  idempotency: 'key',
 });
 
 export const getDocument = endpoint({
@@ -112,7 +112,7 @@ export const deleteDocument = endpoint({
   errors: ['FORBIDDEN', 'NOT_FOUND'],
   invalid: 'NOT_FOUND',
   // Повтор после принятого удаления даёт NOT_FOUND, состояние остаётся тем же.
-  idempotent: true,
+  idempotency: 'natural',
 });
 
 export const retryDocument = endpoint({
@@ -123,5 +123,6 @@ export const retryDocument = endpoint({
   status: 202,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'RETRY_CONFLICT'],
   invalid: 'NOT_FOUND',
-  idempotent: false,
+  // Прежняя классификация: повтор не проверен как безопасный; ключ в v1 для этой команды не вводится.
+  idempotency: 'none',
 });

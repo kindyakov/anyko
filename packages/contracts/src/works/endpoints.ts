@@ -26,8 +26,6 @@ import {
 const uuid = z.uuid();
 const workParams = workspaceParams.extend({ workId: uuid });
 const workDocumentParams = workParams.extend({ documentId: uuid });
-// Идемпотентность загрузки держится на ключе запроса в документах и работе.
-const idempotencyKey = z.object({ 'idempotency-key': uuid });
 
 export const listWorks = endpoint({
   method: 'GET',
@@ -48,9 +46,16 @@ export const createWork = endpoint({
   body: json(createWorkSchema),
   response: json(workResponseSchema),
   status: 201,
-  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
+  errors: [
+    'FORBIDDEN',
+    'NOT_FOUND',
+    'INVALID_WORK_INPUT',
+    'INVALID_IDEMPOTENCY_KEY',
+    'IDEMPOTENCY_CONFLICT',
+    'IDEMPOTENCY_IN_PROGRESS',
+  ],
   invalid: 'INVALID_WORK_INPUT',
-  idempotent: false,
+  idempotency: 'key',
 });
 
 export const getWork = endpoint({
@@ -79,7 +84,6 @@ export const uploadWorkDocument = endpoint({
   method: 'POST',
   path: '/workspaces/:workspaceId/works/:workId/documents',
   params: workParams,
-  headers: idempotencyKey,
   body: multipart({ file: uploadFileSchema }),
   response: json(documentResponseSchema),
   status: 202,
@@ -90,10 +94,12 @@ export const uploadWorkDocument = endpoint({
     'INVALID_WORK_INPUT',
     'INVALID_DOCUMENT',
     'UNSUPPORTED_DOCUMENT_FORMAT',
+    'INVALID_IDEMPOTENCY_KEY',
     'IDEMPOTENCY_CONFLICT',
+    'IDEMPOTENCY_IN_PROGRESS',
   ],
   invalid: 'INVALID_WORK_INPUT',
-  idempotent: true,
+  idempotency: 'key',
 });
 
 // Исходный документ работы: документ должен принадлежать этой работе, иначе NOT_FOUND.
@@ -135,9 +141,12 @@ export const analyzeWork = endpoint({
     'INVALID_WORK_INPUT',
     'LLM_NOT_CONFIGURED',
     'WORK_BUSY',
+    'INVALID_IDEMPOTENCY_KEY',
+    'IDEMPOTENCY_CONFLICT',
+    'IDEMPOTENCY_IN_PROGRESS',
   ],
   invalid: 'INVALID_WORK_INPUT',
-  idempotent: false,
+  idempotency: 'key',
 });
 
 export const removeWorkDocument = endpoint({
@@ -148,7 +157,8 @@ export const removeWorkDocument = endpoint({
   status: 202,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
   invalid: 'INVALID_WORK_INPUT',
-  idempotent: true,
+  // Повтор после принятого удаления даёт NOT_FOUND для того же документа.
+  idempotency: 'natural',
 });
 
 export const editWork = endpoint({
@@ -166,7 +176,8 @@ export const editWork = endpoint({
     'INVALID_WORK_INPUT',
   ],
   invalid: 'INVALID_WORK_INPUT',
-  idempotent: false,
+  // Правка с ревизией: повтор со старой ревизией даёт REVISION_CONFLICT, без изменения данных.
+  idempotency: 'natural',
 });
 
 export const confirmWork = endpoint({
@@ -185,7 +196,8 @@ export const confirmWork = endpoint({
     'INVALID_WORK_INPUT',
   ],
   invalid: 'INVALID_WORK_INPUT',
-  idempotent: false,
+  // Подтверждение с ревизией: повтор после подтверждения не меняет подтверждённые сведения.
+  idempotency: 'natural',
 });
 
 export const generateWork = endpoint({
@@ -202,9 +214,12 @@ export const generateWork = endpoint({
     'REVISION_CONFLICT',
     'WORK_BUSY',
     'INVALID_WORK_INPUT',
+    'INVALID_IDEMPOTENCY_KEY',
+    'IDEMPOTENCY_CONFLICT',
+    'IDEMPOTENCY_IN_PROGRESS',
   ],
   invalid: 'INVALID_WORK_INPUT',
-  idempotent: false,
+  idempotency: 'key',
 });
 
 export const downloadGeneratedFile = endpoint({

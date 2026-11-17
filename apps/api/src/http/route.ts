@@ -3,12 +3,13 @@ import type { z } from 'zod';
 
 import { AppError, isAppError } from '@anyko/backend/errors';
 import type { WorkspaceScope } from '@anyko/backend/scope';
-import type {
-  Endpoint,
-  ErrorCode,
-  FileResponse,
-  JsonPart,
-  MultipartPart,
+import {
+  type Endpoint,
+  type ErrorCode,
+  type FileResponse,
+  type JsonPart,
+  type MultipartPart,
+  optionalIdempotencyKeyHeaders,
 } from '@anyko/contracts/common';
 import type { Session } from '@anyko/contracts/session';
 import type { Logger } from '@anyko/logger';
@@ -24,11 +25,14 @@ export interface RouteLayer {
   readonly prefix: string;
   // Путь маршрута внутри слоя или null: слой не регистрирует это описание.
   pathOf(endpoint: Endpoint): string | null;
+  // Ключ Idempotency-Key у режима key можно не передавать. Только временный слой; v1 требует ключ всегда.
+  keyOptional(endpoint: Endpoint): boolean;
 }
 
 export const versionedLayer: RouteLayer = {
   prefix: '/api/v1',
   pathOf: (endpoint) => endpoint.path,
+  keyOptional: () => false,
 };
 
 export interface RouteEnv {
@@ -121,7 +125,18 @@ export function createRoute(env: RouteEnv): Route {
           const pathParams = state.scope
             ? { ...params, workspaceId: state.scope.workspaceId }
             : params;
-          const input = await readInput(endpoint, request, pathParams, query);
+          // Временный слой может не требовать ключ у части команд; заголовок без ключа тогда допустим.
+          const headers =
+            endpoint.idempotency === 'key' && env.layer.keyOptional(endpoint)
+              ? optionalIdempotencyKeyHeaders
+              : endpoint.headers;
+          const input = await readInput(
+            endpoint,
+            request,
+            pathParams,
+            query,
+            headers,
+          );
           const value = await handler({
             ...input,
             session,
@@ -167,6 +182,7 @@ async function readInput(
   request: Request,
   params: Record<string, string | undefined>,
   query: Record<string, string | undefined>,
+  headers: z.ZodObject | undefined,
 ) {
   const input: {
     headers?: unknown;
@@ -174,9 +190,9 @@ async function readInput(
     query?: unknown;
     body?: unknown;
   } = {};
-  if (endpoint.headers)
+  if (headers)
     input.headers = await parseWith(
-      endpoint.headers,
+      headers,
       Object.fromEntries(request.headers),
       inputCode(endpoint, true),
     );

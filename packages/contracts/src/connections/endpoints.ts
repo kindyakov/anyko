@@ -26,5 +26,6 @@ export const saveLlmSettings = endpoint({
   // Право connections.manage проверяет сценарий после разбора тела (ADR 0009).
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
   invalid: 'INVALID_WORK_INPUT',
-  idempotent: false,
+  // Сохранение настроек: повтор с теми же значениями даёт новую ревизию с тем же содержимым.
+  idempotency: 'natural',
 });

@@ -5,6 +5,7 @@
   "exports": {
     "./runtime": "./src/runtime/index.ts",
     "./documents": "./src/modules/documents/index.ts",
+    "./idempotency": "./src/modules/idempotency/index.ts",
     "./access": "./src/modules/access/index.ts",
     "./works": "./src/modules/works/index.ts",
     "./processing": "./src/modules/processing/index.ts",

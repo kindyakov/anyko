@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { DocumentErrors } from '@anyko/backend/documents';
+import { IdempotencyErrors } from '@anyko/backend/idempotency';
 import { WorkErrors } from '@anyko/backend/works';
 import { errorCodeSchema } from '@anyko/contracts';
 
@@ -10,6 +11,7 @@ test('error catalog lists exactly the codes the API can return', () => {
   const returned = new Set<string>([
     ...WorkErrors.codes,
     ...DocumentErrors.codes,
+    ...IdempotencyErrors.codes,
     ...Object.values(transportErrorCodes),
   ]);
   expect(new Set<string>(errorCodeSchema.options)).toEqual(returned);

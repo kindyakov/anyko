@@ -80,7 +80,7 @@ const upload = endpoint({
   status: 201,
   errors: ['INVALID_DOCUMENT'],
   invalid: 'INVALID_DOCUMENT',
-  idempotent: false,
+  idempotency: 'none',
 });
 // Маршрут с областью: plugin проверяет участие до разбора тела.
 const scoped = endpoint({
@@ -92,7 +92,7 @@ const scoped = endpoint({
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
   invalid: 'INVALID_WORK_INPUT',
-  idempotent: false,
+  idempotency: 'none',
 });
 
 function build(
