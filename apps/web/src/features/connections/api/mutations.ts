@@ -1,6 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { saveLlmSettings } from '@anyko/contracts/connections';
+import {
+  revokeLlmSettings,
+  saveLlmSettings,
+} from '@anyko/contracts/connections';
 
 import { callApi } from '@/lib/api/call';
 
@@ -20,6 +23,15 @@ export function useSaveLlmSettings(workspaceId: string) {
     mutationFn: (input: LlmSettingsInput) =>
       callApi(saveLlmSettings, { params: { workspaceId }, body: input }),
     // Ожидание обновления настроек входит в команду: форма получает актуальную версию до сообщения.
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: connectionKeys.llm(workspaceId) }),
+  });
+}
+
+export function useRevokeLlmSettings(workspaceId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => callApi(revokeLlmSettings, { params: { workspaceId } }),
     onSuccess: () =>
       client.invalidateQueries({ queryKey: connectionKeys.llm(workspaceId) }),
   });

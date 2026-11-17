@@ -2,7 +2,7 @@ import '../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import type { Right, Session } from '@anyko/contracts/session';
@@ -10,6 +10,7 @@ import type { Right, Session } from '@anyko/contracts/session';
 import { createQueryClient } from '@/lib/api/query-client';
 import { sessionKeys } from '@/lib/api/session';
 
+import { networkError, serveApi } from '../../../test/api';
 import { expectFocused } from '../../../test/focus';
 import { navigation } from '../../../test/next-navigation';
 
@@ -295,7 +296,7 @@ test('unsaved edits make leaving the page warn; saving removes the warning', asy
 
 // Право только для отображения: без него значения видны, но сохранить или ввести ключ нельзя.
 // Сервер всё равно проверит право при сохранении; здесь проверяется, что интерфейс его не предлагает.
-test('without the manage right the connection is read-only: no save button, no key field, no request', async () => {
+test('without the manage right the connection is read-only: no save or revoke button', async () => {
   const requests = serveSettings(configured);
   renderSettings(['connections.read']);
 
@@ -307,6 +308,9 @@ test('without the manage right the connection is read-only: no save button, no k
   ).toBe(true);
   expect(
     screen.queryByRole('button', { name: 'Сохранить подключение' }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Отозвать подключение' }),
   ).toBeNull();
   expect(screen.queryByLabelText('API-ключ')).toBeNull();
   expect(
@@ -327,3 +331,79 @@ test('reverting an edit to the saved value removes the leave warning', async () 
   await user.type(address, '{Backspace}{Backspace}{Backspace}');
   expect(leavePageWarns()).toBe(false);
 });
+
+test('revocation requires confirmation and refreshes the form from the server', async () => {
+  let settings = configured;
+  const requests = serveApi(({ method }) => {
+    if (method === 'DELETE') {
+      settings = { ...settings, settings: null };
+      return json(200, { status: 'revoked' });
+    }
+    return json(200, settings);
+  });
+  renderSettings();
+  const user = userEvent.setup();
+
+  const revoke = await screen.findByRole('button', {
+    name: 'Отозвать подключение',
+  });
+  await user.click(revoke);
+  const dialog = within(
+    await screen.findByRole('alertdialog', {
+      name: 'Отозвать подключение модели?',
+    }),
+  );
+  await user.click(dialog.getByRole('button', { name: 'Отмена' }));
+  expect(requests.map(({ method }) => method)).toEqual(['GET']);
+  expect(screen.getByText('Подключено')).toBeTruthy();
+
+  await user.click(revoke);
+  const confirmation = within(await screen.findByRole('alertdialog'));
+  await user.click(
+    confirmation.getByRole('button', { name: 'Отозвать подключение' }),
+  );
+  expect(await screen.findByText('Не настроено')).toBeTruthy();
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Отозвать подключение' }),
+  ).toBeNull();
+  expect(screen.getByLabelText('API-ключ').hasAttribute('required')).toBe(true);
+  expect(requests.map(({ method, url }) => [method, url])).toEqual([
+    ['GET', settingsAddress],
+    ['DELETE', settingsAddress],
+    ['GET', settingsAddress],
+  ]);
+});
+
+test.each([
+  ['forbidden', 'Недостаточно прав для этого действия.'],
+  ['network', 'Не удалось получить ответ сервера. Повторите попытку позже.'],
+] as const)(
+  'a %s error from revoke is visible and leaves the saved connection in place',
+  async (failure, message) => {
+    serveApi(({ method }) => {
+      if (method === 'GET') return json(200, configured);
+      return failure === 'network'
+        ? networkError
+        : json(403, { error: { code: 'FORBIDDEN', requestId: 'revoke' } });
+    });
+    renderSettings();
+    const user = userEvent.setup();
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Отозвать подключение' }),
+    );
+    const dialog = within(await screen.findByRole('alertdialog'));
+    await user.click(
+      dialog.getByRole('button', { name: 'Отозвать подключение' }),
+    );
+
+    expect(
+      within(await screen.findByRole('alert')).getByText(message),
+    ).toBeTruthy();
+    expect(screen.getByText('Подключено')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Отозвать подключение' }),
+    ).toBeTruthy();
+  },
+);

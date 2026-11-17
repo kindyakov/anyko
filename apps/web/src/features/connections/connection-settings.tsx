@@ -6,7 +6,14 @@ import { useState } from 'react';
 import { z } from 'zod';
 
 import { llmSettingsResponseSchema } from '@anyko/contracts/connections';
-import { Input, Notice, Skeleton, StatusPill } from '@anyko/ui';
+import {
+  Button,
+  Confirm,
+  Input,
+  Notice,
+  Skeleton,
+  StatusPill,
+} from '@anyko/ui';
 import {
   FormErrorNotice,
   FormRoot,
@@ -15,9 +22,16 @@ import {
   useUnsavedChangesWarning,
 } from '@anyko/ui/form';
 
-import { useSaveLlmSettings } from '@/features/connections/api/mutations';
+import {
+  useRevokeLlmSettings,
+  useSaveLlmSettings,
+} from '@/features/connections/api/mutations';
 import { llmSettingsQueryOptions } from '@/features/connections/api/queries';
-import { sharedCodeTexts } from '@/lib/api/errors';
+import {
+  describeApiError,
+  isUnauthorized,
+  sharedCodeTexts,
+} from '@/lib/api/errors';
 import { applyServerErrors } from '@/lib/api/form-errors';
 import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 
@@ -148,6 +162,27 @@ function ConnectionForm({
 }) {
   const workspaceId = useWorkspaceId();
   const save = useSaveLlmSettings(workspaceId);
+  const revoke = useRevokeLlmSettings(workspaceId);
+  const [confirming, setConfirming] = useState(false);
+  function revokeConnection() {
+    onMessage(undefined);
+    revoke.mutate(undefined, {
+      onSuccess: () => {
+        setConfirming(false);
+      },
+      onError: (error) => {
+        setConfirming(false);
+        if (isUnauthorized(error)) return;
+        onMessage({
+          tone: 'danger',
+          text: describeApiError(error, {
+            codes: sharedCodeTexts,
+            fallback: 'Не удалось отозвать подключение. Повторите попытку.',
+          }),
+        });
+      },
+    });
+  }
   const form = useAppForm({
     defaultValues: {
       baseURL: current?.baseURL ?? defaultBaseURL,
@@ -156,6 +191,7 @@ function ConnectionForm({
       apiKey: '',
     },
     onSubmit: async ({ value, formApi }) => {
+      if (revoke.isPending) return;
       onMessage(undefined);
       const { apiKey, ...settings } = value;
       try {
@@ -238,12 +274,41 @@ function ConnectionForm({
             />
           )}
         </form.AppField>
-        <form.SubmitButton size="lg" className="w-fit">
-          <Save size={17} />
-          Сохранить подключение
-        </form.SubmitButton>
+        <div className="flex flex-wrap items-center gap-3">
+          <form.SubmitButton size="lg">
+            <Save size={17} />
+            Сохранить подключение
+          </form.SubmitButton>
+          {current && (
+            <Button
+              variant="ghost"
+              size="lg"
+              className="text-red-300"
+              disabled={save.isPending || revoke.isPending}
+              onClick={() => {
+                setConfirming(true);
+              }}
+            >
+              Отозвать подключение
+            </Button>
+          )}
+        </div>
       </FormRoot>
       <FormErrorNotice form={form} />
+      <Confirm
+        open={confirming}
+        title="Отозвать подключение модели?"
+        confirmLabel="Отозвать подключение"
+        pending={revoke.isPending}
+        onConfirm={revokeConnection}
+        onCancel={() => {
+          setConfirming(false);
+        }}
+      >
+        Ключи подключения будут удалены. Работающие запуски анализа остановятся
+        при следующем обращении к модели. Для нового анализа потребуется
+        настроить подключение.
+      </Confirm>
     </>
   );
 }
