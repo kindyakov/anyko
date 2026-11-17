@@ -6,7 +6,7 @@ import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 
-import { cyrillicMathMacros } from '@/features/documents/cyrillic-math';
+import { cyrillicMathMacros } from '@/features/document-recognition/cyrillic-math';
 const schema = {
   ...defaultSchema,
   attributes: {

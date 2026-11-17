@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { uploadFailureMessage } from '@/features/works/upload-errors';
+import { uploadFailureMessage } from '@/features/work-sources/upload-errors';
 import { ApiError } from '@/lib/api/errors';
 
 test('upload feedback identifies file and actionable reason without exposing raw errors', () => {

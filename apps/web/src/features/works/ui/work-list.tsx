@@ -34,8 +34,8 @@ import {
   documentPackagesQueryOptions,
   worksQueryOptions,
 } from '@/features/works/api/queries';
-import { journeySteps } from '@/features/works/journey';
 import { useListPreferences } from '@/features/works/list-preferences';
+import { journeySteps } from '@/features/works/model/journey';
 import { ApiError } from '@/lib/api/errors';
 import { useExpireSession } from '@/lib/api/query-client';
 import { useWorkspaceId } from '@/lib/api/workspace';

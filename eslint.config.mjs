@@ -164,24 +164,20 @@ export default [
       ],
     },
   },
-  // Известные нарушения: список только сокращается; убираются в #10.
+  // Известные нарушения: список только сокращается; новые файлы сюда не добавляются.
   // Эти эффекты и вызов в рендере меняют поведение, поэтому исправляются отдельно от настройки правил.
   {
     files: [
-      'apps/web/src/features/documents/document-workspace.tsx',
-      'apps/web/src/features/works/package-preview.tsx',
+      'apps/web/src/features/document-recognition/document-workspace.tsx',
+      'apps/web/src/features/fact-review/package-preview.tsx',
     ],
     rules: { 'react-hooks/set-state-in-effect': 'off' },
   },
-  {
-    files: ['apps/web/src/features/works/work-review.tsx'],
-    rules: { 'react-hooks/purity': 'off' },
-  },
-  // Известные нарушения jsx-a11y-x: список только сокращается; убираются в #10.
+  // Известные нарушения jsx-a11y-x: список только сокращается.
   // autoFocus в окне создания работы — намеренный фокус на названии; label оборачивает Base UI Radio.Root,
   // который правило не видит как контрол.
   {
-    files: ['apps/web/src/features/works/work-list.tsx'],
+    files: ['apps/web/src/features/works/ui/work-list.tsx'],
     rules: {
       'jsx-a11y-x/no-autofocus': 'off',
       'jsx-a11y-x/label-has-associated-control': 'off',
