@@ -16,10 +16,12 @@ test('work commands explain idempotency and access refusals in Russian', () => {
   );
 });
 
-test('a revision conflict keeps the edits and tells the user how to continue', () => {
+test('a revision conflict tells the user the facts were refreshed and the action can be repeated', () => {
   expect(
     describeWorkCommandError(new ApiError('REVISION_CONFLICT', 409, 'r')),
-  ).toContain('«Перенести правки»');
+  ).toBe(
+    'Работа изменилась, пока вы действовали. Сведения обновлены — проверьте их и повторите действие.',
+  );
 });
 
 test('an unexpected failure shows the generic text without raw details', () => {
