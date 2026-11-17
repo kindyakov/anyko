@@ -110,7 +110,13 @@ function serveWorkList(creation: { status: number; body: unknown }) {
       return Promise.resolve(json(200, { packages }));
     if (url === worksFirstPage)
       return Promise.resolve(
-        json(200, { works: [existingWork], nextCursor: null }),
+        json(200, {
+          items: [existingWork],
+          page: 1,
+          pageSize: 24,
+          total: 1,
+          deletions: [],
+        }),
       );
     return Promise.resolve(json(404, {}));
   }) as typeof fetch;
@@ -168,7 +174,15 @@ test('without the create right the empty list offers no creation either', async 
     if (url === documentPackagesAddress)
       return Promise.resolve(json(200, { packages }));
     if (url === worksFirstPage)
-      return Promise.resolve(json(200, { works: [], nextCursor: null }));
+      return Promise.resolve(
+        json(200, {
+          items: [],
+          page: 1,
+          pageSize: 24,
+          total: 0,
+          deletions: [],
+        }),
+      );
     return Promise.resolve(json(404, {}));
   }) as typeof fetch;
   renderWorkList(['works.read']);
@@ -198,8 +212,11 @@ test.each([0, 1])(
       url === documentPackagesAddress
         ? json(200, { packages })
         : json(200, {
-            works: total ? [existingWork] : [],
-            pagination: { page: 1, pageSize: 24, total },
+            items: total ? [existingWork] : [],
+            page: 1,
+            pageSize: 24,
+            total,
+            deletions: [],
           }),
     );
     renderWorkList();
@@ -223,8 +240,11 @@ test('a linked filter and page size are sent to the server and changing size res
     url === documentPackagesAddress
       ? json(200, { packages })
       : json(200, {
-          works: [existingWork],
-          pagination: { page: 2, pageSize: 12, total: 25 },
+          items: [existingWork],
+          page: 2,
+          pageSize: 12,
+          total: 25,
+          deletions: [],
         }),
   );
   renderWorkList();
@@ -260,8 +280,11 @@ test('an authorized owner must confirm before the work is deleted', async () => 
     }
     if (url.endsWith('/deletion')) return json(200, { status: 'deleted' });
     return json(200, {
-      works: available ? [existingWork] : [],
-      pagination: { page: 1, pageSize: 24, total: available ? 1 : 0 },
+      items: available ? [existingWork] : [],
+      page: 1,
+      pageSize: 24,
+      total: available ? 1 : 0,
+      deletions: [],
     });
   });
   const user = userEvent.setup();

@@ -3,10 +3,9 @@ import { expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import {
-  cursorQuerySchema,
   type Endpoint,
+  listQueryMode,
   listResponseMode,
-  pageQuerySchema,
 } from '@anyko/contracts/common';
 
 import { type NamedEndpoint, namedEndpoints } from './support/endpoints';
@@ -23,7 +22,13 @@ const collections = new Map([
   ['generations', 'generation'],
   ['files', 'file'],
 ]);
-const singletons = new Set(['session', 'result', 'source', 'fields']);
+const singletons = new Set([
+  'session',
+  'result',
+  'source',
+  'fields',
+  'deletion',
+]);
 const actions = new Set(['analyze', 'confirm', 'generate', 'retry']);
 const globals = new Map([
   ['GET /session', 'Сессия перечисляет области до выбора текущей области'],
@@ -31,11 +36,6 @@ const globals = new Map([
 ]);
 
 const legacy = {
-  deletion: {
-    address: 'GET /workspaces/:workspaceId/recognitions/:documentId/deletion',
-    reason: 'Web опрашивает существующий адрес до завершения удаления',
-    action: 'Рассмотреть имя deletion-status вместе с обновлением клиента',
-  },
   fields: {
     address: 'POST /workspaces/:workspaceId/works/:workId/fields',
     reason: 'У клиента уже есть команда правки с проверкой ревизии через POST',
@@ -49,11 +49,6 @@ const legacy = {
       'Согласовать адрес /connections/llm и переход на PUT для сохранения',
   },
   lists: {
-    listWorks: {
-      address: 'GET /workspaces/:workspaceId/works',
-      reason: 'Использует after без limit и возвращает works и nextCursor',
-      action: 'Приводится вместе с поиском работ',
-    },
     listDocuments: {
       address: 'GET /workspaces/:workspaceId/recognitions',
       reason:
@@ -145,16 +140,12 @@ function unknownPathSegment({ segments }: Entry) {
 
 test('resource paths use the agreed collections and nouns', () => {
   for (const entry of entries) {
-    if (
-      address(entry.endpoint) === legacy.deletion.address ||
-      isLegacyConnection(entry)
-    )
-      continue;
+    if (isLegacyConnection(entry)) continue;
     const segment = unknownPathSegment(entry);
-    expect(
-      segment,
-      `${label(entry)}: «${segment}» отсутствует в словаре, согласуйте ресурс во множественном числе, одиночный ресурс или действие`,
-    ).toBeUndefined();
+    if (segment !== undefined)
+      throw new Error(
+        `${label(entry)}: «${segment}» отсутствует в словаре, согласуйте ресурс во множественном числе, одиночный ресурс или действие`,
+      );
   }
 });
 test('path parameters use camelCase resourceId or index', () => {
@@ -185,7 +176,7 @@ test('path nesting fits within the deepest existing address', () => {
 
 function endsWithReadResource(entry: Entry) {
   const last = entry.segments.at(-1) ?? '';
-  return last !== 'deletion' && !actions.has(last);
+  return !actions.has(last);
 }
 
 test('GET ends with a noun or an identifier', () => {
@@ -193,8 +184,7 @@ test('GET ends with a noun or an identifier', () => {
     ({ endpoint }) => endpoint.method === 'GET',
   )) {
     expect(
-      endsWithReadResource(entry) ||
-        address(entry.endpoint) === legacy.deletion.address,
+      endsWithReadResource(entry),
       `${label(entry)}: дайте читаемому ресурсу имя существительное`,
     ).toBe(true);
   }
@@ -384,10 +374,8 @@ function listViolation(entry: Entry) {
   const mode = listResponseMode(endpoint.response.schema);
   if (!mode)
     return 'создайте ответ через pageResponseSchema или cursorResponseSchema';
-  const shared = mode === 'page' ? pageQuerySchema : cursorQuerySchema;
-  for (const [key, field] of Object.entries(shared.shape))
-    if (endpoint.query?.shape[key] !== field)
-      return `возьмите ${key} из общей схемы query, расширив её фильтрами`;
+  if (listQueryMode(endpoint.query) !== mode)
+    return 'используйте общую схему query в том же режиме, что и ответ';
 }
 
 test('list responses use shared pagination schemas and matching query fields', () => {
@@ -403,16 +391,6 @@ test('list responses use shared pagination schemas and matching query fields', (
 });
 
 test('legacy API exceptions still cover violations at their declared addresses', () => {
-  const deletion = entries.find(
-    (entry) => address(entry.endpoint) === legacy.deletion.address,
-  );
-  expect(
-    deletion !== undefined &&
-      (unknownPathSegment(deletion) !== undefined ||
-        !endsWithReadResource(deletion)),
-    `${legacy.deletion.address}: удалите устаревшую запись из legacy.deletion`,
-  ).toBe(true);
-
   const fields = entries.find(
     (entry) => address(entry.endpoint) === legacy.fields.address,
   );

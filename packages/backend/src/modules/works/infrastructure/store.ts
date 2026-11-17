@@ -34,17 +34,7 @@ export function createWorkStore(
     });
   return {
     ...createWorkDeletionStore(db),
-    async list(workspaceId, after) {
-      return (
-        await db.work.findMany({
-          where: { workspaceId, deletedAt: null },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          take: 51,
-          ...(after ? { cursor: { id: after }, skip: 1 } : {}),
-        })
-      ).map(summary);
-    },
-    async search(workspaceId, { q, status, page, pageSize }) {
+    async list(workspaceId, { q, status, page, pageSize }) {
       const revision = db.work.fields.revision;
       const where = {
         workspaceId,
@@ -82,8 +72,10 @@ export function createWorkStore(
           take: pageSize,
         });
         return {
-          works: rows.map(summary),
-          pagination: { page: current, pageSize, total },
+          items: rows.map(summary),
+          page: current,
+          pageSize,
+          total,
         };
       };
       return db.$transaction

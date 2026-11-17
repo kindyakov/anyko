@@ -6,6 +6,9 @@ import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../src/http/app';
 
+import { memberAccess } from './support/member-access';
+import { stubHttpOptions } from './support/stub-http';
+
 test('health responds over HTTP', async () => {
   const app = createApp().listen({ hostname: '127.0.0.1', port: 0 });
   try {
@@ -123,5 +126,57 @@ test('every error kind maps to one HTTP status and keeps the declared code', asy
     }
   } finally {
     await server.stop();
+  }
+});
+
+// Сценарий подменён на границе модуля. Проверяем преобразование query и HTTP-форму страницы.
+test('work listing sends only numbered pages with deletion status', async () => {
+  const options = stubHttpOptions();
+  const pending = [{ id: crypto.randomUUID(), status: 'deleting' as const }];
+  const app = createApp({
+    environment: 'test',
+    workHttp: {
+      ...options.workHttp,
+      access: memberAccess,
+      works: {
+        ...options.workHttp.works,
+        queries: {
+          ...options.workHttp.works.queries,
+          list: (_scope, { page, pageSize }) =>
+            Promise.resolve({ items: [], page, pageSize, total: 77 }),
+        },
+      },
+      deletion: {
+        ...options.workHttp.deletion,
+        pending: () => Promise.resolve(pending),
+      },
+    },
+  });
+  const address = 'http://localhost/api/v1/workspaces/local/works';
+  const get = (query: string) =>
+    app.handle(
+      new Request(address + query, { headers: { cookie: 'session=ok' } }),
+    );
+
+  for (const [query, page, pageSize] of [
+    ['', 1, 24],
+    ['?page=2&pageSize=12', 2, 12],
+  ] as const) {
+    const response = await get(query);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      items: [],
+      page,
+      pageSize,
+      total: 77,
+      deletions: pending,
+    });
+  }
+  for (const query of ['?pageSize=25', '?after=cursor']) {
+    const response = await get(query);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'INVALID_WORK_INPUT' },
+    });
   }
 });

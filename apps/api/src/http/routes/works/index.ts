@@ -18,7 +18,6 @@ import {
   analyzeWork,
   confirmWork,
   createWork,
-  defaultWorkPageSize,
   deleteWork,
   downloadGeneratedFile,
   editWork,
@@ -67,24 +66,13 @@ export function worksRoutes(
   const { works, views, intake, review, generation, access, deletion } =
     options;
   route(app, listWorks, async ({ scope, query }) => {
-    if (
-      query.page === undefined &&
-      query.pageSize === undefined &&
-      query.q === undefined &&
-      query.status === undefined
-    )
-      return works.queries.list(scope, query.after || undefined);
-    const page = await works.queries.search(scope, {
-      page: query.page ?? 1,
-      pageSize: query.pageSize ?? defaultWorkPageSize,
+    const page = await works.queries.list(scope, {
+      page: query.page,
+      pageSize: query.pageSize,
       q: query.q ?? '',
       status: query.status ?? 'all',
     });
-    return {
-      ...page,
-      nextCursor: null,
-      deletions: await deletion.pending(scope),
-    };
+    return { ...page, deletions: await deletion.pending(scope) };
   });
   route(app, deleteWork, ({ scope, params, requestId }) =>
     deletion.request(scope, brandWorkId(params.workId), requestId),

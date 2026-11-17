@@ -29,7 +29,7 @@ import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 export function WorkList() {
   const titleRef = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
-  const [deleting, setDeleting] = useState<WorkPage['works'][number]>();
+  const [deleting, setDeleting] = useState<WorkPage['items'][number]>();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { page, pageSize, q, status, view } = readWorkListParams(searchParams);
@@ -43,8 +43,8 @@ export function WorkList() {
   });
   const catalog = useQuery(documentPackagesQueryOptions(workspaceId));
   const create = useCreateWork(workspaceId);
-  const works = list.data?.works ?? [];
-  const pagination = list.data?.pagination;
+  const works = list.data?.items ?? [];
+  const pagination = list.data;
   const pendingPage = list.isPending || list.isPlaceholderData;
   const hasFilters = q !== '' || status !== 'all';
   const packages = catalog.data?.packages ?? [];
@@ -109,7 +109,7 @@ export function WorkList() {
           key={workspaceId}
           workspaceId={workspaceId}
           target={deleting}
-          pending={list.data?.deletions}
+          pending={list.data?.deletions ?? []}
           onClose={() => {
             setDeleting(undefined);
           }}
@@ -229,7 +229,7 @@ export function WorkList() {
       )}
       {pagination && (
         <WorkPagination
-          {...pagination}
+          total={pagination.total}
           page={list.isPlaceholderData ? page : pagination.page}
           pageSize={list.isPlaceholderData ? pageSize : pagination.pageSize}
           onPage={navigatePage}

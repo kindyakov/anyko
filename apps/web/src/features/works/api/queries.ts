@@ -40,7 +40,7 @@ export function worksQueryOptions(
         signal,
       }),
     refetchInterval: (entry) =>
-      entry.state.data?.deletions?.length ? 1500 : false,
+      entry.state.data?.deletions.length ? 1500 : false,
   });
 }
 

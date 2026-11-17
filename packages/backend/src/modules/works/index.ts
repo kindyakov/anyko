@@ -70,8 +70,7 @@ export interface WorkDeletionStore {
 }
 
 export interface WorkStore extends WorkDeletionStore {
-  list(workspaceId: string, after?: string): Promise<WorkSummary[]>;
-  search(workspaceId: string, input: WorkSearch): Promise<WorkSearchPage>;
+  list(workspaceId: string, input: WorkSearch): Promise<WorkListPage>;
   get(workspaceId: string, workId: string): Promise<WorkSummary | null>;
   create(input: {
     id: string;
@@ -117,11 +116,6 @@ export interface WorkSources {
   cleanupPending: boolean;
 }
 
-export interface WorkListPage {
-  works: WorkSummary[];
-  nextCursor: string | null;
-}
-
 export interface WorkSearch {
   q: string;
   status: 'all' | 'draft' | 'confirmed';
@@ -129,9 +123,11 @@ export interface WorkSearch {
   pageSize: number;
 }
 
-export interface WorkSearchPage {
-  works: WorkSummary[];
-  pagination: { page: number; pageSize: number; total: number };
+export interface WorkListPage {
+  items: WorkSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 // Команды меняют данные работы. Право проверяет сама команда, если она сценарий владельца;
@@ -158,8 +154,7 @@ export interface WorksCommands {
 // Запросы читают данные работы. Право чтения проверяют list и events; find, sources и cursor
 // внутренние: сценарий, который их вызывает, проверяет право сам.
 export interface WorksQueries {
-  list(scope: WorkspaceScope, after?: string): Promise<WorkListPage>;
-  search(scope: WorkspaceScope, input: WorkSearch): Promise<WorkSearchPage>;
+  list(scope: WorkspaceScope, input: WorkSearch): Promise<WorkListPage>;
   find(scope: WorkspaceScope, workId: WorkId): Promise<WorkSummary | null>;
   sources(scope: WorkspaceScope, workId: WorkId): Promise<WorkSources>;
   cursor(scope: WorkspaceScope, workId: WorkId): Promise<string>;

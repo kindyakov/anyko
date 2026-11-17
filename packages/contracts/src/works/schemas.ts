@@ -7,6 +7,7 @@ import {
   fieldValuesSchema,
   generationFileSchema,
 } from '../catalog';
+import { pageResponseSchema } from '../common';
 import { documentSchema } from '../documents';
 
 import { agentSessionSchema } from './agent-session';
@@ -118,19 +119,8 @@ const workDeletionStatus = z.enum(['deleting', 'needs-recovery']);
 export const workDeletionResponseSchema = z.object({
   status: z.union([workDeletionStatus, z.literal('deleted')]),
 });
-export const worksResponseSchema = z.object({
-  works: z.array(workSummarySchema),
-  nextCursor: z.uuid().nullable().default(null),
-  pagination: z
-    .object({
-      page: z.int().positive(),
-      pageSize: z.int().positive(),
-      total: z.int().nonnegative(),
-    })
-    .optional(),
-  deletions: z
-    .array(z.object({ id: z.uuid(), status: workDeletionStatus }))
-    .optional(),
+export const worksResponseSchema = pageResponseSchema(workSummarySchema, {
+  deletions: z.array(z.object({ id: z.uuid(), status: workDeletionStatus })),
 });
 export type WorkPage = z.infer<typeof worksResponseSchema>;
 export const createWorkSchema = z

@@ -15,7 +15,6 @@ function store(calls: string[]): WorkStore {
   const unused = () => Promise.reject(new Error('UNUSED'));
   return {
     list: unused,
-    search: unused,
     get: unused,
     documents: unused,
     workForDocument: unused,

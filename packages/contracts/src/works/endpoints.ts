@@ -6,6 +6,7 @@ import {
   fileDownload,
   json,
   multipart,
+  pageQuery,
   workspaceParams,
 } from '../common';
 import {
@@ -17,6 +18,7 @@ import {
 
 import {
   createWorkSchema,
+  defaultWorkPageSize,
   editWorkSchema,
   queuedStatusSchema,
   revisionSchema,
@@ -36,26 +38,10 @@ export const listWorks = endpoint({
   method: 'GET',
   path: '/workspaces/:workspaceId/works',
   params: workspaceParams,
-  // Пустой after означает первую страницу, как и раньше.
-  query: z
-    .object({
-      after: z.union([uuid, z.literal('')]).optional(),
-      page: z.coerce.number<string | number>().int().positive().optional(),
-      pageSize: z.coerce
-        .number<string | number>()
-        .pipe(workPageSizeSchema)
-        .optional(),
-      q: z.string().trim().max(200).optional(),
-      status: workListStatusSchema.optional(),
-    })
-    .refine(
-      ({ after, page, pageSize, q, status }) =>
-        !after ||
-        (page === undefined &&
-          pageSize === undefined &&
-          q === undefined &&
-          status === undefined),
-    ),
+  query: pageQuery(workPageSizeSchema, defaultWorkPageSize, {
+    q: z.string().trim().max(200).optional(),
+    status: workListStatusSchema.optional(),
+  }),
   response: json(worksResponseSchema),
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
@@ -83,6 +69,7 @@ export const createWork = endpoint({
 });
 
 export const deleteWork = endpoint({
+  summary: 'Принимает запрос на удаление работы',
   method: 'DELETE',
   path: '/workspaces/:workspaceId/works/:workId',
   params: workParams,
@@ -94,6 +81,7 @@ export const deleteWork = endpoint({
 });
 
 export const getWorkDeletion = endpoint({
+  summary: 'Возвращает состояние удаления работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/deletion',
   params: workParams,

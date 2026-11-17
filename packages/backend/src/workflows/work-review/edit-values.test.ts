@@ -65,7 +65,6 @@ function ports(calls: string[]): {
       },
       queries: {
         list: unused,
-        search: unused,
         find: () => Promise.resolve(work),
         sources: () =>
           Promise.resolve({ documents: [], cleanupPending: false }),

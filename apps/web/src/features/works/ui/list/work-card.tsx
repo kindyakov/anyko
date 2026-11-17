@@ -23,7 +23,7 @@ export function WorkCard({
   view,
   onDelete,
 }: {
-  work: WorkPage['works'][number];
+  work: WorkPage['items'][number];
   index: number;
   packages: readonly DocumentPackage[];
   workspaceId: string;

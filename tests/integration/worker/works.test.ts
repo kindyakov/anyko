@@ -717,7 +717,7 @@ test('confirmation survives added sources and repeated analysis; only the new fi
   }
 });
 
-test('all works remain reachable across stable cursor pages', async () => {
+test('all works remain reachable across stable numbered pages', async () => {
   const input = await create();
   await db.work.createMany({
     data: Array.from({ length: 103 }, (_, index) => ({
@@ -729,15 +729,15 @@ test('all works remain reachable across stable cursor pages', async () => {
     })),
   });
   const seen: string[] = [];
-  let cursor: string | undefined;
-  do {
+  const pageSize = 24;
+  for (let number = 1; number <= Math.ceil(104 / pageSize); number++) {
     const page = await apiBackend.workHttp.works.queries.list(
       memberScope(input.workspaceId),
-      cursor,
+      { page: number, pageSize, q: '', status: 'all' },
     );
-    seen.push(...page.works.map((work) => work.id));
-    cursor = page.nextCursor ?? undefined;
-  } while (cursor);
+    expect(page).toMatchObject({ page: number, pageSize, total: 104 });
+    seen.push(...page.items.map((work) => work.id));
+  }
   expect(seen).toHaveLength(104);
   expect(new Set(seen).size).toBe(104);
 });
@@ -770,7 +770,7 @@ test('numbered search filters the whole workspace and counts only matching revis
       { ...oldest, id: crypto.randomUUID(), title: 'Другое дело' },
     ],
   });
-  const page = await apiBackend.workHttp.works.queries.search(
+  const page = await apiBackend.workHttp.works.queries.list(
     memberScope(input.workspaceId),
     {
       q: 'АННЫ',
@@ -779,20 +779,20 @@ test('numbered search filters the whole workspace and counts only matching revis
       pageSize: 24,
     },
   );
-  expect(page.pagination).toEqual({ page: 2, pageSize: 24, total: 25 });
-  expect(page.works.map(({ id }) => id)).toEqual([oldest.id]);
-  const shorterPage = await apiBackend.workHttp.works.queries.search(
+  expect(page).toMatchObject({ page: 2, pageSize: 24, total: 25 });
+  expect(page.items.map(({ id }) => id)).toEqual([oldest.id]);
+  const shorterPage = await apiBackend.workHttp.works.queries.list(
     memberScope(input.workspaceId),
     { q: 'АННЫ', status: 'confirmed', page: 2, pageSize: 6 },
   );
-  expect(shorterPage.pagination).toEqual({ page: 2, pageSize: 6, total: 25 });
-  expect(shorterPage.works.map(({ id }) => id)).toEqual(
+  expect(shorterPage).toMatchObject({ page: 2, pageSize: 6, total: 25 });
+  expect(shorterPage.items.map(({ id }) => id)).toEqual(
     data
       .slice(13, 19)
       .reverse()
       .map(({ id }) => id),
   );
-  const draft = await apiBackend.workHttp.works.queries.search(
+  const draft = await apiBackend.workHttp.works.queries.list(
     memberScope(input.workspaceId),
     {
       q: 'АННЫ',
@@ -801,9 +801,9 @@ test('numbered search filters the whole workspace and counts only matching revis
       pageSize: 24,
     },
   );
-  expect(draft.pagination.total).toBe(1);
-  expect(draft.works[0]?.confirmedRevision).toBeNull();
-  const literal = await apiBackend.workHttp.works.queries.search(
+  expect(draft.total).toBe(1);
+  expect(draft.items[0]?.confirmedRevision).toBeNull();
+  const literal = await apiBackend.workHttp.works.queries.list(
     memberScope(input.workspaceId),
     {
       q: '%',
@@ -812,7 +812,7 @@ test('numbered search filters the whole workspace and counts only matching revis
       pageSize: 24,
     },
   );
-  expect(literal.works.map(({ title }) => title)).toEqual(['Дело Анны 100%']);
+  expect(literal.items.map(({ title }) => title)).toEqual(['Дело Анны 100%']);
 });
 
 test('owner deletion fences a running writer then physically purges the work and its files', async () => {
@@ -901,13 +901,13 @@ test('owner deletion fences a running writer then physically purges the work and
     );
     expect(
       (
-        await apiBackend.workHttp.works.queries.search(scope, {
+        await apiBackend.workHttp.works.queries.list(scope, {
           page: 1,
           pageSize: 24,
           q: '',
           status: 'all',
         })
-      ).works,
+      ).items,
     ).toEqual([]);
     expect(
       await db.run.findFirst({

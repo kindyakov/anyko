@@ -4,21 +4,50 @@ const page = z.number().int().min(1);
 const size = z.number().int().min(1).max(100);
 const cursor = z.string().min(1);
 
-export const pageQuerySchema = z.object({
-  page: z.coerce.number<string | number>().pipe(page).default(1),
-  pageSize: z.coerce.number<string | number>().pipe(size).default(50),
-});
+type ListMode = 'page' | 'cursor';
+const listQueries = z.registry<{ mode: ListMode }>();
+const listResponses = z.registry<{ mode: ListMode }>();
 
-export const cursorQuerySchema = z.object({
-  after: cursor.optional(),
-  limit: z.coerce.number<string | number>().pipe(size).default(50),
-});
-
-const listResponses = z.registry<{ mode: 'page' | 'cursor' }>();
-
-export function pageResponseSchema<T extends z.ZodType>(item: T) {
+export function pageQuery<
+  T extends z.ZodType<number, number>,
+  F extends z.ZodRawShape,
+>(pageSize: T, defaultSize: z.output<T>, filters: F) {
   return z
     .strictObject({
+      ...filters,
+      page: z.coerce.number<string | number>().pipe(page).default(1),
+      pageSize: z.coerce
+        .number<string | number>()
+        .pipe(size)
+        .pipe(pageSize)
+        .prefault(defaultSize),
+    })
+    .register(listQueries, { mode: 'page' });
+}
+
+export function cursorQuery<F extends z.ZodRawShape>(filters: F) {
+  return z
+    .object({
+      ...filters,
+      after: cursor.optional(),
+      limit: z.coerce.number<string | number>().pipe(size).default(50),
+    })
+    .register(listQueries, { mode: 'cursor' });
+}
+
+export const cursorQuerySchema = cursorQuery({});
+
+export function listQueryMode(schema: z.ZodObject | undefined) {
+  return schema && listQueries.get(schema)?.mode;
+}
+
+export function pageResponseSchema<
+  T extends z.ZodType,
+  F extends z.ZodRawShape,
+>(item: T, extra: F) {
+  return z
+    .strictObject({
+      ...extra,
       items: z.array(item),
       page,
       pageSize: size,

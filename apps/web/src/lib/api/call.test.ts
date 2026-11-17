@@ -89,7 +89,9 @@ test('a JSON call without parameters goes to the versioned path with no body and
 });
 
 test('path parameters fill the template, and a missing one is refused before the request', async () => {
-  const sent = answer(json({ works: [], nextCursor: null }));
+  const sent = answer(
+    json({ items: [], page: 1, pageSize: 24, total: 0, deletions: [] }),
+  );
   await callApi(listWorks, { params: { workspaceId: workspace } });
   expect(sent[0]?.url).toBe('/api/v1/workspaces/workspace-1/works');
 
@@ -107,27 +109,31 @@ test('path parameters fill the template, and a missing one is refused before the
 });
 
 test('a parameter that needs escaping is refused by the path check, never sent', async () => {
-  const sent = answer(json({ works: [], nextCursor: null }));
+  const sent = answer(
+    json({ items: [], page: 1, pageSize: 24, total: 0, deletions: [] }),
+  );
   expect(
     await failureOf(callApi(listWorks, { params: { workspaceId: 'a/../b' } })),
   ).toMatchObject({ code: 'INVALID_API_PATH' });
   expect(sent).toHaveLength(0);
 });
 
-test('query values are sent as given, undefined is skipped, an empty after means the first page', async () => {
-  const sent = answer(json({ works: [], nextCursor: null }));
+test('query values are sent as given, undefined filters are skipped', async () => {
+  const sent = answer(
+    json({ items: [], page: 1, pageSize: 24, total: 0, deletions: [] }),
+  );
   await callApi(listWorks, {
     params: { workspaceId: workspace },
-    query: { after: '' },
+    query: { page: 2, pageSize: 12, q: undefined },
   });
   await callApi(listWorks, {
     params: { workspaceId: workspace },
-    query: { after: workId },
+    query: { q: 'Case 100%', status: 'draft' },
   });
   await callApi(listWorks, { params: { workspaceId: workspace }, query: {} });
   expect(sent.map((request) => request.url)).toEqual([
-    '/api/v1/workspaces/workspace-1/works?after=',
-    `/api/v1/workspaces/workspace-1/works?after=${workId}`,
+    '/api/v1/workspaces/workspace-1/works?page=2&pageSize=12',
+    '/api/v1/workspaces/workspace-1/works?q=Case+100%25&status=draft',
     '/api/v1/workspaces/workspace-1/works',
   ]);
 });

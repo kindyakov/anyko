@@ -9,7 +9,6 @@ import { listWorks } from './application/list-works';
 import { readCursor } from './application/read-cursor';
 import { readSources } from './application/read-sources';
 import { recordEvent } from './application/record-event';
-import { searchWorks } from './application/search-works';
 
 import type { WorkIoPort, WorksModule, WorksPorts, WorkStore } from './index';
 
@@ -37,7 +36,6 @@ export function createWorksModule(deps: WorksDeps): WorksModule {
     },
     queries: {
       list: listWorks({ store }),
-      search: searchWorks({ store }),
       find: findWork({ store }),
       sources: readSources({ store, io: deps.io }),
       cursor: readCursor({ store }),

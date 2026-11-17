@@ -75,7 +75,6 @@ export function stubHttpOptions(): {
     },
     queries: {
       list: unused,
-      search: unused,
       find: unused,
       sources: unused,
       cursor: unused,

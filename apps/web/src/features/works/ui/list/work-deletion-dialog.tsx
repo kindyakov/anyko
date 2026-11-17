@@ -8,7 +8,7 @@ import { useDeleteWork } from '@/features/works/api/mutations';
 import { workDeletionQueryOptions } from '@/features/works/api/queries';
 import { describeApiError, sharedCodeTexts } from '@/lib/api/errors';
 
-type Work = WorkPage['works'][number];
+type Work = WorkPage['items'][number];
 
 export function WorkDeletionDialog({
   workspaceId,
@@ -27,12 +27,10 @@ export function WorkDeletionDialog({
     ?.status;
   const needsRecovery =
     status === 'needs-recovery' ||
-    pending?.some((item) => item.status === 'needs-recovery');
+    pending.some((item) => item.status === 'needs-recovery');
   return (
     <>
-      {((pending?.length ?? 0) > 0 ||
-        status === 'deleting' ||
-        needsRecovery) && (
+      {(pending.length > 0 || status === 'deleting' || needsRecovery) && (
         <div className="mb-4">
           {needsRecovery ? (
             <Notice role="status" tone="warning">
