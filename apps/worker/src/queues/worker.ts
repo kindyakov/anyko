@@ -4,7 +4,6 @@ import { Redis } from 'ioredis';
 import {
   type JobRuntime,
   parseJobEnvelope,
-  parseScheduledEnvelope,
   parseWorkerQueues,
   type RunJob,
   type WorkerQueue,
@@ -87,7 +86,11 @@ export async function startJobWorker(
         if (definition.kind === 'scheduled') {
           let envelope;
           try {
-            envelope = parseScheduledEnvelope(job.data, definition.version);
+            envelope = parseJobEnvelope(
+              job.data,
+              definition.version,
+              'scheduled',
+            );
           } catch {
             throw new UnrecoverableError('INVALID_JOB_ENVELOPE');
           }
@@ -116,9 +119,9 @@ export async function startJobWorker(
       { connection, prefix, concurrency: 1 },
     );
     worker.on('error', degrade);
-    worker.on('failed', (job) =>
-      runtime.logger.warn({ event: 'job.failed', jobId: job?.id ?? 'unknown' }),
-    );
+    worker.on('failed', (job) => {
+      runtime.logger.warn({ event: 'job.failed', jobId: job?.id ?? 'unknown' });
+    });
     workers.push(worker);
   }
   // Rolling upgrade: old queue names are drained into workload queues, never executed here.
@@ -142,6 +145,8 @@ export async function startJobWorker(
           } catch {
             throw new UnrecoverableError('INVALID_JOB_ENVELOPE');
           }
+          if (envelope.format !== 'legacy')
+            throw new UnrecoverableError('INVALID_LEGACY_ENVELOPE');
           const port = runtime.deliveries[family === 'document' ? 0 : 1];
           const run = await port?.describe(envelope);
           const definition = runtime.registry.definitions.find(
@@ -177,10 +182,9 @@ export async function startJobWorker(
         await Promise.race([
           Promise.all([loop, ...workers.map((worker) => worker.close())]),
           new Promise<never>((_, reject) => {
-            timer = setTimeout(
-              () => reject(new Error('WORKER_SHUTDOWN_TIMEOUT')),
-              runtime.shutdownTimeoutMs,
-            );
+            timer = setTimeout(() => {
+              reject(new Error('WORKER_SHUTDOWN_TIMEOUT'));
+            }, runtime.shutdownTimeoutMs);
           }),
         ]);
       } finally {
@@ -201,10 +205,9 @@ export async function startJobWorker(
         ...[...queues.values()].map((queue) => queue.waitUntilReady()),
       ]),
       new Promise<never>((_, reject) => {
-        startupTimer = setTimeout(
-          () => reject(new Error('WORKER_STARTUP_TIMEOUT')),
-          10000,
-        );
+        startupTimer = setTimeout(() => {
+          reject(new Error('WORKER_STARTUP_TIMEOUT'));
+        }, 10000);
       }),
     ]);
     if (selected.includes('maintenance')) {
@@ -214,14 +217,10 @@ export async function startJobWorker(
         const definition = runtime.registry.definitions.find(
           (entry) => entry.name === schedule.name,
         );
-        if (
-          !definition ||
-          definition.kind !== 'scheduled' ||
-          definition.queue !== 'maintenance'
-        )
+        if (!definition || definition.kind !== 'scheduled')
           throw new Error('INVALID_JOB_SCHEDULE');
         await maintenance.upsertJobScheduler(
-          `schedule-${definition.name}-v${definition.version}`,
+          `schedule-${definition.name}-v${String(definition.version)}`,
           { every: schedule.everyMs },
           {
             name: definition.name,
@@ -258,7 +257,11 @@ export async function startJobWorker(
         healthy =
           connection.status === 'ready' &&
           producer.status === 'ready' &&
-          workers.every((worker) => worker.isRunning());
+          workers.every(
+            (worker) =>
+              worker.isRunning() &&
+              worker.getBackend().blockingConnection?.status === 'ready',
+          );
       } catch {
         healthy = false;
         runtime.logger.warn({ event: 'job_dispatch_failed' });

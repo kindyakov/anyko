@@ -86,3 +86,17 @@ test('configuration rejects invalid values without exposing secret inputs', () =
     expect(error.message).not.toContain('localhost');
   }
 });
+
+test('workload queue configuration defaults to all and rejects unknown and empty names', () => {
+  const redis = { REDIS_URL: 'redis://127.0.0.1:16379' };
+  expect(parseWorkerConfig(redis).WORKER_QUEUES).toBe(
+    'ocr,llm,render,maintenance',
+  );
+  expect(
+    parseWorkerConfig({ ...redis, WORKER_QUEUES: 'ocr' }).WORKER_QUEUES,
+  ).toBe('ocr');
+  for (const value of ['', 'ocr,unknown', 'ocr,'])
+    expect(() => parseWorkerConfig({ ...redis, WORKER_QUEUES: value })).toThrow(
+      'WORKER_QUEUES',
+    );
+});

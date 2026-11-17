@@ -111,3 +111,11 @@ bun run test:worker:integration
 Приложения пишут JSON в stdout. Для серверного хранения и доступа агента подготовлены [инструкция Dokploy](docs/engineering/deployment.md) и [контракт runtime](docs/engineering/runtime-foundation.md). История journald, SSH-ограничения и сохранение после перезагрузки требуют отдельной проверки на Linux-сервере. На Windows доступ к Docker и HTTP loopback может блокироваться песочницей инструмента: ошибка доступа не означает, что Engine или HTTP-handler сломан.
 
 Локальные порты Anyko: сайт3020, API3021, worker3022, MinerU8020, Redis16399, S319020. Общий PostgreSQL остаётся на5432; его данные и настройки не меняются.
+
+Worker workload selection: `WORKER_QUEUES=ocr,llm,render,maintenance` (all by default).
+Unknown or empty names fail startup; selecting `ocr` leaves `llm` and `render` for other processes.
+The separate diagnostic `QUEUE_NAME` is always enabled, including empty mode.
+`bun run test:worker:integration` runs diagnostic and business queue integration tests with
+`TEST_DATABASE_URL` and `TEST_REDIS_URL`; E2E uses its own `anyko-e2e` BullMQ prefix.
+See [queue rollout and scaling](docs/engineering/operations.md#выкат-заданий-и-очередей).
+`platform/realtime` remains deferred to the agent chat work and is not implemented by #21.

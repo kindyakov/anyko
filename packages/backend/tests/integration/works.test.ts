@@ -12,8 +12,8 @@ import {
 } from '@anyko/database';
 import { LlmError } from '@anyko/llm';
 import { createLogger } from '@anyko/logger';
+import { startJobWorker } from '@anyko/worker/queues';
 
-import { startJobWorker } from '../../../../apps/worker/src/queues';
 import type { DocumentAgents } from '../../src/modules/agents';
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 import type { SourceStorage } from '../../src/modules/documents';

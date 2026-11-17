@@ -204,20 +204,36 @@ route(app, confirmWork, ({ scope, params, body }) =>
 
 ## Задания
 
+BullMQ и ioredis размещаются только в `apps/worker/src/queues`. `platform/jobs` определяет типы и единственную функцию `parseJobEnvelope`; сценарии объявляют `defineJob` у владельца в `jobs.ts`. Явный список и расписания находятся в `runtime/jobs.ts`; новый вид задания не копирует хост очередей.
+
 ```ts
-// workflows/work-analysis/jobs.ts
-export const analyzeWorkJob = defineJob({
-  name: 'work.analyze',
+// workflows/work-analysis/jobs.ts: зависимости замыкаются при сборке.
+defineJob({
+  kind: 'run',
+  name: 'work.analysis',
   version: 1,
   queue: 'llm',
-  payload: z.object({ runId: z.uuid() }).strict(),
-  timeoutMs: 15 * 60_000,
-  handler: (ctx, payload) =>
-    ctx.deps.analysis.execute(ctx.scope, payload.runId, ctx.signal),
+  payload: z.object({}).strict(),
+  timeoutMs: 1_500_000,
+  retry: { attempts: 1, backoffMs: 0 },
+  handler: (scope, _payload, signal) => execute(scope, signal),
 });
 ```
 
-Envelope с версией, IDs и correlation ID разбирает `worker/queues`; неизвестная версия или несовпадение с сохранённым запуском отклоняется без исполнения. Обработчик получает `ExecutionScope` из `processing`, а не из payload. Расписание обслуживающих заданий объявляется в том же реестре.
+Payload выводится из схемы. `kind: 'run'` получает `ExecutionScope`, выданный только `processing` по сохранённому запуску. Новый envelope: `{ envelopeVersion: 1, version: 1, workspaceId, runId, correlationId, attemptId?, payload }`. `version` — версия задания; `envelopeVersion` — версия контейнера. Проверяются версия, вид запуска, область, correlation ID и переданный attempt ID. Неизвестная версия, чужой или уже захваченный запуск и устаревшая попытка не вызывают обработчик. Захват и публикация результата по `attemptToken` остаются в механизме processing; scope не заменяет этот барьер.
+
+`kind: 'scheduled'` разрешён только для `maintenance`. Обработчик получает системный контекст `{ clock, logger, signal, correlationId }`, без `WorkspaceScope` и `ExecutionScope`; он не может выдавать scope области. Envelope содержит `{ envelopeVersion: 1, version, correlationId, payload }` и проходит тот же parser. Глобальная работа вызывается через внутренние порты модулей, без фиктивной области или запуска. Каждому заданию соответствует расписание в реестре; фиксированный ключ BullMQ scheduler дедуплицирует расписание между репликами. Обработчики безопасны при повторе, выполняют ограниченные пакеты; BullMQ удерживает аренду одного срабатывания, а повтор после сбоя не гарантирует exactly-once побочные эффекты.
+
+| Очередь       | Задания                                                           |
+| ------------- | ----------------------------------------------------------------- |
+| `ocr`         | `document.ocr`                                                    |
+| `llm`         | `work.analysis`                                                   |
+| `render`      | `work.generation`                                                 |
+| `maintenance` | `work.maintenance`, `document.maintenance`, `idempotency.cleanup` |
+
+Техническая диагностика — явное исключение: `diagnostic.ping` использует отдельную `QUEUE_NAME` (по умолчанию `anyko-diagnostic`), собственный версионированный envelope и работает в `mode=empty` без БД, области и сохранённого запуска. `WORKER_QUEUES` её не отключает. Клиент и хост диагностики тоже находятся в `apps/worker/src/queues`; CLI, readiness и portable smoke сохраняют поведение.
+
+`WorkerBackend.jobs` предоставляет реестр, внутренние порты доставки и восстановления, часы и ID; `startJobWorker` экспортируется из `@anyko/worker/queues`. Dispatcher outbox и reconciler находятся в `apps/worker/src/loops` и не владеют правилами состояния. Redis не заменяет durable intent в PostgreSQL.
 
 ## Повтор команд и журнал действий
 
@@ -226,7 +242,7 @@ Envelope с версией, IDs и correlation ID разбирает `worker/que
 - Ключ действует в пределах тройки «область, команда, ключ». Команда — `METHOD путь` из описания.
 - Отпечаток — SHA-256 канонической формы params, query и body: порядок полей не важен. Файл входит именем и SHA-256 содержимого; значения полей в хранилище не попадают.
 - Тот же ключ и тот же вход возвращают сохранённые статус и тело, сценарий не запускается. Тот же ключ с другим входом — `409 IDEMPOTENCY_CONFLICT`. Тот же ключ, пока первый запрос выполняется, — `409 IDEMPOTENCY_IN_PROGRESS`. Ошибка сценария снимает захват: повтор выполняется заново.
-- Результат хранится 24 часа; просроченная запись считается отсутствующей. Захват без результата (процесс упал между выполнением и записью) перехватывается через 5 минут. Тогда повтор может выполнить сценарий ещё раз: это принятое ограничение до транзакционной записи результата вместе с действием. Очистка просроченных записей — задание maintenance в #21.
+- Результат хранится 24 часа; просроченная запись считается отсутствующей. Захват без результата (процесс упал между выполнением и записью) перехватывается через 5 минут. Тогда повтор может выполнить сценарий ещё раз: это принятое ограничение до транзакционной записи результата вместе с действием. Очистка просроченных записей выполняется заданием `idempotency.cleanup` раз в минуту, максимум 20 пакетов по 100 строк; активный захват сохраняется.
 
 Журнал действий (`modules/audit`): `record(tx, событие)` пишет строку в той же транзакции, что и действие. Сбой записи откатывает действие; откат действия отменяет событие. Перечень действий закрыт в `modules/audit/domain/events.ts`:
 
@@ -241,30 +257,30 @@ Envelope с версией, IDs и correlation ID разбирает `worker/que
 
 ## Как добавлять
 
-| Изменение                      | Место и обязательная граница                                                                                                                 |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Новый endpoint                 | описание в `contracts/<resource>/endpoints.ts`, маршрут (и перевод модели, если формы различаются) в `api/http/routes/<resource>`, HTTP-тест |
-| Новая команда/запрос           | файл в `modules/<m>/application`, подключение в `module.ts`, право в `platform/scope`, unit или интеграционный тест                          |
-| Сценарий нескольких владельцев | `workflows/<process>`, вызовы `module.in(tx)` внутри `UnitOfWork`, интеграционный тест на PostgreSQL                                         |
-| Новое задание                  | `defineJob` у владельца процесса, строка в `runtime/jobs.ts`, проверка устаревшей попытки                                                    |
-| Новый модуль                   | `modules/<name>` с `index.ts` и `module.ts`, строка в `.dependency-cruiser.cjs`, сборка в `create-backend.ts`                                |
-| Новая интеграция               | `infrastructure` владельца с timeout и лимитом параллелизма; секция конфигурации в `BackendConfig`                                           |
-| Новый код ошибки               | `defineErrors` модуля, каталог `contracts/common/errors`, список `errors` нужных endpoint                                                    |
-| Операторская функция           | `routes/admin`, `contracts/admin`, `OperatorScope`; бизнес-правила остаются в модуле                                                         |
+| Изменение                      | Место и обязательная граница                                                                                                                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Новый endpoint                 | описание в `contracts/<resource>/endpoints.ts`, маршрут (и перевод модели, если формы различаются) в `api/http/routes/<resource>`, HTTP-тест      |
+| Новая команда/запрос           | файл в `modules/<m>/application`, подключение в `module.ts`, право в `platform/scope`, unit или интеграционный тест                               |
+| Сценарий нескольких владельцев | `workflows/<process>`, вызовы `module.in(tx)` внутри `UnitOfWork`, интеграционный тест на PostgreSQL                                              |
+| Новое задание                  | `defineJob(kind: run)` у владельца, строка реестра и проверка устаревшей попытки; для `scheduled` — maintenance, расписание и тест повтора/версии |
+| Новый модуль                   | `modules/<name>` с `index.ts` и `module.ts`, строка в `.dependency-cruiser.cjs`, сборка в `create-backend.ts`                                     |
+| Новая интеграция               | `infrastructure` владельца с timeout и лимитом параллелизма; секция конфигурации в `BackendConfig`                                                |
+| Новый код ошибки               | `defineErrors` модуля, каталог `contracts/common/errors`, список `errors` нужных endpoint                                                         |
+| Операторская функция           | `routes/admin`, `contracts/admin`, `OperatorScope`; бизнес-правила остаются в модуле                                                              |
 
 ## Как проверяются правила
 
 Принципы — в [quality.md](quality.md#как-проектировать-проверку-правила). Все проверки ниже выражены через соглашения, и новая функция по шаблону проходит их без правки проверок.
 
-| Механизм                   | Правила                                                                                                                                                                                                                                                                                                         | Этап    |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Типы                       | брендированные scope и ID в сигнатурах хранилищ; ответ обработчика по `response` endpoint; `satisfies Record<ErrorKind, number>`; payload `defineJob`                                                                                                                                                           | 1, 3, 4 |
-| dependency-cruiser         | backend без `contracts`/BullMQ/ioredis/Elysia; `platform` без модулей; конструкторы scope только в `access`/`processing`; `runtime` только в bootstrap; рёбра модулей; процессы через `index.ts`/`module.ts` (`backend-workflows-use-module-facades`); `Tx` без Prisma-значений (`backend-transactions-opaque`) | 1       |
-| ESLint по папкам           | в `http/routes` нет `request.json()`, `formData()`, ручного разбора ID; в `domain`/`application` нет `new Date()`, `Date.now()`, `crypto.randomUUID()`, `process.env`                                                                                                                                           | 1       |
-| Тест по реестру endpoint   | каждое описание зарегистрировано ровно один раз; возвращаемые коды входят в `errors`; каталог кодов совпадает с `defineErrors` модулей                                                                                                                                                                          | 3       |
-| Обязательное поле описания | у POST/PUT/PATCH/DELETE поле `idempotency` (`key`, `natural`, `none`) обязательно по типу: решение принимается там, где объявлен endpoint                                                                                                                                                                       | 3       |
-| Тест изоляции по реестру   | каждый endpoint с `:workspaceId` с чужой областью и случайными UUID → 404, без сессии → 401                                                                                                                                                                                                                     | 4       |
-| Review                     | владелец сценария, узость портов, отсутствие внешних вызовов в `UnitOfWork`, ожидаемые ошибки через `defineErrors` (технический `throw new Error` законен), имена                                                                                                                                               | —       |
+| Механизм                   | Правила                                                                                                                                                                                                                                                                                                                                                                                                              | Этап    |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Типы                       | брендированные scope и ID в сигнатурах хранилищ; ответ обработчика по `response` endpoint; `satisfies Record<ErrorKind, number>`; payload `defineJob`                                                                                                                                                                                                                                                                | 1, 3, 4 |
+| dependency-cruiser         | backend без `contracts`/BullMQ/ioredis/Elysia; `platform` без модулей; конструкторы scope только в `access`/`processing` (`backend-execution-scope-issued-by-processing`); нулевые импорты очередей (`backend-no-queue-libs`); `runtime` только в bootstrap; рёбра модулей; процессы через `index.ts`/`module.ts` (`backend-workflows-use-module-facades`); `Tx` без Prisma-значений (`backend-transactions-opaque`) | 1       |
+| ESLint по папкам           | в `http/routes` нет `request.json()`, `formData()`, ручного разбора ID; в `domain`/`application` нет `new Date()`, `Date.now()`, `crypto.randomUUID()`, `process.env`                                                                                                                                                                                                                                                | 1       |
+| Тест по реестру endpoint   | каждое описание зарегистрировано ровно один раз; возвращаемые коды входят в `errors`; каталог кодов совпадает с `defineErrors` модулей                                                                                                                                                                                                                                                                               | 3       |
+| Обязательное поле описания | у POST/PUT/PATCH/DELETE поле `idempotency` (`key`, `natural`, `none`) обязательно по типу: решение принимается там, где объявлен endpoint                                                                                                                                                                                                                                                                            | 3       |
+| Тест изоляции по реестру   | каждый endpoint с `:workspaceId` с чужой областью и случайными UUID → 404, без сессии → 401                                                                                                                                                                                                                                                                                                                          | 4       |
+| Review                     | владелец сценария, узость портов, отсутствие внешних вызовов в `UnitOfWork`, ожидаемые ошибки через `defineErrors` (технический `throw new Error` законен), имена                                                                                                                                                                                                                                                    | —       |
 
 Тест изоляции не требует данных под каждый endpoint: plugin scope выполняется до разбора тела и до поиска ресурса, поэтому чужая область отклоняется при любом теле. Этот порядок plugins — часть контракта `route()`.
 

@@ -102,11 +102,13 @@ apps/worker/
   src/index.ts
   src/bootstrap/           start-worker, env, ресурсы и остановка процесса
   src/cli/                 диагностические команды
+  src/queues/              единственный хост BullMQ, разбор envelope и остановка
+  src/loops/               dispatcher outbox и reconciler через порты processing
   tests/                   тесты конфигурации процесса
 packages/backend/
   src/runtime/index.ts     существующий публичный интерфейс сборки
   src/runtime/documents/   API/worker сборки сценария и unit-of-work
-  src/runtime/diagnostics/ техническая диагностика очереди
+  src/runtime/jobs.ts      явный реестр заданий и расписания (без Redis-клиентов)
   tests/integration/       проверки PostgreSQL/Redis и нескольких модулей
 ```
 

@@ -1,9 +1,9 @@
 import { type BackendConfig, createBackend } from '@anyko/backend/runtime';
 import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
+import { startJobWorker } from '@anyko/worker/queues';
 
 import { createApp } from '../../../apps/api/src/http/app';
-import { startJobWorker } from '../../../apps/worker/src/queues';
 import type { DocumentAgents } from '../../../packages/backend/src/modules/agents';
 import type {
   DocumentParser,

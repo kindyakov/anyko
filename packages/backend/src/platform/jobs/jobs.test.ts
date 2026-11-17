@@ -61,8 +61,9 @@ test('unknown envelope and job versions cannot reach a handler', async () => {
     payload: z.object({}).strict(),
     timeoutMs: 100,
     retry: { attempts: 1, backoffMs: 0 },
-    async handler(_scope) {
+    handler() {
       calls++;
+      return Promise.resolve();
     },
   });
   for (const input of [
@@ -84,16 +85,18 @@ test('unknown envelope and job versions cannot reach a handler', async () => {
       payload: {},
     },
   ]) {
-    await expect(
-      (async () => {
-        const envelope = parseJobEnvelope(input, job.version);
-        await job.execute(
-          context,
-          envelope.payload,
-          new AbortController().signal,
-        );
-      })(),
-    ).rejects.toThrow();
+    let rejected = false;
+    try {
+      const envelope = parseJobEnvelope(input, job.version);
+      await job.execute(
+        context,
+        envelope.payload,
+        new AbortController().signal,
+      );
+    } catch {
+      rejected = true;
+    }
+    expect(rejected).toBe(true);
   }
   expect(calls).toBe(0);
 });
@@ -108,8 +111,9 @@ test('payload schema transforms and validates before execution', async () => {
     payload: z.object({ value: z.string().transform(Number) }),
     timeoutMs: 100,
     retry: { attempts: 1, backoffMs: 0 },
-    async handler(_scope, payload) {
+    handler(_scope, payload) {
       seen.push(payload.value);
+      return Promise.resolve();
     },
   });
   await job.execute(context, { value: '42' }, new AbortController().signal);
@@ -125,4 +129,40 @@ test('queue selection defaults to all, deduplicates and rejects unknown or empty
   expect(parseWorkerQueues(' ocr,ocr, llm ')).toEqual(['ocr', 'llm']);
   for (const value of ['', 'ocr,', 'other'])
     expect(() => parseWorkerQueues(value)).toThrow();
+});
+
+test('scheduled envelope versions reject before the handler and carry no run scope', async () => {
+  let calls = 0;
+  const job = defineJob({
+    kind: 'scheduled',
+    name: 'maintenance.test',
+    version: 1,
+    queue: 'maintenance',
+    payload: z.object({}).strict(),
+    timeoutMs: 100,
+    retry: { attempts: 1, backoffMs: 0 },
+    handler(ctx) {
+      expect('workspaceId' in ctx).toBe(false);
+      calls++;
+      return Promise.resolve();
+    },
+  });
+  const data = { envelopeVersion: 1, version: 1, correlationId, payload: {} };
+  for (const input of [
+    { ...data, version: 2 },
+    { ...data, envelopeVersion: 2 },
+  ]) {
+    let rejected = false;
+    try {
+      const parsed = parseJobEnvelope(input, job.version, 'scheduled');
+      await job.execute(context, parsed.payload, context.signal);
+    } catch {
+      rejected = true;
+    }
+    expect(rejected).toBe(true);
+  }
+  expect(calls).toBe(0);
+  const parsed = parseJobEnvelope(data, job.version, 'scheduled');
+  await job.execute(context, parsed.payload, context.signal);
+  expect(calls).toBe(1);
 });

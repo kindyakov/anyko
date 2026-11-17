@@ -36,7 +36,8 @@ export function createJobProcessing(store: JobRunReader) {
           return null;
         return issueExecutionScope(run);
       },
-      read: store.read,
+      read: (workspaceId: string, runId: string, family: 'document' | 'work') =>
+        store.read(workspaceId, runId, family),
     },
   };
 }

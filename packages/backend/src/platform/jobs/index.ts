@@ -43,11 +43,27 @@ export type ParsedJobEnvelope =
     }
   | ({ format: 'current' } & JobEnvelope);
 
-/** The only business-envelope parser. Legacy delivery remains readable during rollout. */
+/** One boundary for business envelopes; scheduled jobs carry no workspace/run authority. */
 export function parseJobEnvelope(
   input: unknown,
   version: number,
-): ParsedJobEnvelope {
+  kind: 'scheduled',
+): z.infer<typeof scheduledEnvelope>;
+export function parseJobEnvelope(
+  input: unknown,
+  version: number,
+  kind?: 'run',
+): ParsedJobEnvelope;
+export function parseJobEnvelope(
+  input: unknown,
+  version: number,
+  kind: 'run' | 'scheduled' = 'run',
+): ParsedJobEnvelope | z.infer<typeof scheduledEnvelope> {
+  if (kind === 'scheduled') {
+    const parsed = scheduledEnvelope.parse(input);
+    if (parsed.version !== version) throw new Error('UNKNOWN_JOB_VERSION');
+    return parsed;
+  }
   const current = currentEnvelope.safeParse(input);
   if (current.success) {
     if (current.data.version !== version)
@@ -167,12 +183,6 @@ const scheduledEnvelope = z
     payload: z.unknown(),
   })
   .strict();
-export function parseScheduledEnvelope(input: unknown, version: number) {
-  const parsed = scheduledEnvelope.parse(input);
-  if (parsed.version !== version) throw new Error('UNKNOWN_JOB_VERSION');
-  return parsed;
-}
-
 export interface JobRegistry {
   definitions: readonly (RunJob | ScheduledJob)[];
   schedules: readonly { name: string; everyMs: number }[];

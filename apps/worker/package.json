@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./queues": "./src/queues/index.ts"
+    "./queues": "./src/queues/index.ts",
+    "./testing": "./tests/support/queue.ts"
   },
   "scripts": {
     "dev": "bun ../../scripts/run-local.mjs worker dev",

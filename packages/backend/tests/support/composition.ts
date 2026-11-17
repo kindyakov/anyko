@@ -1,6 +1,6 @@
 import type { Logger } from '@anyko/logger';
+import { startJobWorker } from '@anyko/worker/queues';
 
-import { startJobWorker } from '../../../../apps/worker/src/queues';
 import type {
   DocumentParser,
   SourceStorage,

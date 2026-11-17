@@ -4,8 +4,8 @@ import { strToU8, zipSync } from 'fflate';
 
 import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
+import { createQueueProbe } from '@anyko/worker/testing';
 
-import { createQueueProbe } from '../../../../apps/worker/tests/support/queue';
 import type {
   DocumentParser,
   DocumentView,

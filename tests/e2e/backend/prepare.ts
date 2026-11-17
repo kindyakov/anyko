@@ -30,7 +30,7 @@ try {
   });
   if ((await migrate.exited) !== 0) throw new Error('E2E_MIGRATION_FAILED');
 
-  for (const queue of [E2E_QUEUE_PREFIX]) {
+  {
     let cursor = '0';
     const collected: string[] = [];
     do {
