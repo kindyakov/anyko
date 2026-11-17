@@ -22,9 +22,9 @@
 
 ## HTTP, SSE и настройки
 
-`/api/document-packages`, `/api/works`, `/api/works/:id` дают каталог, список и снимок. Подмаршруты работы: `documents`, `analyze`, `fields`, `confirm`, `generate`, `generations/:id/files/:fileId`, `events`. Источники и предпросмотр доступны через проверяемые `/api/documents/:id/source`, `/result`, `/images/:index`.
+`/api/v1/document-packages`, `/api/v1/workspaces/:workspaceId/works`, `/api/v1/workspaces/:workspaceId/works/:id` дают каталог, список и снимок. Подмаршруты работы: `documents`, `analyze`, `fields`, `confirm`, `generate`, `generations/:id/files/:fileId`, `events`. Источники и предпросмотр документа работы доступны через проверяемые `/api/v1/workspaces/:workspaceId/works/:id/documents/:documentId/source`, `/result`, `/images/:index`.
 
-Scope получается из сессии и Membership; изменения проверяют origin. Чужой ID не даёт доступ к работе, событиям или скачиванию. `/api/settings/llm` меняет только owner. API не возвращает ключ; новый шифруется AES-256-GCM с workspace AAD. Запуск фиксирует revision подключения, смена модели применяется к новым запускам. Vision/extraction выбираются независимо, автоматического fallback между моделями нет.
+Scope выдаёт `access` по области из адреса и участию (Membership); изменения проверяют origin. Чужой ID не даёт доступ к работе, событиям или скачиванию. `/api/v1/workspaces/:workspaceId/settings/llm` меняет только участник с правом `connections.manage` (owner). API не возвращает ключ; новый шифруется AES-256-GCM с workspace AAD. Запуск фиксирует revision подключения, смена модели применяется к новым запускам. Vision/extraction выбираются независимо, автоматического fallback между моделями нет.
 
 Снимок читает cursor перед данными: изменения могут прийти повторно, но не пропасть между снимком и подпиской. SSE содержит только тип изменения и ID; UI перечитывает данные, сохраняя несохранённые правки. `Last-Event-ID` проходит через Next proxy. Соединение ограничено 25 секундами и переподключается; доступ проверяется каждую итерацию, лимит — четыре потока на пользователя и 100 на API-процесс. Прокси должен пропускать поток без буферизации.
 
