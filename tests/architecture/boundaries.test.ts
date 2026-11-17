@@ -1074,3 +1074,24 @@ describe('ESLint web examples', () => {
     expect(rules.imageWithAlt).not.toContain('jsx-a11y-x/alt-text');
   });
 });
+
+test('execution scope constructor is reserved for processing', async () => {
+  const issuer = 'packages/backend/src/platform/scope/issue-execution.ts';
+  for (const [owner, blocked] of [
+    ['works', true],
+    ['processing', false],
+  ] as const) {
+    const result = await check({
+      [issuer]: 'export const issueExecutionScope = () => 1;',
+      [`packages/backend/src/modules/${owner}/application/example.ts`]:
+        "import { issueExecutionScope } from '../../../platform/scope/issue-execution.ts'; export const scope = issueExecutionScope;",
+      'apps/placeholder.ts': 'export {};',
+    });
+    expect(
+      hasViolation(
+        result.result,
+        'backend-execution-scope-issued-by-processing',
+      ),
+    ).toBe(blocked);
+  }
+});

@@ -73,3 +73,6 @@ export interface ProcessingPorts {
 export interface ProcessingModule extends ProcessingPorts {
   in(tx: Tx): ProcessingPorts;
 }
+
+export { createJobProcessing } from './application/job-scope';
+export type { ExecutionScope } from '../../platform/scope/execution-scope';

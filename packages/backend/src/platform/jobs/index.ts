@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+import type { Logger } from '@anyko/logger';
+
+import type { Clock } from '../clock';
+import type { ExecutionScope } from '../scope/execution-scope';
+
 export const workerQueues = ['ocr', 'llm', 'render', 'maintenance'] as const;
 export type WorkerQueue = (typeof workerQueues)[number];
 
@@ -59,20 +64,76 @@ export interface RetryPolicy {
   backoffMs: number;
 }
 
-/** Scope comes from the owner, independently of the untrusted envelope and payload. */
-export function defineJob<Schema extends z.ZodType, Scope>(definition: {
+export interface SystemJobContext {
+  readonly clock: Clock;
+  readonly logger: Logger;
+  readonly signal: AbortSignal;
+  readonly correlationId: string;
+}
+interface CommonDefinition<Schema extends z.ZodType> {
   name: string;
   version: number;
-  queue: WorkerQueue;
   payload: Schema;
   timeoutMs: number;
   retry: RetryPolicy;
+}
+interface RunDefinition<
+  Schema extends z.ZodType,
+> extends CommonDefinition<Schema> {
+  kind: 'run';
+  queue: WorkerQueue;
   handler(
-    scope: Scope,
+    scope: ExecutionScope,
     payload: z.output<Schema>,
     signal: AbortSignal,
   ): Promise<void>;
-}) {
+}
+interface ScheduledDefinition<
+  Schema extends z.ZodType,
+> extends CommonDefinition<Schema> {
+  kind: 'scheduled';
+  queue: 'maintenance';
+  handler(
+    context: SystemJobContext,
+    payload: z.output<Schema>,
+    signal: AbortSignal,
+  ): Promise<void>;
+}
+export interface RunJob {
+  kind: 'run';
+  name: string;
+  version: number;
+  queue: WorkerQueue;
+  timeoutMs: number;
+  retry: RetryPolicy;
+  execute(
+    scope: ExecutionScope,
+    payload: unknown,
+    signal: AbortSignal,
+  ): Promise<void>;
+}
+export interface ScheduledJob {
+  kind: 'scheduled';
+  name: string;
+  version: number;
+  queue: 'maintenance';
+  timeoutMs: number;
+  retry: RetryPolicy;
+  execute(
+    context: SystemJobContext,
+    payload: unknown,
+    signal: AbortSignal,
+  ): Promise<void>;
+}
+export function defineJob<Schema extends z.ZodType>(
+  definition: RunDefinition<Schema>,
+): RunJob;
+export function defineJob<Schema extends z.ZodType>(
+  definition: ScheduledDefinition<Schema>,
+): ScheduledJob;
+export function defineJob<Schema extends z.ZodType>(
+  definition: RunDefinition<Schema> | ScheduledDefinition<Schema>,
+): RunJob | ScheduledJob {
   if (
     !definition.name ||
     !Number.isInteger(definition.version) ||
@@ -83,18 +144,31 @@ export function defineJob<Schema extends z.ZodType, Scope>(definition: {
     definition.retry.backoffMs < 0
   )
     throw new Error('INVALID_JOB_DEFINITION');
+  if (definition.kind === 'run')
+    return {
+      ...definition,
+      execute: (scope: ExecutionScope, payload: unknown, signal: AbortSignal) =>
+        definition.handler(scope, definition.payload.parse(payload), signal),
+    };
   return {
     ...definition,
-    execute(
-      scope: Scope,
+    execute: (
+      context: SystemJobContext,
       payload: unknown,
       signal: AbortSignal,
-    ): Promise<void> {
-      return definition.handler(
-        scope,
-        definition.payload.parse(payload),
-        signal,
-      );
-    },
+    ) => definition.handler(context, definition.payload.parse(payload), signal),
   };
+}
+const scheduledEnvelope = z
+  .object({
+    envelopeVersion: z.literal(1),
+    version: z.number().int().positive(),
+    correlationId: z.uuid(),
+    payload: z.unknown(),
+  })
+  .strict();
+export function parseScheduledEnvelope(input: unknown, version: number) {
+  const parsed = scheduledEnvelope.parse(input);
+  if (parsed.version !== version) throw new Error('UNKNOWN_JOB_VERSION');
+  return parsed;
 }

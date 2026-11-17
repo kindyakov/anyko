@@ -260,6 +260,19 @@ module.exports = {
       },
       to: { path: '^packages/backend/src/platform/scope/issue[.]ts$' },
     },
+    {
+      name: 'backend-execution-scope-issued-by-processing',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^packages/backend/src/modules/processing/',
+          '^packages/backend/src/platform/scope/issue-execution[.]ts$',
+        ],
+      },
+      to: {
+        path: '^packages/backend/src/platform/scope/issue-execution[.]ts$',
+      },
+    },
     // Web (apps/web): правила через пути и обратные ссылки, без перечисления features.
     // Известных нарушений web-границ нет (список пуст и не пополняется): см. webKnownFeatureViolations.
     {
