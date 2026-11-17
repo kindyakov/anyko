@@ -173,16 +173,6 @@ export default [
     ],
     rules: { 'react-hooks/set-state-in-effect': 'off' },
   },
-  // Известные нарушения jsx-a11y-x: список только сокращается.
-  // autoFocus в окне создания работы — намеренный фокус на названии; label оборачивает Base UI Radio.Root,
-  // который правило не видит как контрол.
-  {
-    files: ['apps/web/src/features/works/ui/work-list.tsx'],
-    rules: {
-      'jsx-a11y-x/no-autofocus': 'off',
-      'jsx-a11y-x/label-has-associated-control': 'off',
-    },
-  },
   {
     files: ['**/*.{js,mjs,cjs,ts,tsx}'],
     plugins: { '@eslint-community/eslint-comments': eslintComments },

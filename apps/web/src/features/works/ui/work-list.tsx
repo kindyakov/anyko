@@ -1,8 +1,5 @@
 'use client';
 import { Field } from '@base-ui/react/field';
-import { Form } from '@base-ui/react/form';
-import { Radio } from '@base-ui/react/radio';
-import { RadioGroup } from '@base-ui/react/radio-group';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import {
   ArrowRight,
@@ -16,11 +13,14 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useState } from 'react';
+import { type RefObject, useEffect, useRef, useState } from 'react';
+import { z } from 'zod';
+
+import type { DocumentPackage } from '@anyko/contracts/catalog';
 
 import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';
-import { FormField } from '@/components/ui/form-field';
+import { FormErrorNotice, FormRoot, useAppForm } from '@/components/ui/form';
 import { HoverMist } from '@/components/ui/hover-mist';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
@@ -37,6 +37,7 @@ import {
 import { useListPreferences } from '@/features/works/list-preferences';
 import { journeySteps } from '@/features/works/model/journey';
 import { ApiError } from '@/lib/api/errors';
+import { applyServerErrors } from '@/lib/api/form-errors';
 import { useExpireSession } from '@/lib/api/query-client';
 import { useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
@@ -62,15 +63,109 @@ function Journey({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function formText(data: FormData, name: string) {
-  const value = data.get(name);
-  return typeof value === 'string' ? value : '';
+const createFailure = 'Не удалось создать работу. Попробуйте снова.';
+const createWorkTexts = { fallback: createFailure, technical: createFailure };
+
+const titleSchema = z
+  .string()
+  .trim()
+  .min(1, 'Введите название работы')
+  .max(200, 'Не больше 200 символов');
+const packageSchema = z.string().min(1, 'Выберите комплект документов');
+
+function CreateWorkForm({
+  create,
+  packages,
+  titleRef,
+  onCancel,
+}: {
+  create: ReturnType<typeof useCreateWork>;
+  packages: readonly DocumentPackage[];
+  titleRef: RefObject<HTMLInputElement | null>;
+  onCancel: () => void;
+}) {
+  const router = useRouter();
+  const workspaceId = useWorkspaceId();
+  const form = useAppForm({
+    defaultValues: { title: '', packageVersion: packages[0]?.version ?? '' },
+    onSubmit: async ({ value, formApi }) => {
+      try {
+        const result = await create.mutateAsync(value);
+        router.push(routes.work(workspaceId, result.work.id));
+      } catch (error) {
+        applyServerErrors(formApi, error, createWorkTexts);
+      }
+    },
+  });
+  return (
+    <FormRoot form={form} className="grid gap-6">
+      <form.AppField name="title" validators={{ onChange: titleSchema }}>
+        {(field) => (
+          <field.TextField
+            ref={titleRef}
+            label="Название работы"
+            required
+            maxLength={200}
+            placeholder="Например, Иванов И. И. — банкротство"
+          />
+        )}
+      </form.AppField>
+      <form.AppField
+        name="packageVersion"
+        validators={{ onChange: packageSchema }}
+      >
+        {(field) => (
+          <field.RadioGroupField
+            label="Комплект документов"
+            options={packages.map((pack) => ({
+              value: pack.version,
+              children: (
+                <>
+                  <span className="block text-sm font-medium">
+                    {pack.title}
+                    {pack.technical && (
+                      <span className="text-muted ml-2 text-xs font-normal">
+                        проверочный бланк
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-muted mt-1 block text-xs leading-5">
+                    {pack.documents.map((doc) => doc.title).join(' · ')}
+                  </span>
+                </>
+              ),
+            }))}
+          />
+        )}
+      </form.AppField>
+      <div className="rounded-2xl border border-white/[0.06] bg-black/30 p-4">
+        <p className="text-muted mb-3 flex items-center gap-2 text-xs">
+          <FolderKanban size={14} />
+          Что будет дальше
+        </p>
+        <Journey compact />
+      </div>
+      <FormErrorNotice form={form} />
+      <div className="flex flex-wrap justify-end gap-3">
+        <Button
+          variant="secondary"
+          disabled={create.isPending}
+          onClick={onCancel}
+        >
+          Отмена
+        </Button>
+        <form.SubmitButton>
+          Создать и открыть
+          <ArrowRight size={16} />
+        </form.SubmitButton>
+      </div>
+    </FormRoot>
+  );
 }
 
 export function WorkList() {
-  const router = useRouter();
   const expireSession = useExpireSession();
-  const packageLabel = useId();
+  const titleRef = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
   const { search, filter, setSearch, setFilter } = useListPreferences();
   const workspaceId = useWorkspaceId();
@@ -312,6 +407,7 @@ export function WorkList() {
         open={creating}
         onOpenChange={setCreating}
         dismissible={!create.isPending}
+        initialFocus={titleRef}
         title="Новая работа"
         description="Назовите работу и выберите комплект документов, который нужно подготовить."
       >
@@ -345,105 +441,14 @@ export function WorkList() {
             области.
           </Notice>
         ) : (
-          <Form
-            className="grid gap-6"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (create.isPending) return;
-              const data = new FormData(event.currentTarget);
-              create.mutate(
-                {
-                  title: formText(data, 'title'),
-                  packageVersion: formText(data, 'packageVersion'),
-                },
-                {
-                  onSuccess: (result) => {
-                    router.push(routes.work(workspaceId, result.work.id));
-                  },
-                },
-              );
+          <CreateWorkForm
+            create={create}
+            packages={packages}
+            titleRef={titleRef}
+            onCancel={() => {
+              setCreating(false);
             }}
-          >
-            <FormField label="Название работы">
-              <Input
-                name="title"
-                required
-                maxLength={200}
-                autoFocus
-                placeholder="Например, Иванов И. И. — банкротство"
-                disabled={create.isPending}
-              />
-            </FormField>
-            <Field.Root className="grid gap-2.5">
-              <span
-                id={packageLabel}
-                className="text-[13px] font-medium text-zinc-200"
-              >
-                Комплект документов
-              </span>
-              <RadioGroup
-                name="packageVersion"
-                aria-labelledby={packageLabel}
-                defaultValue={packages[0]?.version}
-                disabled={create.isPending}
-                className="grid gap-2.5"
-              >
-                {packages.map((pack) => (
-                  <label
-                    key={pack.version}
-                    className="group has-[[data-checked]]:border-brand/60 has-[[data-checked]]:bg-brand/[0.07] flex cursor-pointer items-start gap-3.5 rounded-2xl border border-white/10 bg-white/[0.02] p-4 transition-colors hover:border-white/20 has-[[data-checked]]:shadow-[0_0_30px_-12px_#db143c]"
-                  >
-                    <Radio.Root
-                      value={pack.version}
-                      className="data-[checked]:border-brand-hot focus-visible:outline-brand-hot mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border border-white/25 focus-visible:outline-2 focus-visible:outline-offset-2"
-                    >
-                      <Radio.Indicator className="bg-brand-hot size-2.5 rounded-full shadow-[0_0_8px_#ff3b62] data-[unchecked]:hidden" />
-                    </Radio.Root>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium">
-                        {pack.title}
-                        {pack.technical && (
-                          <span className="text-muted ml-2 text-xs font-normal">
-                            проверочный бланк
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-muted mt-1 block text-xs leading-5">
-                        {pack.documents.map((doc) => doc.title).join(' · ')}
-                      </span>
-                    </span>
-                  </label>
-                ))}
-              </RadioGroup>
-            </Field.Root>
-            <div className="rounded-2xl border border-white/[0.06] bg-black/30 p-4">
-              <p className="text-muted mb-3 flex items-center gap-2 text-xs">
-                <FolderKanban size={14} />
-                Что будет дальше
-              </p>
-              <Journey compact />
-            </div>
-            {create.isError && (
-              <Notice tone="danger" role="alert">
-                Не удалось создать работу. Попробуйте снова.
-              </Notice>
-            )}
-            <div className="flex flex-wrap justify-end gap-3">
-              <Button
-                variant="secondary"
-                disabled={create.isPending}
-                onClick={() => {
-                  setCreating(false);
-                }}
-              >
-                Отмена
-              </Button>
-              <Button type="submit" loading={create.isPending}>
-                Создать и открыть
-                <ArrowRight size={16} />
-              </Button>
-            </div>
-          </Form>
+          />
         )}
       </Modal>
     </>

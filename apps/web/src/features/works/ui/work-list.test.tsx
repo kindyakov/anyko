@@ -1,0 +1,239 @@
+import '../../../../test/next-navigation';
+import { afterEach, expect, test } from 'bun:test';
+
+import { QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+import { createQueryClient } from '@/lib/api/query-client';
+import { routes } from '@/lib/routes';
+
+import { expectFocused } from '../../../../test/focus';
+import { navigation } from '../../../../test/next-navigation';
+
+import { WorkList } from './work-list';
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  navigation.reset();
+});
+
+const workId = '11111111-1111-4111-8111-111111111111';
+const createdId = '22222222-2222-4222-8222-222222222222';
+const template = {
+  id: 'doc-1',
+  version: '1',
+  title: 'Заявление',
+  filename: 'application.docx',
+  checksum: 'a'.repeat(64),
+  blocks: [],
+};
+const packages = [
+  {
+    id: 'pkg-1',
+    version: '2026.1',
+    title: 'Банкротство физлица',
+    technical: false,
+    fields: [],
+    documents: [template],
+  },
+  {
+    id: 'pkg-2',
+    version: 'test-1',
+    title: 'Тестовый бланк',
+    technical: true,
+    fields: [],
+    documents: [template],
+  },
+];
+const existingWork = {
+  id: workId,
+  title: 'Иванов',
+  packageVersion: '2026.1',
+  revision: 1,
+  inputRevision: 1,
+  confirmedRevision: null,
+  createdAt: '2026-11-01T10:00:00.000Z',
+  updatedAt: '2026-11-01T10:00:00.000Z',
+};
+const createdWorkView = {
+  work: { ...existingWork, id: createdId, title: 'Петров' },
+  session: null,
+  package: packages[1],
+  documents: [],
+  facts: {
+    version: 1,
+    values: {},
+    manual: [],
+    confirmed: [],
+    candidates: [],
+  },
+  runs: [],
+  generations: [],
+  cursor: '0',
+  cleanupPending: false,
+};
+
+function json(status: number, body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+// Сеть подменяется на уровне fetch: список и шаблоны — постоянные, ответ на создание задаётся тестом.
+function serveWorkList(creation: { status: number; body: unknown }) {
+  const requests: { method: string; url: string; body: unknown }[] = [];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    const method = init?.method ?? 'GET';
+    const body: unknown =
+      typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+    requests.push({ method, url, body });
+    if (method === 'POST')
+      return Promise.resolve(json(creation.status, creation.body));
+    if (url.includes('/document-packages'))
+      return Promise.resolve(json(200, { packages }));
+    return Promise.resolve(
+      json(200, { works: [existingWork], nextCursor: null }),
+    );
+  }) as typeof fetch;
+  return requests;
+}
+
+function renderWorkList() {
+  navigation.params = { workspace: 'workspace-1' };
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <WorkList />
+    </QueryClientProvider>,
+  );
+}
+
+async function openCreateDialog() {
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: 'Новая работа' }));
+  return user;
+}
+
+test('the title field gets focus when the create dialog opens', async () => {
+  serveWorkList({ status: 201, body: createdWorkView });
+  renderWorkList();
+  await openCreateDialog();
+
+  const title = await screen.findByLabelText('Название работы');
+  await waitFor(() => {
+    expectFocused(title);
+  });
+});
+
+test('an empty title is refused on the client, nothing is sent and the title is focused', async () => {
+  const requests = serveWorkList({ status: 201, body: createdWorkView });
+  renderWorkList();
+  const user = await openCreateDialog();
+
+  await user.click(
+    await screen.findByRole('button', { name: 'Создать и открыть' }),
+  );
+
+  expect(await screen.findByText('Введите название работы')).toBeTruthy();
+  expect(
+    screen.getByLabelText('Название работы').getAttribute('aria-invalid'),
+  ).toBe('true');
+  expectFocused(screen.getByLabelText('Название работы'));
+  expect(requests.filter((request) => request.method === 'POST')).toEqual([]);
+});
+
+test('the chosen package and title are sent and the new work is opened', async () => {
+  const requests = serveWorkList({ status: 201, body: createdWorkView });
+  renderWorkList();
+  const user = await openCreateDialog();
+
+  await user.type(await screen.findByLabelText('Название работы'), 'Петров');
+  await user.click(screen.getByText('Тестовый бланк'));
+  await user.click(screen.getByRole('button', { name: 'Создать и открыть' }));
+
+  await waitFor(() => {
+    expect(navigation.calls).toEqual([
+      { method: 'push', href: routes.work('workspace-1', createdId) },
+    ]);
+  });
+  expect(requests.find((request) => request.method === 'POST')).toMatchObject({
+    url: '/api/works',
+    body: { title: 'Петров', packageVersion: 'test-1' },
+  });
+});
+
+test('a field error from the response lands on the title, with focus', async () => {
+  serveWorkList({
+    status: 400,
+    body: {
+      error: {
+        code: 'INVALID_REQUEST',
+        requestId: 'r1',
+        fields: [{ path: 'title', code: 'TOO_LONG' }],
+      },
+    },
+  });
+  renderWorkList();
+  const user = await openCreateDialog();
+
+  await user.type(await screen.findByLabelText('Название работы'), 'Петров');
+  await user.click(screen.getByRole('button', { name: 'Создать и открыть' }));
+
+  expect(
+    await screen.findByText('Не удалось создать работу. Попробуйте снова.'),
+  ).toBeTruthy();
+  expect(
+    screen.getByLabelText('Название работы').getAttribute('aria-invalid'),
+  ).toBe('true');
+  expectFocused(screen.getByLabelText('Название работы'));
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(navigation.calls).toEqual([]);
+});
+
+test('a failure without field errors is reported for the form and the creation can be retried', async () => {
+  const requests = serveWorkList({
+    status: 500,
+    body: { error: { code: 'INTERNAL_ERROR', requestId: 'r1' } },
+  });
+  renderWorkList();
+  const user = await openCreateDialog();
+
+  await user.type(await screen.findByLabelText('Название работы'), 'Петров');
+  await user.click(screen.getByRole('button', { name: 'Создать и открыть' }));
+
+  expect(await screen.findByRole('alert')).toBeTruthy();
+  expect(
+    screen.getByText('Не удалось создать работу. Попробуйте снова.'),
+  ).toBeTruthy();
+  // Общая ошибка не блокирует повтор: кнопка доступна и без правки поля.
+  const submit = screen.getByRole('button', { name: 'Создать и открыть' });
+  expect(submit.hasAttribute('disabled')).toBe(false);
+
+  // Повтор отправляет запрос ещё раз, а не игнорируется формой.
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push({
+      method: init?.method ?? 'GET',
+      url: typeof input === 'string' ? input : '',
+      body: undefined,
+    });
+    return Promise.resolve(json(201, createdWorkView));
+  }) as typeof fetch;
+  await user.click(submit);
+  await waitFor(() => {
+    expect(navigation.calls).toEqual([
+      { method: 'push', href: routes.work('workspace-1', createdId) },
+    ]);
+  });
+  expect(requests.filter((request) => request.method === 'POST')).toHaveLength(
+    2,
+  );
+});

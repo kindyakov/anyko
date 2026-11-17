@@ -75,11 +75,11 @@ Feature — один пользовательский сценарий в тер
 
 ## Формы
 
-- Каждая форма строится на TanStack Form через `useAppForm` из `@anyko/ui/form`. Features не импортируют `@tanstack/react-form` напрямую; ручные `useState` на поля и собственная разводка ошибок не пишутся.
+- Каждая форма строится на TanStack Form через `useAppForm` из `@/components/ui/form` (до переноса пакета — `@anyko/ui/form`). Features не импортируют `@tanstack/react-form` напрямую: состояние формы читается через `useFormSelector` из того же модуля. Ручные `useState` на поля и собственная разводка ошибок не пишутся.
 - Предметные правила формы (перенос правок на новую редакцию, вычисление конфликтов) — чистые функции в `model/` с unit-тестами; форма только принимает их результат через `reset`.
 - Поля сведений строятся по каталогу полей, который API отдаёт вместе с пакетом документов. Web не перечисляет ключи полей профиля в коде.
-- Ввод проверяется схемой из contracts для обратной связи; сервер проверяет его снова. Ошибки `invalid` с `fields` раскладываются по полям, тексты — из таблицы кодов feature.
-- Несохранённый черновик живёт только в памяти формы и не попадает в localStorage, sessionStorage или Zustand с persist. Форма с несохранёнными правками предупреждает при уходе со страницы.
+- Ввод проверяется локальными схемами feature для обратной связи: тексты по-русски, ограничения повторяют contracts; сервер проверяет его снова. Ошибка поля показывается после потери фокуса или отправки. Ошибки `invalid` с `fields` раскладывает `applyServerErrors` (`lib/api/form-errors`): к полям с тем же именем, остальное — в общую ошибку формы; тексты — из таблицы кодов feature.
+- Несохранённый черновик живёт только в памяти формы и не попадает в localStorage, sessionStorage или Zustand с persist. Форма с несохранёнными правками предупреждает при закрытии или перезагрузке вкладки (`useUnsavedChangesWarning`); переходы внутри приложения хук не перехватывает.
 - Отправка — `useMutation` feature; форма не вызывает API сама.
 
 ## UI
@@ -132,6 +132,8 @@ Bun выбран для компонентных тестов осознанно
 **Новый запрос к API.** Endpoint-описание в `@anyko/contracts`, ключ в фабрике feature, `queryOptions` в `api/`, использование через `useQuery`/`useSuspenseQuery`.
 
 **Новая команда.** `useMutation` в `api/` feature-владельца, инвалидация затронутых ключей, тексты для кодов ошибок endpoint в таблице feature.
+
+**Новая форма.** В компоненте feature: `const form = useAppForm({ defaultValues, onSubmit })`; `onSubmit` вызывает `useMutation` через `mutateAsync` и в `catch` передаёт ошибку в `applyServerErrors(formApi, error, texts)`. Поля — `<form.AppField name="…" validators={{ onChange: schema }}>` с `field.TextField` или `field.RadioGroupField`; разметка — `<FormRoot form={form}>` с `form.SubmitButton` внутри. Общая ошибка — `FormErrorNotice`. Если форма меняет сохранённые данные, вызовите `useUnsavedChangesWarning(useFormSelector(form.store, (s) => s.isDirty))` и после успеха `formApi.reset(значения)`. Тесты: отправка, клиентская проверка, серверная ошибка по `fields`, фокус на первом ошибочном поле.
 
 **Новый шаг экрана работы.** Feature шага (`features/<шаг>/`) с `index.ts` и компонентом; команды, которые меняют работу, — в `api/` шага. Шаг подключается в `app/(workspace)/w/[workspace]/works/[id]/_screen/work-screen.tsx`: новый `Tabs.Panel` и, если шаг виден в степпере, ключ в `StepKey` и `journeySteps`; правила перехода между шагами — в `stepOf` и `workStage` (`features/works/model/journey.ts`). Шаг не импортирует другой шаг: общее для нескольких шагов переносится в `features/works`, координация остаётся в экране.
 

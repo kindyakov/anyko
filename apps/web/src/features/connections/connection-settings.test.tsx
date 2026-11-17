@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 
 import { createQueryClient } from '@/lib/api/query-client';
 
+import { expectFocused } from '../../../test/focus';
 import { navigation } from '../../../test/next-navigation';
 
 import { ConnectionSettings } from './connection-settings';
@@ -156,4 +157,123 @@ test('reports a rejected save as an alert and does not claim success', async () 
       'Настройки сохранены. Новые запуски используют эту версию.',
     ),
   ).toBeNull();
+});
+
+const saveFailure =
+  'Не удалось сохранить настройки. Проверьте адрес, модели и ключ.';
+
+// Ответ на сохранение задаёт тест; чтение отдаёт сохранённые настройки.
+function serveSaveAnswer(status: number, body: unknown) {
+  const requests: { method: string; body: unknown }[] = [];
+  globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+    const method = init?.method ?? 'GET';
+    const payload: unknown =
+      typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
+    requests.push({ method, body: payload });
+    if (method === 'GET') return Promise.resolve(json(200, configured));
+    return Promise.resolve(json(status, body));
+  }) as typeof fetch;
+  return requests;
+}
+
+// Возвращает true, если страница просит подтверждение при уходе (beforeunload отменён).
+function leavePageWarns(): boolean {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
+test('an empty address is refused on the client: nothing is sent and the address is focused', async () => {
+  const requests = serveSettings(configured);
+  renderSettings();
+  const user = userEvent.setup();
+
+  const address = await screen.findByLabelText('Адрес API');
+  await user.clear(address);
+  await user.click(
+    screen.getByRole('button', { name: 'Сохранить подключение' }),
+  );
+
+  expect(await screen.findByText('Введите адрес API')).toBeTruthy();
+  expect(address.getAttribute('aria-invalid')).toBe('true');
+  expectFocused(address);
+  expect(requests.some((request) => request.method === 'POST')).toBe(false);
+});
+
+test('a field error from the server lands on its field, which takes focus', async () => {
+  serveSaveAnswer(400, {
+    error: {
+      code: 'INVALID_REQUEST',
+      requestId: 'r1',
+      fields: [{ path: 'visionModel', code: 'UNKNOWN_MODEL' }],
+    },
+  });
+  renderSettings();
+  const user = userEvent.setup();
+
+  await user.click(
+    await screen.findByRole('button', { name: 'Сохранить подключение' }),
+  );
+
+  expect(await screen.findByText(saveFailure)).toBeTruthy();
+  const vision = screen.getByLabelText('Модель для изображений');
+  expect(vision.getAttribute('aria-invalid')).toBe('true');
+  expectFocused(vision);
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+test('a field the form does not have is reported as the form alert', async () => {
+  serveSaveAnswer(400, {
+    error: {
+      code: 'INVALID_REQUEST',
+      requestId: 'r1',
+      fields: [{ path: 'ghostField', code: 'UNKNOWN' }],
+    },
+  });
+  renderSettings();
+  const user = userEvent.setup();
+
+  await user.click(
+    await screen.findByRole('button', { name: 'Сохранить подключение' }),
+  );
+
+  expect(await screen.findByRole('alert')).toBeTruthy();
+  expect(screen.getByText(saveFailure)).toBeTruthy();
+});
+
+test('unsaved edits make leaving the page warn; saving removes the warning', async () => {
+  serveSettings(configured);
+  renderSettings();
+  const user = userEvent.setup();
+
+  const address = await screen.findByLabelText('Адрес API');
+  expect(leavePageWarns()).toBe(false);
+
+  await user.type(address, '/v2');
+  expect(leavePageWarns()).toBe(true);
+
+  await user.click(
+    screen.getByRole('button', { name: 'Сохранить подключение' }),
+  );
+  expect(
+    await screen.findByText(
+      'Настройки сохранены. Новые запуски используют эту версию.',
+    ),
+  ).toBeTruthy();
+  await waitFor(() => {
+    expect(leavePageWarns()).toBe(false);
+  });
+});
+
+test('reverting an edit to the saved value removes the leave warning', async () => {
+  serveSettings(configured);
+  renderSettings();
+  const user = userEvent.setup();
+
+  const address = await screen.findByLabelText('Адрес API');
+  await user.type(address, '/v2');
+  expect(leavePageWarns()).toBe(true);
+
+  await user.type(address, '{Backspace}{Backspace}{Backspace}');
+  expect(leavePageWarns()).toBe(false);
 });

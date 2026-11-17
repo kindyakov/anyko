@@ -69,6 +69,7 @@ export async function requestApi<T>(
         parsed.success ? parsed.data.error.code : 'HTTP_ERROR',
         status,
         requestId,
+        parsed.success ? parsed.data.error.fields : undefined,
       );
     }
     const parsed = schema.safeParse(body);

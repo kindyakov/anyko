@@ -1,63 +1,53 @@
 'use client';
-import { Form } from '@base-ui/react/form';
 import { useQuery } from '@tanstack/react-query';
 import { Cpu, Save } from 'lucide-react';
-import { type SyntheticEvent, useState } from 'react';
+import { useState } from 'react';
+import { z } from 'zod';
 
-import { Button } from '@/components/ui/button';
-import { FormField } from '@/components/ui/form-field';
-import { Input } from '@/components/ui/input';
+import { llmSettingsResponseSchema } from '@anyko/contracts';
+
+import {
+  FormErrorNotice,
+  FormRoot,
+  useAppForm,
+  useFormSelector,
+  useUnsavedChangesWarning,
+} from '@/components/ui/form';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Notice, StatusPill } from '@/components/ui/status';
 import { useSaveLlmSettings } from '@/features/connections/api/mutations';
 import { llmSettingsQueryOptions } from '@/features/connections/api/queries';
+import { applyServerErrors } from '@/lib/api/form-errors';
 import { useWorkspaceId } from '@/lib/api/workspace';
 
 type Message = { tone: 'success' | 'danger'; text: string };
+type LlmSettings = NonNullable<
+  z.infer<typeof llmSettingsResponseSchema>['settings']
+>;
 
-// FormData отдаёт строки для текстовых полей; обязательные поля всегда присутствуют.
-function text(data: FormData, name: string): string {
-  const value = data.get(name);
-  return typeof value === 'string' ? value : '';
-}
+const defaultBaseURL = 'https://routerai.ru/api/v1';
+const defaultModel = '~deepseek/deepseek-v4-flash-latest';
+const saveFailure =
+  'Не удалось сохранить настройки. Проверьте адрес, модели и ключ.';
+
+// Подсказки ввода повторяют ограничения contracts (llmSettingsInputSchema); сервер проверяет их снова.
+const addressSchema = z
+  .string()
+  .min(1, 'Введите адрес API')
+  .pipe(z.url('Введите адрес в формате https://…'));
+const modelSchema = z
+  .string()
+  .min(1, 'Укажите модель')
+  .max(200, 'Не больше 200 символов');
 
 export function ConnectionSettings() {
   const workspaceId = useWorkspaceId();
   const query = useQuery(llmSettingsQueryOptions(workspaceId));
-  const save = useSaveLlmSettings(workspaceId);
   const [message, setMessage] = useState<Message>();
   const settings = query.data;
-  const notice: Message | undefined =
-    message ??
-    (query.isError
-      ? { tone: 'danger', text: 'Не удалось загрузить настройки модели.' }
-      : undefined);
-  async function submit(event: SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    setMessage(undefined);
-    try {
-      const entry = data.get('apiKey');
-      const key = typeof entry === 'string' ? entry : '';
-      await save.mutateAsync({
-        baseURL: text(data, 'baseURL'),
-        visionModel: text(data, 'visionModel'),
-        extractionModel: text(data, 'extractionModel'),
-        ...(key ? { apiKey: key } : {}),
-      });
-      form.reset();
-      setMessage({
-        tone: 'success',
-        text: 'Настройки сохранены. Новые запуски используют эту версию.',
-      });
-    } catch {
-      setMessage({
-        tone: 'danger',
-        text: 'Не удалось сохранить настройки. Проверьте адрес, модели и ключ.',
-      });
-    }
-  }
+  const notice: Message | undefined = query.isError
+    ? { tone: 'danger', text: 'Не удалось загрузить настройки модели.' }
+    : message;
   return (
     <div className="grid gap-6">
       <div className="flex items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
@@ -90,75 +80,11 @@ export function ConnectionSettings() {
           ))}
         </div>
       ) : settings?.canManage ? (
-        <Form
+        <ConnectionForm
           key={settings.settings?.revision ?? 0}
-          className="grid gap-5"
-          onSubmit={(event) => {
-            void submit(event);
-          }}
-        >
-          <FormField label="Адрес API">
-            <Input
-              name="baseURL"
-              type="url"
-              required
-              defaultValue={
-                settings.settings?.baseURL ?? 'https://routerai.ru/api/v1'
-              }
-            />
-          </FormField>
-          <FormField
-            label="Модель для изображений"
-            description="Читает фотографии, сканы и печати"
-          >
-            <Input
-              name="visionModel"
-              required
-              defaultValue={
-                settings.settings?.visionModel ??
-                '~deepseek/deepseek-v4-flash-latest'
-              }
-            />
-          </FormField>
-          <FormField
-            label="Модель для извлечения сведений"
-            description="Находит реквизиты и сопоставляет документы"
-          >
-            <Input
-              name="extractionModel"
-              required
-              defaultValue={
-                settings.settings?.extractionModel ??
-                '~deepseek/deepseek-v4-flash-latest'
-              }
-            />
-          </FormField>
-          <FormField
-            label="API-ключ"
-            description={
-              settings.settings
-                ? 'Оставьте пустым, чтобы сохранить текущий ключ'
-                : undefined
-            }
-          >
-            <Input
-              name="apiKey"
-              type="password"
-              autoComplete="new-password"
-              placeholder={settings.settings ? '••••••••••••' : undefined}
-              required={!settings.settings}
-            />
-          </FormField>
-          <Button
-            type="submit"
-            size="lg"
-            loading={save.isPending}
-            className="w-fit"
-          >
-            <Save size={17} />
-            Сохранить подключение
-          </Button>
-        </Form>
+          current={settings.settings}
+          onMessage={setMessage}
+        />
       ) : settings ? (
         <Notice tone="neutral">
           Настройки подключения меняет владелец рабочей области.
@@ -173,5 +99,115 @@ export function ConnectionSettings() {
         </Notice>
       )}
     </div>
+  );
+}
+
+// Форма создаётся заново при смене версии настроек на сервере (key по revision): значения берутся
+// из сохранённой версии, а после успешного сохранения сбрасываются к ней через reset.
+function ConnectionForm({
+  current,
+  onMessage,
+}: {
+  current: LlmSettings | null;
+  onMessage: (message: Message | undefined) => void;
+}) {
+  const workspaceId = useWorkspaceId();
+  const save = useSaveLlmSettings(workspaceId);
+  const form = useAppForm({
+    defaultValues: {
+      baseURL: current?.baseURL ?? defaultBaseURL,
+      visionModel: current?.visionModel ?? defaultModel,
+      extractionModel: current?.extractionModel ?? defaultModel,
+      apiKey: '',
+    },
+    onSubmit: async ({ value, formApi }) => {
+      onMessage(undefined);
+      const { apiKey, ...settings } = value;
+      try {
+        // Пустой ключ не отправляется: сервер сохраняет текущий.
+        await save.mutateAsync({
+          ...settings,
+          ...(apiKey ? { apiKey } : {}),
+        });
+        formApi.reset({ ...value, apiKey: '' });
+        onMessage({
+          tone: 'success',
+          text: 'Настройки сохранены. Новые запуски используют эту версию.',
+        });
+      } catch (error) {
+        applyServerErrors(formApi, error, {
+          fallback: saveFailure,
+          technical: saveFailure,
+        });
+      }
+    },
+  });
+  // isDirty в TanStack не сбрасывается, если значение вернули к исходному; предупреждаем только
+  // при реальном отличии от сохранённых значений.
+  const hasEdits = useFormSelector(
+    form.store,
+    (state) => !state.isDefaultValue,
+  );
+  useUnsavedChangesWarning(hasEdits);
+  return (
+    <>
+      <FormRoot form={form} className="grid gap-5">
+        <form.AppField name="baseURL" validators={{ onChange: addressSchema }}>
+          {(field) => <field.TextField label="Адрес API" type="url" required />}
+        </form.AppField>
+        <form.AppField
+          name="visionModel"
+          validators={{ onChange: modelSchema }}
+        >
+          {(field) => (
+            <field.TextField
+              label="Модель для изображений"
+              description="Читает фотографии, сканы и печати"
+              required
+            />
+          )}
+        </form.AppField>
+        <form.AppField
+          name="extractionModel"
+          validators={{ onChange: modelSchema }}
+        >
+          {(field) => (
+            <field.TextField
+              label="Модель для извлечения сведений"
+              description="Находит реквизиты и сопоставляет документы"
+              required
+            />
+          )}
+        </form.AppField>
+        <form.AppField
+          name="apiKey"
+          validators={{
+            onChange: current
+              ? z.string()
+              : z.string().min(1, 'Введите API-ключ'),
+          }}
+        >
+          {(field) => (
+            <field.TextField
+              label="API-ключ"
+              type="password"
+              autoComplete="new-password"
+              description={
+                current
+                  ? 'Оставьте пустым, чтобы сохранить текущий ключ'
+                  : undefined
+              }
+              placeholder={current ? '••••••••••••' : undefined}
+              required={!current}
+            />
+          )}
+        </form.AppField>
+        <form.SubmitButton size="lg" className="w-fit">
+          <Save size={17} />
+          Сохранить подключение
+        </form.SubmitButton>
+      </FormRoot>
+      <FormErrorNotice form={form} />
+    </>
   );
 }
