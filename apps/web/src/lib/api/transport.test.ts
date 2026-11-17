@@ -3,7 +3,7 @@ import { expect, test } from 'bun:test';
 import {
   documentResultSchema,
   documentsResponseSchema,
-} from '@anyko/contracts';
+} from '@anyko/contracts/documents';
 
 import { type HttpFetch, requestApi } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';

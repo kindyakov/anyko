@@ -5,6 +5,8 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { Component, type ReactNode } from 'react';
 
+import type { Session } from '@anyko/contracts/session';
+
 import { ApiError } from '@/lib/api/errors';
 import { createQueryClient } from '@/lib/api/query-client';
 import { sessionKeys } from '@/lib/api/session';
@@ -20,9 +22,14 @@ afterEach(() => {
   navigation.reset();
 });
 
-const session = {
+const session: Session = {
   user: { id: 'user-1', name: 'Test', email: 'user@example.test' },
-  workspace: { id: 'workspace-1', name: 'Workspace' },
+  memberships: [
+    {
+      workspace: { id: 'workspace-1', name: 'Workspace' },
+      rights: ['works.read'],
+    },
+  ],
 };
 
 class RenderBoundary extends Component<

@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { z } from 'zod';
 
-import { documentResponseSchema } from '@anyko/contracts';
+import { documentResponseSchema } from '@anyko/contracts/documents';
 
 import { requestApi } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';

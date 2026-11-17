@@ -1,12 +1,20 @@
 import { expect, mock, test } from 'bun:test';
 
+import type { Session } from '@anyko/contracts/session';
+
 // Next подставляет маркер server-only в сборке; в тестах он пустой.
 await mock.module('server-only', () => ({}));
 const { readSession } = await import('@/lib/server/session');
 
-const session = {
+// Форма v1: участия с правами; роль не приходит, право проверяется по списку.
+const session: Session = {
   user: { id: 'user-1', name: 'Test', email: 'user@example.test' },
-  workspace: { id: 'workspace-1', name: 'Workspace' },
+  memberships: [
+    {
+      workspace: { id: 'workspace-1', name: 'Workspace' },
+      rights: ['works.read', 'works.create'],
+    },
+  ],
 };
 const cookie = 'better-auth.session_token=synthetic-fixture';
 
@@ -56,11 +64,20 @@ test('a valid session response is returned as parsed data', async () => {
     session,
   );
   expect(calls).toHaveLength(1);
-  expect(calls[0]?.url).toBe('http://api.test/api/session');
+  expect(calls[0]?.url).toBe('http://api.test/api/v1/session');
   expect(calls[0]?.init?.headers).toMatchObject({ cookie });
   expect(calls[0]?.init?.cache).toBe('no-store');
   expect(calls[0]?.init?.redirect).toBe('error');
   expect(calls[0]?.init?.signal).toBeInstanceOf(AbortSignal);
+});
+
+// Пользователь без участий — обычная сессия: экран «Нет доступа» решает web, а не ошибка чтения.
+test('a session without memberships is a session, not a failure', async () => {
+  const withoutAccess = { ...session, memberships: [] };
+  const { fetcher } = fakeFetch(() => Response.json(withoutAccess));
+  expect(await readSession(cookie, 'http://api.test', fetcher)).toEqual(
+    withoutAccess,
+  );
 });
 
 test('the Secure session cookie name is recognised too', async () => {
@@ -107,6 +124,18 @@ test('a response that does not match the session contract is a failure', async (
   const { fetcher } = fakeFetch(() =>
     Response.json({ user: { id: 'user-1' }, workspace: 'workspace-1' }),
   );
+  expect(
+    await failureMessage(readSession(cookie, 'http://api.test', fetcher)),
+  ).toBe('Session response does not match the contract');
+});
+
+// Прежняя форма `{ user, workspace }` без участий не проходит новую схему: её не принимаем молча.
+test('the previous single-workspace shape is rejected by the v1 contract', async () => {
+  const legacy = {
+    user: session.user,
+    workspace: { id: 'workspace-1', name: 'Workspace' },
+  };
+  const { fetcher } = fakeFetch(() => Response.json(legacy));
   expect(
     await failureMessage(readSession(cookie, 'http://api.test', fetcher)),
   ).toBe('Session response does not match the contract');

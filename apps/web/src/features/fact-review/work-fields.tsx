@@ -4,7 +4,11 @@ import { Fieldset } from '@base-ui/react/fieldset';
 import { Ban, CircleHelp, Plus, Trash2 } from 'lucide-react';
 import { useLayoutEffect, useRef } from 'react';
 
-import type { FieldDefinition, FieldRow, FieldValue } from '@anyko/contracts';
+import {
+  type FieldDefinition,
+  type FieldRow,
+  type FieldValue,
+} from '@anyko/contracts/catalog';
 
 import { Button } from '@/components/ui/button';
 import { fieldSurface } from '@/components/ui/input';

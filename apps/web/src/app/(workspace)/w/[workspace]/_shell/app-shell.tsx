@@ -5,16 +5,19 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { type ReactNode, useEffect } from 'react';
 
+import type { Session } from '@anyko/contracts/session';
+
 import { Logo } from '@/components/brand/logo';
 import { DeepSkyBackdrop } from '@/components/cosmos/deep-sky-backdrop';
 import { buttonStyles } from '@/components/ui/button';
 import { SignOut } from '@/features/auth';
 import { sessionQueryOptions } from '@/lib/api/session';
-import { useWorkspaceId } from '@/lib/api/workspace';
+import { useCan, useMembership, useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 
+import { WorkspaceSwitcher } from './workspace-switcher';
+
 export function AppShell({ children }: { children: ReactNode }) {
-  const workspace = useWorkspaceId();
   const pathname = usePathname();
   const search = useSearchParams().toString();
   const router = useRouter();
@@ -25,6 +28,23 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (session === null) router.replace(routes.signIn(current));
   }, [session, current, router]);
   if (!session) return null;
+  return <ShellFrame session={session}>{children}</ShellFrame>;
+}
+
+// Оболочка рисуется только при сессии. Участие текущей области берётся из неё же: layout не пускает
+// адрес, которого нет среди участий.
+function ShellFrame({
+  session,
+  children,
+}: {
+  session: Session;
+  children: ReactNode;
+}) {
+  const workspace = useWorkspaceId();
+  const pathname = usePathname();
+  const membership = useMembership();
+  // Ссылка на настройки видна только с правом чтения; изменение проверяется на вкладке.
+  const canReadConnections = useCan('connections.read');
   const navigation = [
     {
       href: routes.works(workspace),
@@ -40,7 +60,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     },
   ];
   const person = session.user.name || session.user.email;
-  const settingsLink = (
+  const settingsLink = canReadConnections ? (
     <Link
       href={routes.connections(workspace)}
       aria-label="Настройки пространства"
@@ -49,7 +69,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     >
       <Settings2 size={17} />
     </Link>
-  );
+  ) : null;
   return (
     <div className="bg-canvas relative isolate min-h-dvh md:grid md:grid-cols-[264px_minmax(0,1fr)]">
       <DeepSkyBackdrop />
@@ -107,9 +127,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               </span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{person}</p>
-                <p className="text-muted truncate text-[11px]">
-                  {session.workspace.name}
-                </p>
+                <WorkspaceSwitcher
+                  memberships={session.memberships}
+                  current={membership}
+                />
               </div>
             </div>
             <div className="mt-3 flex items-center justify-between border-t border-white/[0.06] pt-2">

@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 
-import { httpErrorSchema } from '@anyko/contracts';
+import { httpErrorSchema, type HttpMethod } from '@anyko/contracts/common';
 
 import { ApiError } from '@/lib/api/errors';
 
@@ -9,11 +9,13 @@ export type HttpFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-export async function requestApi<T>(
+// Путь без `/api`: префикс добавляет эта функция, версия (`/v1`) входит в путь вызывающего.
+// Тип результата выводится из схемы ответа; ответ, не прошедший схему, отвергается.
+export async function requestApi<S extends z.ZodType>(
   path: string,
-  schema: z.ZodType<T>,
+  schema: S,
   options: {
-    method?: 'GET' | 'POST' | 'DELETE';
+    method?: HttpMethod;
     body?: BodyInit;
     headers?: HeadersInit;
     signal?: AbortSignal;
@@ -21,7 +23,7 @@ export async function requestApi<T>(
     query?: Record<string, string>;
     fetch?: HttpFetch;
   } = {},
-): Promise<T> {
+): Promise<z.output<S>> {
   if (
     !/^\/[a-zA-Z0-9/_-]*$/.test(path) ||
     path.includes('//') ||
@@ -69,6 +71,7 @@ export async function requestApi<T>(
         parsed.success ? parsed.data.error.code : 'HTTP_ERROR',
         status,
         requestId,
+        parsed.success ? parsed.data.error.fields : undefined,
       );
     }
     const parsed = schema.safeParse(body);

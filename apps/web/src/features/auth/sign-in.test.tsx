@@ -3,6 +3,8 @@ import { afterEach, expect, test } from 'bun:test';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { expectFocused } from '../../../test/focus';
+
 import { SignIn } from './sign-in';
 
 const originalFetch = globalThis.fetch;
@@ -96,4 +98,48 @@ test('calls onSignedIn once the server accepts the credentials', async () => {
     expect(signedIn).toBe(1);
   });
   expect(screen.queryByRole('alert')).toBeNull();
+});
+
+test('an empty submit shows the required messages, sends nothing and focuses the email', async () => {
+  const requests = answerSignIn(200);
+  const user = userEvent.setup();
+  render(
+    <SignIn
+      onSignedIn={() => {
+        /* not reached in this test */
+      }}
+    />,
+  );
+  await user.click(screen.getByRole('button', { name: 'Войти' }));
+
+  expect(await screen.findByText('Введите почту')).toBeTruthy();
+  expect(screen.getByText('Введите пароль')).toBeTruthy();
+  expect(screen.getByLabelText('Почта').getAttribute('aria-invalid')).toBe(
+    'true',
+  );
+  expectFocused(screen.getByLabelText('Почта'));
+  expect(requests).toEqual([]);
+});
+
+test('an incorrect address is reported only after the field loses focus', async () => {
+  const user = userEvent.setup();
+  render(
+    <SignIn
+      onSignedIn={() => {
+        /* not reached in this test */
+      }}
+    />,
+  );
+  await user.type(screen.getByLabelText('Почта'), 'user@');
+  expect(
+    screen.queryByText('Укажите почту в формате name@company.ru'),
+  ).toBeNull();
+
+  await user.tab();
+  expect(
+    await screen.findByText('Укажите почту в формате name@company.ru'),
+  ).toBeTruthy();
+  expect(screen.getByLabelText('Почта').getAttribute('aria-invalid')).toBe(
+    'true',
+  );
 });

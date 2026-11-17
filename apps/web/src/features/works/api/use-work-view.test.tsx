@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 
+import type { Session } from '@anyko/contracts/session';
+
 import { createQueryClient } from '@/lib/api/query-client';
 import { sessionKeys } from '@/lib/api/session';
 
@@ -18,9 +20,14 @@ afterEach(() => {
 });
 
 const workId = '0b6f4e3a-1c2d-4e5f-8a9b-0c1d2e3f4a5b';
-const session = {
+const session: Session = {
   user: { id: 'user-1', name: 'Test', email: 'user@example.test' },
-  workspace: { id: 'workspace-1', name: 'Workspace' },
+  memberships: [
+    {
+      workspace: { id: 'workspace-1', name: 'Workspace' },
+      rights: ['works.read', 'works.edit'],
+    },
+  ],
 };
 
 // Минимальный вид работы, который проходит workResponseSchema из contracts.

@@ -1,49 +1,60 @@
 'use client';
-import { Form } from '@base-ui/react/form';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
-import { type SyntheticEvent, useState } from 'react';
+import { useState } from 'react';
+import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
-import { FormField } from '@/components/ui/form-field';
-import { Input } from '@/components/ui/input';
+import {
+  FormRoot,
+  setServerErrors,
+  useAppForm,
+  useFormSelector,
+} from '@/components/ui/form';
+
+const emailSchema = z
+  .string()
+  .min(1, 'Введите почту')
+  .pipe(z.email('Укажите почту в формате name@company.ru'));
+const passwordSchema = z.string().min(1, 'Введите пароль');
 
 export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [showPassword, setShowPassword] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState('');
-  async function submit(event: SyntheticEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (pending) return;
-    const data = new FormData(event.currentTarget);
-    setPending(true);
-    setError('');
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      controller.abort();
-    }, 15000);
-    try {
-      const response = await fetch('/api/auth/sign-in/email', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          email: data.get('email'),
-          password: data.get('password'),
-        }),
-        credentials: 'same-origin',
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        setError('Не удалось войти. Проверьте почту и пароль.');
-        return;
+  const form = useAppForm({
+    defaultValues: { email: '', password: '' },
+    onSubmit: async ({ value, formApi }) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => {
+        controller.abort();
+      }, 15000);
+      try {
+        const response = await fetch('/api/auth/sign-in/email', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(value),
+          credentials: 'same-origin',
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          setServerErrors(formApi, {
+            form: 'Не удалось войти. Проверьте почту и пароль.',
+          });
+          return;
+        }
+        onSignedIn();
+      } catch {
+        setServerErrors(formApi, {
+          form: 'Не удалось связаться с сервером. Попробуйте ещё раз.',
+        });
+      } finally {
+        clearTimeout(timer);
       }
-      onSignedIn();
-    } catch {
-      setError('Не удалось связаться с сервером. Попробуйте ещё раз.');
-    } finally {
-      clearTimeout(timer);
-      setPending(false);
-    }
-  }
+    },
+  });
+  const submitting = useFormSelector(form.store, (state) => state.isSubmitting);
+  const formError = useFormSelector(
+    form.store,
+    (state): unknown => state.errorMap.onServer,
+  );
   return (
     <section
       aria-labelledby="sign-in-title"
@@ -62,71 +73,68 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
       <p className="mt-3 text-sm leading-6 text-zinc-400">
         Продолжите работу с документами
       </p>
-      <Form
-        className="mt-9 grid gap-6"
-        onSubmit={(event) => {
-          void submit(event);
-        }}
-      >
-        <FormField label="Почта">
-          <Input
-            className="min-h-12 px-4"
-            name="email"
-            type="email"
-            autoComplete="username"
-            placeholder="name@company.ru"
-            required
-            disabled={pending}
-          />
-        </FormField>
-        <FormField label="Пароль">
-          <div className="relative">
-            <Input
-              className="min-h-12 px-4 pr-14"
-              name="password"
+      <FormRoot form={form} className="mt-9 grid gap-6">
+        <form.AppField name="email" validators={{ onChange: emailSchema }}>
+          {(field) => (
+            <field.TextField
+              label="Почта"
+              type="email"
+              autoComplete="username"
+              placeholder="name@company.ru"
+              required
+              className="min-h-12 px-4"
+            />
+          )}
+        </form.AppField>
+        <form.AppField
+          name="password"
+          validators={{ onChange: passwordSchema }}
+        >
+          {(field) => (
+            <field.TextField
+              label="Пароль"
               type={showPassword ? 'text' : 'password'}
               autoComplete="current-password"
               placeholder="Введите пароль"
               required
-              disabled={pending}
+              className="min-h-12 px-4 pr-14"
+              trailing={
+                <span className="absolute top-1.5 right-1.5">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={
+                      showPassword ? 'Скрыть пароль' : 'Показать пароль'
+                    }
+                    aria-pressed={showPassword}
+                    disabled={submitting}
+                    onClick={() => {
+                      setShowPassword(!showPassword);
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </Button>
+                </span>
+              }
             />
-            <span className="absolute top-1.5 right-1.5">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={showPassword ? 'Скрыть пароль' : 'Показать пароль'}
-                aria-pressed={showPassword}
-                disabled={pending}
-                onClick={() => {
-                  setShowPassword(!showPassword);
-                }}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </Button>
-            </span>
-          </div>
-        </FormField>
-        {error && (
+          )}
+        </form.AppField>
+        {typeof formError === 'string' && formError !== '' && (
           <p
             role="alert"
             className="rounded-xl border border-rose-400/20 bg-rose-950/40 p-3 text-sm leading-6 text-rose-200"
           >
-            {error}
+            {formError}
           </p>
         )}
-        <Button
-          loading={pending}
-          type="submit"
-          size="lg"
-          className="mt-1 w-full"
-        >
+        <form.SubmitButton size="lg" className="mt-1 w-full">
           Войти
           <ArrowRight
             size={17}
             className="transition-transform duration-300 group-hover/button:translate-x-1"
           />
-        </Button>
-      </Form>
+        </form.SubmitButton>
+      </FormRoot>
       <p className="mt-8 max-w-xs text-xs leading-6 text-zinc-500">
         Доступ предоставляется участникам рабочей области.
       </p>

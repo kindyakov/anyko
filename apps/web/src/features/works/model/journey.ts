@@ -1,4 +1,5 @@
-import type { FieldKey, WorkView } from '@anyko/contracts';
+import { type FieldKey } from '@anyko/contracts/catalog';
+import { type WorkView } from '@anyko/contracts/works';
 
 export type StepKey = 'files' | 'extraction' | 'review' | 'documents';
 

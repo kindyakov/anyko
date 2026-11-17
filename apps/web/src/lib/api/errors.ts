@@ -1,11 +1,19 @@
+// Проблема с конкретным полем запроса из `error.fields` ответа `invalid`; `path` — имя поля формы.
+type ApiErrorField = { path: string; code: string };
+
 export class ApiError extends Error {
+  // `fields` есть только у ошибок с разбором полей; без них поле не задаётся вовсе.
+  readonly fields?: readonly ApiErrorField[];
+
   constructor(
     readonly code: string,
     readonly status: number | undefined,
     readonly requestId: string | undefined,
+    fields?: readonly ApiErrorField[],
   ) {
     super(code);
     this.name = 'ApiError';
+    if (fields !== undefined) this.fields = fields;
   }
 }
 

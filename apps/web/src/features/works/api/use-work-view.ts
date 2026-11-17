@@ -1,7 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { workResponseSchema, type WorkView } from '@anyko/contracts';
+import { workResponseSchema, type WorkView } from '@anyko/contracts/works';
 
 import { requestApi } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';

@@ -1,4 +1,4 @@
-import { sessionCookieNames } from '@anyko/contracts';
+import { sessionCookieNames } from '@anyko/contracts/session';
 
 import { routes } from '@/lib/routes';
 

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import type { WorkView } from '@anyko/contracts';
+import { type WorkView } from '@anyko/contracts/works';
 
 import {
   conflictingFields,

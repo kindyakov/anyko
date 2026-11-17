@@ -1,7 +1,7 @@
 'use client';
 import { Dialog } from '@base-ui/react/dialog';
 import { X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 
 import { Button } from '@/components/ui/button';
 
@@ -19,6 +19,7 @@ export function Modal({
   closeLabel = 'Закрыть',
   headerExtra,
   dismissible = true,
+  initialFocus,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -29,6 +30,8 @@ export function Modal({
   closeLabel?: string;
   headerExtra?: ReactNode;
   dismissible?: boolean;
+  /** Элемент, который получает фокус при открытии; без него фокус берёт Base UI. */
+  initialFocus?: RefObject<HTMLElement | null>;
 }) {
   const popup =
     size === 'sheet'
@@ -46,6 +49,7 @@ export function Modal({
       <Dialog.Portal>
         <Dialog.Backdrop className={backdrop} />
         <Dialog.Popup
+          initialFocus={initialFocus}
           className={`text-ink fixed z-50 flex flex-col overflow-hidden border-white/10 bg-[linear-gradient(180deg,#16161ad9,#0c0c0fe6)] shadow-[0_30px_120px_-20px_#000,0_0_0_1px_#ffffff08,0_0_80px_-40px_#db143c] backdrop-blur-2xl transition-[opacity,scale,translate] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] outline-none ${popup}`}
         >
           <span

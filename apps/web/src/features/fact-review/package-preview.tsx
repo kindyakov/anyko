@@ -19,7 +19,7 @@ import {
   type FieldValues,
   type PreviewParagraph,
   type PreviewRow,
-} from '@anyko/contracts';
+} from '@anyko/contracts/catalog';
 
 import { Button } from '@/components/ui/button';
 import { Disclosure } from '@/components/ui/disclosure';

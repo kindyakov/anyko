@@ -2,14 +2,18 @@ import { afterEach, expect, test } from 'bun:test';
 
 import { QueryObserver } from '@tanstack/react-query';
 
+import type { Session } from '@anyko/contracts/session';
+
 import { ApiError } from '@/lib/api/errors';
 import { createQueryClient } from '@/lib/api/query-client';
 import { sessionKeys, sessionQueryOptions } from '@/lib/api/session';
 
 const originalFetch = globalThis.fetch;
-const session = {
+const session: Session = {
   user: { id: 'previous-user', name: 'Previous', email: 'a@example.test' },
-  workspace: { id: 'workspace-1', name: 'Workspace' },
+  memberships: [
+    { workspace: { id: 'workspace-1', name: 'Workspace' }, rights: [] },
+  ],
 };
 
 afterEach(() => {
@@ -76,7 +80,7 @@ test('a 401 on the session request itself resolves to no session without clearin
   const client = createQueryClient();
   client.setQueryData(['works', 'workspace-1', 'list'], ['private work']);
   const current = await client.query(sessionQueryOptions());
-  expect(urls).toEqual(['/api/session']);
+  expect(urls).toEqual(['/api/v1/session']);
   expect(current).toBeNull();
   expect(client.getQueryData(['works', 'workspace-1', 'list'])).toEqual([
     'private work',

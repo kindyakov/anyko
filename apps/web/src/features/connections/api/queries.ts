@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 
-import { llmSettingsResponseSchema } from '@anyko/contracts';
+import { llmSettingsResponseSchema } from '@anyko/contracts/connections';
 
 import { requestApi } from '@/lib/api/client';
 
