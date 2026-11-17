@@ -277,6 +277,23 @@ test('multipart fields are checked against the description and the origin comes 
   });
 });
 
+test('safe methods pass without an origin', async () => {
+  const { app } = build(true, (route, api) =>
+    route(api, item, () => ({ ok: true as const })),
+  );
+  await withServer(app, async (base) => {
+    for (const method of ['GET', 'HEAD'])
+      expect(
+        (
+          await fetch(`${base}/api/v1/items/${crypto.randomUUID()}`, {
+            method,
+            headers: authed,
+          })
+        ).status,
+      ).toBe(200);
+  });
+});
+
 test('the permission guard runs before the body is read', async () => {
   const { app } = build(true, (route, api) =>
     route(api, guarded, () => ({ ok: true as const }), {
