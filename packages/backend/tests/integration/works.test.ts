@@ -23,10 +23,17 @@ import { createFactsStore } from '../../src/modules/facts/infrastructure/store';
 import { createGenerationStore } from '../../src/modules/generation/infrastructure/store';
 import { createWorkProcessingStore } from '../../src/modules/processing/infrastructure/work-store';
 import { createWorkStore } from '../../src/modules/works/infrastructure/store';
+import {
+  brandDocumentId,
+  brandFileId,
+  brandGenerationId,
+  brandWorkId,
+} from '../../src/platform/ids';
 import { createBackend } from '../../src/runtime';
 import type { WorkStores } from '../../src/workflows/works/ports';
 import { integrationConfig } from '../support/composition';
-import { recognitionsAs, settingsAs, workApiAs } from '../support/scoped';
+import { memberScope } from '../support/scope';
+import { recognitionsAs, settingsAs } from '../support/scoped';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
@@ -148,7 +155,6 @@ const apiBackend = createBackend(testConfig, {
   dependencies: { storage, agents },
 });
 const runtime = {
-  api: workApiAs(apiBackend.workHttp.works),
   saveSettings: settingsAs(apiBackend.workHttp.settings).save,
   deps: { documents: recognitionsAs(apiBackend.documentHttp.documents) },
   stop: () => apiBackend.stop(),
@@ -195,13 +201,11 @@ async function create() {
     extractionModel: 'fixture',
     apiKey: crypto.randomUUID(),
   });
-  const view = await runtime.api.create({
-    workspaceId,
-    actorId: 'fixture',
-    packageVersion: 'technical-document-v1',
-    title: 'Тестовая работа',
-  });
-  return { workspaceId, workId: view.work.id };
+  const workId = await apiBackend.workHttp.intake.createWork(
+    memberScope(workspaceId, 'fixture'),
+    { packageVersion: 'technical-document-v1', title: 'Тестовая работа' },
+  );
+  return { workspaceId, workId };
 }
 async function until(
   input: { workspaceId: string; workId: string },
@@ -209,7 +213,10 @@ async function until(
 ) {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
-    const view = await runtime.api.get(input.workspaceId, input.workId);
+    const view = await apiBackend.workHttp.views.get(
+      memberScope(input.workspaceId),
+      brandWorkId(input.workId),
+    );
     if (predicate(view)) return view;
     await Bun.sleep(30);
   }
@@ -219,21 +226,22 @@ const terminal = (view: WorkView) =>
   !!view.runs.length &&
   view.runs.every((run) => !['queued', 'running'].includes(run.status));
 async function upload(input: { workspaceId: string; workId: string }) {
-  return runtime.api.upload({
-    ...input,
-    actorId: 'fixture',
-    filename: 'fixture.pdf',
-    bytes: new TextEncoder().encode('%PDF-1.7\n synthetic'),
-    correlationId: crypto.randomUUID(),
-    requestKey: crypto.randomUUID(),
-  });
+  return apiBackend.workHttp.intake.uploadDocument(
+    memberScope(input.workspaceId, 'fixture'),
+    {
+      workId: brandWorkId(input.workId),
+      filename: 'fixture.pdf',
+      bytes: new TextEncoder().encode('%PDF-1.7\n synthetic'),
+      correlationId: crypto.randomUUID(),
+      requestKey: crypto.randomUUID(),
+    },
+  );
 }
 const analyze = (input: { workspaceId: string; workId: string }) =>
-  runtime.api.analyze({
-    ...input,
-    actorId: 'fixture',
-    correlationId: crypto.randomUUID(),
-  });
+  apiBackend.workHttp.intake.analyzeWork(
+    memberScope(input.workspaceId, 'fixture'),
+    { workId: brandWorkId(input.workId), correlationId: crypto.randomUUID() },
+  );
 async function rejects(operation: Promise<unknown>, code: string) {
   let failure: unknown;
   try {
@@ -280,20 +288,34 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
   await analyze(input);
   await until(input, terminal);
   expect(extractionCount).toBe(count);
-  const reopened = await runtime.api.get(input.workspaceId, input.workId);
+  const reopened = await apiBackend.workHttp.views.get(
+    memberScope(input.workspaceId),
+    brandWorkId(input.workId),
+  );
   expect(
-    (await runtime.api.events(input.workspaceId, input.workId, '0')).length,
+    (
+      await apiBackend.workHttp.works.queries.events(
+        memberScope(input.workspaceId),
+        brandWorkId(input.workId),
+        '0',
+      )
+    ).length,
   ).toBeGreaterThan(2);
   await rejects(
-    runtime.api.get(crypto.randomUUID(), input.workId),
+    apiBackend.workHttp.views.get(
+      memberScope(crypto.randomUUID()),
+      brandWorkId(input.workId),
+    ),
     'NOT_FOUND',
   );
-  await runtime.api.generate({
-    ...input,
-    actorId: 'fixture',
-    correlationId: crypto.randomUUID(),
-    revision: reopened.work.revision,
-  });
+  await apiBackend.workHttp.generation.startGeneration(
+    memberScope(input.workspaceId, 'fixture'),
+    {
+      workId: brandWorkId(input.workId),
+      revision: reopened.work.revision,
+      correlationId: crypto.randomUUID(),
+    },
+  );
   const generated = await until(input, (state) =>
     state.generations.some((item) => item.status === 'succeeded'),
   );
@@ -307,7 +329,13 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
     }),
   ).toEqual([{ actorId: 'fixture', targetKind: 'generation', targetId: id }]);
   const bytes = (
-    await runtime.api.download(input.workspaceId, input.workId, id)
+    await apiBackend.workHttp.generation.downloadResult(
+      memberScope(input.workspaceId),
+      {
+        workId: brandWorkId(input.workId),
+        generationId: brandGenerationId(id),
+      },
+    )
   ).bytes;
   const xml = unzipSync(bytes)['word/document.xml'];
   if (!xml) throw new Error('MISSING_DOCUMENT_XML');
@@ -321,7 +349,10 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
     workspaceId: input.workspaceId,
     documentId: doc.id,
   });
-  const hidden = await runtime.api.get(input.workspaceId, input.workId);
+  const hidden = await apiBackend.workHttp.views.get(
+    memberScope(input.workspaceId),
+    brandWorkId(input.workId),
+  );
   expect(hidden.facts.candidates).toEqual([]);
   expect(hidden.generations).toEqual([]);
   await until(
@@ -342,17 +373,22 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
 
 test('a package generates three individually scoped DOCX files from one snapshot and source deletion erases the whole set', async () => {
   const legacy = await create();
-  const created = await runtime.api.create({
-    workspaceId: legacy.workspaceId,
-    actorId: 'fixture',
-    packageVersion: 'bfl-bankruptcy-v3',
-    title: 'Синтетический комплект',
-  });
-  const input = { workspaceId: legacy.workspaceId, workId: created.work.id };
+  const createdId = await apiBackend.workHttp.intake.createWork(
+    memberScope(legacy.workspaceId, 'fixture'),
+    { packageVersion: 'bfl-bankruptcy-v3', title: 'Синтетический комплект' },
+  );
+  const created = await apiBackend.workHttp.views.get(
+    memberScope(legacy.workspaceId),
+    createdId,
+  );
+  const input = { workspaceId: legacy.workspaceId, workId: createdId };
   const doc = await upload(input);
-  const uploaded = await runtime.api.get(input.workspaceId, input.workId);
-  const saved = await runtime.api.edit({
-    ...input,
+  const uploaded = await apiBackend.workHttp.views.get(
+    memberScope(input.workspaceId),
+    brandWorkId(input.workId),
+  );
+  await apiBackend.workHttp.review.editValues(memberScope(input.workspaceId), {
+    workId: brandWorkId(input.workId),
     revision: uploaded.work.revision,
     values: {
       ...created.facts.values,
@@ -366,12 +402,18 @@ test('a package generates three individually scoped DOCX files from one snapshot
       requestsDetails: 'Ввести процедуру реструктуризации долгов',
     },
   });
-  await runtime.api.generate({
-    ...input,
-    actorId: 'fixture',
-    correlationId: crypto.randomUUID(),
-    revision: saved.work.revision,
-  });
+  const saved = await apiBackend.workHttp.views.get(
+    memberScope(input.workspaceId),
+    brandWorkId(input.workId),
+  );
+  await apiBackend.workHttp.generation.startGeneration(
+    memberScope(input.workspaceId, 'fixture'),
+    {
+      workId: brandWorkId(input.workId),
+      revision: saved.work.revision,
+      correlationId: crypto.randomUUID(),
+    },
+  );
   const completed = await until(input, (state) =>
     state.generations.some((generation) => generation.status === 'succeeded'),
   );
@@ -380,11 +422,13 @@ test('a package generates three individually scoped DOCX files from one snapshot
   expect(generation.files).toHaveLength(3);
   for (const file of generation.files) {
     expect(file.status).toBe('succeeded');
-    const output = await runtime.api.download(
-      input.workspaceId,
-      input.workId,
-      generation.id,
-      file.id,
+    const output = await apiBackend.workHttp.generation.downloadResult(
+      memberScope(input.workspaceId),
+      {
+        workId: brandWorkId(input.workId),
+        generationId: brandGenerationId(generation.id),
+        fileId: brandFileId(file.id),
+      },
     );
     const xml = strFromU8(
       unzipSync(output.bytes)['word/document.xml'] ?? new Uint8Array(),
@@ -393,25 +437,35 @@ test('a package generates three individually scoped DOCX files from one snapshot
     expect(xml).toContain('Пётр');
     expect(xml).not.toMatch(/\{[#/a-zA-Z][^}]*\}/);
     await rejects(
-      runtime.api.download(
-        crypto.randomUUID(),
-        input.workId,
-        generation.id,
-        file.id,
+      apiBackend.workHttp.generation.downloadResult(
+        memberScope(crypto.randomUUID()),
+        {
+          workId: brandWorkId(input.workId),
+          generationId: brandGenerationId(generation.id),
+          fileId: brandFileId(file.id),
+        },
       ),
       'NOT_FOUND',
     );
   }
   await rejects(
-    runtime.api.download(
-      input.workspaceId,
-      input.workId,
-      generation.id,
-      crypto.randomUUID(),
+    apiBackend.workHttp.generation.downloadResult(
+      memberScope(input.workspaceId),
+      {
+        workId: brandWorkId(input.workId),
+        generationId: brandGenerationId(generation.id),
+        fileId: brandFileId(crypto.randomUUID()),
+      },
     ),
     'NOT_FOUND',
   );
-  await runtime.api.removeDocument({ ...input, documentId: doc.id });
+  await apiBackend.workHttp.intake.removeDocument(
+    memberScope(input.workspaceId),
+    {
+      workId: brandWorkId(input.workId),
+      documentId: brandDocumentId(doc.id),
+    },
+  );
   await until(
     input,
     (state) => !state.cleanupPending && !state.documents.length,
@@ -446,15 +500,21 @@ test('manual edits during model execution survive; optimistic revision rejects s
   try {
     await analyze(input);
     await entered;
-    const view = await runtime.api.get(input.workspaceId, input.workId);
-    await runtime.api.edit({
-      ...input,
-      revision: view.work.revision,
-      values: { ...emptyFieldValues(), personName: 'Ручное значение' },
-    });
+    const view = await apiBackend.workHttp.views.get(
+      memberScope(input.workspaceId),
+      brandWorkId(input.workId),
+    );
+    await apiBackend.workHttp.review.editValues(
+      memberScope(input.workspaceId),
+      {
+        workId: brandWorkId(input.workId),
+        revision: view.work.revision,
+        values: { ...emptyFieldValues(), personName: 'Ручное значение' },
+      },
+    );
     await rejects(
-      runtime.api.edit({
-        ...input,
+      apiBackend.workHttp.review.editValues(memberScope(input.workspaceId), {
+        workId: brandWorkId(input.workId),
         revision: view.work.revision,
         values: emptyFieldValues(),
       }),
@@ -525,8 +585,17 @@ test('deletion during model execution hides derivatives immediately and fences t
   try {
     await analyze(input);
     await started;
-    await runtime.api.removeDocument({ ...input, documentId: doc.id });
-    const hidden = await runtime.api.get(input.workspaceId, input.workId);
+    await apiBackend.workHttp.intake.removeDocument(
+      memberScope(input.workspaceId),
+      {
+        workId: brandWorkId(input.workId),
+        documentId: brandDocumentId(doc.id),
+      },
+    );
+    const hidden = await apiBackend.workHttp.views.get(
+      memberScope(input.workspaceId),
+      brandWorkId(input.workId),
+    );
     expect(hidden.cleanupPending).toBe(true);
     expect(hidden.facts.candidates).toEqual([]);
     expect(await db.workIo.count({ where: { workId: input.workId } })).toBe(1);
@@ -603,7 +672,13 @@ test('confirmation survives added sources and repeated analysis; only the new fi
   await upload(input);
   await analyze(input);
   const initial = await until(input, terminal);
-  await runtime.api.confirm({ ...input, revision: initial.work.revision });
+  await apiBackend.workHttp.review.confirmFacts(
+    memberScope(input.workspaceId),
+    {
+      workId: brandWorkId(input.workId),
+      revision: initial.work.revision,
+    },
+  );
   const before = extractionCount;
   extractedName = 'Ирина';
   try {
@@ -635,7 +710,10 @@ test('all works remain reachable across stable cursor pages', async () => {
   const seen: string[] = [];
   let cursor: string | undefined;
   do {
-    const page = await runtime.api.list(input.workspaceId, cursor);
+    const page = await apiBackend.workHttp.works.queries.list(
+      memberScope(input.workspaceId),
+      cursor,
+    );
     seen.push(...page.works.map((work) => work.id));
     cursor = page.nextCursor ?? undefined;
   } while (cursor);
@@ -670,7 +748,13 @@ test('deletion during the first visual prevents a second provider request', asyn
     const doc = await upload(input);
     await analyze(input);
     await started;
-    await runtime.api.removeDocument({ ...input, documentId: doc.id });
+    await apiBackend.workHttp.intake.removeDocument(
+      memberScope(input.workspaceId),
+      {
+        workId: brandWorkId(input.workId),
+        documentId: brandDocumentId(doc.id),
+      },
+    );
     release();
     await until(
       input,
@@ -838,7 +922,13 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
     expect(
       (await memory.listMessages({ threadId: threadIds[0] })).messages.length,
     ).toBeGreaterThan(0);
-    await runtime.api.removeDocument({ ...input, documentId: doc.id });
+    await apiBackend.workHttp.intake.removeDocument(
+      memberScope(input.workspaceId),
+      {
+        workId: brandWorkId(input.workId),
+        documentId: brandDocumentId(doc.id),
+      },
+    );
     await until(
       input,
       (view) => !view.cleanupPending && !view.documents.length,
@@ -873,9 +963,9 @@ test('logical session survives reopening, extends context with a new source, and
   try {
     expect(
       (
-        await workApiAs(reopened.workHttp.works).get(
-          input.workspaceId,
-          input.workId,
+        await reopened.workHttp.views.get(
+          memberScope(input.workspaceId),
+          brandWorkId(input.workId),
         )
       ).session?.id,
     ).toBe(sessionId);
@@ -953,12 +1043,18 @@ test('manual edit during contextual reasoning retries from fresh facts and fence
   reconcileHook = async (request) => {
     calls++;
     if (calls === 1) {
-      const state = await runtime.api.get(input.workspaceId, input.workId);
-      await runtime.api.edit({
-        ...input,
-        revision: state.work.revision,
-        values: { ...state.facts.values, personName: 'Ручное имя' },
-      });
+      const state = await apiBackend.workHttp.views.get(
+        memberScope(input.workspaceId),
+        brandWorkId(input.workId),
+      );
+      await apiBackend.workHttp.review.editValues(
+        memberScope(input.workspaceId),
+        {
+          workId: brandWorkId(input.workId),
+          revision: state.work.revision,
+          values: { ...state.facts.values, personName: 'Ручное имя' },
+        },
+      );
     } else expect(request.facts.values.personName).toBe('Ручное имя');
     return {
       summary:
@@ -1006,7 +1102,13 @@ test('deleting during contextual reasoning removes its session, turns, and all r
   try {
     await analyze(input);
     await started;
-    await runtime.api.removeDocument({ ...input, documentId: doc.id });
+    await apiBackend.workHttp.intake.removeDocument(
+      memberScope(input.workspaceId),
+      {
+        workId: brandWorkId(input.workId),
+        documentId: brandDocumentId(doc.id),
+      },
+    );
     release();
     const state = await until(
       input,
@@ -1058,6 +1160,11 @@ test('superseded attempt cannot commit a session checkpoint or facts', async () 
     'STALE_WORK_ATTEMPT',
   );
   expect(
-    (await runtime.api.get(input.workspaceId, input.workId)).work.revision,
+    (
+      await apiBackend.workHttp.views.get(
+        memberScope(input.workspaceId),
+        brandWorkId(input.workId),
+      )
+    ).work.revision,
   ).toBe(0);
 });

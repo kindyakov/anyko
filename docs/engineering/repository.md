@@ -81,7 +81,7 @@ modules/facts/
 
 `processing` управляет исполнением и состоянием, а профиль БФЛ — смыслом извлекаемых сведений. Сценарий в `workflows/` координирует модули; модули не импортируют сценарии. Registry запускаемых обработчиков собирается в `runtime/`, а не через сканирование файлов или динамическую загрузку произвольного кода.
 
-Composition root в `backend/runtime` может импортировать `modules/<name>/infrastructure` для сборки конкретных адаптеров. Это единственное внешнее исключение из приватности модуля; private domain/application остаются закрыты. В HTTP-handler и worker-handler runtime не импортируется: сборка выполняется в entrypoint процесса или диагностической CLI.
+Composition root в `backend/runtime` может импортировать `modules/<name>/infrastructure` для сборки конкретных адаптеров и `modules/<name>/module.ts` для фабрики фасада. Это единственные внешние исключения из приватности модуля; private domain/application остаются закрыты. В HTTP-handler и worker-handler runtime не импортируется: сборка выполняется в entrypoint процесса или диагностической CLI.
 
 ## Структура запуска приложений
 
@@ -130,22 +130,22 @@ Dependency-cruiser разрешает workspace-алиасы через `package
 
 ## Правила зависимостей
 
-| Откуда                  | Что разрешено                                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| `apps/web`              | `contracts`, `ui`, свои features и средовые конфигурации                                                |
-| `apps/api`              | `contracts`, публичные интерфейсы `backend`; `backend/runtime` только в bootstrap                       |
-| `apps/worker`           | публичные интерфейсы `backend`; `backend/runtime` только в bootstrap                                    |
-| Будущий `apps/admin`    | административные HTTP-контракты, `ui`, свои features; доступ через API                                  |
-| `backend/workflows`     | публичные интерфейсы модулей и профилей; узкий транзакционный порт                                      |
-| `backend/profiles`      | чистые схемы/правила и явно разрешённые доменные value types; без I/O, Prisma, env, runtime и workflows |
-| `backend/platform`      | технические библиотеки; без предметных модулей, workflow и бизнес-решений                               |
-| `module/application`    | собственный domain, порты; явно перечисленные публичные интерфейсы другого модуля при отсутствии цикла  |
-| `module/domain`         | собственные значения и чистые функции; без HTTP, БД, env и внешних SDK                                  |
-| `module/infrastructure` | собственные порты, `database`, необходимые технические адаптеры                                         |
-| `backend/runtime`       | сборка всех серверных адаптеров; без бизнес-решений                                                     |
-| `contracts`             | Zod и переносимые значения; без `backend`, Prisma и секретов                                            |
-| `database`              | Prisma и технические зависимости; без `backend`                                                         |
-| `ui`                    | React и UI-зависимости; без API, БД и предметных сценариев                                              |
+| Откуда                  | Что разрешено                                                                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`              | `contracts`, `ui`, свои features и средовые конфигурации                                                                                  |
+| `apps/api`              | `contracts`, публичные интерфейсы `backend`; `backend/runtime` только в bootstrap                                                         |
+| `apps/worker`           | публичные интерфейсы `backend`; `backend/runtime` только в bootstrap                                                                      |
+| Будущий `apps/admin`    | административные HTTP-контракты, `ui`, свои features; доступ через API                                                                    |
+| `backend/workflows`     | типы `index.ts` и `module.ts` модулей, профили; без `application`, `domain`, `infrastructure` модулей; транзакция через непрозрачный `Tx` |
+| `backend/profiles`      | чистые схемы/правила и явно разрешённые доменные value types; без I/O, Prisma, env, runtime и workflows                                   |
+| `backend/platform`      | технические библиотеки; без предметных модулей, workflow и бизнес-решений                                                                 |
+| `module/application`    | собственный domain, порты; явно перечисленные публичные интерфейсы другого модуля при отсутствии цикла                                    |
+| `module/domain`         | собственные значения и чистые функции; без HTTP, БД, env и внешних SDK                                                                    |
+| `module/infrastructure` | собственные порты, `database`, необходимые технические адаптеры                                                                           |
+| `backend/runtime`       | сборка всех серверных адаптеров; без бизнес-решений                                                                                       |
+| `contracts`             | Zod и переносимые значения; без `backend`, Prisma и секретов                                                                              |
+| `database`              | Prisma и технические зависимости; без `backend`                                                                                           |
+| `ui`                    | React и UI-зависимости; без API, БД и предметных сценариев                                                                                |
 
 В production-коде доступ к `database` имеют только persistence-адаптеры модулей, адаптер транзакции в `backend/runtime`, auth-адаптер и мигратор. Остальной bootstrap получает готовые сервисы из runtime. Публичные типы модулей не содержат Prisma/Elysia/Next типов.
 

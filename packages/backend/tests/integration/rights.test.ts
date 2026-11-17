@@ -4,7 +4,7 @@ import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 
 import type { SourceStorage } from '../../src/modules/documents';
-import { brandDocumentId, brandWorkId } from '../../src/platform/ids';
+import { brandDocumentId } from '../../src/platform/ids';
 import { createBackend } from '../../src/runtime';
 import { integrationConfig } from '../support/composition';
 import { memberScope } from '../support/scope';
@@ -68,50 +68,50 @@ afterAll(async () => {
 test('a scope without a right is refused by the work scenario and nothing is written', async () => {
   const ws = await workspace();
   const owner = memberScope(ws, 'owner-user');
-  const created = await api.workHttp.works.create(owner, {
+  const workId = await api.workHttp.intake.createWork(owner, {
     title: 'Rights fixture',
     packageVersion: 'technical-document-v1',
   });
-  const workId = brandWorkId(created.work.id);
+  const created = await api.workHttp.views.get(owner, workId);
   const reader = memberScope(ws, 'reader-user', ['works.read']);
   // Чтение доступно по works.read; изменения требуют своих прав.
-  expect((await api.workHttp.works.get(reader, workId)).work.id).toBe(
+  expect((await api.workHttp.views.get(reader, workId)).work.id).toBe(
     created.work.id,
   );
   await expectForbidden(
-    api.workHttp.works.create(reader, {
+    api.workHttp.intake.createWork(reader, {
       title: 'Refused',
       packageVersion: 'technical-document-v1',
     }),
   );
   await expectForbidden(
-    api.workHttp.works.confirm(reader, {
+    api.workHttp.review.confirmFacts(reader, {
       workId,
       revision: created.work.revision,
     }),
   );
   await expectForbidden(
-    api.workHttp.works.generate(reader, {
+    api.workHttp.generation.startGeneration(reader, {
       workId,
       revision: created.work.revision,
       correlationId: crypto.randomUUID(),
     }),
   );
   await expectForbidden(
-    api.workHttp.works.analyze(reader, {
+    api.workHttp.intake.analyzeWork(reader, {
       workId,
       correlationId: crypto.randomUUID(),
     }),
   );
   // Удаление исходника требует documents.delete: проверка идёт до поиска документа.
   await expectForbidden(
-    api.workHttp.works.removeDocument(reader, {
+    api.workHttp.intake.removeDocument(reader, {
       workId,
       documentId: brandDocumentId(crypto.randomUUID()),
     }),
   );
   expect(await db.work.count({ where: { workspaceId: ws } })).toBe(1);
-  expect((await api.workHttp.works.get(owner, workId)).work.revision).toBe(
+  expect((await api.workHttp.views.get(owner, workId)).work.revision).toBe(
     created.work.revision,
   );
 });
