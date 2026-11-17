@@ -5,7 +5,10 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import type { Right, Session } from '@anyko/contracts/session';
+
 import { createQueryClient } from '@/lib/api/query-client';
+import { sessionKeys } from '@/lib/api/session';
 
 import { expectFocused } from '../../../test/focus';
 import { navigation } from '../../../test/next-navigation';
@@ -80,10 +83,24 @@ function serveSettings(initial: Settings, saveStatus = 200) {
   return requests;
 }
 
-function renderSettings() {
+// Сессия в кэше задаёт права текущей области; по умолчанию у пользователя есть право изменения.
+function sessionWith(rights: Right[]): Session {
+  return {
+    user: { id: 'user-1', name: 'Test', email: 'user@example.test' },
+    memberships: [
+      { workspace: { id: 'workspace-1', name: 'Workspace' }, rights },
+    ],
+  };
+}
+
+function renderSettings(
+  rights: Right[] = ['connections.read', 'connections.manage'],
+) {
   navigation.params = { workspace: 'workspace-1' };
+  const client = createQueryClient();
+  client.setQueryData(sessionKeys.all, sessionWith(rights));
   render(
-    <QueryClientProvider client={createQueryClient()}>
+    <QueryClientProvider client={client}>
       <ConnectionSettings />
     </QueryClientProvider>,
   );
@@ -263,6 +280,28 @@ test('unsaved edits make leaving the page warn; saving removes the warning', asy
   await waitFor(() => {
     expect(leavePageWarns()).toBe(false);
   });
+});
+
+// Право только для отображения: без него значения видны, но сохранить или ввести ключ нельзя.
+// Сервер всё равно проверит право при сохранении; здесь проверяется, что интерфейс его не предлагает.
+test('without the manage right the connection is read-only: no save button, no key field, no request', async () => {
+  const requests = serveSettings(configured);
+  renderSettings(['connections.read']);
+
+  const address = await screen.findByLabelText('Адрес API');
+  expect(address.getAttribute('value')).toBe('https://models.example.test/v1');
+  expect(address.hasAttribute('readonly')).toBe(true);
+  expect(
+    screen.getByLabelText('Модель для изображений').hasAttribute('readonly'),
+  ).toBe(true);
+  expect(
+    screen.queryByRole('button', { name: 'Сохранить подключение' }),
+  ).toBeNull();
+  expect(screen.queryByLabelText('API-ключ')).toBeNull();
+  expect(
+    screen.getByText('Изменять подключение может владелец рабочей области.'),
+  ).toBeTruthy();
+  expect(requests.some((request) => request.method === 'POST')).toBe(false);
 });
 
 test('reverting an edit to the saved value removes the leave warning', async () => {

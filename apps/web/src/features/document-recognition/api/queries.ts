@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query';
 
-import { documentResultSchema } from '@anyko/contracts';
+import { documentResultSchema } from '@anyko/contracts/documents';
 
 import { requestApi } from '@/lib/api/client';
 

@@ -9,7 +9,7 @@ import { getSession } from '@/lib/server/session';
 
 import { AppShell } from './_shell/app-shell';
 
-// Layout проверяет сессию у API и совпадение области адреса с сессией. Он не перерисовывается
+// Layout проверяет сессию у API и то, что область адреса есть среди участий. Он не перерисовывается
 // при клиентской навигации, поэтому доступ к данным остаётся за API, а не за этой проверкой.
 export default async function WorkspaceLayout({
   children,
@@ -21,7 +21,8 @@ export default async function WorkspaceLayout({
   const { workspace } = await params;
   const session = await getSession();
   if (!session) redirect(routes.signIn());
-  if (workspace !== session.workspace.id) notFound();
+  if (!session.memberships.some((item) => item.workspace.id === workspace))
+    notFound();
   // Сессия передаётся клиенту через кэш запросов: оболочка читает её без повторного запроса.
   const client = createQueryClient();
   client.setQueryData(sessionKeys.all, session);

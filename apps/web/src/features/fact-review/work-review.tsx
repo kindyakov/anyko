@@ -9,12 +9,12 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
-import type {
-  FieldKey,
-  FieldValue,
-  FieldValues,
-  WorkView,
-} from '@anyko/contracts';
+import {
+  type FieldKey,
+  type FieldValue,
+  type FieldValues,
+} from '@anyko/contracts/catalog';
+import { type WorkView } from '@anyko/contracts/works';
 
 import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';

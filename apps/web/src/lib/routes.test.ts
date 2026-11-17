@@ -40,6 +40,10 @@ test('sign-in address encodes the return path as one parameter', () => {
   );
 });
 
+test('the screen for users without workspaces has its own address', () => {
+  expect(routes.noWorkspace()).toBe('/no-workspace');
+});
+
 test('workspace routes sit under /w/[workspace]', () => {
   expect(routes.works('ws-1')).toBe('/w/ws-1/works');
   expect(routes.work('ws-1', 'work-2')).toBe('/w/ws-1/works/work-2');

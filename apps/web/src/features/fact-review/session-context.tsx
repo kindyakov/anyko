@@ -1,6 +1,7 @@
 import { AlertTriangle, Bot, CircleDashed } from 'lucide-react';
 
-import type { AgentSession, FieldDefinition } from '@anyko/contracts';
+import { type FieldDefinition } from '@anyko/contracts/catalog';
+import { type AgentSession } from '@anyko/contracts/works';
 
 import { Disclosure } from '@/components/ui/disclosure';
 import { RelativeTime } from '@/components/ui/relative-time';

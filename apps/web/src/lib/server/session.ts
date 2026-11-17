@@ -2,8 +2,11 @@ import 'server-only';
 import { headers } from 'next/headers';
 import { cache } from 'react';
 
-import { sessionCookieNames, sessionResponseSchema } from '@anyko/contracts';
-import type { Session } from '@anyko/contracts';
+import {
+  type Session,
+  sessionCookieNames,
+  sessionResponseSchema,
+} from '@anyko/contracts/session';
 
 import { readServerConfig } from '@/lib/server/config';
 
@@ -29,7 +32,8 @@ export async function readSession(
   fetcher: typeof fetch = fetch,
 ): Promise<Session | null> {
   if (!cookieHeader || !hasSessionCookie(cookieHeader)) return null;
-  const response = await fetcher(`${origin}/api/session`, {
+  // Серверный запрос идёт прямо к API (без прокси web), поэтому путь версии задан здесь явно.
+  const response = await fetcher(`${origin}/api/v1/session`, {
     headers: { cookie: cookieHeader, accept: 'application/json' },
     cache: 'no-store',
     redirect: 'error',

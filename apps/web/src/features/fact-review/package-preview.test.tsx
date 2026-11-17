@@ -6,7 +6,7 @@ import {
   documentPackageSchema,
   emptyFieldValues,
   fieldDefinitions,
-} from '@anyko/contracts';
+} from '@anyko/contracts/catalog';
 
 import { PackagePreview } from './package-preview';
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import { type FieldValues, workResponseSchema } from '@anyko/contracts';
+import { type FieldValues } from '@anyko/contracts/catalog';
+import { workResponseSchema } from '@anyko/contracts/works';
 
 import { requestApi } from '@/lib/api/client';
 

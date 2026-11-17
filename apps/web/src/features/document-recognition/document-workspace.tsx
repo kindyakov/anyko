@@ -6,7 +6,7 @@ import { z } from 'zod';
 import {
   documentsResponseSchema,
   type DocumentSummary,
-} from '@anyko/contracts';
+} from '@anyko/contracts/documents';
 
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';

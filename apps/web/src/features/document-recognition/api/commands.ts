@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   documentResponseSchema,
   documentsResponseSchema,
-} from '@anyko/contracts';
+} from '@anyko/contracts/documents';
 
 import { requestApi } from '@/lib/api/client';
 

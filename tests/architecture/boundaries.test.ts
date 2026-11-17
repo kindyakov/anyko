@@ -862,6 +862,36 @@ test('web cannot import administrative contracts but can import resource contrac
   expect(allowed).toHaveLength(0);
 });
 
+test('web imports contract resources by subpath and rejects the contracts root', async () => {
+  const contracts = {
+    'packages/contracts/package.json': JSON.stringify({
+      name: '@anyko/contracts',
+      exports: {
+        '.': './src/index.ts',
+        './works': './src/works.ts',
+      },
+    }),
+    'packages/contracts/src/index.ts': 'export const value = 1;',
+    'packages/contracts/src/works.ts': 'export const value = 1;',
+  };
+  const rules = await webRules(
+    {
+      ...contracts,
+      'apps/web/src/features/works/a.ts': "import '@anyko/contracts';",
+    },
+    ['contracts'],
+  );
+  expect(rules).toContain('web-no-contracts-root');
+  const allowed = await webRules(
+    {
+      ...contracts,
+      'apps/web/src/features/works/a.ts': "import '@anyko/contracts/works';",
+    },
+    ['contracts'],
+  );
+  expect(allowed).toHaveLength(0);
+});
+
 // One ESLint instance checks every web example. ruleFilter keeps only the rules under test, so typed rules never
 // run and projectService stays off: the real configuration (files globs and rule settings) is used without
 // type information, in seconds instead of a typed run per snippet.

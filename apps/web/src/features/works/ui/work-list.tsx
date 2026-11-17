@@ -39,7 +39,7 @@ import { journeySteps } from '@/features/works/model/journey';
 import { ApiError } from '@/lib/api/errors';
 import { applyServerErrors } from '@/lib/api/form-errors';
 import { useExpireSession } from '@/lib/api/query-client';
-import { useWorkspaceId } from '@/lib/api/workspace';
+import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 
 function Journey({ compact = false }: { compact?: boolean }) {
@@ -169,6 +169,8 @@ export function WorkList() {
   const [creating, setCreating] = useState(false);
   const { search, filter, setSearch, setFilter } = useListPreferences();
   const workspaceId = useWorkspaceId();
+  // Право только для отображения: без него создание не предлагается, а отказ даёт API.
+  const canCreate = useCan('works.create');
   const list = useInfiniteQuery({
     ...worksQueryOptions(workspaceId),
     refetchOnMount: 'always',
@@ -207,13 +209,15 @@ export function WorkList() {
             документов. Загрузите файлы, проверьте сведения и скачайте DOCX.
           </p>
         </div>
-        <Button size="lg" className="w-full sm:w-auto" onClick={openCreate}>
-          <Plus
-            size={18}
-            className="transition-transform duration-300 group-hover/button:rotate-90"
-          />
-          Новая работа
-        </Button>
+        {canCreate && (
+          <Button size="lg" className="w-full sm:w-auto" onClick={openCreate}>
+            <Plus
+              size={18}
+              className="transition-transform duration-300 group-hover/button:rotate-90"
+            />
+            Новая работа
+          </Button>
+        )}
       </header>
       {(list.isPending || works.length > 0) && (
         <div className="animate-rise mb-6 flex flex-wrap items-center justify-between gap-3 [animation-delay:80ms]">
@@ -307,10 +311,12 @@ export function WorkList() {
             Anyko поглотит файлы клиента, извлечёт сведения и заполнит комплект
             документов по шаблону.
           </p>
-          <Button size="lg" className="mt-8" onClick={openCreate}>
-            <Plus size={18} />
-            Создать работу
-          </Button>
+          {canCreate && (
+            <Button size="lg" className="mt-8" onClick={openCreate}>
+              <Plus size={18} />
+              Создать работу
+            </Button>
+          )}
           <div className="mx-auto mt-12 max-w-3xl text-left">
             <Journey />
           </div>

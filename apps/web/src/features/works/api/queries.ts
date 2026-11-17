@@ -1,6 +1,7 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 
-import { packagesResponseSchema, worksResponseSchema } from '@anyko/contracts';
+import { packagesResponseSchema } from '@anyko/contracts/catalog';
+import { worksResponseSchema } from '@anyko/contracts/works';
 
 import { requestApi } from '@/lib/api/client';
 

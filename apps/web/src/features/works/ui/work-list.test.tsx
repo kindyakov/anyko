@@ -5,7 +5,10 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import type { Right, Session } from '@anyko/contracts/session';
+
 import { createQueryClient } from '@/lib/api/query-client';
+import { sessionKeys } from '@/lib/api/session';
 import { routes } from '@/lib/routes';
 
 import { expectFocused } from '../../../../test/focus';
@@ -108,10 +111,19 @@ function serveWorkList(creation: { status: number; body: unknown }) {
   return requests;
 }
 
-function renderWorkList() {
+// Права текущей области приходят из кэша сессии; по умолчанию создание доступно.
+function renderWorkList(rights: Right[] = ['works.read', 'works.create']) {
   navigation.params = { workspace: 'workspace-1' };
+  const session: Session = {
+    user: { id: 'user-1', name: 'Test', email: 'user@example.test' },
+    memberships: [
+      { workspace: { id: 'workspace-1', name: 'Workspace' }, rights },
+    ],
+  };
+  const client = createQueryClient();
+  client.setQueryData(sessionKeys.all, session);
   render(
-    <QueryClientProvider client={createQueryClient()}>
+    <QueryClientProvider client={client}>
       <WorkList />
     </QueryClientProvider>,
   );
@@ -122,6 +134,39 @@ async function openCreateDialog() {
   await user.click(await screen.findByRole('button', { name: 'Новая работа' }));
   return user;
 }
+
+// Без права создания действие не предлагается ни в шапке, ни в пустом списке; список при этом виден.
+test('without the create right no creation button is offered, the list still shows', async () => {
+  const requests = serveWorkList({ status: 201, body: createdWorkView });
+  renderWorkList(['works.read']);
+
+  expect(
+    await screen.findByRole('list', { name: 'Список работ' }),
+  ).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Новая работа' })).toBeNull();
+  expect(requests.filter((request) => request.method === 'POST')).toEqual([]);
+});
+
+test('without the create right the empty list offers no creation either', async () => {
+  globalThis.fetch = ((input: RequestInfo | URL) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    if (url.includes('/document-packages'))
+      return Promise.resolve(json(200, { packages }));
+    return Promise.resolve(json(200, { works: [], nextCursor: null }));
+  }) as typeof fetch;
+  renderWorkList(['works.read']);
+
+  expect(
+    await screen.findByRole('heading', { name: 'Начните с первой работы' }),
+  ).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Создать работу' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Новая работа' })).toBeNull();
+});
 
 test('the title field gets focus when the create dialog opens', async () => {
   serveWorkList({ status: 201, body: createdWorkView });

@@ -1,10 +1,11 @@
 'use client';
+import { Field } from '@base-ui/react/field';
 import { useQuery } from '@tanstack/react-query';
 import { Cpu, Save } from 'lucide-react';
 import { useState } from 'react';
 import { z } from 'zod';
 
-import { llmSettingsResponseSchema } from '@anyko/contracts';
+import { llmSettingsResponseSchema } from '@anyko/contracts/connections';
 
 import {
   FormErrorNotice,
@@ -13,12 +14,13 @@ import {
   useFormSelector,
   useUnsavedChangesWarning,
 } from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Notice, StatusPill } from '@/components/ui/status';
 import { useSaveLlmSettings } from '@/features/connections/api/mutations';
 import { llmSettingsQueryOptions } from '@/features/connections/api/queries';
 import { applyServerErrors } from '@/lib/api/form-errors';
-import { useWorkspaceId } from '@/lib/api/workspace';
+import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 
 type Message = { tone: 'success' | 'danger'; text: string };
 type LlmSettings = NonNullable<
@@ -42,6 +44,8 @@ const modelSchema = z
 
 export function ConnectionSettings() {
   const workspaceId = useWorkspaceId();
+  // Право только для отображения: форма без него не показывается, а сохранение проверяет API.
+  const canManage = useCan('connections.manage');
   const query = useQuery(llmSettingsQueryOptions(workspaceId));
   const [message, setMessage] = useState<Message>();
   const settings = query.data;
@@ -79,16 +83,19 @@ export function ConnectionSettings() {
             </div>
           ))}
         </div>
-      ) : settings?.canManage ? (
+      ) : settings?.canManage && canManage ? (
         <ConnectionForm
           key={settings.settings?.revision ?? 0}
           current={settings.settings}
           onMessage={setMessage}
         />
       ) : settings ? (
-        <Notice tone="neutral">
-          Настройки подключения меняет владелец рабочей области.
-        </Notice>
+        <>
+          <ConnectionReadOnly current={settings.settings} />
+          <Notice tone="neutral">
+            Изменять подключение может владелец рабочей области.
+          </Notice>
+        </>
       ) : null}
       {notice && (
         <Notice
@@ -99,6 +106,35 @@ export function ConnectionSettings() {
         </Notice>
       )}
     </div>
+  );
+}
+
+// Без права изменения значения видны только для чтения; ключ API не выводится вовсе.
+function ConnectionReadOnly({ current }: { current: LlmSettings | null }) {
+  if (!current) return null;
+  return (
+    <div className="grid gap-5">
+      <ReadOnlyField label="Адрес API" value={current.baseURL} />
+      <ReadOnlyField
+        label="Модель для изображений"
+        value={current.visionModel}
+      />
+      <ReadOnlyField
+        label="Модель для извлечения сведений"
+        value={current.extractionModel}
+      />
+    </div>
+  );
+}
+
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  return (
+    <Field.Root className="grid gap-2">
+      <Field.Label className="text-[13px] font-medium text-zinc-200">
+        {label}
+      </Field.Label>
+      <Input readOnly value={value} />
+    </Field.Root>
   );
 }
 

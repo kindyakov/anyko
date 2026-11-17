@@ -4,7 +4,7 @@ import { ArrowLeft, RotateCw, Save, Undo2 } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
-import type { FieldKey, FieldValue } from '@anyko/contracts';
+import { type FieldKey, type FieldValue } from '@anyko/contracts/catalog';
 
 import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';

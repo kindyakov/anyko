@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { workResponseSchema } from '@anyko/contracts';
+import { workResponseSchema } from '@anyko/contracts/works';
 
 import { requestApi } from '@/lib/api/client';
 import { useWorkspaceId } from '@/lib/api/workspace';

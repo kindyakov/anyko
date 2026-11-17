@@ -2,7 +2,7 @@
 import { Check, Eye, Sparkles, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 
-import type { WorkView } from '@anyko/contracts';
+import { type WorkView } from '@anyko/contracts/works';
 
 import { Button } from '@/components/ui/button';
 import { Confirm } from '@/components/ui/confirm';

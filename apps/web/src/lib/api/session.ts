@@ -1,8 +1,8 @@
 import { queryOptions } from '@tanstack/react-query';
 
-import { sessionResponseSchema } from '@anyko/contracts';
+import { getSession } from '@anyko/contracts/session';
 
-import { requestApi } from '@/lib/api/client';
+import { callApi } from '@/lib/api/call';
 import { ApiError } from '@/lib/api/errors';
 
 export const sessionKeys = {
@@ -14,7 +14,7 @@ export function sessionQueryOptions() {
     queryKey: sessionKeys.all,
     queryFn: async ({ signal }) => {
       try {
-        return await requestApi('/session', sessionResponseSchema, { signal });
+        return await callApi(getSession, { signal });
       } catch (error) {
         // Отсутствие сессии — обычный ответ для экрана входа, а не истечение сессии.
         if (error instanceof ApiError && error.status === 401) return null;

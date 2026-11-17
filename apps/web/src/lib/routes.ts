@@ -4,6 +4,8 @@ const segment = (value: string) => encodeURIComponent(value);
 
 export const routes = {
   home: () => '/',
+  // Экран для пользователя без участий в рабочих областях.
+  noWorkspace: () => '/no-workspace',
   signIn: (next?: string) =>
     next === undefined
       ? '/sign-in'
