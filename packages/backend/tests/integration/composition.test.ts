@@ -62,25 +62,38 @@ function countingSeams() {
   };
 }
 
-for (const role of ['api', 'worker'] as const) {
-  test(`${role} role creates one query pool, one lock pool and one database client on the query pool`, async () => {
-    const seams = countingSeams();
-    const options = { logger, dependencies: seams.dependencies };
-    const backend =
-      role === 'api'
-        ? createBackend(config, { ...options, role: 'api' })
-        : createBackend(config, { ...options, role: 'worker' });
-    expect(seams.queryPools).toHaveLength(1);
-    expect(seams.lockPools).toHaveLength(1);
-    expect(seams.clients).toHaveLength(1);
-    const [queryPool] = seams.queryPools;
-    const [lockPool] = seams.lockPools;
-    const [client] = seams.clients;
-    expect(client?.pool).toBe(queryPool);
-    expect(lockPool).not.toBe(queryPool);
-    await backend.stop();
-  });
+function expectOnePoolPerKind(seams: ReturnType<typeof countingSeams>) {
+  expect(seams.queryPools).toHaveLength(1);
+  expect(seams.lockPools).toHaveLength(1);
+  expect(seams.clients).toHaveLength(1);
+  const [queryPool] = seams.queryPools;
+  const [lockPool] = seams.lockPools;
+  const [client] = seams.clients;
+  expect(client?.pool).toBe(queryPool);
+  expect(lockPool).not.toBe(queryPool);
 }
+
+test('api role creates one query pool, one lock pool and one database client on the query pool', async () => {
+  const seams = countingSeams();
+  const backend = createBackend(config, {
+    logger,
+    role: 'api',
+    dependencies: seams.dependencies,
+  });
+  expectOnePoolPerKind(seams);
+  await backend.stop();
+});
+
+test('worker role creates one query pool, one lock pool and one database client on the query pool', async () => {
+  const seams = countingSeams();
+  const backend = createBackend(config, {
+    logger,
+    role: 'worker',
+    dependencies: seams.dependencies,
+  });
+  expectOnePoolPerKind(seams);
+  await backend.stop();
+});
 
 test('stop ends both pools once and repeated calls share the same outcome', async () => {
   const seams = countingSeams();
