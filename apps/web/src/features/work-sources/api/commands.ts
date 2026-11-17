@@ -62,7 +62,7 @@ export async function uploadWorkFiles(
   files: File[],
   send: (file: File, idempotencyKey: string) => Promise<unknown>,
   setUploads: Dispatch<SetStateAction<Upload[]>>,
-): Promise<void> {
+): Promise<number> {
   const batch: Upload[] = files.map((file) => ({
     id: crypto.randomUUID(),
     name: file.name,
@@ -74,17 +74,20 @@ export async function uploadWorkFiles(
     );
   };
   setUploads(batch);
+  let accepted = 0;
   for (const [index, file] of files.entries()) {
     const id = batch[index]?.id ?? '';
     try {
       await send(file, newIdempotencyKey());
+      accepted++;
       mark(id, { state: 'done' });
     } catch (failure) {
-      if (isUnauthorized(failure)) return;
+      if (isUnauthorized(failure)) break;
       mark(id, {
         state: 'failed',
         reason: uploadFailureMessage(file.name, failure),
       });
     }
   }
+  return accepted;
 }

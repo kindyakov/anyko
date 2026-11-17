@@ -54,7 +54,7 @@ export function WorkSources({
   locked: boolean;
   busy: boolean;
   uploads: Upload[];
-  onUpload: (files: File[]) => void;
+  onUpload: (files: File[]) => Promise<number>;
   onDelete: (document: Document) => Promise<void>;
   onOpen: (document: Document) => void;
   onRetry: (documentId: string) => void;

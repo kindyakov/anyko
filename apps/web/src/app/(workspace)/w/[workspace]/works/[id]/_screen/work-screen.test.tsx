@@ -2,7 +2,7 @@ import '../../../../../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import type { WorkView } from '@anyko/contracts/works';
@@ -46,6 +46,37 @@ function renderWork() {
     </QueryClientProvider>,
   );
 }
+
+test('upload confirmation is visible when returning to Files after a pending upload', async () => {
+  const response = Promise.withResolvers<undefined>();
+  const document = { ...source, status: 'queued' };
+  const requests = serveApi(({ method }) => {
+    if (method !== 'POST') return json(200, workView);
+    const reply = json(202, { document });
+    reply.json = async () => {
+      await response.promise;
+      return { document };
+    };
+    return reply;
+  });
+  const user = userEvent.setup();
+  renderWork();
+  await user.upload(await screen.findByLabelText('Файлы клиента'), [
+    new File(['%PDF'], source.filename, { type: 'application/pdf' }),
+  ]);
+  expect(requests.at(-1)).toMatchObject({
+    method: 'POST',
+    url: `${workAddress}/documents`,
+  });
+  expect(screen.queryByText('Принято 1 файл')).toBeNull();
+  await user.click(screen.getByRole('tab', { name: /Извлечение/ }));
+  response.resolve(undefined);
+  await waitFor(() => {
+    expect(requests.filter(({ method }) => method === 'GET')).toHaveLength(2);
+  });
+  await user.click(screen.getByRole('tab', { name: /^1\s*Файлы/ }));
+  expect(await screen.findByText('Принято 1 файл')).toBeTruthy();
+});
 
 test('a work source with an expired OCR result can be recognized again from its row', async () => {
   let document: WorkView['documents'][number] = {

@@ -151,7 +151,7 @@ function WorkBody({
   }
   async function upload(files: File[]) {
     setError('');
-    await uploadWorkFiles(
+    const accepted = await uploadWorkFiles(
       files,
       (file, idempotencyKey) =>
         uploadDocument.mutateAsync({ file, idempotencyKey }),
@@ -160,6 +160,7 @@ function WorkBody({
     setTimeout(() => {
       setUploads((items) => items.filter((item) => item.state !== 'done'));
     }, 2500);
+    return accepted;
   }
   async function deleteDocument(document: Document) {
     // Удаление исходника сбрасывает несохранённые правки, как и раньше.
@@ -316,16 +317,18 @@ function WorkBody({
       >
         <Stepper current={stepOf(stage)} />
         <div className="mt-8">
-          <Tabs.Panel value="files" className="animate-rise outline-none">
+          <Tabs.Panel
+            value="files"
+            keepMounted
+            className="animate-rise outline-none"
+          >
             <WorkSources
               view={view}
               stage={stage}
               locked={locked}
               busy={busy}
               uploads={uploads}
-              onUpload={(files) => {
-                void upload(files);
-              }}
+              onUpload={upload}
               onOpen={openDocument}
               onAnalyze={analyze}
               onDelete={deleteDocument}

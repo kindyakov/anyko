@@ -23,6 +23,8 @@ interface Flying {
   image: boolean;
 }
 
+const filePlural = new Intl.PluralRules('ru');
+
 export function DropZone({
   onFiles,
   accept,
@@ -33,7 +35,8 @@ export function DropZone({
   hint,
   inputLabel,
 }: {
-  onFiles: (files: File[]) => void;
+  /** Returns the number of files confirmed by the server. */
+  onFiles: (files: File[]) => Promise<number>;
   accept: string;
   multiple?: boolean;
   disabled?: boolean;
@@ -45,8 +48,13 @@ export function DropZone({
   const input = useRef<HTMLInputElement>(null);
   const depth = useRef(0);
   const counter = useRef(0);
+  const pending = useRef(false);
   const [over, setOver] = useState(false);
   const [flying, setFlying] = useState<Flying[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [receipt, setReceipt] = useState<{ id: number; count: number }>();
+  const blocked = disabled || busy || submitting;
+  const hovering = over && !blocked;
   useEffect(() => {
     if (!flying.length) return;
     const timer = setTimeout(() => {
@@ -56,27 +64,42 @@ export function DropZone({
       clearTimeout(timer);
     };
   }, [flying]);
-  function take(list: FileList | null) {
+  async function take(list: FileList | null) {
     const files = [...(list ?? [])].filter((file) => file.size > 0);
-    if (!files.length || disabled) return;
-    const accepted = multiple ? files : files.slice(0, 1);
+    if (!files.length || blocked || pending.current) return;
+    const selected = multiple ? files : files.slice(0, 1);
+    pending.current = true;
+    setSubmitting(true);
+    setReceipt(undefined);
     setFlying(
-      accepted.slice(0, 6).map((file) => ({
+      selected.slice(0, 6).map((file) => ({
         id: ++counter.current,
         name: file.name,
         image: /\.(jpe?g|png|webp|tiff?)$/i.test(file.name),
       })),
     );
-    onFiles(accepted);
+    try {
+      const count = await onFiles(selected);
+      if (count > 0) setReceipt({ id: counter.current, count });
+    } finally {
+      pending.current = false;
+      setSubmitting(false);
+    }
   }
   const drag = (event: DragEvent, entering: boolean | null) => {
     if (!event.dataTransfer.types.includes('Files')) return;
     event.preventDefault();
     if (entering === true) depth.current++;
     if (entering === false) depth.current = Math.max(0, depth.current - 1);
-    setOver(depth.current > 0 && !disabled);
+    setOver(depth.current > 0 && !blocked);
   };
-  const state = over ? 'hungry' : busy || flying.length ? 'active' : 'idle';
+  const loading = busy || submitting;
+  const state = hovering
+    ? 'hungry'
+    : loading || flying.length
+      ? 'active'
+      : 'idle';
+  const plural = receipt ? filePlural.select(receipt.count) : 'other';
   return (
     <div
       onDragEnter={(event) => {
@@ -92,9 +115,9 @@ export function DropZone({
         event.preventDefault();
         depth.current = 0;
         setOver(false);
-        take(event.dataTransfer.files);
+        void take(event.dataTransfer.files);
       }}
-      data-over={over || undefined}
+      data-over={hovering || undefined}
       data-disabled={disabled || undefined}
       className="group/drop glass relative isolate overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(60%_70%_at_50%_55%,#2a0a1299_0%,transparent_70%)] px-6 py-8 transition-[border-color,box-shadow] duration-300 data-[disabled]:*:opacity-60 data-[over]:border-[#ff3b62]/70 data-[over]:shadow-[0_0_0_4px_#db143c22,0_0_60px_-10px_#db143c] sm:px-10 sm:py-10"
     >
@@ -111,6 +134,7 @@ export function DropZone({
           <span className="absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-1/2">
             <EventHorizon
               state={state}
+              pulseId={receipt?.id ?? 0}
               className="size-72 sm:size-[26rem] lg:size-[30rem]"
             />
           </span>
@@ -118,7 +142,7 @@ export function DropZone({
             <span
               key={file.id}
               aria-hidden
-              className={`animate-absorb absolute top-1/2 left-1/2 -mt-4 -ml-14 flex h-8 w-28 items-center gap-1.5 rounded-lg border border-white/15 bg-zinc-900/90 px-2 text-[11px] text-zinc-200 shadow-[0_0_16px_#db143c80] ${orbits[index] ?? ''}`}
+              className={`animate-absorb absolute top-1/2 left-1/2 -mt-4 -ml-14 flex h-8 w-28 items-center gap-1.5 rounded-lg border border-white/15 bg-zinc-900/90 px-2 text-[11px] text-zinc-200 shadow-[0_0_16px_#db143c80] motion-reduce:hidden ${orbits[index] ?? ''}`}
             >
               {file.image ? (
                 <ImageIcon size={13} className="text-rose-300" />
@@ -133,15 +157,24 @@ export function DropZone({
           <Button
             size="lg"
             disabled={disabled}
-            loading={busy}
+            loading={loading}
             onClick={() => input.current?.click()}
           >
             <Upload size={17} />
             {multiple ? 'Выбрать файлы' : 'Выбрать файл'}
           </Button>
-          <span className="text-muted hidden text-xs sm:inline">
-            или перетащите их в Anyko
+          <span
+            role="status"
+            className={receipt ? 'text-ink text-sm' : 'sr-only'}
+          >
+            {receipt &&
+              `Принято ${String(receipt.count)} ${plural === 'one' ? 'файл' : plural === 'few' ? 'файла' : 'файлов'}`}
           </span>
+          {!receipt && (
+            <span className="text-muted hidden text-xs sm:inline">
+              или перетащите их в Anyko
+            </span>
+          )}
         </div>
       </div>
       <Input
@@ -152,9 +185,9 @@ export function DropZone({
         tabIndex={-1}
         accept={accept}
         multiple={multiple}
-        disabled={disabled}
+        disabled={blocked}
         onChange={(event) => {
-          take(event.currentTarget.files);
+          void take(event.currentTarget.files);
           event.currentTarget.value = '';
         }}
       />

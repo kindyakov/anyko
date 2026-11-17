@@ -20,15 +20,21 @@ const moods: Record<HorizonState, { speed: number; glow: number }> = {
 export function EventHorizon({
   state = 'idle',
   className = 'size-40',
+  pulseId = 0,
 }: {
   state?: HorizonState;
   className?: string;
+  pulseId?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mood = useRef(moods[state]);
+  const pulseStartedAt = useRef(-Infinity);
   useEffect(() => {
     mood.current = moods[state];
   }, [state]);
+  useEffect(() => {
+    pulseStartedAt.current = pulseId > 0 ? performance.now() : -Infinity;
+  }, [pulseId]);
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
@@ -62,6 +68,9 @@ export function EventHorizon({
         ship: r > 34 ? Math.min(1, r / 70) : 0,
         quality: Math.min(0.8, Math.max(0.3, r / 90)),
         glow: current.glow,
+        pulse: reduced.matches
+          ? 1
+          : (performance.now() - pulseStartedAt.current) / 900,
       });
       canvas.dataset.ready = 'true';
     }
@@ -105,7 +114,7 @@ export function EventHorizon({
     <span
       aria-hidden
       data-state={state}
-      className={`pointer-events-none relative inline-block shrink-0 transition-transform duration-700 ease-out data-[state=hungry]:scale-110 ${className}`}
+      className={`pointer-events-none relative inline-block shrink-0 transition-transform duration-700 ease-out motion-safe:data-[state=hungry]:scale-110 ${className}`}
     >
       <canvas
         ref={canvasRef}

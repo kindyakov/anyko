@@ -14,15 +14,20 @@ import {
 } from '@anyko/contracts/documents';
 
 import { callApi } from '@/lib/api/call';
-import { ApiError } from '@/lib/api/errors';
+import { ApiError, isUnauthorized } from '@/lib/api/errors';
 
 import { documentKeys } from './keys';
 
 const deletionPollMs = 500;
 const deletionDeadlineMs = 120_000;
+const concurrentDocuments = 4;
 
 function refreshList(client: QueryClient, workspaceId: string) {
   return client.invalidateQueries({ queryKey: documentKeys.list(workspaceId) });
+}
+
+function requestRetry(workspaceId: string, documentId: string) {
+  return callApi(retryDocument, { params: { workspaceId, documentId } });
 }
 
 // Ключ создаёт обработчик выбора файла: один файл — один ключ, повтор того же файла — тот же ключ.
@@ -51,17 +56,49 @@ export function useRetryDocument(
 ) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (documentId: string) =>
-      callApi(retryDocument, { params: { workspaceId, documentId } }),
+    mutationFn: (documentId: string) => requestRetry(workspaceId, documentId),
     onSuccess: () =>
       Promise.all([refreshList(client, workspaceId), refreshWork?.()]),
   });
 }
 
-// Удаление принято сразу, но полное удаление завершается позже: команда ждёт его по getDocumentDeletion.
-export function useDeleteDocument(workspaceId: string) {
+type RecognitionAction = {
+  kind: 'retry' | 'delete';
+  documentIds: string[];
+  bulk: boolean;
+};
+
+async function runForDocuments(
+  documentIds: string[],
+  signal: AbortSignal | undefined,
+  command: (documentId: string) => Promise<unknown>,
+) {
+  const succeeded: string[] = [];
+  const failed: { id: string; error: unknown }[] = [];
+  for (
+    let offset = 0;
+    offset < documentIds.length;
+    offset += concurrentDocuments
+  ) {
+    if (signal?.aborted) break;
+    const group = documentIds.slice(offset, offset + concurrentDocuments);
+    const outcomes = await Promise.allSettled(group.map(command));
+    for (const [index, id] of group.entries()) {
+      const outcome = outcomes[index];
+      if (outcome?.status === 'rejected') {
+        const error: unknown = outcome.reason;
+        if (isUnauthorized(error)) throw error;
+        failed.push({ id, error });
+      } else {
+        succeeded.push(id);
+      }
+    }
+  }
+  return { succeeded, failed };
+}
+
+export function useRecognitionAction(workspaceId: string) {
   const client = useQueryClient();
-  // Опрос завершения живёт, пока открыт экран: при уходе со страницы контроллер отменяет его.
   const screen = useRef<AbortController | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -71,24 +108,44 @@ export function useDeleteDocument(workspaceId: string) {
     };
   }, []);
   return useMutation({
-    mutationFn: async (documentId: string) => {
-      // Отмена не касается самого запроса удаления: он уже мог дойти до сервера.
-      await callApi(deleteDocument, { params: { workspaceId, documentId } });
-      // Список показывает незавершённое удаление, пока его опрашивает эта команда.
+    mutationFn: async ({ kind, documentIds }: RecognitionAction) => {
+      const signal = screen.current?.signal;
+      if (kind === 'retry')
+        return runForDocuments(documentIds, signal, (id) =>
+          requestRetry(workspaceId, id),
+        );
+
+      const requested = await runForDocuments(
+        documentIds,
+        signal,
+        (documentId) =>
+          callApi(deleteDocument, { params: { workspaceId, documentId } }),
+      );
+      if (!requested.succeeded.length) return requested;
+      // Сначала отправляем все удаления. Список показывает принятые операции, пока мы ждём их завершения.
       await refreshList(client, workspaceId);
-      await waitForDeletion(workspaceId, documentId, screen.current?.signal);
+      const deadline = Date.now() + deletionDeadlineMs;
+      const completed = await runForDocuments(
+        requested.succeeded,
+        signal,
+        (id) => waitForDeletion(workspaceId, id, deadline, signal),
+      );
+      return {
+        succeeded: completed.succeeded,
+        failed: [...requested.failed, ...completed.failed],
+      };
     },
-    onSuccess: () => refreshList(client, workspaceId),
+    onSettled: () => refreshList(client, workspaceId),
   });
 }
 
 async function waitForDeletion(
   workspaceId: string,
   documentId: string,
+  deadline: number,
   signal: AbortSignal | undefined,
 ) {
-  const deadline = Date.now() + deletionDeadlineMs;
-  while (!signal?.aborted && Date.now() < deadline) {
+  while (!signal?.aborted) {
     const progress = await callApi(getDocumentDeletion, {
       params: { workspaceId, documentId },
       ...(signal ? { signal } : {}),
@@ -96,6 +153,7 @@ async function waitForDeletion(
     if (progress.status === 'needs-recovery')
       throw new ApiError('DELETION_NEEDS_RECOVERY', 409, undefined);
     if (progress.status === 'deleted') return;
+    if (Date.now() >= deadline) break;
     await new Promise((resolve) => setTimeout(resolve, deletionPollMs));
   }
   // Экран ушёл: результат ожидания некому показывать, ошибка не нужна.

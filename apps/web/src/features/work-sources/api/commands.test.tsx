@@ -61,7 +61,7 @@ test('each file of an upload gets its own idempotency key, and a refused file do
   );
 
   await act(async () => {
-    await uploadWorkFiles(
+    const accepted = await uploadWorkFiles(
       [
         new File(['%PDF'], 'scheme.spl7'),
         new File(['%PDF'], 'passport.pdf', { type: 'application/pdf' }),
@@ -70,6 +70,7 @@ test('each file of an upload gets its own idempotency key, and a refused file do
         result.current.upload.mutateAsync({ file, idempotencyKey }),
       result.current.setUploads,
     );
+    expect(accepted).toBe(1);
   });
 
   const posts = exchanges.filter((item) => item.method === 'POST');

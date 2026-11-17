@@ -107,6 +107,37 @@ test('each file of a multi-file upload gets its own idempotency key', async () =
     return file instanceof File ? file.name : null;
   });
   expect(names).toEqual(['a.pdf', 'b.pdf']);
+  expect(await screen.findByText('Принято 2 файла')).toBeTruthy();
+});
+
+test('only server-confirmed recognition uploads contribute to the receipt', async () => {
+  serveApi((exchange) => {
+    if (exchange.method === 'GET')
+      return json(200, { documents: [], deletions: [] });
+    const file =
+      exchange.body instanceof FormData ? exchange.body.get('file') : null;
+    return file instanceof File && file.name === 'good.pdf'
+      ? json(202, { document: doc('d1', 'good.pdf', 'queued') })
+      : json(400, {
+          error: { code: 'UNSUPPORTED_DOCUMENT_FORMAT', requestId: 'r1' },
+        });
+  });
+  const user = userEvent.setup();
+  renderWorkspace();
+  const input = screen.getByLabelText('Файлы для распознавания');
+
+  await user.upload(input, [
+    new File(['bad'], 'bad.pdf', { type: 'application/pdf' }),
+    new File(['good'], 'good.pdf', { type: 'application/pdf' }),
+  ]);
+  expect(await screen.findByText('Принято 1 файл')).toBeTruthy();
+  expect((await screen.findByRole('alert')).textContent).toContain('bad.pdf');
+
+  await user.upload(input, [
+    new File(['bad'], 'bad-again.pdf', { type: 'application/pdf' }),
+  ]);
+  expect(await screen.findByText(/bad-again\.pdf:/)).toBeTruthy();
+  expect(screen.queryByText(/Принято \d/)).toBeNull();
 });
 
 test('a deletion that is still pending stops polling when the screen leaves the page', async () => {
@@ -186,4 +217,112 @@ test('an old result asks for new recognition and a 409 keeps the preview usable'
       ['GET', recognitionsAddress],
     ],
   );
+});
+
+test('bulk retry runs only for selected failed files and reports partial success', async () => {
+  const documents = [
+    doc('first', 'first.pdf', 'failed'),
+    doc('second', 'second.pdf', 'failed'),
+    doc('ready', 'ready.pdf', 'succeeded'),
+    doc('unselected', 'unselected.pdf', 'failed'),
+  ];
+  const exchanges = serveApi(({ method, url }) => {
+    if (method !== 'POST') return json(200, { documents, deletions: [] });
+    if (url === `${recognitionsAddress}/first/retry`) {
+      const started = doc('first', 'first.pdf', 'queued');
+      documents[0] = started;
+      return json(202, { document: started });
+    }
+    return json(403, { error: { code: 'FORBIDDEN', requestId: 'retry' } });
+  });
+  const user = userEvent.setup();
+  renderWorkspace();
+
+  await user.click(
+    await screen.findByRole('checkbox', { name: 'Выбрать все файлы' }),
+  );
+  expect(screen.getByText('Выбрано: 4')).toBeTruthy();
+  await user.click(
+    screen.getByRole('checkbox', { name: 'Выбрать unselected.pdf' }),
+  );
+  expect(
+    screen
+      .getByRole('checkbox', { name: 'Выбрать все файлы' })
+      .getAttribute('aria-checked'),
+  ).toBe('mixed');
+  await user.click(
+    screen.getByRole('button', { name: 'Повторить распознавание (2)' }),
+  );
+
+  const report = within(await screen.findByRole('alert'));
+  expect(
+    report.getByText('Повторное распознавание запущено: 1 из 2'),
+  ).toBeTruthy();
+  expect(report.getByText(/second\.pdf: Недостаточно прав/)).toBeTruthy();
+  expect(
+    screen.getByRole('checkbox', { name: 'Выбрать first.pdf', checked: false }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('checkbox', { name: 'Выбрать second.pdf', checked: true }),
+  ).toBeTruthy();
+  expect(screen.getByText('В очереди')).toBeTruthy();
+  expect(
+    exchanges.filter(({ method }) => method === 'POST').map(({ url }) => url),
+  ).toEqual([
+    `${recognitionsAddress}/first/retry`,
+    `${recognitionsAddress}/second/retry`,
+  ]);
+});
+
+test('bulk deletion confirms the selection before deleting and leaves unselected files', async () => {
+  let documents = [
+    doc('first', 'first.pdf', 'failed'),
+    doc('second', 'second.pdf', 'succeeded'),
+    doc('kept', 'kept.pdf', 'succeeded'),
+  ];
+  const exchanges = serveApi(({ method, url }) => {
+    if (method === 'DELETE') {
+      documents = documents.filter(
+        ({ id }) => url !== `${recognitionsAddress}/${id}`,
+      );
+      return json(202, { status: 'deleting' });
+    }
+    if (url.endsWith('/deletion')) return json(200, { status: 'deleted' });
+    return json(200, { documents, deletions: [] });
+  });
+  const user = userEvent.setup();
+  renderWorkspace();
+
+  await user.click(
+    await screen.findByRole('checkbox', { name: 'Выбрать first.pdf' }),
+  );
+  await user.click(
+    screen.getByRole('checkbox', { name: 'Выбрать second.pdf' }),
+  );
+  await user.click(screen.getByRole('button', { name: 'Удалить выбранные' }));
+  const dialog = () =>
+    within(
+      screen.getByRole('alertdialog', { name: 'Удалить выбранные файлы (2)?' }),
+    );
+  await user.click(dialog().getByRole('button', { name: 'Отмена' }));
+  expect(exchanges.some(({ method }) => method === 'DELETE')).toBe(false);
+  expect(screen.getByText('Выбрано: 2')).toBeTruthy();
+
+  await user.click(screen.getByRole('button', { name: 'Удалить выбранные' }));
+  await user.click(dialog().getByRole('button', { name: 'Удалить файлы' }));
+
+  expect(await screen.findByText('Удалено: 2 из 2')).toBeTruthy();
+  expect(
+    exchanges.filter(({ method }) => method === 'DELETE').map(({ url }) => url),
+  ).toEqual([`${recognitionsAddress}/first`, `${recognitionsAddress}/second`]);
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(
+    screen.getByRole('checkbox', { name: 'Выбрать kept.pdf', checked: false }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByRole('checkbox', { name: 'Выбрать first.pdf' }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole('checkbox', { name: 'Выбрать second.pdf' }),
+  ).toBeNull();
 });

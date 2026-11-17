@@ -142,6 +142,8 @@ export interface HoleFrame {
   quality: number;
   /** Multiplier for the halo and silhouette glow. */
   glow: number;
+  /** Progress of the upload confirmation pulse. */
+  pulse?: number;
 }
 
 type DiskProjection = (radius: number, angle: number) => [number, number];
@@ -149,7 +151,7 @@ type DiskProjection = (radius: number, angle: number) => [number, number];
 /** The accretion disk, lensed light, shadow and orbiting craft. */
 export function paintBlackHole(
   ctx: CanvasRenderingContext2D,
-  { x, y, r, time, tilt, ship, quality, glow }: HoleFrame,
+  { x, y, r, time, tilt, ship, quality, glow, pulse = 1 }: HoleFrame,
 ) {
   const segments = Math.max(96, Math.round(480 * quality));
   const filaments = Math.max(90, Math.round(280 * quality));
@@ -401,6 +403,31 @@ export function paintBlackHole(
   ctx.fillStyle = shadow;
   ctx.fill();
   disk(project, Math.PI * 2, 1);
+  if (pulse >= 0 && pulse < 1) {
+    const head = Math.PI * (0.85 + pulse * 2);
+    const tail = 0.52;
+    const [headX, headY] = project(1.14, head);
+    const [tailX, tailY] = project(1.14, head - tail);
+    const flare = ctx.createLinearGradient(tailX, tailY, headX, headY);
+    flare.addColorStop(0, '#ff3b6200');
+    flare.addColorStop(0.55, '#ff3b62');
+    flare.addColorStop(1, '#ffe6e8');
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, pulse * 14) * Math.pow(1 - pulse, 0.6);
+    ctx.strokeStyle = flare;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(1, r * 0.019);
+    ctx.shadowColor = '#ff3b62';
+    ctx.shadowBlur = r * 0.13;
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    for (let i = 1; i <= 24; i++) {
+      const [px, py] = project(1.14, head - tail * (1 - i / 24));
+      ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
   // Both the near pass and the lensed far image lie in front of the shadow.
   if (ship) drawSpacecraft();
   ctx.restore();
