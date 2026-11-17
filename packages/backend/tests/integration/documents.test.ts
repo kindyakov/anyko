@@ -284,6 +284,14 @@ test('expired attempt cannot publish after a new claim; database rejects impossi
   expect(
     await store.complete(current, 'results/new-fixture', 'test-parser'),
   ).toBe(true);
+  expect(
+    await store.complete(current, 'results/duplicate-fixture', 'test-parser'),
+  ).toBe(false);
+  expect(
+    await db.processorAttempt.count({
+      where: { workspaceId: own, documentId: doc.id },
+    }),
+  ).toBe(2);
   await expectRejected(
     Promise.resolve(
       db.processingRun.update({

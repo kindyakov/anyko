@@ -21,7 +21,7 @@ export interface WorkGenerationDeps {
 }
 
 // Процесс «генерация документов»: старт запуска и скачивание результата. Исполнение запуска
-// остаётся в workflows/works/execute до этапа 5b.
+// находится в workflows/work-generation/run-generation.
 export function createWorkGeneration(deps: WorkGenerationDeps) {
   return {
     startGeneration: startGeneration(deps),

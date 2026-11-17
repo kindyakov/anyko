@@ -1,5 +1,11 @@
+import type { Clock } from '../../../platform/clock';
+
 import type { ProcessingStore } from './ports';
-export function createProcessingService(store: ProcessingStore) {
+
+export function createProcessingService(
+  store: ProcessingStore,
+  deps: { clock: Clock; newId(): string },
+) {
   return {
     attemptIds: store.attemptIds,
     documentId: store.documentId,
@@ -11,16 +17,16 @@ export function createProcessingService(store: ProcessingStore) {
       return store.claim(
         runId,
         workspaceId,
-        crypto.randomUUID(),
-        new Date(Date.now() + leaseMs),
+        deps.newId(),
+        new Date(deps.clock.now().getTime() + leaseMs),
       );
     },
     complete: store.complete,
     fail: store.fail,
     reserveDelivery() {
       return store.reserveDelivery(
-        crypto.randomUUID(),
-        new Date(Date.now() + 30000),
+        deps.newId(),
+        new Date(deps.clock.now().getTime() + 30000),
       );
     },
     delivered: store.delivered,

@@ -1,16 +1,16 @@
-import type { FieldDefinition } from '@anyko/contracts/catalog';
-import type { AgentSessionContext, WorkFacts } from '@anyko/contracts/works';
-
 import {
+  type AgentSessionContext,
   combineCandidates,
+  type FieldDefinition,
   selectSessionCandidates,
+  type WorkFacts,
 } from '../../modules/agents';
 import { findFactConflicts, mergeCandidates } from '../../modules/facts';
 import type { WorkRunRecord } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
+import type { WorkDependencies } from '../work-dependencies';
 
 import { callModel } from './model-call';
-import type { WorkDependencies } from './ports';
 
 export interface ContinuationSource {
   id: string;
@@ -20,11 +20,15 @@ export interface ContinuationSource {
   visuals: { path: string; description: string }[];
 }
 
+type LlmConfig = Awaited<
+  ReturnType<WorkDependencies['processing']['internal']['connection']>
+>;
+
 /** One entry point for continuing a logical work session; transport never owns its context. */
 export function createWorkContinuation(deps: WorkDependencies) {
   return async (input: {
     run: WorkRunRecord;
-    config: Awaited<ReturnType<WorkDependencies['settings']['connection']>>;
+    config: LlmConfig;
     fields: FieldDefinition[];
     candidates: WorkFacts['candidates'];
     sources: ContinuationSource[];
@@ -39,13 +43,20 @@ export function createWorkContinuation(deps: WorkDependencies) {
         `work:${run.workspaceId}:${run.workId}`,
         async () => {
           const work = await input.current();
-          const facts = await deps.facts.get(run.workspaceId, run.workId);
-          const session = await deps.sessions.ensure(
+          const facts = await deps.facts.internal.get(
             run.workspaceId,
             run.workId,
           );
-          const threadId = crypto.randomUUID();
-          await deps.processing.thread(run.workspaceId, run.workId, threadId);
+          const session = await deps.agents.internal.ensure(
+            run.workspaceId,
+            run.workId,
+          );
+          const threadId = deps.newId();
+          await deps.processing.internal.thread(
+            run.workspaceId,
+            run.workId,
+            threadId,
+          );
           return { work, facts, session, threadId };
         },
       );
@@ -61,14 +72,15 @@ export function createWorkContinuation(deps: WorkDependencies) {
             ),
         ),
       );
-      let output: Awaited<ReturnType<typeof deps.agents.reconcile>> | undefined;
+      let output:
+        Awaited<ReturnType<typeof deps.agents.model.reconcile>> | undefined;
       try {
         if (!input.sources.length) throw new Error('NO_READABLE_SOURCES');
-        await deps.processing.step(run, {
+        await deps.processing.internal.step(run, {
           stage: 'reconciliation',
           status: 'running',
         });
-        await deps.works.event(
+        await deps.works.internal.event(
           run.workspaceId,
           run.workId,
           'processing.changed',
@@ -87,7 +99,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
           provider: input.config.connection.id,
           model: input.config.extractionModel,
           execute: () =>
-            deps.agents.reconcile({
+            deps.agents.model.reconcile({
               sessionId: snapshot.session.id,
               threadId: snapshot.threadId,
               resource: `${run.workspaceId}:${run.workId}`,
@@ -134,86 +146,88 @@ export function createWorkContinuation(deps: WorkDependencies) {
             return false;
           let validOutput =
             work.revision === snapshot.work.revision ? output : undefined;
-          await deps.transaction(
-            async ({ facts, works, processing, sessions }) => {
-              // This CAS takes a row lock until commit; a reconciler cannot replace the attempt mid-acceptance.
-              await processing.fence(run);
-              const existing = await facts.get(run.workspaceId, run.workId);
-              const selection = selectSessionCandidates(
-                candidates,
-                existing.candidates,
-                validOutput?.candidates ?? [],
-              );
-              if (!selection.contextAccepted) validOutput = undefined;
-              const next = mergeCandidates(
-                existing,
-                selection.candidates,
-                work.confirmedRevision === work.revision,
-              );
-              // A failed optional stage must not erase known values solely because its proposals exceed the budget.
-              if (!validOutput)
-                for (const field of input.fields) {
-                  if (!selection.candidates.some((c) => c.field === field.key))
-                    next.values[field.key] = existing.values[field.key];
-                }
-              await facts.save(run.workspaceId, run.workId, next);
-              await works.touch(run.workspaceId, run.workId, {});
-              if (validOutput && run.settingsRevision !== null) {
-                const context: AgentSessionContext = {
-                  version: 1,
-                  promptVersion: 'work-context-v1',
-                  workRevision: work.revision + 1,
-                  inputRevision: work.inputRevision,
-                  settingsRevision: run.settingsRevision,
-                  summary: validOutput.summary,
-                  documents: input.sources.map(({ id, digest }) => ({
-                    id,
-                    digest,
-                  })),
-                  missingFields: input.fields
-                    .filter((f) => next.values[f.key] === null)
-                    .map((f) => f.key),
-                  conflictFields: findFactConflicts(next).filter((key) =>
-                    input.fields.some((f) => f.key === key),
-                  ),
-                };
-                await sessions.accept({
-                  workspaceId: run.workspaceId,
-                  workId: run.workId,
-                  sessionId: snapshot.session.id,
-                  expectedRevision: snapshot.session.revision,
-                  runId: run.id,
-                  threadId: snapshot.threadId,
-                  context,
-                  output: {
-                    summary: validOutput.summary,
-                    candidates: validOutput.candidates,
-                  },
-                });
+          await deps.uow.run(async (tx) => {
+            const processing = deps.processing.in(tx).internal;
+            const facts = deps.facts.in(tx).internal;
+            const works = deps.works.in(tx).internal;
+            const sessions = deps.agents.in(tx).internal;
+            // This CAS takes a row lock until commit; a reconciler cannot replace the attempt mid-acceptance.
+            await processing.fence(run);
+            const existing = await facts.get(run.workspaceId, run.workId);
+            const selection = selectSessionCandidates(
+              candidates,
+              existing.candidates,
+              validOutput?.candidates ?? [],
+            );
+            if (!selection.contextAccepted) validOutput = undefined;
+            const next = mergeCandidates(
+              existing,
+              selection.candidates,
+              work.confirmedRevision === work.revision,
+            );
+            // A failed optional stage must not erase known values solely because its proposals exceed the budget.
+            if (!validOutput)
+              for (const field of input.fields) {
+                if (!selection.candidates.some((c) => c.field === field.key))
+                  next.values[field.key] = existing.values[field.key];
               }
-              await processing.step(run, {
-                stage: 'reconciliation',
-                status: validOutput ? 'succeeded' : 'failed',
-                ...(!validOutput
-                  ? {
-                      errorCode:
-                        work.revision !== snapshot.work.revision
-                          ? 'CONTEXT_REVISION_CHANGED'
-                          : 'CONTEXT_RECONCILIATION_FAILED',
-                    }
-                  : { usage: validOutput.usage }),
+            await facts.save(run.workspaceId, run.workId, next);
+            await works.touch(run.workspaceId, run.workId, {});
+            if (validOutput && run.settingsRevision !== null) {
+              const context: AgentSessionContext = {
+                version: 1,
+                promptVersion: 'work-context-v1',
+                workRevision: work.revision + 1,
+                inputRevision: work.inputRevision,
+                settingsRevision: run.settingsRevision,
+                summary: validOutput.summary,
+                documents: input.sources.map(({ id, digest }) => ({
+                  id,
+                  digest,
+                })),
+                missingFields: input.fields
+                  .filter((f) => next.values[f.key] === null)
+                  .map((f) => f.key),
+                conflictFields: findFactConflicts(next).filter((key) =>
+                  input.fields.some((f) => f.key === key),
+                ),
+              };
+              await sessions.accept({
+                workspaceId: run.workspaceId,
+                workId: run.workId,
+                sessionId: snapshot.session.id,
+                expectedRevision: snapshot.session.revision,
+                runId: run.id,
+                threadId: snapshot.threadId,
+                context,
+                output: {
+                  summary: validOutput.summary,
+                  candidates: validOutput.candidates,
+                },
               });
-              await processing.finish(
-                run,
-                input.completed === 0
-                  ? 'failed'
-                  : input.failures || !validOutput
-                    ? 'partial'
-                    : 'succeeded',
-              );
-              await works.event(run.workspaceId, run.workId, 'facts.changed');
-            },
-          );
+            }
+            await processing.step(run, {
+              stage: 'reconciliation',
+              status: validOutput ? 'succeeded' : 'failed',
+              ...(!validOutput
+                ? {
+                    errorCode:
+                      work.revision !== snapshot.work.revision
+                        ? 'CONTEXT_REVISION_CHANGED'
+                        : 'CONTEXT_RECONCILIATION_FAILED',
+                  }
+                : { usage: validOutput.usage }),
+            });
+            await processing.finish(
+              run,
+              input.completed === 0
+                ? 'failed'
+                : input.failures || !validOutput
+                  ? 'partial'
+                  : 'succeeded',
+            );
+            await works.event(run.workspaceId, run.workId, 'facts.changed');
+          });
           return true;
         },
       );

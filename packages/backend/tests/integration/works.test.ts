@@ -17,11 +17,7 @@ import { createLogger } from '@anyko/logger';
 
 import type { DocumentAgents } from '../../src/modules/agents';
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
-import { createAgentSessionStore } from '../../src/modules/agents/infrastructure/session-store';
-import { record } from '../../src/modules/audit';
 import type { SourceStorage } from '../../src/modules/documents';
-import { createFactsStore } from '../../src/modules/facts/infrastructure/store';
-import { createGenerationStore } from '../../src/modules/generation/infrastructure/store';
 import { createWorkProcessingStore } from '../../src/modules/processing/infrastructure/work-store';
 import { createWorkStore } from '../../src/modules/works/infrastructure/store';
 import {
@@ -31,7 +27,6 @@ import {
   brandWorkId,
 } from '../../src/platform/ids';
 import { createBackend } from '../../src/runtime';
-import type { WorkStores } from '../../src/workflows/works/ports';
 import { integrationConfig } from '../support/composition';
 import { memberScope } from '../support/scope';
 
@@ -47,18 +42,6 @@ const locks = createResourceLocks(pool);
 // Read-side adapters the processing assertions use directly, on the same database.
 const workProcessing = createWorkProcessingStore(db);
 const actualPool = createDatabasePool(databaseUrl);
-function transaction<T>(operation: (stores: WorkStores) => Promise<T>) {
-  return db.$transaction((tx) =>
-    operation({
-      sessions: createAgentSessionStore(tx),
-      works: createWorkStore(tx),
-      facts: createFactsStore(tx),
-      generation: createGenerationStore(tx),
-      processing: createWorkProcessingStore(tx),
-      audit: { record: (event) => record(tx, event) },
-    }),
-  );
-}
 const owned: string[] = [];
 const files = new Map<string, Uint8Array>();
 const storage: SourceStorage = {
@@ -1175,9 +1158,9 @@ test('superseded attempt cannot commit a session checkpoint or facts', async () 
     data: { attemptToken: crypto.randomUUID() },
   });
   await rejects(
-    transaction(async (stores) => {
-      await stores.processing.fence(old);
-      await stores.works.touch(input.workspaceId, input.workId, {});
+    db.$transaction(async (tx) => {
+      await createWorkProcessingStore(tx).fence(old);
+      await createWorkStore(tx).touch(input.workspaceId, input.workId, {});
     }),
     'STALE_WORK_ATTEMPT',
   );

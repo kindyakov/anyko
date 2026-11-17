@@ -1,5 +1,6 @@
 import type { FieldDefinition } from '@anyko/contracts/catalog';
 import type { AgentSessionContext, WorkFacts } from '@anyko/contracts/works';
+export type { FieldDefinition, AgentSessionContext, WorkFacts };
 import type { ModelConnection } from '@anyko/llm';
 
 import type { Tx } from '../../platform/transactions';
@@ -68,7 +69,6 @@ export {
   combineCandidates,
   selectSessionCandidates,
 } from './application/session';
-export type { AgentSessionStore } from './application/session';
 
 // Фасад агентов: сессия работы (контекст и согласование кандидатов) для процессов. Внешние вызовы
 // модели (DocumentAgents выше) идут через порт вне UnitOfWork и не входят в фасад транзакции.
@@ -77,5 +77,6 @@ export interface AgentsPorts {
   readonly internal: AgentSessionStore;
 }
 export interface AgentsModule extends AgentsPorts {
+  readonly model: DocumentAgents;
   in(tx: Tx): AgentsPorts;
 }

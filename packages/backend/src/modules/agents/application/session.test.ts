@@ -5,7 +5,7 @@ import { agentSessionContextSchema } from '@anyko/contracts/works';
 import { combineCandidates, selectSessionCandidates } from './session';
 
 test('context additions cannot erase contradictory document proposals and duplicate evidence is bounded', () => {
-  const id = crypto.randomUUID();
+  const id = '01900000-0000-7000-8000-000000000001';
   const original = {
     field: 'personName' as const,
     value: 'Анна',
@@ -30,7 +30,7 @@ test('persisted context rejects incompatible prompt and shape versions', () => {
 });
 
 test('overflowing optional context proposals preserve all 500 valid raw candidates', () => {
-  const id = crypto.randomUUID();
+  const id = '01900000-0000-7000-8000-000000000001';
   const raw = Array.from({ length: 500 }, (_, i) => ({
     field: 'personName' as const,
     value: String(i),

@@ -8,7 +8,7 @@ import {
 import type { WorkId } from '../platform/ids';
 import type { WorkspaceScope } from '../platform/scope/workspace-scope';
 
-// Общие проверки сценариев работы. Ключ блокировки совпадает с ключом исполнения (workflows/works/execute):
+// Общие проверки сценариев работы. Ключ блокировки совпадает с ключом исполнения (workflows/work-execution):
 // изменения работы и её запуски не идут параллельно.
 export const workLockKey = (workspaceId: string, workId: string) =>
   `work:${workspaceId}:${workId}`;

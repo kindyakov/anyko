@@ -6,11 +6,6 @@ import type { AuditRecord } from './domain/events';
 export { record } from './infrastructure/record';
 export type { AuditWriter } from './infrastructure/record';
 
-// Порт записи события для сценария (устаревший путь workflows/works до этапа 5b): привязан к транзакции.
-export interface AuditSink {
-  record(event: AuditRecord): Promise<void>;
-}
-
 // Фасад модуля: команда записи без транзакции и `in(tx)` — та же команда внутри действия.
 export interface AuditCommands {
   record(event: AuditRecord): Promise<void>;

@@ -1,27 +1,18 @@
-import type { WorkFacts } from '@anyko/contracts/works';
 import { LlmError } from '@anyko/llm';
 
-import { checksum, DocumentError } from '../../modules/documents';
-import { generateDocument } from '../../modules/generation';
-import { stepOutputSchema } from '../../modules/processing';
-import type {
-  WorkProcessingStore,
-  WorkRunRecord,
-} from '../../modules/processing';
-import {
-  requirePackage,
-  templateBytes,
-  templateData,
-} from '../../modules/templates';
+import type { WorkFacts } from '../../modules/agents';
+import { DocumentError } from '../../modules/documents';
+import { stepOutputSchema, type WorkRunRecord } from '../../modules/processing';
+import { requirePackage } from '../../modules/templates';
+import type { WorkDependencies } from '../work-dependencies';
+import { createRunState, type RunState } from '../work-execution/run-state';
 
 import {
   type ContinuationSource,
   createWorkContinuation,
 } from './continue-session';
 import { addUsage, callModel } from './model-call';
-import type { WorkDependencies } from './ports';
 
-type StepInput = Parameters<WorkProcessingStore['step']>[1];
 const delay = (signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
     const abort = () => {
@@ -36,31 +27,13 @@ const delay = (signal: AbortSignal) =>
     if (signal.aborted) abort();
   });
 
-export function createWorkExecution(deps: WorkDependencies) {
+// Анализ работы: разбор документов, описание изображений, извлечение кандидатов и сверка сессии.
+// Каждый шаг пишется в запуск; вызовы модели выполняются вне UnitOfWork.
+export function createWorkAnalysis(deps: WorkDependencies) {
+  const state: RunState = createRunState(deps);
+  const current = (run: WorkRunRecord) => state.current(run);
+  const step: RunState['step'] = (run, input) => state.step(run, input);
   const continueSession = createWorkContinuation(deps);
-  const current = async (run: WorkRunRecord) => {
-    const work = await deps.works.get(run.workspaceId, run.workId);
-    const docs = await deps.works.documents(run.workspaceId, run.workId);
-    if (
-      !work ||
-      work.inputRevision !== run.inputRevision ||
-      docs.some((doc) => doc.deleted) ||
-      !(await deps.processing.valid(run))
-    )
-      throw new Error('STALE_WORK_ATTEMPT');
-    return work;
-  };
-  const step = async (run: WorkRunRecord, input: StepInput) => {
-    await deps.processing.step(run, input);
-    deps.logger.info({
-      event: 'work_step_changed',
-      jobId: run.id,
-      jobType: input.stage,
-      state: input.status,
-      correlationId: run.correlationId,
-    });
-    await deps.works.event(run.workspaceId, run.workId, 'processing.changed');
-  };
   const parse = async (
     run: WorkRunRecord,
     documentId: string,
@@ -94,9 +67,9 @@ export function createWorkExecution(deps: WorkDependencies) {
       documentId,
     });
   };
-  const analysis = async (run: WorkRunRecord, signal: AbortSignal) => {
+  return async (run: WorkRunRecord, signal: AbortSignal) => {
     if (run.settingsRevision === null) throw new Error('LLM_NOT_CONFIGURED');
-    const config = await deps.settings.connection(
+    const config = await deps.processing.internal.connection(
       run.workspaceId,
       run.settingsRevision,
     );
@@ -112,7 +85,7 @@ export function createWorkExecution(deps: WorkDependencies) {
         await current(run);
         const source = await parse(run, documentId, signal);
         stage = 'vision';
-        let output = await deps.processing.cached(
+        let output = await deps.processing.internal.cached(
           run,
           documentId,
           'vision',
@@ -132,7 +105,7 @@ export function createWorkExecution(deps: WorkDependencies) {
           for (const image of normalized.length ? normalized : source.images) {
             signal.throwIfAborted();
             await current(run);
-            const callId = crypto.randomUUID();
+            const callId = deps.newId();
             const result = await callModel({
               logger: deps.logger,
               callId,
@@ -142,7 +115,7 @@ export function createWorkExecution(deps: WorkDependencies) {
               provider: config.connection.id,
               model: config.visionModel,
               execute: () =>
-                deps.agents.describe({
+                deps.agents.model.describe({
                   connection: config.connection,
                   modelId: config.visionModel,
                   resource: `${run.workspaceId}:${run.workId}`,
@@ -177,7 +150,7 @@ export function createWorkExecution(deps: WorkDependencies) {
           });
         }
         stage = 'extraction';
-        let extracted = await deps.processing.cached(
+        let extracted = await deps.processing.internal.cached(
           run,
           documentId,
           stage,
@@ -197,8 +170,12 @@ export function createWorkExecution(deps: WorkDependencies) {
           ) {
             signal.throwIfAborted();
             await current(run);
-            const threadId = crypto.randomUUID();
-            await deps.processing.thread(run.workspaceId, run.workId, threadId);
+            const threadId = deps.newId();
+            await deps.processing.internal.thread(
+              run.workspaceId,
+              run.workId,
+              threadId,
+            );
             const result = await callModel({
               logger: deps.logger,
               callId: threadId,
@@ -208,7 +185,7 @@ export function createWorkExecution(deps: WorkDependencies) {
               provider: config.connection.id,
               model: config.extractionModel,
               execute: () =>
-                deps.agents.extract({
+                deps.agents.model.extract({
                   connection: config.connection,
                   modelId: config.extractionModel,
                   fields: pack.fields,
@@ -243,9 +220,9 @@ export function createWorkExecution(deps: WorkDependencies) {
         sources.push({
           id: documentId,
           filename:
-            (await deps.works.documents(run.workspaceId, run.workId)).find(
-              (d) => d.id === documentId,
-            )?.filename ?? documentId,
+            (
+              await deps.works.internal.documents(run.workspaceId, run.workId)
+            ).find((d) => d.id === documentId)?.filename ?? documentId,
           digest: source.sourceDigest,
           text: source.text,
           visuals: output.visuals,
@@ -282,150 +259,5 @@ export function createWorkExecution(deps: WorkDependencies) {
       signal,
       current: () => current(run),
     });
-  };
-  const generation = async (run: WorkRunRecord, signal: AbortSignal) => {
-    if (!run.generationId) throw new Error('GENERATION_MISSING');
-    const record = await deps.generation.get(
-      run.workspaceId,
-      run.workId,
-      run.generationId,
-    );
-    if (!record) throw new Error('GENERATION_MISSING');
-    const pack = requirePackage(record.packageVersion);
-    const data = templateData(record.values);
-    let completed = 0;
-    await step(run, { stage: 'generation', status: 'running' });
-    for (const file of record.files) {
-      signal.throwIfAborted();
-      await current(run);
-      const template = pack.documents.find(
-        (entry) => entry.version === file.templateVersion,
-      );
-      if (!template) throw new Error('PACKAGE_TEMPLATE_MISMATCH');
-      const expected = templateBytes(template.version);
-      const templateKey = `templates/${template.version}/${template.checksum}.docx`;
-      if (!(await deps.storage.exists(templateKey)))
-        await deps.storage.put(
-          templateKey,
-          expected,
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          signal,
-        );
-      const source = await deps.storage.get(templateKey, signal);
-      if ((await checksum(source)) !== template.checksum)
-        throw new Error('TEMPLATE_CHECKSUM_MISMATCH');
-      let bytes: Uint8Array;
-      try {
-        bytes = generateDocument(source, data);
-      } catch {
-        await deps.generation.failFile(run.workspaceId, record.id, file.id);
-        await deps.works.event(
-          run.workspaceId,
-          run.workId,
-          'generation.file.failed',
-        );
-        continue;
-      }
-      const key = `generated/${run.workspaceId}/${run.workId}/${crypto.randomUUID()}.docx`;
-      await deps.generation.stage(run.workspaceId, run.workId, key);
-      // Storage errors propagate to the durable I/O barrier; never hide an unknown PUT outcome.
-      await deps.storage.put(
-        key,
-        bytes,
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        signal,
-      );
-      await deps.locks.run(
-        `work:${run.workspaceId}:${run.workId}`,
-        async () => {
-          await current(run);
-          await deps.transaction(async ({ generation: store, works }) => {
-            await store.publish({
-              workspaceId: run.workspaceId,
-              workId: run.workId,
-              id: record.id,
-              fileId: file.id,
-              key,
-              checksum: await checksum(bytes),
-            });
-            await works.event(
-              run.workspaceId,
-              run.workId,
-              'generation.file.ready',
-            );
-          });
-        },
-      );
-      completed++;
-    }
-    const status =
-      completed === record.files.length
-        ? 'succeeded'
-        : completed
-          ? 'partial'
-          : 'failed';
-    await deps.locks.run(`work:${run.workspaceId}:${run.workId}`, async () => {
-      await current(run);
-      await deps.transaction(
-        async ({ generation: store, processing, works }) => {
-          await store.finish(run.workspaceId, record.id, status);
-          await processing.step(run, {
-            stage: 'generation',
-            status: status === 'succeeded' ? 'succeeded' : 'failed',
-          });
-          await processing.finish(run, status);
-          await works.event(run.workspaceId, run.workId, 'generation.ready');
-        },
-      );
-    });
-  };
-
-  return async (workspaceId: string, runId: string, signal: AbortSignal) => {
-    await deps.locks.run(
-      `work-run:${workspaceId}:${runId}`,
-      async (lockSignal) => {
-        const run = await deps.processing.claim(workspaceId, runId);
-        if (!run) return;
-        deps.logger.info({
-          event: 'work_started',
-          jobId: run.id,
-          jobType: run.kind,
-          correlationId: run.correlationId,
-        });
-        const bounded = AbortSignal.any([
-          signal,
-          lockSignal,
-          AbortSignal.timeout(1_500_000),
-        ]);
-        const guarded = (index: number): Promise<void> => {
-          const id = run.documentIds[index];
-          return id
-            ? deps.documentIo.run({ workspaceId, documentId: id }, () =>
-                guarded(index + 1),
-              )
-            : run.kind === 'analysis'
-              ? analysis(run, bounded)
-              : generation(run, bounded);
-        };
-        try {
-          await deps.workIo.run(workspaceId, run.workId, () => guarded(0));
-        } catch (error) {
-          await deps.processing.finish(
-            run,
-            bounded.aborted ? 'cancelled' : 'failed',
-            error instanceof LlmError ? error.code : 'WORK_PROCESSING_FAILED',
-          );
-          if (run.generationId)
-            await deps.generation.fail(workspaceId, run.generationId);
-          await deps.works.event(workspaceId, run.workId, 'processing.failed');
-          deps.logger.error({
-            event: 'work_processing_failed',
-            correlationId: run.correlationId,
-            errorCode:
-              error instanceof LlmError ? error.code : 'WORK_PROCESSING_FAILED',
-          });
-        }
-      },
-    );
   };
 }

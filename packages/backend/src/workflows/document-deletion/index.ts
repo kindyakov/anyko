@@ -1,6 +1,6 @@
 import type { Logger } from '@anyko/logger';
 
-import type { ResourceLocks, SourceStorage } from '../modules/documents';
+import type { ResourceLocks, SourceStorage } from '../../modules/documents';
 export function createDocumentDeletionWorkflow(options: {
   pending: () => Promise<
     { id: string; workspaceId: string; requestKey: string }[]

@@ -12,10 +12,16 @@ import {
 
 type Connection = Pick<Database, 'workAgentSession' | 'workAgentTurn'>;
 // Сессия работы внутри транзакции действия (создание работы): токен превращается в клиент транзакции.
-export function agentSessionStoreFor(tx: Tx): AgentSessionStore {
-  return createAgentSessionStore(transactionHandle<Connection>(tx));
+export function agentSessionStoreFor(
+  tx: Tx,
+  newId: () => string,
+): AgentSessionStore {
+  return createAgentSessionStore(transactionHandle<Connection>(tx), newId);
 }
-export function createAgentSessionStore(db: Connection): AgentSessionStore {
+export function createAgentSessionStore(
+  db: Connection,
+  newId: () => string,
+): AgentSessionStore {
   const view = (row: {
     id: string;
     revision: number;
@@ -39,7 +45,7 @@ export function createAgentSessionStore(db: Connection): AgentSessionStore {
       return view(
         await db.workAgentSession.upsert({
           where: { workspaceId_workId: { workspaceId, workId } },
-          create: { id: crypto.randomUUID(), workspaceId, workId },
+          create: { id: newId(), workspaceId, workId },
           update: {},
         }),
       );
@@ -61,7 +67,7 @@ export function createAgentSessionStore(db: Connection): AgentSessionStore {
       if (changed.count !== 1) throw new Error('STALE_AGENT_SESSION');
       await db.workAgentTurn.create({
         data: {
-          id: crypto.randomUUID(),
+          id: newId(),
           workspaceId: input.workspaceId,
           workId: input.workId,
           sessionId: input.sessionId,

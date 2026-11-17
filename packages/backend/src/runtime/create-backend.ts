@@ -64,9 +64,9 @@ import { createWorkIo } from '../modules/works/infrastructure/work-io';
 import { createWorksModule } from '../modules/works/module';
 import { systemClock } from '../platform/clock';
 import { uuidV7 } from '../platform/ids';
-import type { Tx } from '../platform/transactions';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
+import type { WorkDependencies } from '../workflows/work-dependencies';
 import {
   createWorkGeneration,
   type WorkGeneration,
@@ -74,7 +74,6 @@ import {
 import { createWorkIntake, type WorkIntake } from '../workflows/work-intake';
 import { createWorkReview, type WorkReview } from '../workflows/work-review';
 import { createWorkView, type WorkViews } from '../workflows/work-view';
-import type { WorkDependencies, WorkStores } from '../workflows/works/ports';
 
 import {
   type BackendConfig,
@@ -219,10 +218,6 @@ export function createBackend(
     storeFor: generationStoreFor,
     newId: uuidV7,
   });
-  const agentsFacade = createAgentsModule({
-    store: createAgentSessionStore(db),
-    storeFor: agentSessionStoreFor,
-  });
   const processingFacade = createProcessingModule({
     store: createWorkProcessingStore(db),
     storeFor: workProcessingStoreFor,
@@ -232,25 +227,31 @@ export function createBackend(
 
   let agentsDelegate: DocumentAgents | undefined = dependencies.agents;
   const agents = () => (agentsDelegate ??= createDocumentAgents({ pool }));
-  // Мост для процессов 5b (execute, continue-session, cleanup): наборы хранилищ внутри транзакции.
-  const bridgeStores = (tx: Tx): WorkStores => ({
-    sessions: agentSessionStoreFor(tx),
-    works: worksStoreFor(tx),
-    facts: factsStoreFor(tx),
-    generation: generationStoreFor(tx),
-    processing: workProcessingStoreFor(tx),
-    audit: audit.in(tx).commands,
+  // Внешние вызовы модели доступны только вне транзакционного фасада.
+  const model: DocumentAgents = {
+    ready: () => agents().ready(),
+    describe: (input) => agents().describe(input),
+    extract: (input) => agents().extract(input),
+    reconcile: (input) => agents().reconcile(input),
+    eraseThread: (id) => agents().eraseThread(id),
+    stop: async () => {
+      await agentsDelegate?.stop();
+    },
+  };
+  const agentsFacade = createAgentsModule({
+    store: createAgentSessionStore(db, uuidV7),
+    storeFor: (tx) => agentSessionStoreFor(tx, uuidV7),
+    model,
   });
   const work: WorkDependencies = {
-    sessions: createAgentSessionStore(db),
-    works: createWorkStore(db),
-    facts: createFactsStore(db),
-    generation: createGenerationStore(db),
-    processing: createWorkProcessingStore(db),
-    audit: audit.commands,
-    transaction: (operation) => uow.run((tx) => operation(bridgeStores(tx))),
+    newId: uuidV7,
+    uow,
+    works,
+    facts,
+    generation,
+    processing: processingFacade,
+    agents: agentsFacade,
     documents,
-    settings: llmSettings,
     locks,
     documentIo: createDocumentIo(db, uuidV7),
     workIo: createWorkIo(db),
@@ -260,16 +261,6 @@ export function createBackend(
         documentId,
         requestKey,
       ),
-    agents: {
-      ready: () => agents().ready(),
-      describe: (input) => agents().describe(input),
-      extract: (input) => agents().extract(input),
-      reconcile: (input) => agents().reconcile(input),
-      eraseThread: (id) => agents().eraseThread(id),
-      stop: async () => {
-        await agentsDelegate?.stop();
-      },
-    },
     storage,
     logger,
   };
@@ -279,7 +270,7 @@ export function createBackend(
   const ready = async () => {
     await storage.ready?.();
     await db.$queryRaw`SELECT 1`;
-    if (role === 'worker') await work.agents.ready();
+    if (role === 'worker') await work.agents.model.ready();
   };
   const stop = () =>
     (stopping ??= (async () => {
@@ -297,7 +288,7 @@ export function createBackend(
       for (const handle of [...started].reverse())
         await attempt(() => handle.stop());
       await attempt(() => lockPool.end());
-      await attempt(() => work.agents.stop());
+      await attempt(() => work.agents.model.stop());
       await attempt(() => db.$disconnect());
       await attempt(() => pool.end());
       if (failures.length > 0) throw new Error('BACKEND_STOP_FAILED');
@@ -360,7 +351,10 @@ export function createBackend(
       baseUrl: worker.mineru.baseUrl,
       timeoutMs: worker.mineru.timeoutMs,
     });
-  const processing = createProcessingService(createProcessingStore(db));
+  const processing = createProcessingService(createProcessingStore(db), {
+    clock: systemClock,
+    newId: uuidV7,
+  });
   const deleteDocuments = createDocumentDeletionWorkflow({
     ...createDeletionStore(db),
     resultKeys: processing.resultKeys,

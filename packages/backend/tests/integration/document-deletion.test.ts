@@ -400,13 +400,16 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
     const run = await db.processingRun.findFirstOrThrow({
       where: { workspaceId, documentId: document.id },
     });
-    const processing = createProcessingService({
-      ...createProcessingStore(db),
-      fail() {
-        calls.failure++;
-        return Promise.reject(new Error('STATUS_UPDATE_DOWN'));
+    const processing = createProcessingService(
+      {
+        ...createProcessingStore(db),
+        fail() {
+          calls.failure++;
+          return Promise.reject(new Error('STATUS_UPDATE_DOWN'));
+        },
       },
-    });
+      { clock: { now: () => new Date() }, newId: () => crypto.randomUUID() },
+    );
     const execute = createDocumentOcrWorkflow({
       processing,
       storage,

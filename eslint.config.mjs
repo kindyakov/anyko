@@ -63,10 +63,6 @@ export default [
       'packages/backend/src/modules/*/domain/**/*.{js,mjs,cjs,ts,tsx}',
       'packages/backend/src/modules/*/application/**/*.{js,mjs,cjs,ts,tsx}',
     ],
-    ignores: [
-      // Временно: сокращается этапами #19/#21 (часы и ID сценариев).
-      'packages/backend/src/modules/processing/application/service.ts',
-    ],
     rules: {
       'no-restricted-syntax': [
         'error',

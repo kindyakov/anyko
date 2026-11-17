@@ -4,9 +4,9 @@ import { z } from 'zod';
 
 import type { Logger } from '@anyko/logger';
 
-import { createWorkCleanup } from '../../workflows/works/cleanup';
-import { createWorkExecution } from '../../workflows/works/execute';
-import type { WorkDependencies } from '../../workflows/works/ports';
+import type { WorkDependencies } from '../../workflows/work-dependencies';
+import { createWorkExecution } from '../../workflows/work-execution';
+import { createWorkCleanup } from '../../workflows/work-maintenance';
 
 const envelope = z
   .object({
@@ -105,10 +105,10 @@ export async function createWorkWorker(options: {
   loop = (async () => {
     while (!controller.signal.aborted) {
       try {
-        await deps.processing.reconcile();
+        await deps.processing.internal.reconcile();
         await cleanup();
         for (let i = 0; i < 20; i++) {
-          const item = await deps.processing.delivery();
+          const item = await deps.processing.internal.delivery();
           if (!item) break;
           try {
             await queue.add(
@@ -121,9 +121,9 @@ export async function createWorkWorker(options: {
                 attempts: 1,
               },
             );
-            await deps.processing.delivered(item.id, item.token);
+            await deps.processing.internal.delivered(item.id, item.token);
           } catch {
-            await deps.processing.release(item.id, item.token);
+            await deps.processing.internal.release(item.id, item.token);
             throw new Error('WORK_DISPATCH_FAILED');
           }
         }
