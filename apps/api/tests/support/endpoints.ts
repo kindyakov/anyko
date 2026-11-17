@@ -6,7 +6,7 @@ import * as documents from '@anyko/contracts/documents';
 import * as session from '@anyko/contracts/session';
 import * as works from '@anyko/contracts/works';
 
-// Каждый subpath contracts перечислен здесь; тест реестра ловит subpath, забытый в этом списке.
+// Тест реестра сверяет этот перечень с exports пакета contracts.
 export const contractModules = {
   catalog,
   common,
@@ -16,8 +16,22 @@ export const contractModules = {
   works,
 };
 
-export function describedEndpoints(): Endpoint[] {
-  return Object.values(contractModules).flatMap((module) =>
-    Object.values(module).filter(isEndpoint),
+export interface NamedEndpoint {
+  resource: keyof typeof contractModules;
+  name: string;
+  endpoint: Endpoint;
+}
+
+export function namedEndpoints(): NamedEndpoint[] {
+  return Object.entries(contractModules).flatMap(([resource, module]) =>
+    Object.entries(module).flatMap(([name, endpoint]) =>
+      isEndpoint(endpoint)
+        ? [{ resource: resource as NamedEndpoint['resource'], name, endpoint }]
+        : [],
+    ),
   );
+}
+
+export function describedEndpoints(): Endpoint[] {
+  return namedEndpoints().map(({ endpoint }) => endpoint);
 }
