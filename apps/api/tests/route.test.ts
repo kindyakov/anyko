@@ -3,7 +3,11 @@ import { expect, test } from 'bun:test';
 import { Elysia } from 'elysia';
 import { z } from 'zod';
 
-import type { createAccess } from '@anyko/backend/access';
+import {
+  type AccessSession,
+  createAccess,
+  scopeFor,
+} from '@anyko/backend/access';
 import { AppError } from '@anyko/backend/errors';
 import {
   endpoint,
@@ -18,23 +22,27 @@ import { noStore } from '../src/http/plugins/no-store';
 import { originGuard } from '../src/http/plugins/origin';
 import { requestContext } from '../src/http/plugins/request-context';
 import { sessionGuard } from '../src/http/plugins/session';
-import { createRoute, type Route } from '../src/http/route';
+import { workspaceScopeGuard } from '../src/http/plugins/workspace-scope';
+import { createRoute, type Route, versionedLayer } from '../src/http/route';
 
 const origin = 'http://localhost:3000';
-const session = {
+const session: AccessSession = {
   user: {
     id: crypto.randomUUID(),
     name: 'Fixture',
     email: 'fixture@example.test',
   },
-  workspace: { id: 'local', name: 'Fixture' },
+  memberships: [
+    { workspace: { id: 'local', name: 'Fixture' }, rights: ['works.read'] },
+  ],
 };
-// Заглушка доступа: сессия есть только у запроса с cookie session=ok.
+// Заглушка доступа: сессия есть только у запроса с cookie session=ok; область выдаёт реальная функция.
 const access = {
   handle: () => Promise.resolve(new Response(null, { status: 404 })),
-  canManage: () => Promise.resolve(false),
   session: (headers: Headers) =>
     Promise.resolve(headers.get('cookie') === 'session=ok' ? session : null),
+  scope: scopeFor,
+  legacyScope: () => Promise.resolve(null),
 } satisfies ReturnType<typeof createAccess>;
 const authed = { cookie: 'session=ok' };
 
@@ -74,13 +82,15 @@ const upload = endpoint({
   invalid: 'INVALID_DOCUMENT',
   idempotent: false,
 });
-const guarded = endpoint({
+// Маршрут с областью: plugin проверяет участие до разбора тела.
+const scoped = endpoint({
   method: 'POST',
-  path: '/guarded',
+  path: '/workspaces/:workspaceId/items',
+  params: z.object({ workspaceId: z.string() }),
   body: json(z.object({ value: z.string() })),
-  response: json(z.object({ ok: z.literal(true) })),
+  response: json(z.object({ workspaceId: z.string() })),
   status: 200,
-  errors: ['FORBIDDEN', 'INVALID_WORK_INPUT'],
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
   invalid: 'INVALID_WORK_INPUT',
   idempotent: false,
 });
@@ -101,13 +111,14 @@ function build(
   const route = createRoute({
     logger,
     strictErrors,
+    layer: versionedLayer,
     endpoints: new Set(),
-    prefix: '/api/v1',
   });
   const api = new Elysia();
   noStore(api);
   sessionGuard(api, access);
   originGuard(api, origin);
+  workspaceScopeGuard(api, access);
   mount(route, api);
   const app = new Elysia();
   requestContext(app, logger);
@@ -145,6 +156,7 @@ test('an error code missing from the description is an internal error in tests a
     const body = (await response.json()) as { error: { code: string } };
     expect(body.error.code).toBe('INTERNAL_ERROR');
   });
+  await Bun.sleep(10);
   const logged = lines.join('');
   expect(logged).toContain('http_undeclared_error_code');
   expect(logged).toContain('"errorCode":"FORBIDDEN"');
@@ -169,6 +181,7 @@ test('outside tests the same undeclared code keeps its response and is only logg
       },
     });
   });
+  await Bun.sleep(10);
   expect(lines.join('')).toContain('http_undeclared_error_code');
 });
 
@@ -209,6 +222,7 @@ test('a response that breaks its schema is an internal error', async () => {
     });
     expect(response.status).toBe(500);
   });
+  await Bun.sleep(10);
   expect(lines.join('')).toContain('http_response_invalid');
 });
 
@@ -294,22 +308,38 @@ test('safe methods pass without an origin', async () => {
   });
 });
 
-test('the permission guard runs before the body is read', async () => {
+test('a workspace outside the membership answers 404 before the body is read', async () => {
+  let reached = false;
   const { app } = build(true, (route, api) =>
-    route(api, guarded, () => ({ ok: true as const }), {
-      guard: () => {
-        throw new AppError('FORBIDDEN', 'forbidden');
-      },
+    route(api, scoped, () => {
+      reached = true;
+      return { workspaceId: 'local' };
     }),
   );
   await withServer(app, async (base) => {
-    const response = await fetch(`${base}/api/v1/guarded`, {
+    const response = await fetch(`${base}/api/v1/workspaces/foreign/items`, {
       method: 'POST',
       headers: { ...authed, origin, 'content-type': 'application/json' },
       body: 'not json',
     });
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(404);
     const body = (await response.json()) as { error: { code: string } };
-    expect(body.error.code).toBe('FORBIDDEN');
+    expect(body.error.code).toBe('NOT_FOUND');
+  });
+  expect(reached).toBe(false);
+});
+
+test('a member reaches the handler with the scope of the workspace in the address', async () => {
+  const { app } = build(true, (route, api) =>
+    route(api, scoped, ({ scope }) => ({ workspaceId: scope.workspaceId })),
+  );
+  await withServer(app, async (base) => {
+    const response = await fetch(`${base}/api/v1/workspaces/local/items`, {
+      method: 'POST',
+      headers: { ...authed, origin, 'content-type': 'application/json' },
+      body: JSON.stringify({ value: 'x' }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ workspaceId: 'local' });
   });
 });

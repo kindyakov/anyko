@@ -25,6 +25,7 @@ import {
   integrationConfig,
   startDocumentConsumer,
 } from '../support/composition';
+import { recognitionsAs } from '../support/scoped';
 const databaseUrl = process.env.TEST_DATABASE_URL,
   redisUrl = process.env.TEST_REDIS_URL;
 if (
@@ -87,7 +88,7 @@ test('separate images and all document data are physically erased; unknown/activ
     exists: (key) => Promise.resolve(files.has(key)),
   };
   const api = startApi(storage);
-  const runtime = api.documentHttp.documents;
+  const runtime = recognitionsAs(api.documentHttp.documents);
   const processing = createProcessingStore(db),
     registry = createArtifactRegistry(db);
   const eraseAttempt = (id: string) => {
@@ -318,7 +319,7 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
     exists: (key) => Promise.resolve(files.has(key)),
   };
   const api = startApi(storage);
-  const runtime = api.documentHttp.documents;
+  const runtime = recognitionsAs(api.documentHttp.documents);
   try {
     await db.anykoWorkspace.create({
       data: { id: workspaceId, name: 'Synthetic uncertain write' },

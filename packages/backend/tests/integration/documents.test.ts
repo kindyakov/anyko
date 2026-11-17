@@ -20,6 +20,7 @@ import {
   integrationConfig,
   startDocumentConsumer,
 } from '../support/composition';
+import { recognitionsAs } from '../support/scoped';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
@@ -61,7 +62,7 @@ const api = createBackend(testConfig, {
   role: 'api',
   dependencies: { storage },
 });
-const runtime = api.documentHttp.documents;
+const runtime = recognitionsAs(api.documentHttp.documents);
 const startDocumentWorker = (options: {
   queueName: string;
   parser: DocumentParser;

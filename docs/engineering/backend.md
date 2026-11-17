@@ -174,18 +174,22 @@ export const confirmWork = endpoint({
 });
 
 // apps/api/src/http/routes/works/index.ts
-route(app, confirmWork, async ({ session, params, body }) =>
-  works.confirm({
-    ...body,
-    workspaceId: session.workspace.id,
-    workId: params.workId,
-  }),
+route(app, confirmWork, ({ scope, params, body }) =>
+  works.confirm(scope, { ...body, workId: brandWorkId(params.workId) }),
 );
 ```
 
 `endpoint()` принимает `json(schema)` или `multipart({ поле: схема })` как тело, `json`, `fileDownload()` или `eventStream()` как ответ. Поле `invalid` обязательно, если есть любой вход (`params`, `query`, `headers`, тело), и указывает код ошибки входа; `invalidHeaders` задаёт код для заголовков, если он отличается. Поле `idempotent` обязательно у POST, PUT, PATCH и DELETE и запрещено у GET; значение описывает, безопасен ли повтор запроса. Код ошибки вне `errors` не компилируется.
 
-`route()` проверяет заголовки, параметры, query и тело через Standard Schema в порядке, который задаёт описание, и отклоняет неверный вход кодом `invalid` без вызова обработчика. Права проверяет `guard` до разбора тела. Ответ `json` проверяется схемой `response`: при нарушении ответ становится `INTERNAL_ERROR` и пишется `http_response_invalid`. Ответ `file` получает `cache-control: no-store` и `x-content-type-options: nosniff`; обработчик задаёт остальные заголовки. Код `AppError` вне `errors` в `NODE_ENV=test` даёт 500 и событие `http_undeclared_error_code`; в остальных средах ответ прежний, событие пишется. Tест по реестру проверяет, что каждое описание зарегистрировано ровно один раз под `/api/v1`. Рабочая область в адресе и заголовок `Idempotency-Key` появятся с этапами #18; до них `route()` не знает `scope`.
+`route()` проверяет заголовки, параметры, query и тело через Standard Schema в порядке, который задаёт описание, и отклоняет неверный вход кодом `invalid` без вызова обработчика. Область из адреса проверяет plugin `workspace-scope` до разбора входа: чужая или несуществующая область даёт 404 без чтения тела. Права проверяет сценарий, маршрут их не знает. Ответ `json` проверяется схемой `response`: при нарушении ответ становится `INTERNAL_ERROR` и пишется `http_response_invalid`. Ответ `file` получает `cache-control: no-store` и `x-content-type-options: nosniff`; обработчик задаёт остальные заголовки. Код `AppError` вне `errors` в `NODE_ENV=test` даёт 500 и событие `http_undeclared_error_code`; в остальных средах ответ прежний, событие пишется. Тест по реестру проверяет, что каждое описание зарегистрировано ровно один раз под `/api/v1`; временный слой без версии регистрирует те же описания по своему адресу (`apps/api/src/http/legacy/`, удаляется с web #11). Заголовок `Idempotency-Key` как хранилище ключей появится с этапом #4b.
+
+### Область и права
+
+`WorkspaceScope` (`platform/scope`) — брендированный тип с `userId`, `workspaceId`, `rights`, методами `has(right)` и `require(right)`. `require` бросает `AppError` вида `forbidden` с кодом `FORBIDDEN`. Создаёт область только `modules/access`: `scopeFor(session, workspaceId)` выдаёт её для участия из сессии, иначе `null`. Файл выдачи `platform/scope/issue.ts` импортирует только `access` (правило `backend-scope-issued-by-access`).
+
+Права — каталог `rightCatalog` в `platform/scope/rights.ts`; роли задают наборы в `modules/access/domain/roles.ts`: owner — все, member — все, кроме `connections.manage` и `members.invite`. Каталог совпадает с `rightSchema` в `contracts/session`: тест `apps/api/tests/rights-catalog.test.ts` сверяет оба списка. Сценарии проверяют право первым действием: `works.create`, `works.edit`, `works.generate`, `documents.upload`, `documents.delete`, `recognitions.use`, `connections.read`, `connections.manage`. Внутренние операции сервисов права не проверяют: их вызывает сценарий, который уже проверил право.
+
+Идентификаторы — `platform/ids.ts`: `parseWorkspaceId` и `parseUserId` возвращают `null` для непроверенного входа; `brandWorkId`, `brandDocumentId`, `brandGenerationId`, `brandFileId` проверяют UUID схемой contracts и бросают ошибку при несовпадении (это ошибка контракта, не ответ клиенту). `uuidV7` — генератор для новых ID; сценарии переходят на него в этапах #19 и #4b.
 
 Presenter не вводится: маршрут возвращает объекты формы контракта. OpenAPI строится из тех же описаний и доступен вне production по `/api/v1/openapi.json`.
 

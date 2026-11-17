@@ -1,6 +1,6 @@
 import type { createAccess } from '@anyko/backend/access';
-import type { DocumentService } from '@anyko/backend/documents';
-import type { LlmSettingsStore } from '@anyko/backend/processing';
+import type { RecognitionService } from '@anyko/backend/documents';
+import type { LlmSettingsApi } from '@anyko/backend/processing';
 import type { WorkApi } from '@anyko/backend/works';
 
 import type { DocumentHttpOptions } from '../../src/http/routes/documents';
@@ -18,29 +18,31 @@ export function stubHttpOptions(): {
 } {
   const access: ReturnType<typeof createAccess> = {
     handle: unused,
-    canManage: unused,
     session: unused,
+    scope: unused,
+    legacyScope: unused,
   };
-  const documents: DocumentService = {
-    source: unused,
-    analysis: unused,
-    upload: unused,
+  const documents: RecognitionService = {
     list: unused,
     pendingDeletions: unused,
+    upload: unused,
     get: unused,
     result: unused,
+    source: unused,
     image: unused,
-    remove: unused,
     deletion: unused,
+    remove: unused,
     retry: unused,
   };
   const works: WorkApi = {
-    removeDocument: unused,
     packages: unused,
     list: unused,
     create: unused,
     get: unused,
     upload: unused,
+    removeDocument: unused,
+    source: unused,
+    image: unused,
     analyze: unused,
     edit: unused,
     confirm: unused,
@@ -48,7 +50,7 @@ export function stubHttpOptions(): {
     download: unused,
     events: unused,
   };
-  const settings: Pick<LlmSettingsStore, 'current' | 'save'> = {
+  const settings: LlmSettingsApi = {
     current: unused,
     save: unused,
   };
@@ -60,7 +62,6 @@ export function stubHttpOptions(): {
       ...documentHttp,
       works,
       settings,
-      saveSettings: unused,
     },
   };
 }

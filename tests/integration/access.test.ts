@@ -9,7 +9,10 @@ import {
   llmSettingsResponseSchema,
   workResponseSchema,
 } from '@anyko/contracts';
-import { sessionCookieNames } from '@anyko/contracts/session';
+import {
+  sessionCookieNames,
+  sessionResponseSchema,
+} from '@anyko/contracts/session';
 import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 
@@ -20,9 +23,17 @@ if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test') {
   throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
 }
 
-// The same scenario runs under the versioned path and the temporary unversioned path (web #11 removes the latter).
-for (const prefix of ['/api/v1', '/api']) {
-  test(`real sessions enforce closed signup, mutation origin and document workspace scope under ${prefix}`, async () => {
+// The same scenario runs once under the versioned paths (workspace in the address) and once under the
+// temporary unversioned paths (web #11 removes the latter). Only the addresses and the expectations for a
+// foreign workspace differ between the two layers.
+for (const layer of ['v1', 'legacy'] as const) {
+  const scopedRoot = layer === 'v1' ? '/api/v1/workspaces/local' : '/api';
+  const sessionPath = layer === 'v1' ? '/api/v1/session' : '/api/session';
+  const worksRoot = `${scopedRoot}/works`;
+  const documentsRoot =
+    layer === 'v1' ? `${scopedRoot}/recognitions` : '/api/documents';
+  const settingsPath = `${scopedRoot}/settings/llm`;
+  test(`real sessions enforce closed signup, mutation origin and document workspace scope under ${layer} paths`, async () => {
     const fixtureId = crypto.randomUUID();
     const emails = [
       `owner-${fixtureId}@example.test`,
@@ -136,8 +147,8 @@ for (const prefix of ['/api/v1', '/api']) {
       const base = `http://127.0.0.1:${String(port)}`;
       const request = (path: string, init?: RequestInit) =>
         fetch(`${base}${path}`, init);
-      expect((await request(`${prefix}/session`)).status).toBe(401);
-      expect((await request(`${prefix}/documents`)).status).toBe(401);
+      expect((await request(sessionPath)).status).toBe(401);
+      expect((await request(documentsRoot)).status).toBe(401);
       const signup = await request('/api/auth/sign-up/email', {
         method: 'POST',
         headers: { origin, 'content-type': 'application/json' },
@@ -182,7 +193,7 @@ for (const prefix of ['/api/v1', '/api']) {
       }
       const ownerCookie = await login(firstEmail);
       const secondCookie = await login(secondEmail);
-      expect((await request(`${prefix}/works`)).status).toBe(401);
+      expect((await request(worksRoot)).status).toBe(401);
       const workBody = {
         title: 'Synthetic access work',
         packageVersion: 'technical-document-v1',
@@ -194,14 +205,14 @@ for (const prefix of ['/api/v1', '/api']) {
       };
       expect(
         (
-          await request(`${prefix}/works`, {
+          await request(worksRoot, {
             method: 'POST',
             headers: { ...headers, origin: 'https://foreign.invalid' },
             body: JSON.stringify(workBody),
           })
         ).status,
       ).toBe(403);
-      const created = await request(`${prefix}/works`, {
+      const created = await request(worksRoot, {
         method: 'POST',
         headers,
         body: JSON.stringify(workBody),
@@ -210,9 +221,9 @@ for (const prefix of ['/api/v1', '/api']) {
       const work = workResponseSchema.parse(await created.json());
       ownedWorkIds.push(work.work.id);
       for (const path of [
-        `${prefix}/works/${work.work.id}`,
-        `${prefix}/works/${work.work.id}/events`,
-        `${prefix}/works/${work.work.id}/generations/${crypto.randomUUID()}/files/${crypto.randomUUID()}`,
+        `${worksRoot}/${work.work.id}`,
+        `${worksRoot}/${work.work.id}/events`,
+        `${worksRoot}/${work.work.id}/generations/${crypto.randomUUID()}/files/${crypto.randomUUID()}`,
       ]) {
         expect(
           (await request(path, { headers: { cookie: secondCookie } })).status,
@@ -220,7 +231,7 @@ for (const prefix of ['/api/v1', '/api']) {
       }
       expect(
         (
-          await request(`${prefix}/works/${work.work.id}/fields`, {
+          await request(`${worksRoot}/${work.work.id}/fields`, {
             method: 'POST',
             headers,
             body: JSON.stringify({ revision: 0 }),
@@ -233,7 +244,7 @@ for (const prefix of ['/api/v1', '/api']) {
       };
       expect(
         (
-          await request(`${prefix}/works/${work.work.id}/fields`, {
+          await request(`${worksRoot}/${work.work.id}/fields`, {
             method: 'POST',
             headers,
             body: JSON.stringify(edit),
@@ -242,7 +253,7 @@ for (const prefix of ['/api/v1', '/api']) {
       ).toBe(200);
       expect(
         (
-          await request(`${prefix}/works/${work.work.id}/fields`, {
+          await request(`${worksRoot}/${work.work.id}/fields`, {
             method: 'POST',
             headers,
             body: JSON.stringify(edit),
@@ -258,7 +269,7 @@ for (const prefix of ['/api/v1', '/api']) {
       };
       expect(
         (
-          await request(`${prefix}/settings/llm`, {
+          await request(settingsPath, {
             method: 'POST',
             headers,
             body: JSON.stringify(connection),
@@ -266,7 +277,7 @@ for (const prefix of ['/api/v1', '/api']) {
         ).status,
       ).toBe(200);
       const settingsText = await (
-        await request(`${prefix}/settings/llm`, {
+        await request(settingsPath, {
           headers: { cookie: ownerCookie },
         })
       ).text();
@@ -287,7 +298,7 @@ for (const prefix of ['/api/v1', '/api']) {
       });
       expect(
         (
-          await request(`${prefix}/settings/llm`, {
+          await request(settingsPath, {
             method: 'POST',
             headers,
             body: JSON.stringify(connection),
@@ -296,7 +307,7 @@ for (const prefix of ['/api/v1', '/api']) {
       ).toBe(403);
       expect(
         (
-          await request(`${prefix}/session`, {
+          await request(sessionPath, {
             headers: { cookie: ownerCookie },
           })
         ).status,
@@ -311,7 +322,7 @@ for (const prefix of ['/api/v1', '/api']) {
         );
         return body;
       }
-      const noOrigin = await request(`${prefix}/documents`, {
+      const noOrigin = await request(documentsRoot, {
         method: 'POST',
         headers: {
           cookie: ownerCookie,
@@ -320,7 +331,7 @@ for (const prefix of ['/api/v1', '/api']) {
         body: uploadBody(),
       });
       expect(noOrigin.status).toBe(403);
-      const wrongOrigin = await request(`${prefix}/documents`, {
+      const wrongOrigin = await request(documentsRoot, {
         method: 'POST',
         headers: {
           cookie: ownerCookie,
@@ -330,7 +341,7 @@ for (const prefix of ['/api/v1', '/api']) {
         body: uploadBody(),
       });
       expect(wrongOrigin.status).toBe(403);
-      const accepted = await request(`${prefix}/documents`, {
+      const accepted = await request(documentsRoot, {
         method: 'POST',
         headers: {
           cookie: ownerCookie,
@@ -345,33 +356,43 @@ for (const prefix of ['/api/v1', '/api']) {
       expect(uploaded.document.status).toBe('queued');
       expect(
         (
-          await request(`${prefix}/documents/${uploaded.document.id}`, {
+          await request(`${documentsRoot}/${uploaded.document.id}`, {
             headers: { cookie: ownerCookie },
           })
         ).status,
       ).toBe(200);
       expect(
         (
-          await request(`${prefix}/documents/${uploaded.document.id}`, {
+          await request(`${documentsRoot}/${uploaded.document.id}`, {
             headers: { cookie: secondCookie },
           })
         ).status,
       ).toBe(404);
       expect(
         (
-          await request(`${prefix}/documents/${uploaded.document.id}/result`, {
+          await request(`${documentsRoot}/${uploaded.document.id}/result`, {
             headers: { cookie: secondCookie },
           })
         ).status,
       ).toBe(404);
-      const foreignList = await request(`${prefix}/documents`, {
+      // Участник только чужой области: в v1 локальная область для него не существует (404),
+      // прежний путь отдаёт его первое участие. Список своей области в v1 — его собственный адрес.
+      const secondLocal = await request(documentsRoot, {
+        headers: { cookie: secondCookie },
+      });
+      expect(secondLocal.status).toBe(layer === 'v1' ? 404 : 200);
+      const foreignDocumentsPath =
+        layer === 'v1'
+          ? `/api/v1/workspaces/${foreignWorkspace}/recognitions`
+          : documentsRoot;
+      const foreignList = await request(foreignDocumentsPath, {
         headers: { cookie: secondCookie },
       });
       expect(foreignList.status).toBe(200);
       expect(
         documentsResponseSchema.parse(await foreignList.json()).documents,
       ).toEqual([]);
-      const documentPath = `${prefix}/documents/${uploaded.document.id}`;
+      const documentPath = `${documentsRoot}/${uploaded.document.id}`;
       expect(
         (
           await request(`${documentPath}/images/0`, {
@@ -416,7 +437,7 @@ for (const prefix of ['/api/v1', '/api']) {
       ).toBe(404);
       const ownerAfterDelete = documentsResponseSchema.parse(
         await (
-          await request(`${prefix}/documents`, {
+          await request(documentsRoot, {
             headers: { cookie: ownerCookie },
           })
         ).json(),
@@ -432,12 +453,49 @@ for (const prefix of ['/api/v1', '/api']) {
       ]);
       const foreignAfterDelete = documentsResponseSchema.parse(
         await (
-          await request(`${prefix}/documents`, {
+          await request(foreignDocumentsPath, {
             headers: { cookie: secondCookie },
           })
         ).json(),
       );
       expect(foreignAfterDelete.deletions).toEqual([]);
+      // Документ работы адресуется через свою работу: документ, не связанный с ней, — 404.
+      if (layer === 'v1')
+        expect(
+          (
+            await request(
+              `${worksRoot}/${work.work.id}/documents/${uploaded.document.id}/source`,
+              { headers: { cookie: ownerCookie } },
+            )
+          ).status,
+        ).toBe(404);
+      // Участие второго пользователя удалено. v1 отвечает сессией без участий (200), прежний путь —
+      // 401, как и раньше: сессия без области не открывает прежние маршруты.
+      await db.membership.deleteMany({ where: { userId: secondUser.id } });
+      const emptySession = await request(sessionPath, {
+        headers: { cookie: secondCookie },
+      });
+      if (layer === 'v1') {
+        expect(emptySession.status).toBe(200);
+        expect(
+          sessionResponseSchema.parse(await emptySession.json()).memberships,
+        ).toEqual([]);
+        // Роль member не получает права управления подключениями; сессия отражает текущее право.
+        const ownerSession = sessionResponseSchema.parse(
+          await (
+            await request('/api/v1/session', {
+              headers: { cookie: ownerCookie },
+            })
+          ).json(),
+        );
+        const local = ownerSession.memberships.find(
+          (item) => item.workspace.id === 'local',
+        );
+        expect(local?.rights).toContain('works.edit');
+        expect(local?.rights).not.toContain('connections.manage');
+      } else {
+        expect(emptySession.status).toBe(401);
+      }
     } finally {
       if (listening) await app.stop();
       try {
