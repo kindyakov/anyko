@@ -3,7 +3,7 @@ import type { Database } from '@anyko/database';
 import { uuidV7 } from '../../../platform/ids';
 import type { AuditRecord } from '../domain/events';
 
-type AuditConnection = Pick<Database, 'auditEvent'>;
+export type AuditConnection = Pick<Database, 'auditEvent'>;
 
 // Записывает событие в переданной транзакции. Фиксацию и откат решает тот же вызов, что и действие:
 // если действие откатилось, события нет; если событие не записалось, откатывается и действие.
