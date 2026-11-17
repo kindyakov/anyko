@@ -1,34 +1,15 @@
 import { expect, test } from 'bun:test';
 
-import {
-  type AccessSession,
-  type createAccess,
-  scopeFor,
-} from '@anyko/backend/access';
 import { AppError } from '@anyko/backend/errors';
-import { rightCatalog } from '@anyko/backend/scope';
 import type { WorkApi } from '@anyko/backend/works';
 import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../src/http/app';
 
+import { memberAccess } from './support/member-access';
 import { stubHttpOptions } from './support/stub-http';
 
 const origin = 'http://localhost:3000';
-const member: AccessSession = {
-  user: { id: 'member-1', name: 'Member', email: 'member@example.test' },
-  memberships: [
-    { workspace: { id: 'local', name: 'Local' }, rights: [...rightCatalog] },
-  ],
-};
-const access: ReturnType<typeof createAccess> = {
-  handle: () => Promise.resolve(new Response(null, { status: 404 })),
-  session: (headers: Headers) =>
-    Promise.resolve(headers.get('cookie') === 'session=ok' ? member : null),
-  scope: scopeFor,
-  // Временный слой без версии работает с первым участием: здесь это та же область local.
-  legacyScope: () => Promise.resolve(scopeFor(member, 'local')),
-};
 
 type Analyze = WorkApi['analyze'];
 
@@ -43,10 +24,10 @@ function appWith(analyze: Analyze) {
       level: 'fatal',
     }),
     environment: 'test',
-    documentHttp: { ...options.documentHttp, access },
+    documentHttp: { ...options.documentHttp, access: memberAccess },
     workHttp: {
       ...options.workHttp,
-      access,
+      access: memberAccess,
       works: { ...options.workHttp.works, analyze },
     },
   });
@@ -252,4 +233,37 @@ test('the temporary layer applies the same replay when a key is sent', async () 
     ).toBe(202);
   });
   expect(calls).toBe(1);
+});
+
+test('the temporary layer does not require a key for work creation: an invalid body reports the input code', async () => {
+  const options = stubHttpOptions();
+  const app = createApp({
+    logger: createLogger({
+      service: 'api',
+      environment: 'test',
+      release: 'idempotency-route',
+      level: 'fatal',
+    }),
+    environment: 'test',
+    documentHttp: { ...options.documentHttp, access: memberAccess },
+    workHttp: {
+      ...options.workHttp,
+      access: memberAccess,
+    },
+  });
+  await withServer(app, async (base) => {
+    const response = await fetch(`${base}/api/works`, {
+      method: 'POST',
+      headers: {
+        cookie: 'session=ok',
+        origin,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ title: 1 }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'INVALID_WORK_INPUT' },
+    });
+  });
 });

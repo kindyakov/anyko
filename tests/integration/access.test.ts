@@ -212,9 +212,10 @@ for (const layer of ['v1', 'legacy'] as const) {
           })
         ).status,
       ).toBe(403);
+      // Создание работы в v1 требует Idempotency-Key (ADR 0009): без него ответ 400.
       const created = await request(worksRoot, {
         method: 'POST',
-        headers,
+        headers: { ...headers, 'idempotency-key': crypto.randomUUID() },
         body: JSON.stringify(workBody),
       });
       expect(created.status).toBe(201);
@@ -536,6 +537,9 @@ for (const layer of ['v1', 'legacy'] as const) {
           where: { key: { in: [...files.keys()] } },
         });
         await db.user.deleteMany({ where: { id: { in: userIds } } });
+        await db.auditEvent.deleteMany({
+          where: { workspaceId: foreignWorkspace },
+        });
         await db.anykoWorkspace.deleteMany({ where: { id: foreignWorkspace } });
       } finally {
         await api.stop();
