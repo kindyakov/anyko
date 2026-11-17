@@ -243,7 +243,11 @@ test('member has one area and read-only connection settings; outsider has no are
   await expect(
     page.getByText('Изменять подключение может владелец рабочей области.'),
   ).toBeVisible();
+  await expect(page.getByText('Подключено', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Сохранить' })).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: 'Отозвать подключение' }),
+  ).toHaveCount(0);
   await page.getByRole('button', { name: 'Выйти' }).click();
   await expect(page).toHaveURL(/\/sign-in/);
   await signIn(page, 'OUTSIDER');
@@ -251,4 +255,28 @@ test('member has one area and read-only connection settings; outsider has no are
   await expect(
     page.getByRole('heading', { name: 'Нет доступа к рабочим областям' }),
   ).toBeVisible();
+});
+
+test('an owner revokes the configured connection and sees that it is no longer configured', async ({
+  page,
+}) => {
+  await page.goto('/w/e2e-south/settings/connections');
+  await expect(page).toHaveURL(/\/sign-in\?next=/);
+  await signIn(page, 'OWNER');
+  await expect(page).toHaveURL(/\/w\/e2e-south\/settings\/connections$/);
+  await expect(page.getByText('Подключено', { exact: true })).toBeVisible();
+
+  await page.getByRole('button', { name: 'Отозвать подключение' }).click();
+  const dialog = page.getByRole('alertdialog', {
+    name: 'Отозвать подключение модели?',
+  });
+  await dialog.getByRole('button', { name: 'Отозвать подключение' }).click();
+
+  await expect(page.getByText('Не настроено', { exact: true })).toBeVisible();
+  await expect(dialog).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: 'Отозвать подключение' }),
+  ).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByText('Не настроено', { exact: true })).toBeVisible();
 });
