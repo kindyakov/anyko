@@ -9,11 +9,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
-import {
-  type FieldKey,
-  type FieldValue,
-  type FieldValues,
-} from '@anyko/contracts/catalog';
+import { type FieldKey, type FieldValue } from '@anyko/contracts/catalog';
 import { type WorkView } from '@anyko/contracts/works';
 
 import { EventHorizon } from '@/components/cosmos/event-horizon';
@@ -23,6 +19,7 @@ import { stagger } from '@/components/ui/stagger';
 import { StatusPill } from '@/components/ui/status';
 import { conflictingFields } from '@/features/works';
 
+import type { FactsForm } from './facts-form';
 import { PackagePreview } from './package-preview';
 import { SessionContext } from './session-context';
 import { CandidateValue } from './work-fields';
@@ -37,19 +34,18 @@ const filled = (value: FieldValue | undefined) =>
 
 export function WorkReview({
   view,
-  values,
+  facts,
   busy,
-  onChange,
   onOpen,
   onExtract,
 }: {
   view: WorkView;
-  values: FieldValues;
+  facts: FactsForm;
   busy: boolean;
-  onChange: (changes: Partial<Record<FieldKey, FieldValue>>) => void;
   onOpen: (document: Document) => void;
   onExtract: () => void;
 }) {
+  const { values } = facts;
   const [filter, setFilter] = useState<Filter>('all');
   const [focus, setFocus] = useState<{ key: FieldKey; nonce: number }>();
   const conflicts = conflictingFields(view);
@@ -94,6 +90,66 @@ export function WorkReview({
         revision={view.work.revision}
         fields={view.package.fields}
       />
+      {facts.conflicts.length > 0 && (
+        <section
+          aria-labelledby="conflicts-title"
+          className="animate-rise rounded-2xl border border-amber-400/25 bg-amber-400/[0.03] p-4 sm:p-5"
+        >
+          <h2
+            id="conflicts-title"
+            className="font-heading text-lg font-bold tracking-tight"
+          >
+            Изменено и вами, и на сервере
+          </h2>
+          <p className="text-muted mt-1 text-sm">
+            Выберите значение для каждого поля. Пока решения нет, сохранить
+            сведения нельзя.
+          </p>
+          <ul className="mt-4 grid gap-3">
+            {facts.conflicts.map((key) => (
+              <li
+                key={key}
+                className="grid gap-3 rounded-xl border border-white/[0.07] bg-black/25 p-3.5 sm:grid-cols-2"
+              >
+                <h3 className="font-medium sm:col-span-2">
+                  {view.package.fields.find((field) => field.key === key)
+                    ?.label ?? key}
+                </h3>
+                <div className="min-w-0 text-sm">
+                  <p className="text-muted mb-1 text-xs">Ваше значение</p>
+                  <ConflictValue value={values[key]} />
+                </div>
+                <div className="min-w-0 text-sm">
+                  <p className="text-muted mb-1 text-xs">На сервере</p>
+                  <ConflictValue value={facts.serverValues[key]} />
+                </div>
+                <div className="flex flex-wrap gap-2 sm:col-span-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      facts.keepMine(key);
+                    }}
+                  >
+                    Оставить моё
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => {
+                      facts.takeServer(key);
+                    }}
+                  >
+                    Взять с сервера
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section aria-labelledby="facts-title">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -169,7 +225,7 @@ export function WorkReview({
             <Button
               disabled={busy}
               onClick={() => {
-                onChange(
+                facts.change(
                   Object.fromEntries(
                     quick.map(({ field, candidates }) => [
                       field.key,
@@ -272,7 +328,9 @@ export function WorkReview({
                                 variant={conflict ? 'secondary' : 'primary'}
                                 disabled={busy}
                                 onClick={() => {
-                                  onChange({ [field.key]: candidate.value });
+                                  facts.change({
+                                    [field.key]: candidate.value,
+                                  });
                                   jump(field.key);
                                 }}
                               >
@@ -357,10 +415,17 @@ export function WorkReview({
           disabled={busy}
           focus={focus}
           onChange={(key, value) => {
-            onChange({ [key]: value });
+            facts.change({ [key]: value });
           }}
         />
       </section>
     </div>
   );
+}
+
+// Значение без поля: пустое значение показывается словом, а не пустой строкой.
+function ConflictValue({ value }: { value: FieldValue | undefined }) {
+  if (value === null || value === undefined)
+    return <p className="text-muted text-sm">Пусто</p>;
+  return <CandidateValue value={value} />;
 }

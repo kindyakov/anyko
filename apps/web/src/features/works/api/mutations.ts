@@ -16,8 +16,8 @@ import { callApi } from '@/lib/api/call';
 
 import { workKeys } from './keys';
 
-// Несохранённые правки полей: значения и ревизия работы, на которой они начаты.
-export type FactsDraft = { values: FieldValues; revision: number };
+// Тело сохранения сведений: значения формы и ревизия работы, на которой начаты правки.
+type FactsDraft = { values: FieldValues; revision: number };
 
 export type CreateWorkInput = { title: string; packageVersion: string };
 
@@ -78,11 +78,16 @@ export function useConfirmWork(workspaceId: string, workId: string) {
   });
 }
 
+// Ответ сохранения — уже новый вид работы: кэш берёт его сразу, не дожидаясь перезагрузки. Иначе форма
+// сведений на короткое время увидит старые значения как серверные и откатит сохранённые.
 export function useSaveFacts(workspaceId: string, workId: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (draft: FactsDraft) =>
       callApi(editWork, { params: { workspaceId, workId }, body: draft }),
-    onSuccess: () => invalidateWork(client, workspaceId, workId),
+    onSuccess: async (saved) => {
+      client.setQueryData(workKeys.detail(workspaceId, workId), saved);
+      await invalidateWork(client, workspaceId, workId);
+    },
   });
 }

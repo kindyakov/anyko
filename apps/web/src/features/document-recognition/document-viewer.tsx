@@ -17,7 +17,10 @@ import { Modal } from '@/components/ui/modal';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Notice } from '@/components/ui/status';
-import { documentResultQueryOptions } from '@/features/document-recognition/api/queries';
+import {
+  type DocumentOwner,
+  documentResultQueryOptions,
+} from '@/features/document-recognition/api/queries';
 import { ResultPreview } from '@/features/document-recognition/result-preview';
 import { endpointUrl } from '@/lib/api/call';
 import { useWorkspaceId } from '@/lib/api/workspace';
@@ -28,7 +31,7 @@ type Mode = 'split' | 'text' | 'source' | 'markdown';
 export type ViewedDocument = {
   id: string;
   filename: string;
-  owner: { kind: 'work'; workId: string } | { kind: 'recognition' };
+  owner: DocumentOwner;
 };
 
 function documentKind(filename: string) {
@@ -41,7 +44,7 @@ function documentKind(filename: string) {
   return 'other';
 }
 
-// Адреса исходника и изображений зависят от владельца документа; результат читается одинаково.
+// Адреса исходника и изображений зависят от владельца документа, как и адрес результата.
 function documentLinks(workspaceId: string, document: ViewedDocument) {
   const documentId = document.id;
   if (document.owner.kind === 'work') {
@@ -135,7 +138,11 @@ export function DocumentViewer({
   const [copied, setCopied] = useState(false);
   const workspaceId = useWorkspaceId();
   const result = useQuery({
-    ...documentResultQueryOptions(workspaceId, document?.id ?? ''),
+    ...documentResultQueryOptions(
+      workspaceId,
+      document?.id ?? '',
+      document?.owner ?? { kind: 'recognition' },
+    ),
     enabled: !!document,
     staleTime: 5 * 60_000,
   });

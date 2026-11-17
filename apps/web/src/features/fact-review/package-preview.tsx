@@ -91,15 +91,16 @@ export function PackagePreview(props: Props) {
       observer.disconnect();
     };
   }, []);
+  // Переход к полю открывает документ, где оно упомянуто. Выбор делается при рендере, а не в эффекте:
+  // прокрутка ниже уже находит поле в выбранном документе.
+  const host = focus
+    ? pack.documents.find((item) =>
+        new RegExp(`\\{[#]?${focus.key}\\}`).test(mentions(item.blocks)),
+      )
+    : undefined;
+  if (host && host.version !== selected) select(host.version);
   useEffect(() => {
     if (!focus) return;
-    const host = pack.documents.find((item) =>
-      new RegExp(`\\{[#]?${focus.key}\\}`).test(mentions(item.blocks)),
-    );
-    if (host && host.version !== selected) {
-      select(host.version);
-      return;
-    }
     const target =
       frame.current?.querySelector<HTMLElement>(
         `[data-field="${focus.key}"]`,

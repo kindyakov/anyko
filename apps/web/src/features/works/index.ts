@@ -1,5 +1,4 @@
 export {
-  type FactsDraft,
   invalidateWork,
   useAnalyzeWork,
   useConfirmWork,

@@ -346,14 +346,6 @@ module.exports = {
         path: ['^packages/contracts/src/admin/', '^@anyko/contracts/admin'],
       },
     },
-    {
-      name: 'web-no-contracts-root',
-      comment:
-        'Корень @anyko/contracts объединяет все ресурсы и устаревшие экспорты. Импортируйте subpath ресурса (@anyko/contracts/works, /session, /common), где объявлен символ.',
-      severity: 'error',
-      from: { path: '^apps/web/' },
-      to: { path: '^packages/contracts/src/index[.]ts$' },
-    },
   ],
   options: {
     enhancedResolveOptions: {
