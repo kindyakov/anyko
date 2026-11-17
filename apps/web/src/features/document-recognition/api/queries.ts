@@ -1,10 +1,22 @@
 import { queryOptions } from '@tanstack/react-query';
 
-import { documentResultSchema } from '@anyko/contracts/documents';
+import { getDocumentResult, listDocuments } from '@anyko/contracts/documents';
 
-import { requestApi } from '@/lib/api/client';
+import { callApi } from '@/lib/api/call';
+
+import { recognitionPollInterval } from '../model/poll';
 
 import { documentKeys } from './keys';
+
+export function documentsQueryOptions(workspaceId: string) {
+  return queryOptions({
+    queryKey: documentKeys.list(workspaceId),
+    queryFn: ({ signal }) =>
+      callApi(listDocuments, { params: { workspaceId }, signal }),
+    // Список обновляется сам, пока есть документ в обработке или незавершённое удаление.
+    refetchInterval: (query) => recognitionPollInterval(query.state.data),
+  });
+}
 
 export function documentResultQueryOptions(
   workspaceId: string,
@@ -13,10 +25,9 @@ export function documentResultQueryOptions(
   return queryOptions({
     queryKey: documentKeys.result(workspaceId, documentId),
     queryFn: ({ signal }) =>
-      requestApi(
-        `/documents/${encodeURIComponent(documentId)}/result`,
-        documentResultSchema,
-        { signal },
-      ),
+      callApi(getDocumentResult, {
+        params: { workspaceId, documentId },
+        signal,
+      }),
   });
 }

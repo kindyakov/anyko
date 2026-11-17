@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
-import { type WorkView } from '@anyko/contracts/works';
+import { getWorkDocumentImage, type WorkView } from '@anyko/contracts/works';
 
 import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';
@@ -32,8 +32,11 @@ import {
   stageLabels,
   stepStatusLabels,
 } from '@/features/works';
+import { endpointUrl } from '@/lib/api/call';
+import { useWorkspaceId } from '@/lib/api/workspace';
 
 type Run = WorkView['runs'][number];
+type ImageUrl = (documentId: string, index: number) => string;
 type Step = Run['steps'][number];
 type Document = WorkView['documents'][number];
 
@@ -113,10 +116,12 @@ function RunView({
   run,
   documents,
   onOpen,
+  imageUrl,
 }: {
   run: Run;
   documents: Document[];
   onOpen: (document: Document) => void;
+  imageUrl: ImageUrl;
 }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -203,37 +208,41 @@ function RunView({
                 }
               >
                 <ul className="grid gap-3 md:grid-cols-2">
-                  {visuals.map((visual) => (
-                    <li
-                      key={visual.key}
-                      className="flow-root rounded-xl border border-white/[0.06] bg-black/30 p-3"
-                    >
-                      {visual.documentId && visual.imageIndex !== undefined && (
-                        <button
-                          type="button"
-                          aria-label="Открыть изображение из файла"
-                          className="float-left mr-3 cursor-pointer rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400"
-                          onClick={() => {
-                            setZoom(1);
-                            setRotation(0);
-                            setPreview(
-                              `/api/documents/${visual.documentId ?? ''}/images/${String(visual.imageIndex)}`,
-                            );
-                          }}
-                        >
-                          <img
-                            src={`/api/documents/${visual.documentId}/images/${String(visual.imageIndex)}`}
-                            alt=""
-                            loading="lazy"
-                            className="size-20 rounded-lg bg-white object-contain"
-                          />
-                        </button>
-                      )}
-                      <p className="text-muted text-xs leading-5">
-                        {visual.description}
-                      </p>
-                    </li>
-                  ))}
+                  {visuals.map((visual) => {
+                    const source =
+                      visual.documentId && visual.imageIndex !== undefined
+                        ? imageUrl(visual.documentId, visual.imageIndex)
+                        : undefined;
+                    return (
+                      <li
+                        key={visual.key}
+                        className="flow-root rounded-xl border border-white/[0.06] bg-black/30 p-3"
+                      >
+                        {source && (
+                          <button
+                            type="button"
+                            aria-label="Открыть изображение из файла"
+                            className="float-left mr-3 cursor-pointer rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-400"
+                            onClick={() => {
+                              setZoom(1);
+                              setRotation(0);
+                              setPreview(source);
+                            }}
+                          >
+                            <img
+                              src={source}
+                              alt=""
+                              loading="lazy"
+                              className="size-20 rounded-lg bg-white object-contain"
+                            />
+                          </button>
+                        )}
+                        <p className="text-muted text-xs leading-5">
+                          {visual.description}
+                        </p>
+                      </li>
+                    );
+                  })}
                 </ul>
               </Disclosure>
             )}
@@ -353,6 +362,17 @@ export function WorkPipeline({
   onOpen: (document: Document) => void;
   onAnalyze: () => void;
 }) {
+  const workspaceId = useWorkspaceId();
+  // Изображения визуалов — изображения документов этой работы.
+  const imageUrl: ImageUrl = (documentId, index) =>
+    endpointUrl(getWorkDocumentImage, {
+      params: {
+        workspaceId,
+        workId: view.work.id,
+        documentId,
+        index: String(index),
+      },
+    });
   const analyses = view.runs
     .filter((run) => run.kind === 'analysis')
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -449,7 +469,12 @@ export function WorkPipeline({
             </Notice>
           </div>
         )}
-        <RunView run={current} documents={view.documents} onOpen={onOpen} />
+        <RunView
+          run={current}
+          documents={view.documents}
+          onOpen={onOpen}
+          imageUrl={imageUrl}
+        />
       </section>
       {previous.length > 0 && (
         <section aria-labelledby="history-title">
@@ -481,6 +506,7 @@ export function WorkPipeline({
                     run={run}
                     documents={view.documents}
                     onOpen={onOpen}
+                    imageUrl={imageUrl}
                   />
                 </Disclosure>
               </li>

@@ -1,7 +1,8 @@
-import { ApiError, describeApiError } from '@/lib/api/errors';
+import { ApiError, describeApiError, sharedCodeTexts } from '@/lib/api/errors';
 
 const uploadTexts = {
   codes: {
+    ...sharedCodeTexts,
     UNSUPPORTED_DOCUMENT_FORMAT:
       'Поддерживаются PDF, DOCX, JPEG, PNG, WebP и TIFF.',
     INVALID_DOCUMENT:

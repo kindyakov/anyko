@@ -53,14 +53,22 @@ function json(status: number, body: unknown) {
 
 // Сеть подменяется на уровне fetch. GET отдаёт текущие настройки сервера, успешный POST
 // заменяет их; так проверяется, что форма показывает версию после сохранения.
+const settingsAddress = '/api/v1/workspaces/workspace-1/settings/llm';
+
 function serveSettings(initial: Settings, saveStatus = 200) {
   let current = initial;
-  const requests: { method: string; body: unknown }[] = [];
+  const requests: { method: string; url: string; body: unknown }[] = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
     const body: unknown =
       typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
-    requests.push({ method, body });
+    requests.push({ method, url, body });
     if (method === 'GET') return Promise.resolve(json(200, current));
     if (saveStatus !== 200) return Promise.resolve(json(saveStatus, {}));
     const saved = body as {
@@ -142,11 +150,17 @@ test('saves the changed address and shows the stored version afterwards', async 
     ),
   ).toBeTruthy();
   // Пустое поле ключа не отправляется: сервер сохраняет текущий ключ.
-  expect(requests.find((request) => request.method === 'POST')?.body).toEqual({
-    baseURL: 'https://new.example.test/v1',
-    visionModel: 'vision-model',
-    extractionModel: 'extraction-model',
+  expect(requests.find((request) => request.method === 'POST')).toMatchObject({
+    url: settingsAddress,
+    body: {
+      baseURL: 'https://new.example.test/v1',
+      visionModel: 'vision-model',
+      extractionModel: 'extraction-model',
+    },
   });
+  expect(requests.filter((request) => request.method === 'GET')[0]?.url).toBe(
+    settingsAddress,
+  );
   await waitFor(() => {
     expect(screen.getByLabelText('Адрес API').getAttribute('value')).toBe(
       'https://new.example.test/v1',

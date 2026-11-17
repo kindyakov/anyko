@@ -1,12 +1,6 @@
-import {
-  MutationCache,
-  QueryCache,
-  QueryClient,
-  useQueryClient,
-} from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '@/lib/api/errors';
+import { isUnauthorized } from '@/lib/api/errors';
 import { sessionKeys } from '@/lib/api/session';
 
 // Истечение сессии: отменяет запросы, сбрасывает сессию в null и удаляет остальные данные,
@@ -18,10 +12,6 @@ function expireSession(client: QueryClient) {
     predicate: (query) => query.queryKey[0] !== sessionKeys.all[0],
   });
   client.getMutationCache().clear();
-}
-
-function isUnauthorized(error: unknown) {
-  return error instanceof ApiError && error.status === 401;
 }
 
 // 401 от любого запроса или команды обрабатывается здесь, один раз. Запрос сессии сам
@@ -44,13 +34,4 @@ export function createQueryClient(): QueryClient {
     }),
   });
   return client;
-}
-
-// Для запросов, которые features выполняют вне TanStack Query (команды и загрузки с собственным
-// состоянием): 401 истекает сессию так же, как 401 из кэша. Переход на вход делает оболочка.
-export function useExpireSession(): () => void {
-  const client = useQueryClient();
-  return useCallback(() => {
-    expireSession(client);
-  }, [client]);
 }

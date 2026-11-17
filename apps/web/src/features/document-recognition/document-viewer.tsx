@@ -3,6 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { Check, Copy, ExternalLink, FileWarning, RotateCw } from 'lucide-react';
 import { useState } from 'react';
 
+import {
+  getDocumentImage,
+  getDocumentSource,
+} from '@anyko/contracts/documents';
+import {
+  getWorkDocumentImage,
+  getWorkDocumentSource,
+} from '@anyko/contracts/works';
+
 import { Button, buttonStyles } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { SegmentedControl } from '@/components/ui/segmented-control';
@@ -10,10 +19,17 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Notice } from '@/components/ui/status';
 import { documentResultQueryOptions } from '@/features/document-recognition/api/queries';
 import { ResultPreview } from '@/features/document-recognition/result-preview';
+import { endpointUrl } from '@/lib/api/call';
 import { useWorkspaceId } from '@/lib/api/workspace';
 
 type Mode = 'split' | 'text' | 'source' | 'markdown';
-export type ViewedDocument = { id: string; filename: string };
+
+// Документ работы открывается через её адрес; документ распознавания — собственными endpoint.
+export type ViewedDocument = {
+  id: string;
+  filename: string;
+  owner: { kind: 'work'; workId: string } | { kind: 'recognition' };
+};
 
 function documentKind(filename: string) {
   const extension = /\.([a-z0-9]+)$/i.exec(filename)?.[1]?.toLowerCase();
@@ -23,6 +39,32 @@ function documentKind(filename: string) {
   if (extension && ['jpg', 'jpeg', 'png', 'webp'].includes(extension))
     return 'image';
   return 'other';
+}
+
+// Адреса исходника и изображений зависят от владельца документа; результат читается одинаково.
+function documentLinks(workspaceId: string, document: ViewedDocument) {
+  const documentId = document.id;
+  if (document.owner.kind === 'work') {
+    const workId = document.owner.workId;
+    return {
+      source: endpointUrl(getWorkDocumentSource, {
+        params: { workspaceId, workId, documentId },
+      }),
+      image: (index: number) =>
+        endpointUrl(getWorkDocumentImage, {
+          params: { workspaceId, workId, documentId, index: String(index) },
+        }),
+    };
+  }
+  return {
+    source: endpointUrl(getDocumentSource, {
+      params: { workspaceId, documentId },
+    }),
+    image: (index: number) =>
+      endpointUrl(getDocumentImage, {
+        params: { workspaceId, documentId, index: String(index) },
+      }),
+  };
 }
 
 function PaperSkeleton() {
@@ -42,15 +84,14 @@ function PaperSkeleton() {
   );
 }
 
-function Original({ document }: { document: ViewedDocument }) {
-  const url = `/api/documents/${encodeURIComponent(document.id)}/source`;
-  const kind = documentKind(document.filename);
+function Original({ filename, source }: { filename: string; source: string }) {
+  const kind = documentKind(filename);
   if (kind === 'image')
     return (
       <div className="grid min-h-full place-items-center p-4">
         <img
-          src={url}
-          alt={`Оригинал: ${document.filename}`}
+          src={source}
+          alt={`Оригинал: ${filename}`}
           className="animate-fade max-h-full max-w-full rounded-lg object-contain shadow-[0_20px_60px_-20px_#000]"
         />
       </div>
@@ -58,8 +99,8 @@ function Original({ document }: { document: ViewedDocument }) {
   if (kind === 'pdf')
     return (
       <iframe
-        src={url}
-        title={`Оригинал: ${document.filename}`}
+        src={source}
+        title={`Оригинал: ${filename}`}
         className="animate-fade size-full min-h-[60dvh] rounded-xl bg-white"
       />
     );
@@ -98,39 +139,42 @@ export function DocumentViewer({
     enabled: !!document,
     staleTime: 5 * 60_000,
   });
-  const text = result.isPending ? (
-    <PaperSkeleton />
-  ) : result.isError ? (
-    <Notice
-      tone="warning"
-      role="status"
-      title="Распознанный текст пока недоступен"
-      action={
-        <Button
-          variant="secondary"
-          size="sm"
-          loading={result.isFetching}
-          onClick={() => {
-            void result.refetch();
-          }}
-        >
-          <RotateCw size={15} />
-          Повторить
-        </Button>
-      }
-    >
-      Если файл ещё обрабатывается, подождите завершения распознавания.
-    </Notice>
-  ) : mode === 'markdown' ? (
-    <pre className="mx-auto w-full max-w-[860px] overflow-x-auto rounded-2xl border border-white/[0.08] bg-black/50 p-6 font-mono text-[13px] leading-6 whitespace-pre-wrap text-zinc-300">
-      {result.data.markdown || 'В документе не найден текст.'}
-    </pre>
-  ) : (
-    <ResultPreview
-      markdown={result.data.markdown}
-      images={result.data.images}
-    />
-  );
+  // Текст строится для того документа, который открыт; без документа запрос не выполняется.
+  const text = (viewed: ViewedDocument) =>
+    result.isPending ? (
+      <PaperSkeleton />
+    ) : result.isError ? (
+      <Notice
+        tone="warning"
+        role="status"
+        title="Распознанный текст пока недоступен"
+        action={
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={result.isFetching}
+            onClick={() => {
+              void result.refetch();
+            }}
+          >
+            <RotateCw size={15} />
+            Повторить
+          </Button>
+        }
+      >
+        Если файл ещё обрабатывается, подождите завершения распознавания.
+      </Notice>
+    ) : mode === 'markdown' ? (
+      <pre className="mx-auto w-full max-w-[860px] overflow-x-auto rounded-2xl border border-white/[0.08] bg-black/50 p-6 font-mono text-[13px] leading-6 whitespace-pre-wrap text-zinc-300">
+        {result.data.markdown || 'В документе не найден текст.'}
+      </pre>
+    ) : (
+      <ResultPreview
+        markdown={result.data.markdown}
+        images={result.data.images}
+        imageUrl={documentLinks(workspaceId, viewed).image}
+      />
+    );
   return (
     <Modal
       open={!!document}
@@ -179,7 +223,7 @@ export function DocumentViewer({
               )}
               <a
                 className={buttonStyles({ variant: 'secondary', size: 'sm' })}
-                href={`/api/documents/${encodeURIComponent(document.id)}/source`}
+                href={documentLinks(workspaceId, document).source}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -196,7 +240,10 @@ export function DocumentViewer({
                 aria-label="Оригинал"
                 className="min-h-[50dvh] overflow-auto rounded-2xl border border-white/[0.07] bg-[#050507] lg:min-h-0"
               >
-                <Original document={document} />
+                <Original
+                  filename={document.filename}
+                  source={documentLinks(workspaceId, document).source}
+                />
               </section>
             )}
             {mode !== 'source' && (
@@ -204,7 +251,7 @@ export function DocumentViewer({
                 aria-label="Распознанный текст"
                 className="min-h-0 overflow-auto rounded-2xl bg-[#1b1b20] p-3 sm:p-6"
               >
-                {text}
+                {text(document)}
               </section>
             )}
           </div>

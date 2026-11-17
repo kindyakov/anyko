@@ -25,7 +25,7 @@ Feature предоставляет `index.ts`; чужие features импорт�
 
 ### Клиент API по контрактам
 
-`lib/api` вызывает endpoint-описания из `@anyko/contracts` ([ADR 0009](0009-backend-architecture.md)): путь, параметры, схемы запроса и ответа и допустимые коды ошибок не пишутся в web вручную, и расхождение с API находит `tsc`. Тексты ошибок feature задаёт таблицей по кодам своих endpoint с проверкой полноты (`satisfies Record<Code, string>`); общие технические коды обрабатывает `describeApiError`. Переход выполняется вместе с HTTP-платформой API; до него действует `requestApi` со схемой ответа.
+`lib/api` вызывает endpoint-описания из `@anyko/contracts` ([ADR 0009](0009-backend-architecture.md)): путь, параметры, схемы запроса и ответа и допустимые коды ошибок не пишутся в web вручную, и расхождение с API находит `tsc`. Тексты ошибок feature задаёт таблицей по кодам своих endpoint с проверкой полноты (`satisfies Record<Code, string>`); общие технические коды обрабатывает `describeApiError`. Features вызывают описания через `callApi` и `endpointUrl` по subpath `@anyko/contracts/<ресурс>`; `requestApi` остаётся внутренним транспортом `lib/api`.
 
 ### Рабочая область в адресе
 

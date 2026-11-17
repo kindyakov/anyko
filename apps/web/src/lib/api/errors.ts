@@ -27,6 +27,19 @@ export type ApiErrorTexts = {
   fallback?: string;
 };
 
+export function isUnauthorized(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
+// Тексты кодов доступа и повтора одинаковы для всех команд: features включают их в свою таблицу `codes`.
+export const sharedCodeTexts = {
+  FORBIDDEN: 'Недостаточно прав для этого действия.',
+  IDEMPOTENCY_IN_PROGRESS:
+    'Предыдущий запрос ещё выполняется. Подождите и повторите.',
+  IDEMPOTENCY_CONFLICT:
+    'Запрос уже отправлялся с другими данными. Повторите действие.',
+} as const;
+
 const technicalCodes = new Set([
   'NETWORK_ERROR',
   'REQUEST_TIMEOUT',

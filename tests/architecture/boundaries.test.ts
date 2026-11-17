@@ -849,26 +849,28 @@ test('web components cannot import features or the API client', async () => {
   expect(allowed).toHaveLength(0);
 });
 
-test('web API client is imported only from feature api folders and lib', async () => {
+test('web features and app reach the API through call.ts, never through the transport client', async () => {
   const client = {
     'apps/web/src/lib/api/client.ts': 'export const requestApi = 1;',
+    'apps/web/src/lib/api/call.ts': "import '@/lib/api/client';",
   };
-  const rules = await webRules({
-    ...client,
-    'apps/web/src/features/works/new-screen.tsx': "import '@/lib/api/client';",
-  });
-  expect(rules).toContain('web-api-client-in-api');
   for (const source of [
+    'apps/web/src/features/works/new-screen.tsx',
     'apps/web/src/features/works/api/queries.ts',
-    'apps/web/src/lib/api/extra.ts',
-    'apps/web/src/features/works/queries.test.ts',
+    'apps/web/src/app/(workspace)/w/[workspace]/page.tsx',
   ]) {
-    const allowed = await webRules({
+    const rules = await webRules({
       ...client,
       [source]: "import '@/lib/api/client';",
     });
-    expect(allowed).toHaveLength(0);
+    expect(rules).toContain('web-api-transport-only-in-lib');
   }
+  const allowed = await webRules({
+    ...client,
+    'apps/web/src/features/works/api/queries.ts': "import '@/lib/api/call';",
+    'apps/web/src/lib/api/extra.ts': "import '@/lib/api/client';",
+  });
+  expect(allowed).toHaveLength(0);
 });
 
 test('web features and components cannot import server-only modules', async () => {

@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import type { DocumentPackage } from '@anyko/contracts/catalog';
@@ -36,9 +36,9 @@ import {
 } from '@/features/works/api/queries';
 import { useListPreferences } from '@/features/works/list-preferences';
 import { journeySteps } from '@/features/works/model/journey';
-import { ApiError } from '@/lib/api/errors';
+import { sharedCodeTexts } from '@/lib/api/errors';
 import { applyServerErrors } from '@/lib/api/form-errors';
-import { useExpireSession } from '@/lib/api/query-client';
+import { useIdempotencyKey } from '@/lib/api/idempotency';
 import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 
@@ -64,7 +64,11 @@ function Journey({ compact = false }: { compact?: boolean }) {
 }
 
 const createFailure = 'Не удалось создать работу. Попробуйте снова.';
-const createWorkTexts = { fallback: createFailure, technical: createFailure };
+const createWorkTexts = {
+  codes: sharedCodeTexts,
+  fallback: createFailure,
+  technical: createFailure,
+};
 
 const titleSchema = z
   .string()
@@ -86,13 +90,20 @@ function CreateWorkForm({
 }) {
   const router = useRouter();
   const workspaceId = useWorkspaceId();
+  // Повтор отправки после неизвестного исхода (сетевая ошибка) передаёт тот же ключ.
+  const idempotency = useIdempotencyKey();
   const form = useAppForm({
     defaultValues: { title: '', packageVersion: packages[0]?.version ?? '' },
     onSubmit: async ({ value, formApi }) => {
       try {
-        const result = await create.mutateAsync(value);
+        const result = await create.mutateAsync({
+          ...value,
+          idempotencyKey: idempotency.take(),
+        });
+        idempotency.settle();
         router.push(routes.work(workspaceId, result.work.id));
       } catch (error) {
+        idempotency.settle(error);
         applyServerErrors(formApi, error, createWorkTexts);
       }
     },
@@ -164,7 +175,6 @@ function CreateWorkForm({
 }
 
 export function WorkList() {
-  const expireSession = useExpireSession();
   const titleRef = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
   const { search, filter, setSearch, setFilter } = useListPreferences();
@@ -176,11 +186,7 @@ export function WorkList() {
     refetchOnMount: 'always',
   });
   const catalog = useQuery(documentPackagesQueryOptions(workspaceId));
-  const create = useCreateWork();
-  const error = list.error ?? catalog.error ?? create.error;
-  useEffect(() => {
-    if (error instanceof ApiError && error.status === 401) expireSession();
-  }, [error, expireSession]);
+  const create = useCreateWork(workspaceId);
   const works = list.data?.pages.flatMap((page) => page.works) ?? [];
   const visible = works.filter(
     (work) =>

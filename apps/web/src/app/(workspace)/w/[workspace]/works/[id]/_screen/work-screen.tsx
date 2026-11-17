@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 import { type FieldKey, type FieldValue } from '@anyko/contracts/catalog';
+import { type WorkView } from '@anyko/contracts/works';
 
 import { EventHorizon } from '@/components/cosmos/event-horizon';
 import { Button } from '@/components/ui/button';
@@ -15,52 +16,60 @@ import {
   type ViewedDocument,
 } from '@/features/document-recognition';
 import { WorkReview } from '@/features/fact-review';
-import { generateWork, WorkResults } from '@/features/work-generation';
+import { useGenerateWork, WorkResults } from '@/features/work-generation';
 import { WorkPipeline } from '@/features/work-processing';
 import {
-  deleteWorkDocument,
   type Upload,
   uploadWorkFiles,
+  useDeleteWorkDocument,
+  useUploadWorkDocument,
   WorkSources,
 } from '@/features/work-sources';
 import {
-  analyzeWork,
-  confirmWork,
+  describeWorkCommandError,
   type FactsDraft,
-  saveFacts,
   type StepKey,
   stepOf,
+  useAnalyzeWork,
+  useConfirmWork,
+  useSaveFacts,
   useWorkView,
   type WorkStage,
   workStage,
 } from '@/features/works';
-import { ApiError } from '@/lib/api/errors';
-import { useExpireSession } from '@/lib/api/query-client';
+import { isUnauthorized } from '@/lib/api/errors';
+import { useIdempotencyKey } from '@/lib/api/idempotency';
 import { useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 
 import { Hero } from './hero';
 import { Stepper } from './stepper';
 
+type Document = WorkView['documents'][number];
+
 // Экран работы координирует шаги: выбирает открытый шаг, держит черновик сведений и
-// просматриваемый документ. Данные и подписка на события — в features/works, команды — в api/ шагов.
+// просматриваемый документ. Вид работы — из кэша запросов, команды — в api/ features.
 export function WorkScreen({ workId }: { workId: string }) {
   const workspaceId = useWorkspaceId();
-  const expireSession = useExpireSession();
   const [draft, setDraft] = useState<FactsDraft | null>(null);
   const [error, setError] = useState('');
-  const [pending, setPending] = useState(false);
   const [step, setStep] = useState<StepKey>();
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [viewing, setViewing] = useState<ViewedDocument>();
   const previousStage = useRef<WorkStage['kind']>(undefined);
-  const { view, loadError, live, load } = useWorkView({
+  const { view, loadError, live, refetch } = useWorkView({
+    workspaceId,
     workId,
-    // Работа, у которой удаляется исходник, не принимает правки: черновик сбрасывается.
-    onLoaded: (loaded) => {
-      if (loaded.cleanupPending) setDraft(null);
-    },
   });
+  const analysis = useAnalyzeWork(workspaceId, workId);
+  const confirmation = useConfirmWork(workspaceId, workId);
+  const factsSave = useSaveFacts(workspaceId, workId);
+  const generation = useGenerateWork(workspaceId, workId);
+  const uploadDocument = useUploadWorkDocument(workspaceId, workId);
+  const deletion = useDeleteWorkDocument(workspaceId, workId);
+  // Ключ каждой команды живёт на всё действие: повтор после неизвестного исхода передаёт тот же ключ.
+  const analysisKey = useIdempotencyKey();
+  const generationKey = useIdempotencyKey();
   const stage = view ? workStage(view) : undefined;
   // Open the step that matches the work's situation, and follow it when
   // background processing moves the work forward.
@@ -72,44 +81,41 @@ export function WorkScreen({ workId }: { workId: string }) {
     else if (before === 'processing' && stage.kind === 'review')
       setStep((current) => (current === 'extraction' ? 'review' : current));
   }, [stage]);
-  async function command(operation: () => Promise<unknown>) {
-    setPending(true);
-    setError('');
-    try {
-      await operation();
-      await load();
-      return true;
-    } catch (failure) {
-      if (failure instanceof ApiError && failure.status === 401)
-        expireSession();
-      else
-        setError(
-          failure instanceof ApiError && failure.code === 'REVISION_CONFLICT'
-            ? 'Работа изменилась, пока вы редактировали. Ваши правки сохранены в полях — нажмите «Перенести правки», затем сохраните.'
-            : failure instanceof ApiError
-              ? `Операция не выполнена: ${failure.code}`
-              : 'Операция не выполнена. Повторите попытку.',
-        );
-      return false;
-    } finally {
-      setPending(false);
-    }
+  // Работа, у которой удаляется исходник, не принимает правки: черновик сбрасывается, как только очистка
+  // началась. Это корректировка состояния при рендере (документированный React-паттерн), не эффект.
+  if (view?.cleanupPending && draft !== null) setDraft(null);
+  const activeDraft = view?.cleanupPending ? null : draft;
+  const uploading = uploads.some((item) => item.state === 'uploading');
+  const commandPending =
+    analysis.isPending ||
+    confirmation.isPending ||
+    factsSave.isPending ||
+    generation.isPending ||
+    deletion.isPending;
+  // Сессия истекла: ошибка не показывается, оболочка перенаправит на вход.
+  function fail(failure: unknown) {
+    if (isUnauthorized(failure)) return;
+    setError(describeWorkCommandError(failure));
   }
   async function upload(files: File[]) {
-    setPending(true);
+    setError('');
+    await uploadWorkFiles(
+      files,
+      (file, idempotencyKey) =>
+        uploadDocument.mutateAsync({ file, idempotencyKey }),
+      setUploads,
+    );
+    setTimeout(() => {
+      setUploads((items) => items.filter((item) => item.state !== 'done'));
+    }, 2500);
+  }
+  async function deleteDocument(document: Document) {
+    setDraft(null);
     setError('');
     try {
-      const result = await uploadWorkFiles(workId, files, setUploads);
-      if (result === 'unauthorized') {
-        expireSession();
-        return;
-      }
-      await load();
-    } finally {
-      setPending(false);
-      setTimeout(() => {
-        setUploads((items) => items.filter((item) => item.state !== 'done'));
-      }, 2500);
+      await deletion.mutateAsync(document.id);
+    } catch (failure) {
+      fail(failure);
     }
   }
   if (!view || !stage)
@@ -126,7 +132,7 @@ export function WorkScreen({ workId }: { workId: string }) {
           </Link>
           <Button
             onClick={() => {
-              void load();
+              void refetch();
             }}
           >
             <RotateCw size={16} />
@@ -150,22 +156,58 @@ export function WorkScreen({ workId }: { workId: string }) {
     view.cleanupPending ||
     stage.kind === 'processing' ||
     stage.kind === 'generating';
-  const busy = pending || view.cleanupPending;
-  const values = draft?.values ?? view.facts.values;
+  const busy = commandPending || uploading || view.cleanupPending;
+  const values = activeDraft?.values ?? view.facts.values;
   const analyze = () => {
-    void command(() => analyzeWork(workId)).then((ok) => {
-      if (ok) setStep('extraction');
-    });
+    setError('');
+    analysis.mutate(
+      { idempotencyKey: analysisKey.take() },
+      {
+        onSuccess: () => {
+          analysisKey.settle();
+          setStep('extraction');
+        },
+        onError: (failure) => {
+          analysisKey.settle(failure);
+          fail(failure);
+        },
+      },
+    );
   };
   const generate = () => {
-    void command(() => generateWork(workId, view.work.revision)).then((ok) => {
-      if (ok) setStep('documents');
-    });
+    setError('');
+    generation.mutate(
+      {
+        revision: view.work.revision,
+        idempotencyKey: generationKey.take(),
+      },
+      {
+        onSuccess: () => {
+          generationKey.settle();
+          setStep('documents');
+        },
+        onError: (failure) => {
+          generationKey.settle(failure);
+          fail(failure);
+        },
+      },
+    );
+  };
+  const confirm = () => {
+    setError('');
+    confirmation.mutate({ revision: view.work.revision }, { onError: fail });
   };
   const change = (changes: Partial<Record<FieldKey, FieldValue>>) => {
     setDraft({
-      revision: draft?.revision ?? view.work.revision,
+      revision: activeDraft?.revision ?? view.work.revision,
       values: { ...values, ...changes },
+    });
+  };
+  const openDocument = (document: Document) => {
+    setViewing({
+      id: document.id,
+      filename: document.filename,
+      owner: { kind: 'work', workId },
     });
   };
   const current = step ?? stepOf(stage);
@@ -258,12 +300,9 @@ export function WorkScreen({ workId }: { workId: string }) {
               onUpload={(files) => {
                 void upload(files);
               }}
-              onOpen={setViewing}
+              onOpen={openDocument}
               onAnalyze={analyze}
-              onDelete={async (doc) => {
-                setDraft(null);
-                await command(() => deleteWorkDocument(workId, doc.id));
-              }}
+              onDelete={deleteDocument}
             />
           </Tabs.Panel>
           <Tabs.Panel value="extraction" className="animate-rise outline-none">
@@ -271,7 +310,7 @@ export function WorkScreen({ workId }: { workId: string }) {
               view={view}
               locked={locked}
               busy={busy}
-              onOpen={setViewing}
+              onOpen={openDocument}
               onAnalyze={analyze}
             />
           </Tabs.Panel>
@@ -281,7 +320,7 @@ export function WorkScreen({ workId }: { workId: string }) {
               values={values}
               busy={busy}
               onChange={change}
-              onOpen={setViewing}
+              onOpen={openDocument}
               onExtract={analyze}
             />
           </Tabs.Panel>
@@ -290,19 +329,17 @@ export function WorkScreen({ workId }: { workId: string }) {
               view={view}
               locked={locked}
               busy={busy}
-              hasDraft={!!draft}
+              hasDraft={!!activeDraft}
               onReview={() => {
                 setStep('review');
               }}
-              onConfirm={() => {
-                void command(() => confirmWork(workId, view.work.revision));
-              }}
+              onConfirm={confirm}
               onGenerate={generate}
             />
           </Tabs.Panel>
         </div>
       </Tabs.Root>
-      {draft && (
+      {activeDraft && (
         <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4 md:pl-[264px]">
           <div
             role="region"
@@ -312,7 +349,7 @@ export function WorkScreen({ workId }: { workId: string }) {
             <span className="bg-brand-hot animate-blink size-2 rounded-full shadow-[0_0_8px_#ff3b62]" />
             <p role="status" className="min-w-0 flex-1 text-sm">
               Есть несохранённые правки
-              {draft.revision !== view.work.revision && (
+              {activeDraft.revision !== view.work.revision && (
                 <span className="block text-xs text-amber-200">
                   Работа изменилась после начала правок
                 </span>
@@ -329,13 +366,13 @@ export function WorkScreen({ workId }: { workId: string }) {
               <Undo2 size={15} />
               Отменить
             </Button>
-            {draft.revision !== view.work.revision && (
+            {activeDraft.revision !== view.work.revision && (
               <Button
                 variant="secondary"
                 size="sm"
                 onClick={() => {
                   setDraft({
-                    values: draft.values,
+                    values: activeDraft.values,
                     revision: view.work.revision,
                   });
                 }}
@@ -345,12 +382,15 @@ export function WorkScreen({ workId }: { workId: string }) {
             )}
             <Button
               size="sm"
-              loading={pending}
+              loading={factsSave.isPending}
               disabled={busy}
               onClick={() => {
-                void command(async () => {
-                  await saveFacts(workId, draft);
-                  setDraft(null);
+                setError('');
+                factsSave.mutate(activeDraft, {
+                  onSuccess: () => {
+                    setDraft(null);
+                  },
+                  onError: fail,
                 });
               }}
             >
