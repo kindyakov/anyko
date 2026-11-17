@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   mkdir,
   mkdtemp,
@@ -34,6 +34,15 @@ async function check(
       mkdir(join(directory, folder), { recursive: true }),
     ),
   );
+  await mkdir(join(directory, 'apps/web/src'), { recursive: true });
+  await writeFile(
+    join(directory, 'apps/web/tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: { paths: { '@/*': ['./src/*'] } },
+      include: ['src/**/*.ts', 'src/**/*.tsx'],
+    }),
+  );
+  await writeFile(join(directory, 'apps/web/src/placeholder.ts'), 'export {};');
   let fixtureConfig = config;
   if (withAllowedEdge) {
     const original = await readFile(config, 'utf8');
@@ -669,3 +678,293 @@ test('ESLint rejects process.env in backend runtime and permits passed-in config
   );
   expect(allowed.rules).not.toContain('no-restricted-syntax');
 }, 60000);
+// Web (apps/web): границы features/components/lib, server-only, административные контракты и правила ESLint.
+// Каждый плохой пример должен отклоняться именно этим правилом; хороший проходит.
+async function webRules(
+  files: Record<string, string>,
+  workspaceLinks: string[] = [],
+) {
+  const { result } = await check(files, false, workspaceLinks);
+  return result.summary.violations.map((violation) => violation.rule.name);
+}
+
+test('web feature public API rejects deep cross-feature imports, including the @ alias and app/', async () => {
+  const target = 'apps/web/src/features/documents/document-viewer.tsx';
+  for (const [source, specifier] of [
+    [
+      'apps/web/src/features/works/a.ts',
+      '@/features/documents/document-viewer',
+    ],
+    ['apps/web/src/features/works/a.ts', '../documents/document-viewer'],
+    ['apps/web/src/app/other.tsx', '@/features/documents/document-viewer'],
+  ] as const) {
+    const rules = await webRules({
+      [source]: `import '${specifier}';`,
+      [target]: 'export const value = 1;',
+    });
+    expect(rules).toContain('web-feature-public-api');
+  }
+});
+
+test('web feature public API permits the public index and the own feature', async () => {
+  const rules = await webRules({
+    'apps/web/src/features/works/a.ts':
+      "import '@/features/documents';\nimport './b';",
+    'apps/web/src/features/works/b.ts': 'export const value = 1;',
+    'apps/web/src/features/documents/index.ts': 'export const value = 1;',
+  });
+  expect(rules).toHaveLength(0);
+});
+
+test('web features cannot form cycles', async () => {
+  const rules = await webRules({
+    'apps/web/src/features/a/index.ts': "import './x';",
+    'apps/web/src/features/a/x.ts': "import '@/features/b';",
+    'apps/web/src/features/b/index.ts': "import '@/features/a';",
+  });
+  expect(rules).toContain('web-no-feature-cycles');
+  const acyclic = await webRules({
+    'apps/web/src/features/a/index.ts': "import '@/features/b';",
+    'apps/web/src/features/b/index.ts': 'export const value = 1;',
+  });
+  expect(acyclic).toHaveLength(0);
+});
+
+test('web features and components cannot import app routes', async () => {
+  for (const source of [
+    'apps/web/src/features/works/a.ts',
+    'apps/web/src/components/ui/a.ts',
+  ]) {
+    const rules = await webRules({
+      [source]: "import '@/app/other';",
+      'apps/web/src/app/other.ts': 'export const value = 1;',
+    });
+    expect(rules).toContain('web-features-no-app');
+  }
+  const allowed = await webRules({
+    'apps/web/src/features/works/a.ts': "import '@/components/ui/b';",
+    'apps/web/src/components/ui/b.ts': 'export const value = 1;',
+  });
+  expect(allowed).toHaveLength(0);
+});
+
+test('web components cannot import features or the API client', async () => {
+  for (const [specifier, target] of [
+    ['@/features/documents', 'apps/web/src/features/documents/index.ts'],
+    ['@/lib/api/client', 'apps/web/src/lib/api/client.ts'],
+  ] as const) {
+    const rules = await webRules({
+      'apps/web/src/components/ui/a.ts': `import '${specifier}';`,
+      [target]: 'export const value = 1;',
+    });
+    expect(rules).toContain('web-components-no-features');
+  }
+  const allowed = await webRules({
+    'apps/web/src/components/ui/a.ts': "import '@/components/ui/b';",
+    'apps/web/src/components/ui/b.ts': 'export const value = 1;',
+  });
+  expect(allowed).toHaveLength(0);
+});
+
+test('web API client is imported only from feature api folders and lib', async () => {
+  const client = {
+    'apps/web/src/lib/api/client.ts': 'export const requestApi = 1;',
+  };
+  const rules = await webRules({
+    ...client,
+    'apps/web/src/features/works/new-screen.tsx': "import '@/lib/api/client';",
+  });
+  expect(rules).toContain('web-api-client-in-api');
+  for (const source of [
+    'apps/web/src/features/works/api/queries.ts',
+    'apps/web/src/lib/api/extra.ts',
+    'apps/web/src/features/works/queries.test.ts',
+  ]) {
+    const allowed = await webRules({
+      ...client,
+      [source]: "import '@/lib/api/client';",
+    });
+    expect(allowed).toHaveLength(0);
+  }
+});
+
+test('web features and components cannot import server-only modules', async () => {
+  const server = {
+    'apps/web/src/lib/server/config.ts': 'export const value = 1;',
+  };
+  for (const source of [
+    'apps/web/src/features/works/a.ts',
+    'apps/web/src/components/ui/a.ts',
+  ]) {
+    const rules = await webRules({
+      ...server,
+      [source]: "import '@/lib/server/config';",
+    });
+    expect(rules).toContain('web-server-only');
+  }
+  const allowed = await webRules({
+    ...server,
+    'apps/web/src/app/route.ts': "import '@/lib/server/config';",
+  });
+  expect(allowed).toHaveLength(0);
+});
+
+test('web cannot import administrative contracts but can import resource contracts', async () => {
+  const contracts = {
+    'packages/contracts/package.json': JSON.stringify({
+      name: '@anyko/contracts',
+      exports: {
+        './admin': './src/admin/index.ts',
+        './works': './src/works.ts',
+      },
+    }),
+    'packages/contracts/src/admin/index.ts': 'export const value = 1;',
+    'packages/contracts/src/works.ts': 'export const value = 1;',
+  };
+  const rules = await webRules(
+    {
+      ...contracts,
+      'apps/web/src/features/works/a.ts': "import '@anyko/contracts/admin';",
+    },
+    ['contracts'],
+  );
+  expect(rules).toContain('web-no-contracts-admin');
+  const allowed = await webRules(
+    {
+      ...contracts,
+      'apps/web/src/features/works/a.ts': "import '@anyko/contracts/works';",
+    },
+    ['contracts'],
+  );
+  expect(allowed).toHaveLength(0);
+});
+
+// One ESLint instance checks every web example. ruleFilter keeps only the rules under test, so typed rules never
+// run and projectService stays off: the real configuration (files globs and rule settings) is used without
+// type information, in seconds instead of a typed run per snippet.
+const checkedWebRules = [
+  'no-restricted-imports',
+  'no-restricted-globals',
+  'no-restricted-properties',
+  'react-hooks/rules-of-hooks',
+  '@eslint-community/eslint-comments/require-description',
+  'jsx-a11y-x/alt-text',
+];
+
+async function lintWebSnippets(
+  cases: Record<string, { filename: string; code: string }>,
+) {
+  const script = `
+import { ESLint } from 'eslint';
+const cases = JSON.parse(await new Response(process.stdin).text());
+const checked = ${JSON.stringify(checkedWebRules)};
+const eslint = new ESLint({
+  cwd: process.cwd(),
+  ruleFilter: ({ ruleId }) => checked.includes(ruleId),
+  overrideConfig: { languageOptions: { parserOptions: { projectService: false } } },
+});
+const output = {};
+for (const [name, item] of Object.entries(cases)) {
+  const [result] = await eslint.lintText(item.code, { filePath: item.filename });
+  output[name] = result.messages.map((message) => message.ruleId);
+}
+console.log(JSON.stringify(output));
+`;
+  const subprocess = Bun.spawn(['node', '--input-type=module', '-e', script], {
+    cwd: root,
+    stdin: 'pipe',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  await subprocess.stdin.write(JSON.stringify(cases));
+  await subprocess.stdin.end();
+  const [output, errors] = await Promise.all([
+    new Response(subprocess.stdout).text(),
+    new Response(subprocess.stderr).text(),
+  ]);
+  if (!output.trim()) throw new Error(errors);
+  return JSON.parse(output) as Record<string, (string | null)[]>;
+}
+
+describe('ESLint web examples', () => {
+  const feature = 'apps/web/src/features/auth/sign-in.tsx';
+  const app = 'apps/web/src/app/layout.tsx';
+  const runtime = 'packages/backend/src/runtime/index.ts';
+  let rules: Record<string, (string | null)[]> = {};
+
+  beforeAll(async () => {
+    rules = await lintWebSnippets({
+      formLibrary: {
+        filename: feature,
+        code: "import { useForm } from '@tanstack/react-form';",
+      },
+      persistedStore: {
+        filename: feature,
+        code: "import { persist } from 'zustand/middleware';",
+      },
+      memoryStore: {
+        filename: feature,
+        code: "import { create } from 'zustand';",
+      },
+      persistOutsideFeatures: {
+        filename: app,
+        code: "import { persist } from 'zustand/middleware';",
+      },
+      localStorageInFeature: {
+        filename: feature,
+        code: "localStorage.setItem('draft', 'x');",
+      },
+      sessionStorageOnWindow: {
+        filename: feature,
+        code: "window.sessionStorage.getItem('draft');",
+      },
+      conditionalHook: {
+        filename: app,
+        code: "import { useState } from 'react';\nexport function C(p: { on: boolean }) {\n  if (p.on) useState(0);\n  return null;\n}",
+      },
+      undescribedDisable: {
+        filename: runtime,
+        code: '// eslint-disable-next-line no-console\nexport const value = 1;',
+      },
+      describedDisable: {
+        filename: runtime,
+        code: '// eslint-disable-next-line no-console -- example reason\nexport const value = 1;',
+      },
+      imageWithoutAlt: {
+        filename: feature,
+        code: 'export const logo = <img src="x" />;',
+      },
+      imageWithAlt: {
+        filename: feature,
+        code: 'export const logo = <img src="x" alt="Логотип" />;',
+      },
+    });
+  }, 120000);
+
+  test('ESLint blocks TanStack Form and persisted Zustand inside web features only', () => {
+    expect(rules.formLibrary).toContain('no-restricted-imports');
+    expect(rules.persistedStore).toContain('no-restricted-imports');
+    expect(rules.memoryStore).not.toContain('no-restricted-imports');
+    expect(rules.persistOutsideFeatures).not.toContain('no-restricted-imports');
+  });
+
+  test('ESLint blocks browser storage in web features', () => {
+    expect(rules.localStorageInFeature).toContain('no-restricted-globals');
+    expect(rules.sessionStorageOnWindow).toContain('no-restricted-properties');
+  });
+
+  test('ESLint applies react-hooks to web files and requires eslint-disable reasons', () => {
+    expect(rules.conditionalHook).toContain('react-hooks/rules-of-hooks');
+    expect(rules.undescribedDisable).toContain(
+      '@eslint-community/eslint-comments/require-description',
+    );
+    expect(rules.describedDisable).not.toContain(
+      '@eslint-community/eslint-comments/require-description',
+    );
+  });
+
+  test('ESLint requires alt text on images in web files', () => {
+    expect(rules.imageWithoutAlt).toContain('jsx-a11y-x/alt-text');
+    expect(rules.imageWithAlt).not.toContain('jsx-a11y-x/alt-text');
+  });
+});

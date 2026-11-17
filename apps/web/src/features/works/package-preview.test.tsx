@@ -62,7 +62,7 @@ const pack = documentPackageSchema.parse({
 });
 
 test('package preview exposes all documents and renders nested creditor loops once each without leaking service tags', () => {
-  const html = renderToStaticMarkup(
+  const view = renderToStaticMarkup(
     <PackagePreview
       pack={pack}
       values={{
@@ -75,11 +75,11 @@ test('package preview exposes all documents and renders nested creditor loops on
       onChange={() => undefined}
     />,
   );
-  const paper = html.slice(
-    html.indexOf('<article'),
-    html.indexOf('</article>'),
+  const paper = view.slice(
+    view.indexOf('<article'),
+    view.indexOf('</article>'),
   );
-  expect((html.match(/role="tab"/g) ?? []).length).toBe(3);
+  expect((view.match(/role="tab"/g) ?? []).length).toBe(3);
   expect((paper.match(/Личный кредитор/g) ?? []).length).toBe(1);
   expect((paper.match(/Предпринимательский кредитор/g) ?? []).length).toBe(1);
   expect(paper).not.toMatch(/\{[#/][a-zA-Z]+\}/);

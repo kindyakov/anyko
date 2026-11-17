@@ -94,7 +94,7 @@ Feature — один пользовательский сценарий в тер
 | Компоненты и хуки: формы, состояния, команды      | `bun test` + happy-dom + React Testing Library + user-event         | рядом с кодом |
 | Маршруты, сессия, перенаправления, async RSC, SSE | Playwright, runner на Node, приложение через `bun --bun next start` | `tests/e2e`   |
 
-- Web-тесты запускаются по маске файлов `src` с изоляцией файлов (`--isolate`), а не списком. Глобальный DOM регистрируется в preload web-пакета; серверные тесты его не получают.
+- Web-тесты запускаются по маске файлов `src` с изоляцией файлов (`--isolate`), а не списком. Тесты `src/lib` запускаются без DOM, тесты `src/features`, `src/app` и `src/components` — с happy-dom через preload `test/setup.ts`.
 - Компонент проверяется через роли и доступные названия, как его использует человек. Внутреннее состояние, имена классов и вызовы хуков не проверяются.
 - Каждый тест создаёт свой `QueryClient`. Сеть подменяется на уровне `fetch` ответами, проходящими схемы contracts; модули features не мокируются.
 - `next/navigation` и `next/link` подменяются общим помощником web-тестов, а не в каждом файле по-своему.
@@ -112,14 +112,14 @@ Bun выбран для компонентных тестов осознанно
 
 **Базовый набор.**
 
-| Правило                                                                                         | Проверка                                                 |
-| ----------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| Уровни, импорт чужой feature через `index.ts`, без циклов, `lib/server`, `contracts/admin`      | dependency-cruiser                                       |
-| Клиент API вызывается только из `features/*/api` и `lib/api`                                    | dependency-cruiser                                       |
-| Hooks, Next, доступность                                                                        | рекомендуемые наборы react-hooks, `@next/next`, jsx-a11y |
-| Тесты через роли, без прямого доступа к DOM                                                     | рекомендуемый набор testing-library                      |
-| Features не импортируют `@tanstack/react-form` и persist Zustand, не используют browser storage | `no-restricted-imports`, `no-restricted-globals`         |
-| `Idempotency-Key`, полнота текстов ошибок                                                       | типы `callApi` и `satisfies`                             |
+| Правило                                                                                         | Проверка                                                   |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| Уровни, импорт чужой feature через `index.ts`, без циклов, `lib/server`, `contracts/admin`      | dependency-cruiser                                         |
+| Клиент API вызывается только из `features/*/api` и `lib/api`                                    | dependency-cruiser                                         |
+| Hooks, Next, доступность                                                                        | рекомендуемые наборы react-hooks, `@next/next`, jsx-a11y-x |
+| Тесты через роли, без прямого доступа к DOM                                                     | рекомендуемый набор testing-library                        |
+| Features не импортируют `@tanstack/react-form` и persist Zustand, не используют browser storage | `no-restricted-imports`, `no-restricted-globals`           |
+| `Idempotency-Key`, полнота текстов ошибок                                                       | типы `callApi` и `satisfies`                               |
 
 **Только review.** Имена по глоссарию, размер и ответственность компонента, выбор между адресом и Zustand, строковые query keys, `'use client'` на уровне экрана, чистота `model/`, польза тестов.
 

@@ -3,15 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { Check, Copy, ExternalLink, FileWarning, RotateCw } from 'lucide-react';
 import { useState } from 'react';
 
-import { documentResultSchema } from '@anyko/contracts';
-
 import { Button, buttonStyles } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Notice } from '@/components/ui/status';
+import { documentResultQueryOptions } from '@/features/documents/api/queries';
 import { ResultPreview } from '@/features/documents/result-preview';
-import { requestApi } from '@/lib/api/client';
+import { useWorkspaceId } from '@/lib/api/session';
 
 type Mode = 'split' | 'text' | 'source' | 'markdown';
 export type ViewedDocument = { id: string; filename: string };
@@ -93,16 +92,11 @@ export function DocumentViewer({
 }) {
   const [mode, setMode] = useState<Mode>('split');
   const [copied, setCopied] = useState(false);
+  const workspaceId = useWorkspaceId();
   const result = useQuery({
-    queryKey: ['document-result', document?.id],
+    ...documentResultQueryOptions(workspaceId, document?.id ?? ''),
     enabled: !!document,
     staleTime: 5 * 60_000,
-    queryFn: ({ signal }) =>
-      requestApi(
-        `/documents/${encodeURIComponent(document?.id ?? '')}/result`,
-        documentResultSchema,
-        { signal },
-      ),
   });
   const text = result.isPending ? (
     <PaperSkeleton />

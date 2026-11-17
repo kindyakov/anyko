@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { ResultPreview } from '@/features/documents/result-preview';
 
 test('renders DOCX Cyrillic math symbols without unknown command errors', () => {
-  const html = renderToStaticMarkup(
+  const view = renderToStaticMarkup(
     <ResultPreview
       markdown={
         '$P=P_2 \\cdot \\CYRK\\CYRP\\CYRD$\n\n$P_{\\cyrg\\cyre\\cyro\\cyrm}$'
@@ -13,14 +13,14 @@ test('renders DOCX Cyrillic math symbols without unknown command errors', () => 
       images={[]}
     />,
   );
-  expect(html).toContain('>К<');
-  expect(html).toContain('>П<');
-  expect(html).toContain('>Д<');
-  expect(html).not.toContain('color:#cc0000');
+  expect(view).toContain('>К<');
+  expect(view).toContain('>П<');
+  expect(view).toContain('>Д<');
+  expect(view).not.toContain('color:#cc0000');
 });
 
 test('renders headings, GFM and HTML tables, math and only authorized images', () => {
-  const html = renderToStaticMarkup(
+  const view = renderToStaticMarkup(
     <ResultPreview
       markdown={
         '# Title\n\n| Amount | Value |\n|---|---|\n| Total | 123 |\n\n<table><tr><td>Native table</td></tr></table>\n\n$\\frac{1}{2}$\n\n$$\nx^2+y^2=z^2\n$$\n\n![Figure](images/chart.png)\n\n![External](https://example.test/track.png)\n\n<img src="https://example.test/html-track.png" onerror="alert(1)"><script>alert(1)</script>\n\n[bad](javascript:alert(1))'
@@ -30,20 +30,20 @@ test('renders headings, GFM and HTML tables, math and only authorized images', (
       ]}
     />,
   );
-  expect(html).toContain('<h1>Title</h1>');
-  expect(html).toContain('<table>');
-  expect(html).toContain('Native table');
-  expect(html).toContain('class="katex"');
-  expect(html).toContain('katex-display');
-  expect(html).toContain('src="/api/documents/test-id/images/0"');
-  expect(html).not.toContain('src="https://');
-  expect(html).not.toContain('<script');
-  expect(html).not.toContain('onerror');
-  expect(html).not.toContain('href="javascript:');
+  expect(view).toContain('<h1>Title</h1>');
+  expect(view).toContain('<table>');
+  expect(view).toContain('Native table');
+  expect(view).toContain('class="katex"');
+  expect(view).toContain('katex-display');
+  expect(view).toContain('src="/api/documents/test-id/images/0"');
+  expect(view).not.toContain('src="https://');
+  expect(view).not.toContain('<script');
+  expect(view).not.toContain('onerror');
+  expect(view).not.toContain('href="javascript:');
 });
 
 test('keeps an unsupported formula readable and blocks KaTeX external resources', () => {
-  const html = renderToStaticMarkup(
+  const view = renderToStaticMarkup(
     <ResultPreview
       markdown={
         '$\\unknowncommand{x}$\n\n$\\includegraphics{https://example.test/leak.png}$'
@@ -51,6 +51,6 @@ test('keeps an unsupported formula readable and blocks KaTeX external resources'
       images={[]}
     />,
   );
-  expect(html).toContain('unknowncommand');
-  expect(html).not.toContain('<img');
+  expect(view).toContain('unknowncommand');
+  expect(view).not.toContain('<img');
 });
