@@ -1,181 +1,30 @@
 'use client';
 import { Field } from '@base-ui/react/field';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import {
-  ArrowRight,
-  ArrowUpRight,
-  FileStack,
-  FolderKanban,
-  Plus,
-  RotateCw,
-  Search,
-  X,
-} from 'lucide-react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { type RefObject, useRef, useState } from 'react';
-import { z } from 'zod';
+import { ArrowRight, Plus, RotateCw, Search, X } from 'lucide-react';
+import { useRef, useState } from 'react';
 
-import type { DocumentPackage } from '@anyko/contracts/catalog';
 import {
   Button,
-  HoverMist,
   Input,
   Modal,
   Notice,
-  RelativeTime,
   SegmentedControl,
   Skeleton,
-  stagger,
-  StatusPill,
 } from '@anyko/ui';
 import { EventHorizon } from '@anyko/ui/brand';
-import { FormErrorNotice, FormRoot, useAppForm } from '@anyko/ui/form';
 
 import { useCreateWork } from '@/features/works/api/mutations';
 import {
   documentPackagesQueryOptions,
   worksQueryOptions,
 } from '@/features/works/api/queries';
-import { journeySteps } from '@/features/works/model/journey';
+import { filterWorks } from '@/features/works/model/work-list';
 import { useListPreferences } from '@/features/works/ui/list-preferences';
-import { sharedCodeTexts } from '@/lib/api/errors';
-import { applyServerErrors } from '@/lib/api/form-errors';
-import { useIdempotencyKey } from '@/lib/api/idempotency';
+import { CreateWorkForm } from '@/features/works/ui/list/create-work-form';
+import { Journey } from '@/features/works/ui/list/journey';
+import { WorkCard } from '@/features/works/ui/list/work-card';
 import { useCan, useWorkspaceId } from '@/lib/api/workspace';
-import { routes } from '@/lib/routes';
-
-function Journey({ compact = false }: { compact?: boolean }) {
-  return (
-    <ol
-      className={`grid gap-2 ${compact ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-4'}`}
-    >
-      {journeySteps.map((step, index) => (
-        <li
-          key={step.key}
-          className={`animate-rise glass relative rounded-2xl border border-white/[0.07] p-3.5 ${stagger(index * 2)}`}
-        >
-          <span className="font-heading text-brand-hot text-xs font-bold">
-            0{index + 1}
-          </span>
-          <p className="mt-1 text-sm font-medium">{step.title}</p>
-          <p className="text-muted mt-0.5 text-xs leading-5">{step.caption}</p>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-const createFailure = 'Не удалось создать работу. Попробуйте снова.';
-const createWorkTexts = {
-  codes: sharedCodeTexts,
-  fallback: createFailure,
-  technical: createFailure,
-};
-
-const titleSchema = z
-  .string()
-  .trim()
-  .min(1, 'Введите название работы')
-  .max(200, 'Не больше 200 символов');
-const packageSchema = z.string().min(1, 'Выберите комплект документов');
-
-function CreateWorkForm({
-  create,
-  packages,
-  titleRef,
-  onCancel,
-}: {
-  create: ReturnType<typeof useCreateWork>;
-  packages: readonly DocumentPackage[];
-  titleRef: RefObject<HTMLInputElement | null>;
-  onCancel: () => void;
-}) {
-  const router = useRouter();
-  const workspaceId = useWorkspaceId();
-  // Повтор отправки после неизвестного исхода (сетевая ошибка) передаёт тот же ключ.
-  const idempotency = useIdempotencyKey();
-  const form = useAppForm({
-    defaultValues: { title: '', packageVersion: packages[0]?.version ?? '' },
-    onSubmit: async ({ value, formApi }) => {
-      try {
-        const result = await create.mutateAsync({
-          ...value,
-          idempotencyKey: idempotency.take(),
-        });
-        idempotency.settle();
-        router.push(routes.work(workspaceId, result.work.id));
-      } catch (error) {
-        idempotency.settle(error);
-        applyServerErrors(formApi, error, createWorkTexts);
-      }
-    },
-  });
-  return (
-    <FormRoot form={form} className="grid gap-6">
-      <form.AppField name="title" validators={{ onChange: titleSchema }}>
-        {(field) => (
-          <field.TextField
-            ref={titleRef}
-            label="Название работы"
-            required
-            maxLength={200}
-            placeholder="Например, Иванов И. И. — банкротство"
-          />
-        )}
-      </form.AppField>
-      <form.AppField
-        name="packageVersion"
-        validators={{ onChange: packageSchema }}
-      >
-        {(field) => (
-          <field.RadioGroupField
-            label="Комплект документов"
-            options={packages.map((pack) => ({
-              value: pack.version,
-              children: (
-                <>
-                  <span className="block text-sm font-medium">
-                    {pack.title}
-                    {pack.technical && (
-                      <span className="text-muted ml-2 text-xs font-normal">
-                        проверочный бланк
-                      </span>
-                    )}
-                  </span>
-                  <span className="text-muted mt-1 block text-xs leading-5">
-                    {pack.documents.map((doc) => doc.title).join(' · ')}
-                  </span>
-                </>
-              ),
-            }))}
-          />
-        )}
-      </form.AppField>
-      <div className="rounded-2xl border border-white/[0.06] bg-black/30 p-4">
-        <p className="text-muted mb-3 flex items-center gap-2 text-xs">
-          <FolderKanban size={14} />
-          Что будет дальше
-        </p>
-        <Journey compact />
-      </div>
-      <FormErrorNotice form={form} />
-      <div className="flex flex-wrap justify-end gap-3">
-        <Button
-          variant="secondary"
-          disabled={create.isPending}
-          onClick={onCancel}
-        >
-          Отмена
-        </Button>
-        <form.SubmitButton>
-          Создать и открыть
-          <ArrowRight size={16} />
-        </form.SubmitButton>
-      </div>
-    </FormRoot>
-  );
-}
 
 export function WorkList() {
   const titleRef = useRef<HTMLInputElement>(null);
@@ -191,16 +40,7 @@ export function WorkList() {
   const catalog = useQuery(documentPackagesQueryOptions(workspaceId));
   const create = useCreateWork(workspaceId);
   const works = list.data?.pages.flatMap((page) => page.works) ?? [];
-  const visible = works.filter(
-    (work) =>
-      work.title
-        .toLocaleLowerCase('ru')
-        .includes(search.toLocaleLowerCase('ru')) &&
-      (filter === 'all' ||
-        (work.confirmedRevision === work.revision
-          ? filter === 'confirmed'
-          : filter === 'draft')),
-  );
+  const visible = filterWorks(works, search, filter);
   const packages = catalog.data?.packages ?? [];
   const openCreate = () => {
     create.reset();
@@ -357,47 +197,15 @@ export function WorkList() {
           className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3"
           aria-label="Список работ"
         >
-          {visible.map((work, index) => {
-            const confirmed = work.confirmedRevision === work.revision;
-            const pack = packages.find(
-              (item) => item.version === work.packageVersion,
-            );
-            return (
-              <li key={work.id} className={`animate-rise ${stagger(index)}`}>
-                <Link
-                  href={routes.work(workspaceId, work.id)}
-                  className="group group/mist focus-visible:outline-brand-hot glass relative isolate flex h-full flex-col overflow-hidden rounded-3xl border border-white/[0.07] p-6 transition-[border-color,box-shadow] duration-500 ease-out hover:border-[#ff3b62]/40 hover:shadow-[0_20px_60px_-20px_#db143c88] focus-visible:outline-2 focus-visible:outline-offset-2"
-                >
-                  <HoverMist />
-                  <div className="flex items-start justify-between gap-4">
-                    <span className="grid size-11 place-items-center rounded-xl border border-white/10 bg-white/[0.03] text-zinc-300 transition-colors duration-300 group-hover:border-[#ff3b62]/40 group-hover:text-[#ff6a88]">
-                      <FileStack size={20} strokeWidth={1.6} />
-                    </span>
-                    <ArrowUpRight
-                      size={20}
-                      className="text-muted transition-[transform,color] duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-white"
-                    />
-                  </div>
-                  <h2 className="font-heading mt-6 text-lg leading-snug font-bold tracking-tight wrap-anywhere">
-                    {work.title}
-                  </h2>
-                  <p className="text-muted mt-1.5 text-sm leading-6 wrap-anywhere">
-                    {pack?.title ?? 'Комплект документов'}
-                  </p>
-                  <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-7">
-                    {confirmed ? (
-                      <StatusPill tone="success">Подтверждена</StatusPill>
-                    ) : (
-                      <StatusPill tone="brand">В работе</StatusPill>
-                    )}
-                    <span className="text-muted text-xs">
-                      Изменена <RelativeTime value={work.updatedAt} />
-                    </span>
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
+          {visible.map((work, index) => (
+            <WorkCard
+              key={work.id}
+              work={work}
+              index={index}
+              packages={packages}
+              workspaceId={workspaceId}
+            />
+          ))}
         </ul>
       )}
       {list.hasNextPage && (

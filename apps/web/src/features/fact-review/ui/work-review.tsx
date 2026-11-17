@@ -1,33 +1,25 @@
 'use client';
-import {
-  AlertTriangle,
-  Check,
-  Crosshair,
-  FileSearch,
-  Quote,
-  Wand2,
-} from 'lucide-react';
+import { FileSearch, Wand2 } from 'lucide-react';
 import { useState } from 'react';
 
-import { type FieldKey, type FieldValue } from '@anyko/contracts/catalog';
+import { type FieldKey } from '@anyko/contracts/catalog';
 import { type WorkView } from '@anyko/contracts/works';
-import { Button, SegmentedControl, stagger, StatusPill } from '@anyko/ui';
+import { Button, SegmentedControl } from '@anyko/ui';
 import { EventHorizon } from '@anyko/ui/brand';
 
+import {
+  reviewFields,
+  type ReviewFilter,
+} from '@/features/fact-review/model/review';
 import { conflictingFields } from '@/features/works';
 
 import type { FactsForm } from './facts-form';
 import { PackagePreview } from './package-preview';
+import { CandidateList } from './review/candidate-list';
+import { EditConflicts } from './review/edit-conflicts';
 import { SessionContext } from './session-context';
-import { CandidateValue } from './work-fields';
 
 type Document = WorkView['documents'][number];
-type Filter = 'all' | 'conflicts' | 'pending';
-
-const same = (a: FieldValue | undefined, b: FieldValue) =>
-  JSON.stringify(a ?? null) === JSON.stringify(b);
-const filled = (value: FieldValue | undefined) =>
-  Array.isArray(value) ? value.length > 0 : !!value;
 
 export function WorkReview({
   view,
@@ -43,39 +35,15 @@ export function WorkReview({
   onExtract: () => void;
 }) {
   const { values } = facts;
-  const [filter, setFilter] = useState<Filter>('all');
+  const [filter, setFilter] = useState<ReviewFilter>('all');
   const [focus, setFocus] = useState<{ key: FieldKey; nonce: number }>();
   const conflicts = conflictingFields(view);
-  const fields = view.package.fields
-    .map((field) => ({
-      field,
-      candidates: view.facts.candidates.filter(
-        (candidate) => candidate.field === field.key,
-      ),
-    }))
-    .filter((item) => item.candidates.length);
-  const applied = (key: FieldKey) =>
-    fields
-      .find((item) => item.field.key === key)
-      ?.candidates.some((candidate) => same(values[key], candidate.value)) ??
-    false;
-  const visible = fields.filter(({ field }) =>
-    filter === 'conflicts'
-      ? conflicts.has(field.key)
-      : filter === 'pending'
-        ? !applied(field.key)
-        : true,
+  const { fields, applied, visible, quick, total, complete } = reviewFields(
+    view,
+    values,
+    conflicts,
+    filter,
   );
-  const quick = fields.filter(
-    ({ field, candidates }) =>
-      !conflicts.has(field.key) &&
-      !filled(values[field.key]) &&
-      candidates[0] !== undefined,
-  );
-  const total = view.package.fields.length;
-  const complete = view.package.fields.filter((field) =>
-    filled(values[field.key]),
-  ).length;
   // Каждый переход получает новый nonce: повторный переход к тому же полю снова его подсвечивает.
   const jump = (key: FieldKey) => {
     setFocus((previous) => ({ key, nonce: (previous?.nonce ?? 0) + 1 }));
@@ -87,77 +55,7 @@ export function WorkReview({
         revision={view.work.revision}
         fields={view.package.fields}
       />
-      {facts.conflicts.length > 0 && (
-        <section
-          aria-labelledby="conflicts-title"
-          className="animate-rise rounded-2xl border border-amber-400/25 bg-amber-400/[0.03] p-4 sm:p-5"
-        >
-          <h2
-            id="conflicts-title"
-            className="font-heading text-lg font-bold tracking-tight"
-          >
-            Изменено и вами, и на сервере
-          </h2>
-          <p className="text-muted mt-1 text-sm">
-            Выберите значение для каждого поля. Пока решения нет, сохранить
-            сведения нельзя.
-          </p>
-          <ul className="mt-4 grid gap-3">
-            {facts.conflicts.map((key) => (
-              <li
-                key={key}
-                className="grid gap-3 rounded-xl border border-white/[0.07] bg-black/25 p-3.5 sm:grid-cols-2"
-              >
-                <h3 className="font-medium sm:col-span-2">
-                  {view.package.fields.find((field) => field.key === key)
-                    ?.label ?? key}
-                </h3>
-                <div className="min-w-0 text-sm">
-                  <p className="text-muted mb-1 text-xs">Ваше значение</p>
-                  <ConflictValue value={values[key]} />
-                </div>
-                <div className="min-w-0 text-sm">
-                  <p className="text-muted mb-1 text-xs">На сервере</p>
-                  <ConflictValue value={facts.serverValues[key]} />
-                </div>
-                <div className="flex flex-wrap gap-2 sm:col-span-2">
-                  {!Object.hasOwn(facts.serverValues, key) &&
-                    !view.package.fields.some((field) => field.key === key) && (
-                      <p>
-                        Поле больше не входит в профиль. Выберите значение
-                        сервера, чтобы убрать его из изменений.
-                      </p>
-                    )}
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={
-                      busy ||
-                      (!Object.hasOwn(facts.serverValues, key) &&
-                        !view.package.fields.some((field) => field.key === key))
-                    }
-                    onClick={() => {
-                      facts.keepMine(key);
-                    }}
-                  >
-                    Оставить моё
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() => {
-                      facts.takeServer(key);
-                    }}
-                  >
-                    Взять с сервера
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      <EditConflicts view={view} facts={facts} busy={busy} />
       <section aria-labelledby="facts-title">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -275,135 +173,17 @@ export function WorkReview({
               : 'Все найденные значения применены.'}
           </p>
         ) : (
-          <ul className="grid gap-3 xl:grid-cols-2">
-            {visible.map(({ field, candidates }, index) => {
-              const conflict = conflicts.has(field.key);
-              const used = applied(field.key);
-              return (
-                <li
-                  key={field.key}
-                  className={`animate-rise rounded-2xl border p-4 sm:p-5 ${conflict ? 'glass border-amber-400/25 bg-amber-400/[0.03]' : 'glass border-white/[0.07]'} ${stagger(index)}`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="font-medium">{field.label}</h3>
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {conflict && (
-                          <StatusPill tone="warning">Расхождение</StatusPill>
-                        )}
-                        {used ? (
-                          <StatusPill tone="success">Применено</StatusPill>
-                        ) : (
-                          <StatusPill tone="neutral">Не применено</StatusPill>
-                        )}
-                      </div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        jump(field.key);
-                      }}
-                    >
-                      <Crosshair size={14} />
-                      Найти в документе
-                    </Button>
-                  </div>
-                  <ul className="mt-4 grid gap-2.5">
-                    {candidates.map((candidate, i) => {
-                      const current = same(values[field.key], candidate.value);
-                      return (
-                        <li
-                          key={i}
-                          className={`rounded-xl border p-3.5 transition-colors ${current ? 'border-emerald-400/30 bg-emerald-400/[0.04]' : 'border-white/[0.07] bg-black/25'}`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 text-sm">
-                              <CandidateValue value={candidate.value} />
-                              {candidate.origin === 'context' && (
-                                <p className="text-muted mt-1 text-xs">
-                                  Предложено при сопоставлении файлов
-                                </p>
-                              )}
-                            </div>
-                            {current ? (
-                              <span className="flex shrink-0 items-center gap-1 text-xs text-emerald-300">
-                                <Check size={14} /> Выбрано
-                              </span>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant={conflict ? 'secondary' : 'primary'}
-                                disabled={busy}
-                                onClick={() => {
-                                  facts.change({
-                                    [field.key]: candidate.value,
-                                  });
-                                  jump(field.key);
-                                }}
-                              >
-                                Применить
-                              </Button>
-                            )}
-                          </div>
-                          {candidate.evidence.map((source, j) => {
-                            const doc = view.documents.find(
-                              (item) => item.id === source.documentId,
-                            );
-                            return (
-                              <figure
-                                key={j}
-                                className="mt-3 border-t border-white/[0.06] pt-3"
-                              >
-                                <blockquote className="flex gap-2 text-[13px] leading-5 text-zinc-300">
-                                  <Quote
-                                    size={13}
-                                    className="mt-0.5 shrink-0 text-[#ff6a88]"
-                                  />
-                                  <span className="wrap-anywhere">
-                                    {source.quote}
-                                  </span>
-                                </blockquote>
-                                <figcaption className="mt-1.5 pl-5">
-                                  {doc ? (
-                                    <Button
-                                      variant="ghost"
-                                      size="xs"
-                                      className="max-w-full"
-                                      onClick={() => {
-                                        onOpen(doc);
-                                      }}
-                                    >
-                                      <FileSearch size={13} />
-                                      <span className="truncate">
-                                        {doc.filename}
-                                        {source.imagePath && ' · изображение'}
-                                      </span>
-                                    </Button>
-                                  ) : (
-                                    <span className="text-muted text-xs">
-                                      Источник удалён
-                                    </span>
-                                  )}
-                                </figcaption>
-                              </figure>
-                            );
-                          })}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {conflict && !used && (
-                    <p className="mt-3 flex items-center gap-1.5 text-xs text-amber-200/80">
-                      <AlertTriangle size={13} />
-                      Файлы расходятся — выберите верный вариант или впишите
-                      своё значение в документе.
-                    </p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <CandidateList
+            visible={visible}
+            conflicts={conflicts}
+            applied={applied}
+            values={values}
+            view={view}
+            facts={facts}
+            busy={busy}
+            jump={jump}
+            onOpen={onOpen}
+          />
         )}
       </section>
       <section aria-labelledby="paper-title">
@@ -429,11 +209,4 @@ export function WorkReview({
       </section>
     </div>
   );
-}
-
-// Значение без поля: пустое значение показывается словом, а не пустой строкой.
-function ConflictValue({ value }: { value: FieldValue | undefined }) {
-  if (value === null || value === undefined)
-    return <p className="text-muted text-sm">Пусто</p>;
-  return <CandidateValue value={value} />;
 }
