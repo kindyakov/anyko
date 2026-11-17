@@ -216,7 +216,7 @@ export const removeWorkDocument = endpoint({
 
 export const editWork = endpoint({
   summary: 'Сохраняет правки полей работы',
-  method: 'POST',
+  method: 'PATCH',
   path: '/workspaces/:workspaceId/works/:workId/fields',
   params: workParams,
   body: json(editWorkSchema),

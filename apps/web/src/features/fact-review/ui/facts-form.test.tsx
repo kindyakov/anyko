@@ -244,7 +244,7 @@ test('a dotted field supplied only by the server catalogue is submitted as one l
   await typeInto(input, 'После');
   await userEvent.setup().click(saveButton());
   await waitFor(() => {
-    const post = server.exchanges.find((item) => item.method === 'POST');
+    const post = server.exchanges.find((item) => item.method === 'PATCH');
     expect(post?.body).toMatchObject({
       values: { 'new.profile_field2': 'После' },
     });
@@ -455,7 +455,7 @@ test('saving sends the values with the revision the edits started from and the s
   await waitFor(() => {
     expect(strip()).toBeNull();
   });
-  const saved = server.exchanges.find((item) => item.method === 'POST');
+  const saved = server.exchanges.find((item) => item.method === 'PATCH');
   expect(saved?.url).toBe(`${workAddress}/fields`);
   expect(saved?.idempotencyKey).toBeNull();
   expect(saved?.body).toMatchObject({

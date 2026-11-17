@@ -226,7 +226,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     expect(
       (
         await request(`${worksRoot}/${work.work.id}/fields`, {
-          method: 'POST',
+          method: 'PATCH',
           headers,
           body: JSON.stringify({ revision: 0 }),
         })
@@ -237,7 +237,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
       values: { ...work.facts.values, personName: 'Manual fixture' },
     };
     const invalidEdit = await request(`${worksRoot}/${work.work.id}/fields`, {
-      method: 'POST',
+      method: 'PATCH',
       headers,
       body: JSON.stringify({
         revision: 0,
@@ -256,7 +256,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     expect(
       (
         await request(`${worksRoot}/${work.work.id}/fields`, {
-          method: 'POST',
+          method: 'PATCH',
           headers,
           body: JSON.stringify(edit),
         })
@@ -265,7 +265,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     expect(
       (
         await request(`${worksRoot}/${work.work.id}/fields`, {
-          method: 'POST',
+          method: 'PATCH',
           headers,
           body: JSON.stringify(edit),
         })

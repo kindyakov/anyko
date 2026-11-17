@@ -168,7 +168,13 @@ test('work goes from list through upload, automatic status and editable facts', 
     .getByRole('textbox', { name: 'Фамилия', exact: true })
     .first()
     .fill('Иванова');
+  const saved = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/fields') &&
+      response.request().method() === 'PATCH',
+  );
   await page.getByRole('button', { name: 'Сохранить', exact: true }).click();
+  expect((await saved).status()).toBe(200);
   await expect(page.getByText('Есть несохранённые правки')).toHaveCount(0);
   await page.reload();
   await expect(

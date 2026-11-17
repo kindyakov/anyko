@@ -36,11 +36,6 @@ const globals = new Map([
 ]);
 
 const legacy = {
-  fields: {
-    address: 'POST /workspaces/:workspaceId/works/:workId/fields',
-    reason: 'У клиента уже есть команда правки с проверкой ревизии через POST',
-    action: 'Перейти на PATCH вместе с контрактом и клиентом',
-  },
   connections: {
     path: '/workspaces/:workspaceId/settings/llm',
     methods: ['GET', 'POST', 'DELETE'],
@@ -214,11 +209,7 @@ test('POST creates a collection member or invokes an action', () => {
   for (const entry of entries.filter(
     ({ endpoint }) => endpoint.method === 'POST',
   )) {
-    if (
-      address(entry.endpoint) === legacy.fields.address ||
-      isLegacyConnection(entry)
-    )
-      continue;
+    if (isLegacyConnection(entry)) continue;
     expect(
       endsWithCollectionOrAction(entry),
       `${label(entry)}: создавайте через POST в коллекцию, правьте через PATCH, заменяйте через PUT`,
@@ -391,14 +382,6 @@ test('list responses use shared pagination schemas and matching query fields', (
 });
 
 test('legacy API exceptions still cover violations at their declared addresses', () => {
-  const fields = entries.find(
-    (entry) => address(entry.endpoint) === legacy.fields.address,
-  );
-  expect(
-    fields !== undefined && !endsWithCollectionOrAction(fields),
-    `${legacy.fields.address}: удалите устаревшую запись из legacy.fields`,
-  ).toBe(true);
-
   for (const method of legacy.connections.methods) {
     const connection = entries.find(
       (entry) => isLegacyConnection(entry) && entry.endpoint.method === method,
