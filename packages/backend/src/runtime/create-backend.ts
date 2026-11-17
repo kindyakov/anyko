@@ -18,6 +18,12 @@ import {
 import { createAgentsModule } from '../modules/agents/module';
 import { type AuditWriter, record } from '../modules/audit';
 import { createAuditModule } from '../modules/audit/module';
+import type { ConnectionSettingsApi } from '../modules/connections';
+import {
+  connectionsStoreFor,
+  createConnectionsStore,
+} from '../modules/connections/infrastructure/store';
+import { createConnectionsModule } from '../modules/connections/module';
 import type {
   DocumentParser,
   DocumentsModule,
@@ -49,12 +55,9 @@ import { createIdempotencyMaintenanceStore } from '../modules/idempotency/infras
 import { createIdempotencyStore } from '../modules/idempotency/infrastructure/store';
 import {
   createJobProcessing,
-  createLlmSettings,
   createProcessingService,
-  type LlmSettingsApi,
 } from '../modules/processing';
 import { createJobRunReader } from '../modules/processing/infrastructure/job-store';
-import { createLlmSettingsStore } from '../modules/processing/infrastructure/settings-store';
 import { createProcessingStore } from '../modules/processing/infrastructure/store';
 import {
   createWorkProcessingStore,
@@ -134,7 +137,7 @@ export interface ApiBackend {
     intake: WorkIntake;
     review: WorkReview;
     generation: WorkGeneration;
-    settings: LlmSettingsApi;
+    settings: ConnectionSettingsApi;
     documents: DocumentsModule;
     access: ReturnType<typeof createAccess>;
     origin: string;
@@ -197,10 +200,16 @@ export function createBackend(
 
   // Единица работы и фасады модулей: сценарии получают их, а не клиента БД.
   const uow = createUnitOfWork(db);
-  const llmSettings = createLlmSettingsStore(db, validated.works.encryptionKey);
   const audit = createAuditModule({
     connection: db,
     write: dependencies.auditWriter ?? record,
+  });
+  const connections = createConnectionsModule({
+    store: createConnectionsStore(db, validated.works.encryptionKey),
+    storeFor: (tx) => connectionsStoreFor(tx, validated.works.encryptionKey),
+    uow,
+    audit,
+    clock: systemClock,
   });
   const works = createWorksModule({
     store: createWorkStore(db),
@@ -221,7 +230,6 @@ export function createBackend(
   const processingFacade = createProcessingModule({
     store: createWorkProcessingStore(db),
     storeFor: workProcessingStoreFor,
-    settings: llmSettings,
     newId: uuidV7,
   });
 
@@ -250,6 +258,7 @@ export function createBackend(
     facts,
     generation,
     processing: processingFacade,
+    connections,
     agents: agentsFacade,
     documents,
     locks,
@@ -312,6 +321,7 @@ export function createBackend(
       works,
       facts,
       processing: processingFacade,
+      connections,
       generation,
       audit,
       storage,
@@ -333,7 +343,7 @@ export function createBackend(
         intake: createWorkIntake(workflows),
         review: createWorkReview(workflows),
         generation: createWorkGeneration(workflows),
-        settings: createLlmSettings({ settings: llmSettings, locks }),
+        settings: { ...connections.queries, ...connections.commands },
         documents,
         access,
         origin: auth.origin,

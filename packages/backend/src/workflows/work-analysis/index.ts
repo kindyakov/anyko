@@ -4,6 +4,7 @@ import type { WorkFacts } from '../../modules/agents';
 import { DocumentError } from '../../modules/documents';
 import { stepOutputSchema, type WorkRunRecord } from '../../modules/processing';
 import { requirePackage } from '../../modules/templates';
+import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
 import { createRunState, type RunState } from '../work-execution/run-state';
 
@@ -68,11 +69,20 @@ export function createWorkAnalysis(deps: WorkDependencies) {
     });
   };
   return async (run: WorkRunRecord, signal: AbortSignal) => {
-    if (run.settingsRevision === null) throw new Error('LLM_NOT_CONFIGURED');
-    const config = await deps.processing.internal.connection(
+    const config = await deps.connections.internal.connection(
       run.workspaceId,
       run.settingsRevision,
     );
+    const selectedRun = { ...run, settingsRevision: config.revision };
+    const readConnection = () =>
+      deps.connections.internal.connection(
+        run.workspaceId,
+        selectedRun.settingsRevision,
+      );
+    const assertCurrent = async () => {
+      await current(run);
+      await readConnection();
+    };
     const pack = requirePackage((await current(run)).packageVersion);
     const candidates: WorkFacts['candidates'] = [];
     const sources: ContinuationSource[] = [];
@@ -105,6 +115,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           for (const image of normalized.length ? normalized : source.images) {
             signal.throwIfAborted();
             await current(run);
+            const stepConnection = await readConnection();
             const callId = deps.newId();
             const result = await callModel({
               logger: deps.logger,
@@ -112,12 +123,13 @@ export function createWorkAnalysis(deps: WorkDependencies) {
               runId: run.id,
               correlationId: run.correlationId,
               stage,
-              provider: config.connection.id,
-              model: config.visionModel,
+              provider: stepConnection.connection.id,
+              model: stepConnection.visionModel,
               execute: () =>
                 deps.agents.model.describe({
-                  connection: config.connection,
-                  modelId: config.visionModel,
+                  assertCurrent,
+                  connection: stepConnection.connection,
+                  modelId: stepConnection.visionModel,
                   resource: `${run.workspaceId}:${run.workId}`,
                   threadId: callId,
                   bytes: image.bytes,
@@ -170,6 +182,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           ) {
             signal.throwIfAborted();
             await current(run);
+            const stepConnection = await readConnection();
             const threadId = deps.newId();
             await deps.processing.internal.thread(
               run.workspaceId,
@@ -182,12 +195,13 @@ export function createWorkAnalysis(deps: WorkDependencies) {
               runId: run.id,
               correlationId: run.correlationId,
               stage,
-              provider: config.connection.id,
-              model: config.extractionModel,
+              provider: stepConnection.connection.id,
+              model: stepConnection.extractionModel,
               execute: () =>
                 deps.agents.model.extract({
-                  connection: config.connection,
-                  modelId: config.extractionModel,
+                  assertCurrent,
+                  connection: stepConnection.connection,
+                  modelId: stepConnection.extractionModel,
                   fields: pack.fields,
                   threadId,
                   resource: `${run.workspaceId}:${run.workId}`,
@@ -230,6 +244,9 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         candidates.push(...extracted.candidates);
         completed++;
       } catch (error) {
+        if (isAppError(error) && error.code === 'CONNECTION_REVOKED')
+          throw error;
+        await readConnection();
         if (
           signal.aborted ||
           (error instanceof DocumentError && error.code === 'NOT_FOUND')
@@ -249,8 +266,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       }
     }
     await continueSession({
-      run,
-      config,
+      run: selectedRun,
       fields: pack.fields,
       candidates,
       sources,

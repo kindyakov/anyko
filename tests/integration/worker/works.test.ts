@@ -73,6 +73,7 @@ let imageFixture: { path: string; contentType: string; bytes: Uint8Array }[] =
   [];
 let describeCount = 0;
 let waitForVision: (() => Promise<void>) | undefined;
+let extractionModel: string | undefined;
 let waitForExtraction: (() => Promise<void>) | undefined;
 const agents: DocumentAgents = {
   ready: () => Promise.resolve(),
@@ -99,6 +100,7 @@ const agents: DocumentAgents = {
   async extract(input) {
     if (actualAgents) return actualAgents.extract(input);
     extractionCount++;
+    extractionModel = input.modelId;
     threads.add(input.threadId);
     await waitForExtraction?.();
     if (failExtraction || failDocument === input.document.id)
@@ -325,6 +327,12 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
   );
   const id = generated.generations[0]?.id;
   if (!id) throw new Error('MISSING_GENERATION');
+  const generationRun = await db.workRun.findFirstOrThrow({
+    where: { workspaceId: input.workspaceId, generationId: id },
+    select: { settingsRevision: true },
+  });
+  expect(generationRun.settingsRevision).toBe(1);
+
   // Запуск генерации пишет событие журнала в той же транзакции, что и постановку.
   expect(
     await db.auditEvent.findMany({
@@ -728,6 +736,112 @@ test('all works remain reachable across stable cursor pages', async () => {
 const fixtureImage = Uint8Array.fromBase64(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=',
 );
+function holdFirstVisual() {
+  const release = Promise.withResolvers<undefined>();
+  const started = Promise.withResolvers<undefined>();
+  imageFixture = [
+    {
+      path: 'images/connection-fixture.png',
+      contentType: 'image/png',
+      bytes: fixtureImage,
+    },
+  ];
+  waitForVision = () => {
+    started.resolve(undefined);
+    return release.promise;
+  };
+  return {
+    async started() {
+      const timeout = AbortSignal.timeout(7000);
+      await Promise.race([
+        started.promise,
+        new Promise<never>((_, reject) => {
+          timeout.addEventListener('abort', () => {
+            reject(new Error('VISION_NOT_STARTED'));
+          });
+        }),
+      ]);
+    },
+    release: () => {
+      release.resolve(undefined);
+    },
+    cleanup() {
+      release.resolve(undefined);
+      waitForVision = undefined;
+      imageFixture = [];
+    },
+  };
+}
+const rotatedConnection = () => ({
+  baseURL: 'http://127.0.0.1:1/v1',
+  visionModel: 'next-vision',
+  extractionModel: 'next-extraction',
+  apiKey: crypto.randomUUID(),
+});
+
+test('rotating the workspace connection during analysis preserves the recorded revision', async () => {
+  const input = await create();
+  const visual = holdFirstVisual();
+  try {
+    await upload(input);
+    await analyze(input);
+    await visual.started();
+    await runtime.saveSettings(input.workspaceId, rotatedConnection());
+    visual.release();
+    const state = await until(input, terminal);
+    expect(state.runs[0]?.status).toBe('succeeded');
+    expect(extractionModel).toBe('fixture');
+    expect(
+      (await db.workRun.findFirstOrThrow({ where: { workId: input.workId } }))
+        .settingsRevision,
+    ).toBe(1);
+  } finally {
+    visual.cleanup();
+  }
+});
+
+test('revoking the recorded revision stops analysis before another model call even after reconfiguration', async () => {
+  const input = await create();
+  const visual = holdFirstVisual();
+  const scopes = memberScope(input.workspaceId);
+  const before = extractionCount;
+  try {
+    await upload(input);
+    await analyze(input);
+    await visual.started();
+    await apiBackend.workHttp.settings.revoke(scopes);
+    await apiBackend.workHttp.settings.revoke(scopes);
+    expect(await apiBackend.workHttp.settings.current(scopes)).toEqual({
+      settings: null,
+      canManage: true,
+    });
+    const revisions = await db.llmSettings.findMany({
+      where: { workspaceId: input.workspaceId },
+    });
+    expect(revisions).toHaveLength(1);
+    expect(revisions[0]).toMatchObject({
+      revision: 1,
+      encryptedKey: '',
+    });
+    const events = await db.auditEvent.findMany({
+      where: { workspaceId: input.workspaceId, action: 'connections.revoked' },
+      select: { data: true },
+    });
+    expect(events).toEqual([{ data: { revision: 1 } }]);
+    // A replacement makes the test catch an accidental latest-revision fallback.
+    await runtime.saveSettings(input.workspaceId, rotatedConnection());
+    visual.release();
+    const state = await until(input, terminal);
+    expect(state.runs[0]).toMatchObject({
+      status: 'failed',
+      errorCode: 'CONNECTION_REVOKED',
+    });
+    expect(extractionCount).toBe(before);
+  } finally {
+    visual.cleanup();
+  }
+});
+
 test('deletion during the first visual prevents a second provider request', async () => {
   const input = await create();
   let release: () => void = () => {},

@@ -24,6 +24,7 @@ export interface DocumentAgents {
     modelId: string;
     resource: string;
     threadId: string;
+    assertCurrent?(): Promise<void>;
     bytes: Uint8Array;
     mediaType: string;
     signal: AbortSignal;
@@ -34,6 +35,7 @@ export interface DocumentAgents {
     modelId: string;
     resource: string;
     threadId: string;
+    assertCurrent?(): Promise<void>;
     document: AgentDocument;
     signal: AbortSignal;
   }): Promise<{ candidates: WorkFacts['candidates']; usage: AgentUsage }>;

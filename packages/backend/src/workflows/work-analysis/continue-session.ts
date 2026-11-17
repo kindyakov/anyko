@@ -8,6 +8,7 @@ import {
 import { findFactConflicts, mergeCandidates } from '../../modules/facts';
 import type { WorkRunRecord } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
+import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
 
 import { callModel } from './model-call';
@@ -20,15 +21,10 @@ export interface ContinuationSource {
   visuals: { path: string; description: string }[];
 }
 
-type LlmConfig = Awaited<
-  ReturnType<WorkDependencies['processing']['internal']['connection']>
->;
-
 /** One entry point for continuing a logical work session; transport never owns its context. */
 export function createWorkContinuation(deps: WorkDependencies) {
   return async (input: {
     run: WorkRunRecord;
-    config: LlmConfig;
     fields: FieldDefinition[];
     candidates: WorkFacts['candidates'];
     sources: ContinuationSource[];
@@ -87,24 +83,32 @@ export function createWorkContinuation(deps: WorkDependencies) {
         );
         const assertCurrent = async () => {
           input.signal.throwIfAborted();
+          await deps.connections.internal.connection(
+            run.workspaceId,
+            run.settingsRevision,
+          );
           if ((await input.current()).revision !== snapshot.work.revision)
             throw new Error('CONTEXT_REVISION_CHANGED');
         };
+        const config = await deps.connections.internal.connection(
+          run.workspaceId,
+          run.settingsRevision,
+        );
         output = await callModel({
           logger: deps.logger,
           callId: snapshot.threadId,
           runId: run.id,
           correlationId: run.correlationId,
           stage: 'reconciliation',
-          provider: input.config.connection.id,
-          model: input.config.extractionModel,
+          provider: config.connection.id,
+          model: config.extractionModel,
           execute: () =>
             deps.agents.model.reconcile({
               sessionId: snapshot.session.id,
               threadId: snapshot.threadId,
               resource: `${run.workspaceId}:${run.workId}`,
-              modelId: input.config.extractionModel,
-              connection: input.config.connection,
+              modelId: config.extractionModel,
+              connection: config.connection,
               fields: input.fields,
               workRevision: snapshot.work.revision,
               previousContext: snapshot.session.context,
@@ -134,7 +138,13 @@ export function createWorkContinuation(deps: WorkDependencies) {
               },
             }),
         });
-      } catch {
+      } catch (error) {
+        if (isAppError(error) && error.code === 'CONNECTION_REVOKED')
+          throw error;
+        await deps.connections.internal.connection(
+          run.workspaceId,
+          run.settingsRevision,
+        );
         input.signal.throwIfAborted();
         await input.current();
       }

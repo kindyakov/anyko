@@ -3,13 +3,12 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import type { Database } from '@anyko/database';
 import { createModelGateway } from '@anyko/llm';
 
-import type { LlmSettingsStore } from '..';
-import { type AuditWriter, record } from '../../audit';
-
-export function createLlmSettingsStore(
-  db: Pick<Database, 'llmSettings' | '$transaction'>,
+import { ConnectionErrors, type LlmSettingsStore } from '..';
+import { transactionHandle, type Tx } from '../../../platform/transactions';
+type Connection = Pick<Database, 'llmSettings' | '$queryRaw'>;
+export function createConnectionsStore(
+  db: Connection,
   encryptionKey: string,
-  write: AuditWriter = record,
 ): LlmSettingsStore {
   if (!/^[a-f\d]{64}$/i.test(encryptionKey))
     throw new Error('INVALID_LLM_ENCRYPTION_KEY');
@@ -39,13 +38,20 @@ export function createLlmSettingsStore(
       decipher.final(),
     ]).toString('utf8');
   };
+  const latest = (workspaceId: string) =>
+    db.llmSettings.findFirst({
+      where: { workspaceId },
+      orderBy: { revision: 'desc' },
+    });
+  // Serialize save/revoke/provision across replicas, including when the workspace has no revision yet.
+  const lock = async (workspaceId: string) => {
+    await db.$queryRaw`SELECT id FROM "AnykoWorkspace" WHERE id=${workspaceId} FOR UPDATE`;
+  };
   return {
+    lock,
     async current(workspaceId) {
-      const row = await db.llmSettings.findFirst({
-        where: { workspaceId },
-        orderBy: { revision: 'desc' },
-      });
-      return row
+      const row = await latest(workspaceId);
+      return row && !row.revokedAt
         ? {
             revision: row.revision,
             baseURL: row.baseURL,
@@ -55,12 +61,17 @@ export function createLlmSettingsStore(
         : null;
     },
     async connection(workspaceId, revision) {
-      const row = await db.llmSettings.findUnique({
-        where: { workspaceId_revision: { workspaceId, revision } },
-      });
-      if (!row) throw new Error('LLM_NOT_CONFIGURED');
+      const row =
+        revision === null
+          ? await latest(workspaceId)
+          : await db.llmSettings.findUnique({
+              where: { workspaceId_revision: { workspaceId, revision } },
+            });
+      if (!row) throw new ConnectionErrors.Failure('LLM_NOT_CONFIGURED');
+      if (row.revokedAt)
+        throw new ConnectionErrors.Failure('CONNECTION_REVOKED');
       return {
-        revision,
+        revision: row.revision,
         baseURL: row.baseURL,
         visionModel: row.visionModel,
         extractionModel: row.extractionModel,
@@ -71,15 +82,14 @@ export function createLlmSettingsStore(
         },
       };
     },
-    async save(workspaceId, input, actorId) {
-      const previous = await db.llmSettings.findFirst({
-        where: { workspaceId },
-        orderBy: { revision: 'desc' },
-      });
+    async save(workspaceId, input) {
+      await lock(workspaceId);
+      const previous = await latest(workspaceId);
       const apiKey =
         input.apiKey ??
-        (previous ? decrypt(workspaceId, previous.encryptedKey) : '');
-      // Validate both selections with the same client factory used by execution.
+        (previous && !previous.revokedAt
+          ? decrypt(workspaceId, previous.encryptedKey)
+          : '');
       const gateway = createModelGateway();
       for (const id of [input.visionModel, input.extractionModel])
         gateway.model(
@@ -87,27 +97,38 @@ export function createLlmSettingsStore(
           { id, images: true, tools: true, structuredOutput: true },
         );
       const revision = (previous?.revision ?? 0) + 1;
-      // Настройки и событие журнала в одной транзакции. В журнал попадают только ревизия,
-      // не ключ API и не адрес провайдера.
-      await db.$transaction(async (tx) => {
-        await tx.llmSettings.create({
-          data: {
-            workspaceId,
-            revision,
-            baseURL: input.baseURL,
-            visionModel: input.visionModel,
-            extractionModel: input.extractionModel,
-            encryptedKey: encrypt(workspaceId, apiKey),
-          },
-        });
-        await write(tx, {
+      await db.llmSettings.create({
+        data: {
           workspaceId,
-          actorId,
-          action: 'connections.settings_saved',
-          target: { kind: 'workspace', id: workspaceId },
-          data: { revision },
-        });
+          revision,
+          baseURL: input.baseURL,
+          visionModel: input.visionModel,
+          extractionModel: input.extractionModel,
+          encryptedKey: encrypt(workspaceId, apiKey),
+        },
       });
+      return revision;
+    },
+    async revoke(workspaceId, now) {
+      await lock(workspaceId);
+      const row = await latest(workspaceId);
+      if (!row || row.revokedAt) return null;
+      await db.llmSettings.update({
+        where: {
+          workspaceId_revision: { workspaceId, revision: row.revision },
+        },
+        data: { revokedAt: now, encryptedKey: '' },
+      });
+      return row.revision;
     },
   };
+}
+export function connectionsStoreFor(
+  tx: Tx,
+  encryptionKey: string,
+): LlmSettingsStore {
+  return createConnectionsStore(
+    transactionHandle<Connection>(tx),
+    encryptionKey,
+  );
 }

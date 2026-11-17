@@ -7,10 +7,12 @@ export interface LlmConfiguration {
   extractionModel: string;
 }
 export interface LlmSettingsStore {
+  lock(workspaceId: string): Promise<void>;
+  revoke(workspaceId: string, now: Date): Promise<number | null>;
   current(workspaceId: string): Promise<LlmConfiguration | null>;
   connection(
     workspaceId: string,
-    revision: number,
+    revision: number | null,
   ): Promise<LlmConfiguration & { connection: ModelConnection }>;
   save(
     workspaceId: string,
@@ -20,7 +22,5 @@ export interface LlmSettingsStore {
       extractionModel: string;
       apiKey?: string | undefined;
     },
-    // Инициатор для журнала; null — операторская команда без пользователя.
-    actorId: string | null,
-  ): Promise<void>;
+  ): Promise<number>;
 }

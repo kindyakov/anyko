@@ -1,6 +1,6 @@
 import type { createAccess } from '@anyko/backend/access';
+import type { ConnectionSettingsApi } from '@anyko/backend/connections';
 import type { DocumentsModule } from '@anyko/backend/documents';
-import type { LlmSettingsApi } from '@anyko/backend/processing';
 import type {
   WorkGeneration,
   WorkIntake,
@@ -97,9 +97,10 @@ export function stubHttpOptions(): {
     startGeneration: unused,
     downloadResult: unused,
   };
-  const settings: LlmSettingsApi = {
+  const settings: ConnectionSettingsApi = {
     current: unused,
     save: unused,
+    revoke: unused,
   };
   const origin = 'http://localhost:3000';
   const documentHttp = {

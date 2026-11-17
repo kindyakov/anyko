@@ -9,6 +9,7 @@ export const errorCodeSchema = z.enum([
   'REVISION_CONFLICT',
   'WORK_BUSY',
   'LLM_NOT_CONFIGURED',
+  'CONNECTION_REVOKED',
   'NOT_READY',
   'CLEANUP_PENDING',
   'INVALID_DOCUMENT',

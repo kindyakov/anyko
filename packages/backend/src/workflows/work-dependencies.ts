@@ -1,6 +1,7 @@
 import type { Logger } from '@anyko/logger';
 
 import type { AgentsModule } from '../modules/agents';
+import type { ConnectionsModule } from '../modules/connections';
 import type {
   DocumentIo,
   DocumentsModule,
@@ -22,6 +23,7 @@ export interface WorkDependencies {
   facts: FactsModule;
   generation: GenerationModule;
   processing: ProcessingModule;
+  connections: ConnectionsModule;
   agents: AgentsModule;
   documents: DocumentsModule;
   locks: ResourceLocks;

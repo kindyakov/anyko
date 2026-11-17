@@ -114,6 +114,9 @@ export function createReconciliationAgent(options: {
           memory: { thread: input.threadId, resource: input.resource },
           abortSignal: signal,
           maxSteps: 8,
+          prepareStep: async () => {
+            await input.assertCurrent();
+          },
           modelSettings: { maxOutputTokens: 12000, maxRetries: 1 },
           structuredOutput: { schema: reconciliationSchema },
         },

@@ -1,4 +1,5 @@
 import type { AuditModule } from '../../modules/audit';
+import type { ConnectionsModule } from '../../modules/connections';
 import type { ResourceLocks } from '../../modules/documents';
 import type { FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
@@ -17,6 +18,7 @@ export const startGeneration =
     works: WorksModule;
     facts: FactsModule;
     processing: ProcessingModule;
+    connections: ConnectionsModule;
     generation: GenerationModule;
     audit: AuditModule;
     locks: ResourceLocks;
@@ -36,6 +38,9 @@ export const startGeneration =
           input.revision,
         );
         await requireIdle(deps.processing.queries, scope, input.workId);
+        const connection = await deps.connections.internal.configuration(
+          scope.workspaceId,
+        );
         const { values } = await deps.facts.queries.get(scope, input.workId);
         await deps.uow.run(async (tx) => {
           const generationId = await deps.generation
@@ -59,7 +64,7 @@ export const startGeneration =
             kind: 'generation',
             inputRevision: work.inputRevision,
             documentIds: documents.map((doc) => doc.id),
-            settingsRevision: null,
+            settingsRevision: connection?.revision ?? null,
             generationId,
             correlationId: input.correlationId,
             modelSnapshot: { vision: '', extraction: '' },

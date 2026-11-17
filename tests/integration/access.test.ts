@@ -298,6 +298,28 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     );
     expect(settings.canManage).toBe(true);
     ownedSettingsRevision = settings.settings?.revision;
+    const revokeHeaders = { cookie: ownerCookie, origin };
+    const revoked = await request(settingsPath, {
+      method: 'DELETE',
+      headers: revokeHeaders,
+    });
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toEqual({ status: 'revoked' });
+    const afterRevoke = await request(settingsPath, {
+      headers: { cookie: ownerCookie },
+    });
+    expect(await afterRevoke.json()).toEqual({
+      settings: null,
+      canManage: true,
+    });
+    expect(
+      (
+        await request(settingsPath, {
+          method: 'DELETE',
+          headers: revokeHeaders,
+        })
+      ).status,
+    ).toBe(200);
     const firstUser = await db.user.findUniqueOrThrow({
       where: { email: firstEmail },
     });
@@ -323,6 +345,14 @@ test('real sessions enforce closed signup, mutation origin and document workspac
         })
       ).status,
     ).toBe(200);
+    const forbiddenRevoke = await request(settingsPath, {
+      method: 'DELETE',
+      headers: revokeHeaders,
+    });
+    expect(forbiddenRevoke.status).toBe(403);
+    expect(await forbiddenRevoke.json()).toMatchObject({
+      error: { code: 'FORBIDDEN' },
+    });
     function uploadBody() {
       const body = new FormData();
       body.set(

@@ -1,12 +1,16 @@
 import type { Elysia } from 'elysia';
 
-import type { LlmSettingsApi } from '@anyko/backend/processing';
-import { getLlmSettings, saveLlmSettings } from '@anyko/contracts/connections';
+import type { ConnectionSettingsApi } from '@anyko/backend/connections';
+import {
+  getLlmSettings,
+  revokeLlmSettings,
+  saveLlmSettings,
+} from '@anyko/contracts/connections';
 
 import type { Route } from '../../route';
 
 export interface ConnectionHttpOptions {
-  settings: LlmSettingsApi;
+  settings: ConnectionSettingsApi;
 }
 
 // Право connections.read/connections.manage проверяет сценарий. Маршрут не знает ролей.
@@ -25,5 +29,9 @@ export function connectionRoutes(
   route(app, saveLlmSettings, async ({ scope, body }) => {
     await options.settings.save(scope, body);
     return { status: 'saved' as const };
+  });
+  route(app, revokeLlmSettings, async ({ scope }) => {
+    await options.settings.revoke(scope);
+    return { status: 'revoked' as const };
   });
 }

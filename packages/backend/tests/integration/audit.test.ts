@@ -1,11 +1,14 @@
 import { afterAll, expect, test } from 'bun:test';
 
 import { createDatabase, createDatabasePool } from '@anyko/database';
+import { createLogger } from '@anyko/logger';
 
 import { grantMembership } from '../../src/modules/access/infrastructure/auth';
 import { type AuditWriter, record } from '../../src/modules/audit';
-import { createLlmSettingsStore } from '../../src/modules/processing/infrastructure/settings-store';
+import { type ApiBackend, createBackend } from '../../src/runtime';
 import { createDocumentUnitOfWork } from '../../src/runtime/documents/unit-of-work';
+import { integrationConfig } from '../support/composition';
+import { memberScope } from '../support/scope';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
@@ -15,6 +18,28 @@ const db = createDatabase(pool);
 const encryptionKey = 'd'.repeat(64);
 const apiKey = 'synthetic-secret-api-key';
 
+const settingsBackends: ApiBackend[] = [];
+function connectionApi(write: AuditWriter = record) {
+  const api = createBackend(
+    integrationConfig({
+      databaseUrl: databaseUrl ?? '',
+      redisUrl: 'redis://127.0.0.1:1',
+      encryptionKey,
+    }),
+    {
+      role: 'api',
+      logger: createLogger({
+        service: 'api',
+        environment: 'test',
+        release: 'audit',
+        level: 'fatal',
+      }),
+      dependencies: { auditWriter: write },
+    },
+  );
+  settingsBackends.push(api);
+  return api.workHttp.settings;
+}
 const owned: string[] = [];
 const users: string[] = [];
 
@@ -53,6 +78,7 @@ async function expectRejected(operation: Promise<unknown>) {
 }
 
 afterAll(async () => {
+  for (const backend of settingsBackends) await backend.stop();
   await db.auditEvent.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.llmSettings.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.documentDeletion.deleteMany({
@@ -70,17 +96,13 @@ afterAll(async () => {
 
 test('saving connection settings records the revision and never the API key', async () => {
   const ws = await workspace();
-  const store = createLlmSettingsStore(db, encryptionKey);
-  await store.save(
-    ws,
-    {
-      baseURL: 'http://127.0.0.1:1/v1',
-      visionModel: 'fixture',
-      extractionModel: 'fixture',
-      apiKey,
-    },
-    'settings-actor',
-  );
+  const store = connectionApi();
+  await store.save(memberScope(ws, 'settings-actor'), {
+    baseURL: 'http://127.0.0.1:1/v1',
+    visionModel: 'fixture',
+    extractionModel: 'fixture',
+    apiKey,
+  });
   const events = await db.auditEvent.findMany({ where: { workspaceId: ws } });
   expect(events).toHaveLength(1);
   expect(events[0]).toMatchObject({
@@ -96,18 +118,14 @@ test('saving connection settings records the revision and never the API key', as
 
 test('a failed audit write rolls back the settings change with it', async () => {
   const ws = await workspace();
-  const store = createLlmSettingsStore(db, encryptionKey, failingWrite);
+  const store = connectionApi(failingWrite);
   await expectRejected(
-    store.save(
-      ws,
-      {
-        baseURL: 'http://127.0.0.1:1/v1',
-        visionModel: 'fixture',
-        extractionModel: 'fixture',
-        apiKey,
-      },
-      'settings-actor',
-    ),
+    store.save(memberScope(ws, 'settings-actor'), {
+      baseURL: 'http://127.0.0.1:1/v1',
+      visionModel: 'fixture',
+      extractionModel: 'fixture',
+      apiKey,
+    }),
   );
   expect(await db.llmSettings.count({ where: { workspaceId: ws } })).toBe(0);
   expect(await db.auditEvent.count({ where: { workspaceId: ws } })).toBe(0);

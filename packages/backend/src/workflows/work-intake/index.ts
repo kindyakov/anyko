@@ -1,4 +1,5 @@
 import type { AgentsModule } from '../../modules/agents';
+import type { ConnectionsModule } from '../../modules/connections';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import type { ProcessingModule } from '../../modules/processing';
 import type { WorksModule } from '../../modules/works';
@@ -13,6 +14,7 @@ export interface WorkIntakeDeps {
   uow: UnitOfWork;
   works: WorksModule;
   processing: ProcessingModule;
+  connections: ConnectionsModule;
   agents: AgentsModule;
   documents: DocumentsModule;
   locks: ResourceLocks;

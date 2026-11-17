@@ -1,5 +1,6 @@
 import { LlmError } from '@anyko/llm';
 
+import { isAppError } from '../../platform/errors';
 import { createWorkAnalysis } from '../work-analysis';
 import type { WorkDependencies } from '../work-dependencies';
 import { createWorkGenerationRun } from '../work-generation/run-generation';
@@ -42,7 +43,9 @@ export function createWorkExecution(deps: WorkDependencies) {
           await deps.processing.internal.finish(
             run,
             bounded.aborted ? 'cancelled' : 'failed',
-            error instanceof LlmError ? error.code : 'WORK_PROCESSING_FAILED',
+            error instanceof LlmError || isAppError(error)
+              ? error.code
+              : 'WORK_PROCESSING_FAILED',
           );
           if (run.generationId)
             await deps.generation.internal.fail(workspaceId, run.generationId);
@@ -55,7 +58,9 @@ export function createWorkExecution(deps: WorkDependencies) {
             event: 'work_processing_failed',
             correlationId: run.correlationId,
             errorCode:
-              error instanceof LlmError ? error.code : 'WORK_PROCESSING_FAILED',
+              error instanceof LlmError || isAppError(error)
+                ? error.code
+                : 'WORK_PROCESSING_FAILED',
           });
         }
       },

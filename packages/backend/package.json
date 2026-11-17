@@ -13,7 +13,8 @@
     "./errors": "./src/platform/errors/index.ts",
     "./ids": "./src/platform/ids.ts",
     "./scope": "./src/platform/scope/index.ts",
-    "./jobs": "./src/platform/jobs/index.ts"
+    "./jobs": "./src/platform/jobs/index.ts",
+    "./connections": "./src/modules/connections/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

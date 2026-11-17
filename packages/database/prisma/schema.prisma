@@ -297,6 +297,7 @@ model LlmSettings {
  encryptedKey String
  createdAt DateTime @default(now())
  @@id([workspaceId,revision])
+ revokedAt DateTime?
 }
 model SourceUpload {
  key String @id

@@ -1,3 +1,4 @@
+import type { ConnectionsModule } from '../../modules/connections';
 import type { ResourceLocks } from '../../modules/documents';
 import type { ProcessingModule } from '../../modules/processing';
 import { WorkError, type WorksModule } from '../../modules/works';
@@ -17,6 +18,7 @@ export const analyzeWork =
     uow: UnitOfWork;
     works: WorksModule;
     processing: ProcessingModule;
+    connections: ConnectionsModule;
     locks: ResourceLocks;
   }) =>
   async (
@@ -34,7 +36,9 @@ export const analyzeWork =
           input.workId,
         );
         if (!documents.length) throw new WorkError('INVALID_WORK_INPUT');
-        const settings = await deps.processing.queries.llmConfiguration(scope);
+        const settings = await deps.connections.internal.configuration(
+          scope.workspaceId,
+        );
         if (!settings) throw new WorkError('LLM_NOT_CONFIGURED');
         await requireIdle(deps.processing.queries, scope, input.workId);
         await deps.uow.run(async (tx) => {

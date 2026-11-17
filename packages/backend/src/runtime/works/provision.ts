@@ -1,10 +1,14 @@
-import {
-  createDatabase,
-  createDatabasePool,
-  createResourceLocks,
-} from '@anyko/database';
+import { createDatabase, createDatabasePool } from '@anyko/database';
 
-import { createLlmSettingsStore } from '../../modules/processing/infrastructure/settings-store';
+import { record } from '../../modules/audit';
+import { createAuditModule } from '../../modules/audit/module';
+import {
+  connectionsStoreFor,
+  createConnectionsStore,
+} from '../../modules/connections/infrastructure/store';
+import { createConnectionsModule } from '../../modules/connections/module';
+import { systemClock } from '../../platform/clock';
+import { createUnitOfWork } from '../transactions';
 
 /** Operator-only initial provisioning; existing workspace settings are preserved. */
 export async function provisionLlm(options: {
@@ -19,22 +23,18 @@ export async function provisionLlm(options: {
   const pool = createDatabasePool(options.databaseUrl);
   const db = createDatabase(pool);
   try {
-    const locks = createResourceLocks(pool);
-    const settings = createLlmSettingsStore(db, options.encryptionKey);
-    return await locks.run(`llm-settings:${options.workspaceId}`, async () => {
-      if (await settings.current(options.workspaceId))
-        return 'already-configured';
-      await settings.save(
-        options.workspaceId,
-        {
-          baseURL: options.baseURL,
-          apiKey: options.apiKey,
-          visionModel: options.modelId,
-          extractionModel: options.modelId,
-        },
-        null,
-      );
-      return 'configured';
+    const connections = createConnectionsModule({
+      store: createConnectionsStore(db, options.encryptionKey),
+      storeFor: (tx) => connectionsStoreFor(tx, options.encryptionKey),
+      uow: createUnitOfWork(db),
+      audit: createAuditModule({ connection: db, write: record }),
+      clock: systemClock,
+    });
+    return await connections.provision(options.workspaceId, {
+      baseURL: options.baseURL,
+      apiKey: options.apiKey,
+      visionModel: options.modelId,
+      extractionModel: options.modelId,
     });
   } finally {
     await db.$disconnect();

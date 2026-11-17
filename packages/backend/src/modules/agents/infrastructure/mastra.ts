@@ -100,6 +100,9 @@ export function createDocumentAgents(options: {
             ],
             {
               abortSignal: signal,
+              prepareStep: async () => {
+                await input.assertCurrent?.();
+              },
               maxSteps: 1,
               modelSettings: { maxOutputTokens: 4800, maxRetries: 1 },
               structuredOutput: { schema: descriptionSchema },
@@ -174,6 +177,9 @@ export function createDocumentAgents(options: {
           {
             memory: { thread: input.threadId, resource: input.resource },
             abortSignal: signal,
+            prepareStep: async () => {
+              await input.assertCurrent?.();
+            },
             maxSteps: 3,
             modelSettings: { maxOutputTokens: 12000, maxRetries: 1 },
             structuredOutput: { schema: extractionSchema },

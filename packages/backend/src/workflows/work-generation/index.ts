@@ -1,4 +1,5 @@
 import type { AuditModule } from '../../modules/audit';
+import type { ConnectionsModule } from '../../modules/connections';
 import type { ResourceLocks, SourceStorage } from '../../modules/documents';
 import type { FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
@@ -14,6 +15,7 @@ export interface WorkGenerationDeps {
   works: WorksModule;
   facts: FactsModule;
   processing: ProcessingModule;
+  connections: ConnectionsModule;
   generation: GenerationModule;
   audit: AuditModule;
   storage: SourceStorage;
