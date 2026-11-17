@@ -8,6 +8,7 @@
     "./idempotency": "./src/modules/idempotency/index.ts",
     "./access": "./src/modules/access/index.ts",
     "./works": "./src/modules/works/index.ts",
+    "./workflows": "./src/workflows/index.ts",
     "./processing": "./src/modules/processing/index.ts",
     "./errors": "./src/platform/errors/index.ts",
     "./ids": "./src/platform/ids.ts",

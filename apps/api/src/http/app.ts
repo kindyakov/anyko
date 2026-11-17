@@ -123,7 +123,7 @@ function legacyRoutes(input: ApiInput) {
 function registerScopedRoutes(route: Route, app: Elysia, input: ApiInput) {
   if (input.documentHttp) documentRoutes(route, app, input.documentHttp);
   if (input.workHttp) {
-    catalogRoutes(route, app, input.workHttp.works);
+    catalogRoutes(route, app, input.workHttp.views);
     worksRoutes(route, app, input.workHttp);
     connectionRoutes(route, app, input.workHttp);
   }

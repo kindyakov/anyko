@@ -1,0 +1,32 @@
+import type { AgentSessionStore } from '../../modules/agents';
+import type { DocumentService, ResourceLocks } from '../../modules/documents';
+import type { FactsModule } from '../../modules/facts';
+import type { GenerationModule } from '../../modules/generation';
+import type { ProcessingModule } from '../../modules/processing';
+import { availablePackages } from '../../modules/templates';
+import type { WorksModule } from '../../modules/works';
+
+import { getImage } from './get-image';
+import { getSource } from './get-source';
+import { getWork } from './get-work';
+
+export interface WorkViewDeps {
+  works: WorksModule;
+  facts: FactsModule;
+  processing: ProcessingModule;
+  generation: GenerationModule;
+  documents: DocumentService;
+  sessions: AgentSessionStore;
+  locks: ResourceLocks;
+}
+
+// Процесс «просмотр работы»: представление, исходники и каталог пакетов для создания работы.
+export function createWorkView(deps: WorkViewDeps) {
+  return {
+    packages: availablePackages,
+    get: getWork(deps),
+    source: getSource(deps),
+    image: getImage(deps),
+  };
+}
+export type WorkViews = ReturnType<typeof createWorkView>;

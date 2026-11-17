@@ -1,7 +1,7 @@
 import type { createAccess } from '@anyko/backend/access';
 import type { WorkId } from '@anyko/backend/ids';
 import type { WorkspaceScope } from '@anyko/backend/scope';
-import type { WorkApi } from '@anyko/backend/works';
+import type { WorksModule } from '@anyko/backend/works';
 
 import { transportErrorCodes } from '../../errors';
 
@@ -11,7 +11,7 @@ export function workEventStream(input: {
   scope: WorkspaceScope;
   workId: WorkId;
   after: string;
-  works: WorkApi;
+  works: WorksModule;
   access: ReturnType<typeof createAccess>;
 }) {
   const key = `${input.scope.workspaceId}:${input.scope.userId}`;
@@ -42,7 +42,11 @@ export function workEventStream(input: {
           const scope =
             session && input.access.scope(session, input.scope.workspaceId);
           if (!scope || scope.userId !== input.scope.userId) break;
-          const events = await input.works.events(scope, input.workId, cursor);
+          const events = await input.works.queries.events(
+            scope,
+            input.workId,
+            cursor,
+          );
           for (const event of events) {
             output.enqueue(
               encoder.encode(

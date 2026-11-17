@@ -11,8 +11,12 @@ import type { Logger } from '@anyko/logger';
 import { createAccess } from '../modules/access';
 import type { DocumentAgents } from '../modules/agents';
 import { createDocumentAgents } from '../modules/agents/infrastructure/mastra';
-import { createAgentSessionStore } from '../modules/agents/infrastructure/session-store';
-import { record } from '../modules/audit';
+import {
+  agentSessionStoreFor,
+  createAgentSessionStore,
+} from '../modules/agents/infrastructure/session-store';
+import { type AuditWriter, record } from '../modules/audit';
+import { createAuditModule } from '../modules/audit/module';
 import {
   createDocumentService,
   createRecognitions,
@@ -26,8 +30,16 @@ import { createDocumentIo } from '../modules/documents/infrastructure/document-i
 import { createMineruParser } from '../modules/documents/infrastructure/mineru';
 import { createS3Storage } from '../modules/documents/infrastructure/s3-storage';
 import { createSourceCleanup } from '../modules/documents/infrastructure/source-cleanup';
-import { createFactsStore } from '../modules/facts/infrastructure/store';
-import { createGenerationStore } from '../modules/generation/infrastructure/store';
+import {
+  createFactsStore,
+  factsStoreFor,
+} from '../modules/facts/infrastructure/store';
+import { createFactsModule } from '../modules/facts/module';
+import {
+  createGenerationStore,
+  generationStoreFor,
+} from '../modules/generation/infrastructure/store';
+import { createGenerationModule } from '../modules/generation/module';
 import { createIdempotency, type IdempotencyApi } from '../modules/idempotency';
 import { createIdempotencyStore } from '../modules/idempotency/infrastructure/store';
 import {
@@ -37,15 +49,31 @@ import {
 } from '../modules/processing';
 import { createLlmSettingsStore } from '../modules/processing/infrastructure/settings-store';
 import { createProcessingStore } from '../modules/processing/infrastructure/store';
-import { createWorkProcessingStore } from '../modules/processing/infrastructure/work-store';
-import type { WorkApi } from '../modules/works';
-import { createWorkStore } from '../modules/works/infrastructure/store';
+import {
+  createWorkProcessingStore,
+  workProcessingStoreFor,
+} from '../modules/processing/infrastructure/work-store';
+import { createProcessingModule } from '../modules/processing/module';
+import { hasPackage } from '../modules/templates';
+import type { WorksModule } from '../modules/works';
+import {
+  createWorkStore,
+  worksStoreFor,
+} from '../modules/works/infrastructure/store';
 import { createWorkIo } from '../modules/works/infrastructure/work-io';
+import { createWorksModule } from '../modules/works/module';
 import { systemClock } from '../platform/clock';
 import { uuidV7 } from '../platform/ids';
+import type { Tx } from '../platform/transactions';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
-import { createWorkApi } from '../workflows/works/api';
+import {
+  createWorkGeneration,
+  type WorkGeneration,
+} from '../workflows/work-generation';
+import { createWorkIntake, type WorkIntake } from '../workflows/work-intake';
+import { createWorkReview, type WorkReview } from '../workflows/work-review';
+import { createWorkView, type WorkViews } from '../workflows/work-view';
 import type { WorkDependencies, WorkStores } from '../workflows/works/ports';
 
 import {
@@ -58,6 +86,7 @@ import {
   finishDocumentDeletion,
 } from './documents/unit-of-work';
 import { createDocumentWorker } from './documents/worker';
+import { createUnitOfWork } from './transactions';
 import { createWorkWorker } from './works/worker';
 
 interface QueueStartOptions {
@@ -76,6 +105,8 @@ interface BackendDependencies {
   storage?: SourceStorage;
   parser?: DocumentParser;
   agents?: DocumentAgents;
+  // Способ записи журнала действий: тест подменяет его, чтобы проверить откат транзакции.
+  auditWriter?: AuditWriter;
 }
 
 export interface BackendOptions<Role extends 'api' | 'worker'> {
@@ -93,7 +124,12 @@ export interface ApiBackend {
     idempotency: IdempotencyApi;
   };
   readonly workHttp: {
-    works: WorkApi;
+    // Фасад модуля works: список работ и события (запросы без сценария).
+    works: WorksModule;
+    views: WorkViews;
+    intake: WorkIntake;
+    review: WorkReview;
+    generation: WorkGeneration;
     settings: LlmSettingsApi;
     documents: RecognitionService;
     access: ReturnType<typeof createAccess>;
@@ -114,36 +150,6 @@ export interface WorkerBackend {
     options?: QueueStartOptions,
   ): ReturnType<typeof createWorkWorker>;
   stop(): Promise<void>;
-}
-
-type StoreConnection = Pick<
-  Database,
-  | 'work'
-  | 'workDocument'
-  | 'workEvent'
-  | 'workFacts'
-  | 'workGeneration'
-  | 'workGenerationFile'
-  | 'workArtifact'
-  | 'workRun'
-  | 'workStep'
-  | 'workOutbox'
-  | 'workAgentThread'
-  | 'workAgentSession'
-  | 'workAgentTurn'
-  | 'auditEvent'
-  | '$executeRaw'
->;
-
-function stores(db: StoreConnection): WorkStores {
-  return {
-    sessions: createAgentSessionStore(db),
-    works: createWorkStore(db),
-    facts: createFactsStore(db),
-    generation: createGenerationStore(db),
-    processing: createWorkProcessingStore(db),
-    audit: { record: (event) => record(db, event) },
-  };
 }
 
 /** Process composition root: one pool, one Prisma client, one S3 client, one lock set. */
@@ -189,13 +195,57 @@ export function createBackend(
     createDocumentIo(db),
   );
 
+  // Единица работы и фасады модулей: сценарии получают их, а не клиента БД.
+  const uow = createUnitOfWork(db);
+  const llmSettings = createLlmSettingsStore(db, validated.works.encryptionKey);
+  const audit = createAuditModule({
+    connection: db,
+    write: dependencies.auditWriter ?? record,
+  });
+  const works = createWorksModule({
+    store: createWorkStore(db),
+    storeFor: worksStoreFor,
+    io: createWorkIo(db),
+    newId: uuidV7,
+    knownPackage: hasPackage,
+  });
+  const facts = createFactsModule({
+    store: createFactsStore(db),
+    storeFor: factsStoreFor,
+  });
+  const generation = createGenerationModule({
+    store: createGenerationStore(db),
+    storeFor: generationStoreFor,
+    newId: uuidV7,
+  });
+  const processingFacade = createProcessingModule({
+    store: createWorkProcessingStore(db),
+    storeFor: workProcessingStoreFor,
+    settings: llmSettings,
+    newId: uuidV7,
+  });
+
   let agentsDelegate: DocumentAgents | undefined = dependencies.agents;
   const agents = () => (agentsDelegate ??= createDocumentAgents({ pool }));
+  // Мост для процессов 5b (execute, continue-session, cleanup): наборы хранилищ внутри транзакции.
+  const bridgeStores = (tx: Tx): WorkStores => ({
+    sessions: agentSessionStoreFor(tx),
+    works: worksStoreFor(tx),
+    facts: factsStoreFor(tx),
+    generation: generationStoreFor(tx),
+    processing: workProcessingStoreFor(tx),
+    audit: audit.in(tx).commands,
+  });
   const work: WorkDependencies = {
-    ...stores(db),
-    transaction: (operation) => db.$transaction((tx) => operation(stores(tx))),
+    sessions: createAgentSessionStore(db),
+    works: createWorkStore(db),
+    facts: createFactsStore(db),
+    generation: createGenerationStore(db),
+    processing: createWorkProcessingStore(db),
+    audit: audit.commands,
+    transaction: (operation) => uow.run((tx) => operation(bridgeStores(tx))),
     documents,
-    settings: createLlmSettingsStore(db, validated.works.encryptionKey),
+    settings: llmSettings,
     locks,
     documentIo: createDocumentIo(db),
     workIo: createWorkIo(db),
@@ -219,7 +269,6 @@ export function createBackend(
     logger,
   };
   const recognitions = createRecognitions(documents);
-  const llmSettings = createLlmSettings({ settings: work.settings, locks });
 
   const started: { stop(): Promise<void> }[] = [];
   let stopping: Promise<void> | undefined;
@@ -263,6 +312,17 @@ export function createBackend(
       newToken: uuidV7,
       logger,
     });
+    const workflows = {
+      uow,
+      works,
+      facts,
+      processing: processingFacade,
+      generation,
+      audit,
+      storage,
+      locks,
+      documents,
+    };
     return {
       role: 'api',
       documentHttp: {
@@ -272,8 +332,18 @@ export function createBackend(
         idempotency,
       },
       workHttp: {
-        works: createWorkApi(work),
-        settings: llmSettings,
+        works,
+        views: createWorkView({
+          ...workflows,
+          sessions: createAgentSessionStore(db),
+        }),
+        intake: createWorkIntake({
+          ...workflows,
+          sessions: { in: agentSessionStoreFor },
+        }),
+        review: createWorkReview(workflows),
+        generation: createWorkGeneration(workflows),
+        settings: createLlmSettings({ settings: llmSettings, locks }),
         documents: recognitions,
         access,
         origin: auth.origin,

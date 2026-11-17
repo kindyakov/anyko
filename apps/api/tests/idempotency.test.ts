@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 
 import { AppError } from '@anyko/backend/errors';
-import type { WorkApi } from '@anyko/backend/works';
+import type { WorkIntake } from '@anyko/backend/workflows';
 import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../src/http/app';
@@ -11,7 +11,7 @@ import { stubHttpOptions } from './support/stub-http';
 
 const origin = 'http://localhost:3000';
 
-type Analyze = WorkApi['analyze'];
+type Analyze = WorkIntake['analyzeWork'];
 
 // Приложение с подменённым сценарием анализа. Остальные сценарии не вызываются этими тестами.
 function appWith(analyze: Analyze) {
@@ -28,7 +28,7 @@ function appWith(analyze: Analyze) {
     workHttp: {
       ...options.workHttp,
       access: memberAccess,
-      works: { ...options.workHttp.works, analyze },
+      intake: { ...options.workHttp.intake, analyzeWork: analyze },
     },
   });
   return app;
