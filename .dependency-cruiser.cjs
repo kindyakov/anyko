@@ -10,6 +10,7 @@ const moduleEdges = {
   facts: [],
   templates: [],
   generation: [],
+  idempotency: [],
 };
 const knownModules = Object.keys(moduleEdges).join('|');
 const { existsSync, readdirSync } = require('node:fs');

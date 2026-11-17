@@ -70,6 +70,7 @@ model AnykoWorkspace {
  documentIo DocumentIo[]
  works Work[]
  llmSettings LlmSettings[]
+ idempotencyKeys IdempotencyKey[]
 }
 model Membership {
  workspaceId String
@@ -391,6 +392,25 @@ model DocumentIo {
  createdAt DateTime @default(now())
  @@index([workspaceId,documentId])
  @@index([workspaceId,requestKey])
+}
+
+// Повтор команды с Idempotency-Key (ADR 0009). Ключ действует в пределах области и команды;
+// state: in_progress | completed. Просроченная запись считается отсутствующей.
+model IdempotencyKey {
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ command String
+ key String
+ fingerprint String
+ token String
+ state String
+ status Int?
+ body Json?
+ createdAt DateTime @default(now())
+ expiresAt DateTime
+ lockedUntil DateTime
+ @@id([workspaceId,command,key])
+ @@index([expiresAt])
 }
 
 model WorkAgentSession {

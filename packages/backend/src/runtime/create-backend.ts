@@ -27,6 +27,8 @@ import { createS3Storage } from '../modules/documents/infrastructure/s3-storage'
 import { createSourceCleanup } from '../modules/documents/infrastructure/source-cleanup';
 import { createFactsStore } from '../modules/facts/infrastructure/store';
 import { createGenerationStore } from '../modules/generation/infrastructure/store';
+import { createIdempotency, type IdempotencyApi } from '../modules/idempotency';
+import { createIdempotencyStore } from '../modules/idempotency/infrastructure/store';
 import {
   createLlmSettings,
   createProcessingService,
@@ -38,6 +40,8 @@ import { createWorkProcessingStore } from '../modules/processing/infrastructure/
 import type { WorkApi } from '../modules/works';
 import { createWorkStore } from '../modules/works/infrastructure/store';
 import { createWorkIo } from '../modules/works/infrastructure/work-io';
+import { systemClock } from '../platform/clock';
+import { uuidV7 } from '../platform/ids';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
 import { createWorkApi } from '../workflows/works/api';
@@ -85,6 +89,7 @@ export interface ApiBackend {
     documents: RecognitionService;
     access: ReturnType<typeof createAccess>;
     origin: string;
+    idempotency: IdempotencyApi;
   };
   readonly workHttp: {
     works: WorkApi;
@@ -92,6 +97,7 @@ export interface ApiBackend {
     documents: RecognitionService;
     access: ReturnType<typeof createAccess>;
     origin: string;
+    idempotency: IdempotencyApi;
   };
   ready(): Promise<void>;
   stop(): Promise<void>;
@@ -248,15 +254,27 @@ export function createBackend(
       baseURL: auth.baseUrl,
       origin: auth.origin,
     });
+    const idempotency = createIdempotency({
+      store: createIdempotencyStore(db),
+      clock: systemClock,
+      newToken: uuidV7,
+      logger,
+    });
     return {
       role: 'api',
-      documentHttp: { documents: recognitions, access, origin: auth.origin },
+      documentHttp: {
+        documents: recognitions,
+        access,
+        origin: auth.origin,
+        idempotency,
+      },
       workHttp: {
         works: createWorkApi(work),
         settings: llmSettings,
         documents: recognitions,
         access,
         origin: auth.origin,
+        idempotency,
       },
       ready,
       stop,
