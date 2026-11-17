@@ -25,6 +25,7 @@ export function TextSlot({
   value,
   disabled,
   multiline,
+  maxLength,
   onChange,
   fieldKey,
   tone = 'paper',
@@ -34,6 +35,7 @@ export function TextSlot({
   value: string | null;
   disabled: boolean;
   multiline: boolean;
+  maxLength?: number | undefined;
   onChange: (value: string | null) => void;
   fieldKey?: string;
   tone?: 'paper' | 'panel';
@@ -63,6 +65,7 @@ export function TextSlot({
         aria-label={label}
         title={label}
         disabled={disabled}
+        maxLength={maxLength}
         value={value ?? ''}
         placeholder={placeholder ?? label}
         data-empty={!value || undefined}
@@ -94,7 +97,7 @@ export function FieldEditor({
   disabled: boolean;
   onChange: (value: FieldValue) => void;
 }) {
-  if (!field.columns.length)
+  if (field.kind === 'text')
     return (
       <Field.Root className="grid gap-1.5" data-field-editor={field.key}>
         <Field.Label className="text-muted text-xs">{field.label}</Field.Label>
@@ -103,6 +106,7 @@ export function FieldEditor({
           value={typeof value === 'string' ? value : null}
           disabled={disabled}
           multiline={field.multiline}
+          maxLength={field.limits.maxLength}
           onChange={onChange}
           tone="panel"
         />
@@ -165,6 +169,7 @@ export function FieldEditor({
                         value={row[column.key] ?? null}
                         disabled={disabled}
                         multiline
+                        maxLength={column.maxLength}
                         tone="panel"
                         onChange={(next) => {
                           setCell(index, column.key, next);
@@ -195,7 +200,10 @@ export function FieldEditor({
         <Button
           variant="secondary"
           size="sm"
-          disabled={rows.length >= 100}
+          disabled={
+            field.limits.maxRows !== undefined &&
+            rows.length >= field.limits.maxRows
+          }
           onClick={() => {
             onChange([...rows, emptyRow]);
           }}

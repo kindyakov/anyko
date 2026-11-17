@@ -1,9 +1,9 @@
-import type { FieldValues } from '@anyko/contracts/catalog';
-import type { WorkView } from '@anyko/contracts/works';
-
 import type { GenerationId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
+import type { FieldValues } from '../../profiles/bfl/fields';
+
+import type { GenerationView } from './schemas';
 export { generateDocument } from './render';
 
 interface GenerationFile {
@@ -40,7 +40,7 @@ export interface GenerationStore {
     workId: string,
     id: string,
   ): Promise<GenerationRecord | null>;
-  list(workspaceId: string, workId: string): Promise<WorkView['generations']>;
+  list(workspaceId: string, workId: string): Promise<GenerationView[]>;
   publish(input: {
     workspaceId: string;
     workId: string;
@@ -91,7 +91,7 @@ interface GenerationQueries {
     workId: WorkId,
     generationId: GenerationId,
   ): Promise<GenerationRecord | null>;
-  list(scope: WorkspaceScope, workId: WorkId): Promise<WorkView['generations']>;
+  list(scope: WorkspaceScope, workId: WorkId): Promise<GenerationView[]>;
 }
 export interface GenerationPorts {
   readonly commands: GenerationCommands;
@@ -113,4 +113,4 @@ export interface GenerationModule extends GenerationPorts {
   in(tx: Tx): GenerationPorts;
 }
 
-export type { FieldValues } from '@anyko/contracts/catalog';
+export type { FieldValues } from '../../profiles/bfl/fields';

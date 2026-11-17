@@ -1,14 +1,11 @@
 import { z } from 'zod';
 
-import {
-  generationFileSchema,
-  readFieldValues,
-} from '@anyko/contracts/catalog';
-import { generationSchema } from '@anyko/contracts/works';
 import type { Database } from '@anyko/database';
 
 import type { GenerationStore } from '..';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
+import { readFieldValues } from '../../../profiles/bfl/fields';
+import { generationFileSchema, generationSchema } from '../schemas';
 
 export function createGenerationStore(
   db: Pick<Database, 'workGeneration' | 'workGenerationFile' | 'workArtifact'>,

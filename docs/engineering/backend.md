@@ -15,7 +15,7 @@ apps/api/src/
     route.ts                регистрация маршрута из endpoint-описания contracts
     plugins/                request-context, errors, session, workspace-scope,
                             origin, idempotency, no-store
-    routes/<resource>/      маршруты ресурса и presenters «модель → контракт»
+    routes/<resource>/      маршруты ресурса; перевод модели в контракт, если формы различаются
     routes/admin/           будущие операторские маршруты с OperatorScope
 apps/worker/src/
   index.ts
@@ -200,7 +200,7 @@ route(app, confirmWork, ({ scope, params, body }) =>
 
 Идентификаторы — `platform/ids.ts`: `parseWorkspaceId` и `parseUserId` возвращают `null` для непроверенного входа; `brandWorkId`, `brandDocumentId`, `brandGenerationId`, `brandFileId` проверяют UUID схемой contracts и бросают ошибку при несовпадении (это ошибка контракта, не ответ клиенту). `uuidV7` — генератор для новых ID; сценарии переходят на него в этапах #19 и #4b.
 
-Presenter не вводится: маршрут возвращает объекты формы контракта. OpenAPI строится из тех же описаний и доступен вне production по `/api/v1/openapi.json`.
+Отдельный слой presenters не вводится. Backend не импортирует `contracts` и описывает свои модели сам (`modules/*/schemas.ts`, `profiles/bfl`); маршрут возвращает модель, если её форма совпадает с контрактом, и переводит её в маршруте, если нет. Совместимость проверяют тип ответа `route()` при компиляции и схема ответа описания во время выполнения (`http_response_invalid`). Ошибки полей тела строит `fieldErrors` из `@anyko/backend/errors`: им пользуются и разбор тела в `route()`, и проверки профиля в сценариях. OpenAPI строится из тех же описаний и доступен вне production по `/api/v1/openapi.json`.
 
 ## Задания
 
@@ -241,16 +241,16 @@ Envelope с версией, IDs и correlation ID разбирает `worker/que
 
 ## Как добавлять
 
-| Изменение                      | Место и обязательная граница                                                                                        |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| Новый endpoint                 | описание в `contracts/<resource>/endpoints.ts`, маршрут и presenter в `api/http/routes/<resource>`, HTTP-тест       |
-| Новая команда/запрос           | файл в `modules/<m>/application`, подключение в `module.ts`, право в `platform/scope`, unit или интеграционный тест |
-| Сценарий нескольких владельцев | `workflows/<process>`, вызовы `module.in(tx)` внутри `UnitOfWork`, интеграционный тест на PostgreSQL                |
-| Новое задание                  | `defineJob` у владельца процесса, строка в `runtime/jobs.ts`, проверка устаревшей попытки                           |
-| Новый модуль                   | `modules/<name>` с `index.ts` и `module.ts`, строка в `.dependency-cruiser.cjs`, сборка в `create-backend.ts`       |
-| Новая интеграция               | `infrastructure` владельца с timeout и лимитом параллелизма; секция конфигурации в `BackendConfig`                  |
-| Новый код ошибки               | `defineErrors` модуля, каталог `contracts/common/errors`, список `errors` нужных endpoint                           |
-| Операторская функция           | `routes/admin`, `contracts/admin`, `OperatorScope`; бизнес-правила остаются в модуле                                |
+| Изменение                      | Место и обязательная граница                                                                                                                 |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Новый endpoint                 | описание в `contracts/<resource>/endpoints.ts`, маршрут (и перевод модели, если формы различаются) в `api/http/routes/<resource>`, HTTP-тест |
+| Новая команда/запрос           | файл в `modules/<m>/application`, подключение в `module.ts`, право в `platform/scope`, unit или интеграционный тест                          |
+| Сценарий нескольких владельцев | `workflows/<process>`, вызовы `module.in(tx)` внутри `UnitOfWork`, интеграционный тест на PostgreSQL                                         |
+| Новое задание                  | `defineJob` у владельца процесса, строка в `runtime/jobs.ts`, проверка устаревшей попытки                                                    |
+| Новый модуль                   | `modules/<name>` с `index.ts` и `module.ts`, строка в `.dependency-cruiser.cjs`, сборка в `create-backend.ts`                                |
+| Новая интеграция               | `infrastructure` владельца с timeout и лимитом параллелизма; секция конфигурации в `BackendConfig`                                           |
+| Новый код ошибки               | `defineErrors` модуля, каталог `contracts/common/errors`, список `errors` нужных endpoint                                                    |
+| Операторская функция           | `routes/admin`, `contracts/admin`, `OperatorScope`; бизнес-правила остаются в модуле                                                         |
 
 ## Как проверяются правила
 

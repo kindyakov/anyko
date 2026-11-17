@@ -23,7 +23,13 @@ export function errorHandling(app: Elysia, logger: Logger): void {
     set.headers['x-request-id'] = id;
     if (isAppError(error)) {
       set.status = statusByKind[error.kind];
-      return { error: { code: error.code, requestId: id } };
+      return {
+        error: {
+          code: error.code,
+          requestId: id,
+          ...(error.fields ? { fields: error.fields } : {}),
+        },
+      };
     }
     const status =
       code === 'NOT_FOUND'

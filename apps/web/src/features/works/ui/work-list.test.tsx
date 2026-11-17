@@ -233,7 +233,7 @@ test('a field error from the response lands on the title, with focus', async () 
       error: {
         code: 'INVALID_REQUEST',
         requestId: 'r1',
-        fields: [{ path: 'title', code: 'TOO_LONG' }],
+        fields: [{ path: ['title'], code: 'too_long' }],
       },
     },
   });
@@ -243,9 +243,7 @@ test('a field error from the response lands on the title, with focus', async () 
   await user.type(await screen.findByLabelText('Название работы'), 'Петров');
   await user.click(screen.getByRole('button', { name: 'Создать и открыть' }));
 
-  expect(
-    await screen.findByText('Не удалось создать работу. Попробуйте снова.'),
-  ).toBeTruthy();
+  expect(await screen.findByText('Значение слишком длинное.')).toBeTruthy();
   expect(
     screen.getByLabelText('Название работы').getAttribute('aria-invalid'),
   ).toBe('true');

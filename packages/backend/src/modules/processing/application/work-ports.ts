@@ -1,10 +1,45 @@
 import { z } from 'zod';
 
-import type { WorkView } from '@anyko/contracts/works';
-import { candidateSchema } from '@anyko/contracts/works';
+import { candidateSchema } from '../../../profiles/bfl/candidate';
 
-// Запуски работы в форме представления: тип контракта выражен здесь, файл уже в списке исключений.
-export type WorkRuns = WorkView['runs'];
+const workStepSchema = z.object({
+  id: z.uuid(),
+  stage: z.enum([
+    'parsing',
+    'vision',
+    'extraction',
+    'reconciliation',
+    'generation',
+  ]),
+  documentId: z.uuid().nullable(),
+  status: z.enum(['queued', 'running', 'succeeded', 'failed', 'skipped']),
+  errorCode: z.string().nullable(),
+  visuals: z
+    .array(
+      z.object({
+        path: z.string(),
+        description: z.string(),
+        imageIndex: z.number().int().min(0).max(31).optional(),
+      }),
+    )
+    .default([]),
+});
+export const workRunSchema = z.object({
+  id: z.uuid(),
+  kind: z.enum(['analysis', 'generation']),
+  status: z.enum([
+    'queued',
+    'running',
+    'succeeded',
+    'partial',
+    'failed',
+    'cancelled',
+  ]),
+  errorCode: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  steps: z.array(workStepSchema),
+});
+export type WorkRuns = z.infer<typeof workRunSchema>[];
 
 export const stepOutputSchema = z
   .object({
@@ -70,7 +105,7 @@ export interface WorkProcessingStore {
     stage: 'vision' | 'extraction',
     sourceDigest: string,
   ): Promise<StepOutput | null>;
-  list(workspaceId: string, workId: string): Promise<WorkView['runs']>;
+  list(workspaceId: string, workId: string): Promise<WorkRuns>;
   delivery(): Promise<{
     id: string;
     workspaceId: string;

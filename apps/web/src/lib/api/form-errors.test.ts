@@ -28,7 +28,7 @@ test('field error from the response lands on the field with the same name', () =
   applyServerErrors(
     form,
     new ApiError('INVALID_REQUEST', 400, 'r1', [
-      { path: 'title', code: 'TOO_LONG' },
+      { path: ['title'], code: 'TOO_LONG' },
     ]),
     texts,
   );
@@ -44,7 +44,7 @@ test('field without its own code text uses the text of the response code', () =>
   applyServerErrors(
     form,
     new ApiError('INVALID_WORK_INPUT', 400, 'r1', [
-      { path: 'baseURL', code: 'UNKNOWN_FIELD_CODE' },
+      { path: ['baseURL'], code: 'UNKNOWN_FIELD_CODE' },
     ]),
     texts,
   );
@@ -58,8 +58,8 @@ test('field that the form does not have goes to the form-level error', () => {
   applyServerErrors(
     form,
     new ApiError('INVALID_REQUEST', 400, 'r1', [
-      { path: 'title', code: 'TOO_LONG' },
-      { path: 'ghost', code: 'TOO_LONG' },
+      { path: ['title'], code: 'TOO_LONG' },
+      { path: ['ghost'], code: 'TOO_LONG' },
     ]),
     texts,
   );
@@ -75,8 +75,8 @@ test('the first error of a field wins when the response repeats the path', () =>
   applyServerErrors(
     form,
     new ApiError('INVALID_REQUEST', 400, 'r1', [
-      { path: 'title', code: 'TOO_LONG' },
-      { path: 'title', code: 'INVALID_WORK_INPUT' },
+      { path: ['title'], code: 'TOO_LONG' },
+      { path: ['title'], code: 'INVALID_WORK_INPUT' },
     ]),
     texts,
   );
@@ -113,7 +113,7 @@ test('a new response replaces the server errors of the previous one', () => {
   applyServerErrors(
     form,
     new ApiError('INVALID_REQUEST', 400, 'r1', [
-      { path: 'title', code: 'TOO_LONG' },
+      { path: ['title'], code: 'TOO_LONG' },
     ]),
     texts,
   );

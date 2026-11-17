@@ -106,7 +106,6 @@
     "packages/backend": {
       "name": "@anyko/backend",
       "dependencies": {
-        "@anyko/contracts": "workspace:*",
         "@anyko/database": "workspace:*",
         "@anyko/llm": "workspace:*",
         "@anyko/logger": "workspace:*",

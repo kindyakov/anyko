@@ -3,9 +3,6 @@ import { createHash } from 'node:crypto';
 
 import PizZip from 'pizzip';
 
-import { emptyFieldValues, fieldValuesSchema } from '@anyko/contracts/catalog';
-import { candidateSchema } from '@anyko/contracts/works';
-
 import { generateDocument } from '../src/modules/generation';
 import {
   availablePackages,
@@ -13,6 +10,11 @@ import {
   templateBytes,
   templateData,
 } from '../src/modules/templates';
+import { candidateSchema } from '../src/profiles/bfl/candidate';
+import {
+  emptyFieldValues,
+  fieldValuesSchema,
+} from '../src/profiles/bfl/fields';
 
 test('the selectable package contains three real versioned templates; archived single-document works still resolve', () => {
   const packages = availablePackages();

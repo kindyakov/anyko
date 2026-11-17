@@ -3,12 +3,12 @@ import { inspect } from 'node:util';
 
 import { z } from 'zod';
 
-import { fieldDefinitions } from '@anyko/contracts/catalog';
 import { createDatabasePool } from '@anyko/database';
 import { llmError } from '@anyko/llm';
 
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 import { emptyFacts } from '../../src/modules/facts';
+import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 
 test('real coordinator validates source evidence, keeps its scope, and removes persisted attempt messages', async () => {
   const databaseUrl = z

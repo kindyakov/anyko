@@ -5,8 +5,6 @@ import { PostgresStore } from '@mastra/pg';
 import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
-import { emptyFieldValues } from '@anyko/contracts/catalog';
-import { type WorkView } from '@anyko/contracts/works';
 import {
   createDatabase,
   createDatabasePool,
@@ -26,6 +24,7 @@ import {
   brandGenerationId,
   brandWorkId,
 } from '../../src/platform/ids';
+import { emptyFieldValues } from '../../src/profiles/bfl/fields';
 import { createBackend } from '../../src/runtime';
 import { integrationConfig } from '../support/composition';
 import { memberScope } from '../support/scope';
@@ -36,6 +35,7 @@ if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
 const redisUrl = process.env.TEST_REDIS_URL;
 if (!redisUrl) throw new Error('TEST_REDIS_URL required');
 const testRedisUrl: string = redisUrl;
+type WorkView = Awaited<ReturnType<typeof apiBackend.workHttp.views.get>>;
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabase(pool);
 const locks = createResourceLocks(pool);

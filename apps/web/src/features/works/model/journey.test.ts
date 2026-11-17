@@ -32,7 +32,7 @@ function view(patch: Partial<WorkView> = {}): WorkView {
     documents: [],
     facts: {
       version: 1,
-      values: {} as WorkView['facts']['values'],
+      values: {},
       manual: [],
       confirmed: [],
       candidates: [],
@@ -168,7 +168,7 @@ test('conflicts are fields whose extracted variants disagree', () => {
     view({
       facts: {
         version: 1,
-        values: {} as WorkView['facts']['values'],
+        values: {},
         manual: [],
         confirmed: [],
         candidates: [

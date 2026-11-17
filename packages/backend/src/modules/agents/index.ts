@@ -1,5 +1,6 @@
-import type { FieldDefinition } from '@anyko/contracts/catalog';
-import type { AgentSessionContext, WorkFacts } from '@anyko/contracts/works';
+import type { FieldDefinition } from '../../profiles/bfl/fields';
+
+import type { AgentSessionContext, WorkFacts } from './schemas';
 export type { FieldDefinition, AgentSessionContext, WorkFacts };
 import type { ModelConnection } from '@anyko/llm';
 

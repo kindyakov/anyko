@@ -190,9 +190,6 @@ test('reports a rejected save as an alert and does not claim success', async () 
   ).toBeNull();
 });
 
-const saveFailure =
-  'Не удалось сохранить настройки. Проверьте адрес, модели и ключ.';
-
 // Ответ на сохранение задаёт тест; чтение отдаёт сохранённые настройки.
 function serveSaveAnswer(status: number, body: unknown) {
   const requests: { method: string; body: unknown }[] = [];
@@ -236,7 +233,7 @@ test('a field error from the server lands on its field, which takes focus', asyn
     error: {
       code: 'INVALID_REQUEST',
       requestId: 'r1',
-      fields: [{ path: 'visionModel', code: 'UNKNOWN_MODEL' }],
+      fields: [{ path: ['visionModel'], code: 'invalid_value' }],
     },
   });
   renderSettings();
@@ -246,7 +243,7 @@ test('a field error from the server lands on its field, which takes focus', asyn
     await screen.findByRole('button', { name: 'Сохранить подключение' }),
   );
 
-  expect(await screen.findByText(saveFailure)).toBeTruthy();
+  expect(await screen.findByText('Проверьте значение поля.')).toBeTruthy();
   const vision = screen.getByLabelText('Модель для изображений');
   expect(vision.getAttribute('aria-invalid')).toBe('true');
   expectFocused(vision);
@@ -258,7 +255,7 @@ test('a field the form does not have is reported as the form alert', async () =>
     error: {
       code: 'INVALID_REQUEST',
       requestId: 'r1',
-      fields: [{ path: 'ghostField', code: 'UNKNOWN' }],
+      fields: [{ path: ['ghostField'], code: 'invalid_value' }],
     },
   });
   renderSettings();
@@ -269,7 +266,7 @@ test('a field the form does not have is reported as the form alert', async () =>
   );
 
   expect(await screen.findByRole('alert')).toBeTruthy();
-  expect(screen.getByText(saveFailure)).toBeTruthy();
+  expect(screen.getByText('Проверьте значение поля.')).toBeTruthy();
 });
 
 test('unsaved edits make leaving the page warn; saving removes the warning', async () => {

@@ -26,12 +26,28 @@ export const errorCodeSchema = z.enum([
 
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
 
+export const fieldErrorCodeSchema = z.enum([
+  'required',
+  'invalid_type',
+  'invalid_format',
+  'too_short',
+  'too_long',
+  'too_small',
+  'too_big',
+  'invalid_value',
+]);
+
 export const httpErrorSchema = z.object({
   error: z.object({
     code: errorCodeSchema,
     requestId: z.string().max(128),
     fields: z
-      .array(z.object({ path: z.string(), code: z.string() }))
+      .array(
+        z.object({
+          path: z.array(z.union([z.string(), z.number().int()])),
+          code: fieldErrorCodeSchema,
+        }),
+      )
       .optional(),
   }),
 });

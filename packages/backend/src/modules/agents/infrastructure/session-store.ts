@@ -1,7 +1,3 @@
-import {
-  agentSessionContextSchema,
-  agentSessionSchema,
-} from '@anyko/contracts/works';
 import type { Database } from '@anyko/database';
 
 import { transactionHandle, type Tx } from '../../../platform/transactions';
@@ -9,6 +5,7 @@ import {
   type AgentSessionStore,
   reconciliationSchema,
 } from '../application/session';
+import { agentSessionContextSchema, agentSessionSchema } from '../schemas';
 
 type Connection = Pick<Database, 'workAgentSession' | 'workAgentTurn'>;
 // Сессия работы внутри транзакции действия (создание работы): токен превращается в клиент транзакции.

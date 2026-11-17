@@ -3,11 +3,9 @@ import { z } from 'zod';
 import {
   documentPackageSchema,
   fieldKeySchema,
-  fieldValueIssue,
   fieldValueSchema,
   fieldValuesSchema,
   generationFileSchema,
-  readFieldValues,
 } from '../catalog';
 import { documentSchema } from '../documents';
 
@@ -33,22 +31,11 @@ export const candidateSchema = z
     ),
     evidence: z.array(evidenceSchema).min(1).max(12),
   })
-  .strict()
-  .superRefine((value, ctx) => {
-    const issue = fieldValueIssue(value.field, value.value);
-    if (issue)
-      ctx.addIssue({ code: 'custom', path: ['value'], message: issue });
-  });
+  .strict();
 export const factsSchema = z
   .object({
     version: z.literal(1),
-    values: z.preprocess(
-      (input) =>
-        typeof input === 'object' && input !== null && !Array.isArray(input)
-          ? { ...readFieldValues({}), ...input }
-          : input,
-      fieldValuesSchema,
-    ),
+    values: fieldValuesSchema,
     manual: z.array(fieldKeySchema),
     confirmed: z.array(fieldKeySchema).default([]),
     candidates: z.array(candidateSchema).max(500),

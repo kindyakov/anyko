@@ -13,7 +13,6 @@ import {
 import {
   type DocumentPackage,
   type FieldKey,
-  fieldKeySchema,
   type FieldRow,
   type FieldValue,
   type FieldValues,
@@ -164,20 +163,23 @@ export function PackagePreview(props: Props) {
     text: string,
     row?: FieldRow,
     changeRow?: (key: string, value: string | null) => void,
+    rowField?: FieldKey,
+    rowNumber?: number,
   ): ReactNode[] =>
-    text.split(/(\{[a-zA-Z][a-zA-Z0-9]*\})/g).map((part, index) => {
-      const key = /^\{([a-zA-Z][a-zA-Z0-9]*)\}$/.exec(part)?.[1];
+    text.split(/(\{[^{}#/]+\})/g).map((part, index) => {
+      const key = /^\{([^{}#/]+)\}$/.exec(part)?.[1];
       if (!key) return part;
-      if (key === 'rowNumber' && row) return row[key];
       const field = pack.fields.find((item) => item.key === key);
       const column = pack.fields
-        .flatMap((item) => item.columns)
-        .find((item) => item.key === key);
+        .find((item) => item.key === rowField)
+        ?.columns.find((item) => item.key === key);
+      if (key === 'rowNumber' && row && !column) return String(rowNumber ?? 1);
       if (row)
         return (
           <TextSlot
             key={index}
             label={`${document.title}: ${column?.label ?? key}`}
+            maxLength={column?.maxLength}
             placeholder={column?.label ?? '…'}
             value={row[key] ?? null}
             disabled={disabled}
@@ -197,6 +199,7 @@ export function PackagePreview(props: Props) {
           key={index}
           fieldKey={field.key}
           label={field.label}
+          maxLength={field.limits.maxLength}
           value={typeof value === 'string' ? value : null}
           disabled={disabled}
           multiline={field.multiline}
@@ -211,9 +214,11 @@ export function PackagePreview(props: Props) {
     id: string,
     row?: FieldRow,
     changeRow?: (key: string, value: string | null) => void,
+    rowField?: FieldKey,
+    rowNumber?: number,
   ): ReactNode => {
-    const loop = /\{#([a-zA-Z]+)\}/.exec(p.text)?.[1];
-    const repeat = loop ? fieldKeySchema.parse(loop) : undefined;
+    const loop = /\{#([^{}]+)\}/.exec(p.text)?.[1];
+    const repeat = loop || undefined;
     if (repeat && !row) {
       const collection = values[repeat];
       const rows = Array.isArray(collection) ? collection : [];
@@ -222,7 +227,7 @@ export function PackagePreview(props: Props) {
           {rows.length ? (
             rows.map((item, index) =>
               paragraph(
-                { ...p, text: p.text.replace(/\{[#/][a-zA-Z]+\}/g, '') },
+                { ...p, text: p.text.replace(/\{[#/][^{}]+\}/g, '') },
                 `${id}-${String(index)}`,
                 item,
                 (key, next) => {
@@ -233,6 +238,8 @@ export function PackagePreview(props: Props) {
                     ),
                   );
                 },
+                repeat,
+                index + 1,
               ),
             )
           ) : (
@@ -253,7 +260,7 @@ export function PackagePreview(props: Props) {
           marginBottom: `${String(Math.max(3, p.after))}pt`,
         }}
       >
-        {p.text ? tokens(p.text, row, changeRow) : <br />}
+        {p.text ? tokens(p.text, row, changeRow, rowField, rowNumber) : <br />}
       </div>
     );
   };
@@ -267,7 +274,7 @@ export function PackagePreview(props: Props) {
             Object.fromEntries(
               row.cells.flatMap((cell) =>
                 cell.paragraphs.flatMap((p) =>
-                  [...p.text.matchAll(/\{([a-zA-Z]+)\}/g)].map((m) => [
+                  [...p.text.matchAll(/\{([^{}#/]+)\}/g)].map((m) => [
                     m[1] ?? '',
                     null,
                   ]),
@@ -299,9 +306,7 @@ export function PackagePreview(props: Props) {
                 paragraph(
                   p,
                   String(pIndex),
-                  repeat
-                    ? { ...entry, rowNumber: String(number + 1) }
-                    : undefined,
+                  repeat ? entry : undefined,
                   (key, next) => {
                     if (!repeat) return;
                     const current =
@@ -315,6 +320,8 @@ export function PackagePreview(props: Props) {
                       ),
                     );
                   },
+                  repeat ?? undefined,
+                  number + 1,
                 ),
               )}
             </td>

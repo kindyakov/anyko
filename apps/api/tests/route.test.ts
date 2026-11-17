@@ -12,6 +12,7 @@ import { AppError } from '@anyko/backend/errors';
 import {
   endpoint,
   fileDownload,
+  httpErrorSchema,
   json,
   multipart,
 } from '@anyko/contracts/common';
@@ -197,6 +198,67 @@ test('invalid input answers with the code the description declares', async () =>
     expect(response.status).toBe(400);
     const body = (await response.json()) as { error: { code: string } };
     expect(body.error.code).toBe('INVALID_WORK_INPUT');
+  });
+});
+
+test('body field errors retain dotted keys and array indexes, while path errors have no fields', async () => {
+  const nested = endpoint({
+    method: 'POST',
+    path: '/nested',
+    body: json(
+      z.object({
+        values: z.record(
+          z.string(),
+          z.array(z.object({ name: z.string().min(2) })),
+        ),
+      }),
+    ),
+    response: json(z.object({ ok: z.literal(true) })),
+    status: 200,
+    errors: ['INVALID_WORK_INPUT'],
+    invalid: 'INVALID_WORK_INPUT',
+    idempotency: 'none',
+  });
+  const { app } = build(true, (route, api) => {
+    route(api, nested, () => ({ ok: true as const }));
+    route(api, item, () => ({ ok: true as const }));
+  });
+  await withServer(app, async (base) => {
+    const response = await fetch(`${base}/api/v1/nested`, {
+      method: 'POST',
+      headers: { ...authed, origin, 'content-type': 'application/json' },
+      body: JSON.stringify({ values: { 'creditors.list': [{ name: 'x' }] } }),
+    });
+    expect(response.status).toBe(400);
+    const body = httpErrorSchema.parse(await response.json());
+    expect(body.error.fields).toEqual([
+      { path: ['values', 'creditors.list', 0, 'name'], code: 'too_short' },
+    ]);
+    const missing = await fetch(`${base}/api/v1/nested`, {
+      method: 'POST',
+      headers: { ...authed, origin, 'content-type': 'application/json' },
+      body: JSON.stringify({ values: { sample: [{}] } }),
+    });
+    expect(httpErrorSchema.parse(await missing.json()).error.fields).toEqual([
+      { path: ['values', 'sample', 0, 'name'], code: 'required' },
+    ]);
+    const invalidType = await fetch(`${base}/api/v1/nested`, {
+      method: 'POST',
+      headers: { ...authed, origin, 'content-type': 'application/json' },
+      body: JSON.stringify({ values: { sample: [{ name: 987654321 }] } }),
+    });
+    const safeBody = await invalidType.text();
+    expect(safeBody).not.toContain('987654321');
+    expect(
+      httpErrorSchema.parse(JSON.parse(safeBody) as unknown).error.fields,
+    ).toEqual([
+      { path: ['values', 'sample', 0, 'name'], code: 'invalid_type' },
+    ]);
+    const badPath = await fetch(`${base}/api/v1/items/not-a-uuid`, {
+      headers: authed,
+    });
+    const pathBody = httpErrorSchema.parse(await badPath.json());
+    expect(pathBody.error.fields).toBeUndefined();
   });
 });
 

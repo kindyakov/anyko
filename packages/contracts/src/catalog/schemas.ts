@@ -47,7 +47,18 @@ export const documentPackageSchema = z.object({
       key: fieldKeySchema,
       label: z.string(),
       multiline: z.boolean(),
-      columns: z.array(z.object({ key: z.string(), label: z.string() })),
+      kind: z.enum(['text', 'rows']),
+      limits: z.object({
+        maxLength: z.number().int().positive().optional(),
+        maxRows: z.number().int().positive().optional(),
+      }),
+      columns: z.array(
+        z.object({
+          key: fieldKeySchema,
+          label: z.string(),
+          maxLength: z.number().int().positive(),
+        }),
+      ),
     }),
   ),
   documents: z.array(documentTemplateSchema).min(1).max(30),

@@ -7,8 +7,6 @@ import userEvent from '@testing-library/user-event';
 
 import {
   documentPackageSchema,
-  emptyFieldValues,
-  fieldDefinitions,
   type FieldValues,
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
@@ -31,6 +29,7 @@ import {
 import { navigation } from '../../../test/next-navigation';
 
 import { useFactsForm } from './facts-form';
+import { emptyFieldValues, fieldDefinitions } from './test-fields';
 import { UnsavedFactsBar } from './unsaved-facts-bar';
 import { WorkReview } from './work-review';
 
@@ -164,6 +163,7 @@ function FactsEditor({ view }: { view: WorkView }) {
   const busy = facts.saving || view.cleanupPending;
   return (
     <>
+      <span data-testid="server-package-title">{view.package.title}</span>
       <WorkReview
         view={view}
         facts={facts}
@@ -218,6 +218,42 @@ test('an edit of a field shows the unsaved strip with cancel and save actions', 
   expect(saveButton().hasAttribute('disabled')).toBe(false);
 });
 
+test('a dotted field supplied only by the server catalogue is submitted as one literal key', async () => {
+  const base = viewWith({});
+  const server = serveWork({
+    ...base,
+    package: {
+      ...base.package,
+      fields: [
+        ...base.package.fields,
+        {
+          key: 'new.profile_field2',
+          label: 'Новое поле профиля',
+          multiline: false,
+          kind: 'text',
+          limits: { maxLength: 20 },
+          columns: [],
+        },
+      ],
+    },
+  });
+  renderFacts();
+  const input = (
+    await screen.findAllByLabelText('Новое поле профиля')
+  )[0] as HTMLTextAreaElement;
+  await typeInto(input, 'После');
+  await userEvent.setup().click(saveButton());
+  await waitFor(() => {
+    const post = server.exchanges.find((item) => item.method === 'POST');
+    expect(post?.body).toMatchObject({
+      values: { 'new.profile_field2': 'После' },
+    });
+    expect(
+      (post?.body as { values: Record<string, unknown> }).values.new,
+    ).toBeUndefined();
+  });
+});
+
 test('a new server revision keeps the user edit and takes the new value of a field the user did not touch', async () => {
   const server = serveWork(
     viewWith({ personName: 'Иван', observations: 'Старое' }),
@@ -238,6 +274,79 @@ test('a new server revision keeps the user edit and takes the new value of a fie
     screen.queryByRole('heading', { name: 'Изменено и вами, и на сервере' }),
   ).toBeNull();
   expect(strip()).not.toBeNull();
+});
+
+test('a refetch at the same revision never erases edits made after a rebase', async () => {
+  const server = serveWork(
+    viewWith({ personName: 'Иван', observations: 'Первое' }),
+  );
+  renderFacts();
+  await typeInto(await findField('ФИО полностью'), 'Моя первая правка');
+  server.change(
+    viewWith({ personName: 'Иван', observations: 'Второе' }, { revision: 2 }),
+  );
+  server.announceChange();
+  await waitFor(() => {
+    expect(observations().value).toBe('Второе');
+  });
+  await typeInto(personName(), 'Моя новая правка');
+  const refetched = viewWith(
+    { personName: 'Иван', observations: 'Третье' },
+    { revision: 2 },
+  );
+  server.change({
+    ...refetched,
+    package: { ...refetched.package, title: 'Ответ обработан' },
+  });
+  server.announceChange();
+  await screen.findByText('Ответ обработан');
+  expect(personName().value).toBe('Моя новая правка');
+});
+
+test('a removed profile field remains a conflict until its old edit is discarded', async () => {
+  const base = viewWith({ removedField: 'Старое значение' });
+  const server = serveWork({
+    ...base,
+    package: {
+      ...base.package,
+      fields: [
+        ...base.package.fields,
+        {
+          key: 'removedField',
+          label: 'Удаляемое поле',
+          multiline: false,
+          kind: 'text',
+          limits: { maxLength: 40 },
+          columns: [],
+        },
+      ],
+    },
+  });
+  renderFacts();
+  await typeInto(
+    (
+      await screen.findAllByLabelText('Удаляемое поле')
+    )[0] as HTMLTextAreaElement,
+    'Моя правка',
+  );
+  server.change(viewWith({}, { revision: 2 }));
+  server.announceChange();
+  const conflicts = await screen.findByRole('region', {
+    name: 'Изменено и вами, и на сервере',
+  });
+  expect(within(conflicts).getByText('Моя правка')).toBeTruthy();
+  expect(
+    within(conflicts)
+      .getByRole('button', { name: 'Оставить моё' })
+      .hasAttribute('disabled'),
+  ).toBe(true);
+  await userEvent
+    .setup()
+    .click(within(conflicts).getByRole('button', { name: 'Взять с сервера' }));
+  expect(
+    screen.queryByRole('region', { name: 'Изменено и вами, и на сервере' }),
+  ).toBeNull();
+  expect(strip()).toBeNull();
 });
 
 test('a field changed on both sides is a conflict: saving waits until the user takes a value', async () => {

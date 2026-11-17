@@ -1,13 +1,10 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
-import {
-  type DocumentPackage,
-  documentPackageSchema,
-  fieldDefinitions,
-} from '@anyko/contracts/catalog';
+import { fieldDefinitions } from '../../profiles/bfl/fields';
 
 import manifest from './assets/package.json';
+import { type DocumentPackage, documentPackageSchema } from './schemas';
 import { technicalBytes, technicalPackage } from './technical';
 export { templateData } from './render-data';
 

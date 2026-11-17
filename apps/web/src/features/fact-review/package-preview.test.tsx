@@ -2,13 +2,10 @@ import { expect, test } from 'bun:test';
 
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import {
-  documentPackageSchema,
-  emptyFieldValues,
-  fieldDefinitions,
-} from '@anyko/contracts/catalog';
+import { documentPackageSchema } from '@anyko/contracts/catalog';
 
 import { PackagePreview } from './package-preview';
+import { emptyFieldValues, fieldDefinitions } from './test-fields';
 
 const paragraph = (text: string) => ({
   text,
@@ -85,4 +82,113 @@ test('package preview exposes all documents and renders nested creditor loops on
   expect(paper).not.toMatch(/\{[#/][a-zA-Z]+\}/);
   expect(paper).not.toContain('<script>');
   expect(paper).toContain('&lt;script&gt;');
+});
+
+test('preview renders profile keys with dots, underscores and digits in fields and loops', () => {
+  const dynamicPack = documentPackageSchema.parse({
+    ...pack,
+    fields: [
+      {
+        key: 'person.full_name2',
+        label: 'Новое имя',
+        multiline: false,
+        kind: 'text',
+        limits: { maxLength: 50 },
+        columns: [],
+      },
+      {
+        key: 'debts.list_2',
+        label: 'Новый список',
+        multiline: false,
+        kind: 'rows',
+        limits: { maxRows: 10 },
+        columns: [{ key: 'creditor.name_2', label: 'Кредитор', maxLength: 50 }],
+      },
+    ],
+    documents: [
+      {
+        ...pack.documents[0],
+        blocks: [
+          {
+            kind: 'paragraph',
+            paragraph: paragraph('Имя: {person.full_name2}'),
+          },
+          {
+            kind: 'paragraph',
+            paragraph: paragraph(
+              '{#debts.list_2}{creditor.name_2}{/debts.list_2}',
+            ),
+          },
+        ],
+      },
+    ],
+  });
+  const view = renderToStaticMarkup(
+    <PackagePreview
+      pack={dynamicPack}
+      values={{
+        'person.full_name2': 'Иван',
+        'debts.list_2': [{ 'creditor.name_2': 'Банк' }],
+      }}
+      disabled={false}
+      onChange={() => undefined}
+    />,
+  );
+  expect(view).toContain('Иван');
+  expect(view).toContain('Банк');
+  expect(view).not.toContain('{#debts.list_2}');
+});
+
+test('repeated rows use their own column labels and limits and preserve a rowNumber column', () => {
+  const packWithTables = documentPackageSchema.parse({
+    ...pack,
+    fields: [
+      {
+        key: 'first',
+        label: 'Первый',
+        multiline: false,
+        kind: 'rows',
+        limits: { maxRows: 10 },
+        columns: [{ key: 'name', label: 'Короткое', maxLength: 3 }],
+      },
+      {
+        key: 'second',
+        label: 'Второй',
+        multiline: false,
+        kind: 'rows',
+        limits: { maxRows: 10 },
+        columns: [
+          { key: 'name', label: 'Длинное', maxLength: 20 },
+          { key: 'rowNumber', label: 'Реквизит', maxLength: 20 },
+        ],
+      },
+    ],
+    documents: [
+      {
+        ...pack.documents[0],
+        blocks: [
+          { kind: 'paragraph', paragraph: paragraph('{#first}{name}{/first}') },
+          {
+            kind: 'paragraph',
+            paragraph: paragraph('{#second}{name} {rowNumber}{/second}'),
+          },
+        ],
+      },
+    ],
+  });
+  const view = renderToStaticMarkup(
+    <PackagePreview
+      pack={packWithTables}
+      values={{
+        first: [{ name: 'Раз' }],
+        second: [{ name: 'Длинное значение', rowNumber: 'Реквизит-77' }],
+      }}
+      disabled={false}
+      onChange={() => undefined}
+    />,
+  );
+  expect(view).toMatch(/aria-label="Заявление: Короткое"[^>]*maxlength="3"/i);
+  expect(view).toMatch(/aria-label="Заявление: Длинное"[^>]*maxlength="20"/i);
+  expect(view).toContain('Реквизит-77');
+  expect(view).toContain('Заявление: Реквизит');
 });

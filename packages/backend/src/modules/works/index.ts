@@ -1,11 +1,21 @@
-import type { WorkView } from '@anyko/contracts/works';
+import { z } from 'zod';
 
 import { defineErrors } from '../../platform/errors';
 import type { DocumentId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
 
-export type WorkSummary = WorkView['work'];
+export const workSummarySchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  packageVersion: z.string(),
+  revision: z.number().int(),
+  inputRevision: z.number().int(),
+  confirmedRevision: z.number().int().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type WorkSummary = z.infer<typeof workSummarySchema>;
 export const WorkErrors = defineErrors({
   NOT_FOUND: 'not_found',
   FORBIDDEN: 'forbidden',
@@ -143,5 +153,3 @@ export interface WorksPorts {
 export interface WorksModule extends WorksPorts {
   in(tx: Tx): WorksPorts;
 }
-
-export type { WorkFacts } from '@anyko/contracts/works';

@@ -121,10 +121,21 @@ export function WorkReview({
                   <ConflictValue value={facts.serverValues[key]} />
                 </div>
                 <div className="flex flex-wrap gap-2 sm:col-span-2">
+                  {!Object.hasOwn(facts.serverValues, key) &&
+                    !view.package.fields.some((field) => field.key === key) && (
+                      <p>
+                        Поле больше не входит в профиль. Выберите значение
+                        сервера, чтобы убрать его из изменений.
+                      </p>
+                    )}
                   <Button
                     size="sm"
                     variant="secondary"
-                    disabled={busy}
+                    disabled={
+                      busy ||
+                      (!Object.hasOwn(facts.serverValues, key) &&
+                        !view.package.fields.some((field) => field.key === key))
+                    }
                     onClick={() => {
                       facts.keepMine(key);
                     }}

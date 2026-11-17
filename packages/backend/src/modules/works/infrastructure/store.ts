@@ -1,6 +1,6 @@
-import { workSummarySchema } from '@anyko/contracts/works';
 import type { Database } from '@anyko/database';
 
+import { workSummarySchema } from '..';
 import type { WorkStore } from '..';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
 

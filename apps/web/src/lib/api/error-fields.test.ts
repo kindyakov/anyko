@@ -21,7 +21,7 @@ test('invalid response passes its field list to the ApiError', async () => {
     error: {
       code: 'INVALID_REQUEST',
       requestId: 'r1',
-      fields: [{ path: 'title', code: 'TOO_LONG' }],
+      fields: [{ path: ['title'], code: 'too_long' }],
     },
   });
   expect(failure).toBeInstanceOf(ApiError);
@@ -29,7 +29,7 @@ test('invalid response passes its field list to the ApiError', async () => {
     code: 'INVALID_REQUEST',
     status: 400,
     requestId: 'r1',
-    fields: [{ path: 'title', code: 'TOO_LONG' }],
+    fields: [{ path: ['title'], code: 'too_long' }],
   });
 });
 

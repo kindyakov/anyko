@@ -1,7 +1,7 @@
 import type { Elysia } from 'elysia';
 import type { z } from 'zod';
 
-import { AppError, isAppError } from '@anyko/backend/errors';
+import { AppError, fieldErrors, isAppError } from '@anyko/backend/errors';
 import {
   fingerprintInput,
   type IdempotencyApi,
@@ -224,13 +224,19 @@ async function readInput(
       body.schema,
       await readJson(request, inputCode(endpoint)),
       inputCode(endpoint),
+      true,
     );
   if (body?.kind === 'multipart') {
     const form = await readForm(request, inputCode(endpoint));
     const fields = Object.fromEntries(
       Object.keys(body.fields.shape).map((name) => [name, form.get(name)]),
     );
-    input.body = await parseWith(body.fields, fields, inputCode(endpoint));
+    input.body = await parseWith(
+      body.fields,
+      fields,
+      inputCode(endpoint),
+      true,
+    );
   }
   return input;
 }
@@ -240,9 +246,13 @@ async function parseWith<S extends z.ZodType>(
   schema: S,
   value: unknown,
   code: ErrorCode,
+  body = false,
 ): Promise<z.output<S>> {
   const result = await schema['~standard'].validate(value);
-  if (result.issues !== undefined) throw new AppError(code, 'invalid');
+  if (result.issues !== undefined) {
+    const fields = body ? fieldErrors(result.issues, value) : undefined;
+    throw new AppError(code, 'invalid', fields ? { fields } : undefined);
+  }
   return result.value;
 }
 
@@ -250,7 +260,9 @@ async function readJson(request: Request, code: ErrorCode): Promise<unknown> {
   try {
     return await request.json();
   } catch {
-    throw new AppError(code, 'invalid');
+    throw new AppError(code, 'invalid', {
+      fields: [{ path: [], code: 'invalid_format' }],
+    });
   }
 }
 
@@ -258,7 +270,9 @@ async function readForm(request: Request, code: ErrorCode): Promise<FormData> {
   try {
     return await request.formData();
   } catch {
-    throw new AppError(code, 'invalid');
+    throw new AppError(code, 'invalid', {
+      fields: [{ path: [], code: 'invalid_format' }],
+    });
   }
 }
 

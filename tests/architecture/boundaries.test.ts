@@ -545,7 +545,7 @@ function hasViolation(
   return result.summary.violations.some((item) => item.rule.name === rule);
 }
 
-test('backend-no-contracts rejects new HTTP contract imports and permits the listed legacy file', async () => {
+test('backend-no-contracts rejects HTTP contract imports including formerly exempt files', async () => {
   const contractImport = "import '../../../../contracts/index.ts';";
   const contractTarget = 'packages/contracts/index.ts';
   const rejected = await check({
@@ -559,7 +559,7 @@ test('backend-no-contracts rejects new HTTP contract imports and permits the lis
     [contractTarget]: 'export const value = 1;',
     'apps/placeholder.ts': 'export {};',
   });
-  expect(hasViolation(legacy.result, 'backend-no-contracts')).toBe(false);
+  expect(hasViolation(legacy.result, 'backend-no-contracts')).toBe(true);
 });
 
 test('backend-no-transport-libs rejects Elysia, BullMQ and ioredis outside the listed runtime adapters', async () => {

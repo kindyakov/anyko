@@ -2,7 +2,6 @@ import { expect, test } from 'bun:test';
 
 import { provisionLocalAccess } from '@anyko/backend/access';
 import { type BackendConfig, createBackend } from '@anyko/backend/runtime';
-import { emptyFieldValues } from '@anyko/contracts/catalog';
 import { llmSettingsResponseSchema } from '@anyko/contracts/connections';
 import {
   documentResponseSchema,
@@ -235,8 +234,25 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     ).toBe(400);
     const edit = {
       revision: 0,
-      values: { ...emptyFieldValues(), personName: 'Manual fixture' },
+      values: { ...work.facts.values, personName: 'Manual fixture' },
     };
+    const invalidEdit = await request(`${worksRoot}/${work.work.id}/fields`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        revision: 0,
+        values: { ...edit.values, debts: [{ rogue: 'x' }] },
+      }),
+    });
+    expect(invalidEdit.status).toBe(400);
+    const invalidBody = (await invalidEdit.json()) as {
+      error: { code: string; fields: unknown };
+    };
+    expect(invalidBody.error.code).toBe('INVALID_WORK_INPUT');
+    expect(invalidBody.error.fields).toContainEqual({
+      path: ['values', 'debts', 0, 'rogue'],
+      code: 'invalid_value',
+    });
     expect(
       (
         await request(`${worksRoot}/${work.work.id}/fields`, {

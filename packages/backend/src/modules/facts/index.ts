@@ -1,3 +1,6 @@
+import type { WorkId } from '../../platform/ids';
+import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
+import type { Tx } from '../../platform/transactions';
 import {
   emptyFieldValues,
   fieldDefinitions,
@@ -6,12 +9,9 @@ import {
   type FieldValue,
   type FieldValues,
   readFieldValues,
-} from '@anyko/contracts/catalog';
-import { factsSchema, type WorkFacts } from '@anyko/contracts/works';
+} from '../../profiles/bfl/fields';
 
-import type { WorkId } from '../../platform/ids';
-import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
-import type { Tx } from '../../platform/transactions';
+import { factsSchema, type WorkFacts } from './schemas';
 
 export function emptyFacts(): WorkFacts {
   return {
@@ -161,4 +161,4 @@ export interface FactsModule extends FactsPorts {
   in(tx: Tx): FactsPorts;
 }
 
-export type { FieldValues } from '@anyko/contracts/catalog';
+export type { FieldValues } from '../../profiles/bfl/fields';

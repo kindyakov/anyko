@@ -1,11 +1,10 @@
 import { z } from 'zod';
 
-import { workRunSchema } from '@anyko/contracts/works';
 import type { Database } from '@anyko/database';
 
 import type { WorkProcessingStore } from '..';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
-import { stepOutputSchema } from '../application/work-ports';
+import { stepOutputSchema, workRunSchema } from '../application/work-ports';
 
 type Connection = Pick<
   Database,

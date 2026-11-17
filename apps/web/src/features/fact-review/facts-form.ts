@@ -4,7 +4,6 @@ import { useLayoutEffect, useState } from 'react';
 
 import {
   type FieldKey,
-  fieldKeySchema,
   type FieldValue,
   type FieldValues,
 } from '@anyko/contracts/catalog';
@@ -53,7 +52,7 @@ export function useFactsForm(view: WorkView) {
   // Серверные значения передаются как значения по умолчанию: useForm переприсваивает их на каждом рендере,
   // поэтому после сохранения и синхронизации они совпадают с ответом сервера (см. сохранение ниже).
   const form = useAppForm({
-    defaultValues: view.facts.values,
+    defaultValues: { fields: view.facts.values },
     onSubmit: async ({ value, formApi }) => {
       // Конфликтные поля сохранять нельзя: кнопка неактивна, и проверка повторяется здесь.
       if (sync.conflicts.length > 0) return;
@@ -61,7 +60,7 @@ export function useFactsForm(view: WorkView) {
       try {
         const saved = await save.mutateAsync({
           revision: sync.revision,
-          values: value,
+          values: value.fields,
         });
         setSync({
           revision: saved.work.revision,
@@ -69,7 +68,7 @@ export function useFactsForm(view: WorkView) {
           server: saved.facts.values,
           conflicts: [],
         });
-        formApi.reset(saved.facts.values);
+        formApi.reset({ fields: saved.facts.values });
       } catch (failure) {
         if (isUnauthorized(failure)) return;
         setNotice(describeFactsSaveError(failure));
@@ -79,7 +78,7 @@ export function useFactsForm(view: WorkView) {
       }
     },
   });
-  const values = useFormSelector(form.store, (state) => state.values);
+  const values = useFormSelector(form.store, (state) => state.values.fields);
   // Новая ревизия или начало очистки: переносим правки до отрисовки. Во время очистки правок не принимается.
   if (
     view.work.revision !== sync.revision ||
@@ -100,11 +99,12 @@ export function useFactsForm(view: WorkView) {
       revision: view.work.revision,
       cleanupPending: view.cleanupPending,
       server: view.facts.values,
-      conflicts: fieldKeySchema.options.filter(
-        (key) =>
-          unresolved.includes(key) ||
-          result.conflicts.some((conflict) => conflict.key === key),
-      ),
+      conflicts: [
+        ...new Set([
+          ...unresolved,
+          ...result.conflicts.map((conflict) => conflict.key),
+        ]),
+      ],
       applied: {
         server: view.facts.values,
         values: { ...view.facts.values, ...result.values },
@@ -115,11 +115,9 @@ export function useFactsForm(view: WorkView) {
   // Layout-эффект: форма получает результат переноса до отрисовки, без промежуточного кадра.
   useLayoutEffect(() => {
     if (!applied) return;
-    form.reset(applied.server);
-    for (const key of fieldKeySchema.options) {
-      if (!sameFieldValue(applied.values[key], applied.server[key]))
-        form.setFieldValue(key, applied.values[key]);
-    }
+    form.reset({ fields: applied.server });
+    if (!sameFieldValues(applied.values, applied.server))
+      form.setFieldValue('fields', applied.values);
   }, [form, applied]);
   const hasEdits =
     !view.cleanupPending && !sameFieldValues(values, sync.server);
@@ -132,10 +130,12 @@ export function useFactsForm(view: WorkView) {
     saving: save.isPending,
     notice,
     change(changes: Partial<Record<FieldKey, FieldValue>>) {
-      for (const key of fieldKeySchema.options) {
-        const next = changes[key];
-        if (next !== undefined) form.setFieldValue(key, next);
-      }
+      form.setFieldValue('fields', (current) => {
+        const updated = { ...current };
+        for (const [key, value] of Object.entries(changes))
+          if (value !== undefined) updated[key] = value;
+        return updated;
+      });
     },
     // Пользователь оставил свою правку: поле больше не конфликтует, значение не меняется.
     keepMine(key: FieldKey) {
@@ -146,7 +146,13 @@ export function useFactsForm(view: WorkView) {
     },
     // Пользователь выбрал серверное значение: поле возвращается к нему и перестаёт конфликтовать.
     takeServer(key: FieldKey) {
-      form.setFieldValue(key, sync.server[key]);
+      form.setFieldValue('fields', (current) => {
+        if (Object.hasOwn(sync.server, key))
+          return { ...current, [key]: sync.server[key] ?? null };
+        return Object.fromEntries(
+          Object.entries(current).filter(([name]) => name !== key),
+        );
+      });
       setSync((previous) => ({
         ...previous,
         conflicts: previous.conflicts.filter((item) => item !== key),
@@ -154,7 +160,7 @@ export function useFactsForm(view: WorkView) {
     },
     discard() {
       setNotice('');
-      form.reset(sync.server);
+      form.reset({ fields: sync.server });
       setSync((previous) => ({ ...previous, conflicts: [] }));
     },
     save() {

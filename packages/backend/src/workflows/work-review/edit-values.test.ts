@@ -141,3 +141,24 @@ test('the current revision saves the facts, bumps the revision and records one e
     'event:facts.changed',
   ]);
 });
+
+test('profile validation rejects an unknown table column before any write', async () => {
+  const calls: string[] = [];
+  try {
+    await scenario(calls).edit(memberScope(WORKSPACE), {
+      workId: WORK_ID,
+      revision: 3,
+      values: { ...emptyFacts().values, debts: [{ rogue: 'x' }] },
+    });
+    throw new Error('Expected validation error');
+  } catch (error) {
+    expect(isAppError(error)).toBe(true);
+    if (!isAppError(error)) throw error;
+    expect(error.code).toBe('INVALID_WORK_INPUT');
+    expect(error.fields).toContainEqual({
+      path: ['values', 'debts', 0, 'rogue'],
+      code: 'invalid_value',
+    });
+  }
+  expect(calls).toEqual([]);
+});

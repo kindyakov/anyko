@@ -209,7 +209,7 @@ test('an error envelope keeps its code and field problems in the ApiError', asyn
         error: {
           code: 'INVALID_WORK_INPUT',
           requestId: 'request-1',
-          fields: [{ path: 'title', code: 'TOO_LONG' }],
+          fields: [{ path: ['title'], code: 'too_long' }],
         },
       },
       { status: 400, headers: { 'x-request-id': 'request-1' } },
@@ -224,7 +224,7 @@ test('an error envelope keeps its code and field problems in the ApiError', asyn
   expect(failure.code).toBe('INVALID_WORK_INPUT');
   expect(failure.status).toBe(400);
   expect(failure.requestId).toBe('request-1');
-  expect(failure.fields).toEqual([{ path: 'title', code: 'TOO_LONG' }]);
+  expect(failure.fields).toEqual([{ path: ['title'], code: 'too_long' }]);
 });
 
 test('a key-mode command without a valid key is refused before the request', async () => {

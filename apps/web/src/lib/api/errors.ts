@@ -1,5 +1,5 @@
 // Проблема с конкретным полем запроса из `error.fields` ответа `invalid`; `path` — имя поля формы.
-type ApiErrorField = { path: string; code: string };
+type ApiErrorField = { path: (string | number)[]; code: string };
 
 export class ApiError extends Error {
   // `fields` есть только у ошибок с разбором полей; без них поле не задаётся вовсе.

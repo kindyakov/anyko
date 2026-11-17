@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import type { WorkFacts } from '@anyko/contracts/works';
+import type { WorkFacts } from './schemas';
 
 import {
   editFacts,

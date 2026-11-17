@@ -1,11 +1,7 @@
 import { z } from 'zod';
 
-import type {
-  AgentSession,
-  AgentSessionContext,
-  WorkFacts,
-} from '@anyko/contracts/works';
-import { candidateSchema } from '@anyko/contracts/works';
+import { candidateSchema } from '../../../profiles/bfl/candidate';
+import type { AgentSession, AgentSessionContext, WorkFacts } from '../schemas';
 
 export const reconciliationSchema = z
   .object({
