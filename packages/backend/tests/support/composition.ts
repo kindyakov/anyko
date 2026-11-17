@@ -1,5 +1,6 @@
 import type { Logger } from '@anyko/logger';
 
+import { startJobWorker } from '../../../../apps/worker/src/queues';
 import type {
   DocumentParser,
   SourceStorage,
@@ -50,8 +51,11 @@ export async function startDocumentConsumer(
     dependencies: { storage: options.storage, parser: options.parser },
   });
   await backend.ready();
-  const worker = await backend.startDocumentWorker({
-    queueName: options.queueName,
+  const worker = await startJobWorker(backend.jobs, {
+    queues: 'ocr,maintenance',
+    queueNames: { ocr: options.queueName },
+    prefix: options.queueName,
+    legacy: false,
   });
   return {
     async stop() {

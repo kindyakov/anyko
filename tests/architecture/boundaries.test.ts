@@ -562,20 +562,26 @@ test('backend-no-contracts rejects HTTP contract imports including formerly exem
   expect(hasViolation(legacy.result, 'backend-no-contracts')).toBe(true);
 });
 
-test('backend-no-transport-libs rejects Elysia, BullMQ and ioredis outside the listed runtime adapters', async () => {
-  const rejected = await check({
-    'packages/backend/src/modules/works/infrastructure/queue.ts':
-      "import 'bullmq';",
-    ...npmModule('bullmq'),
-    'apps/placeholder.ts': 'export {};',
-  });
-  expect(hasViolation(rejected.result, 'backend-no-transport-libs')).toBe(true);
-  const allowed = await check({
-    'apps/worker/src/queues/index.ts': "import 'bullmq';",
-    'packages/backend/src/runtime/works/worker.ts': "import 'bullmq';",
-    ...npmModule('bullmq'),
-  });
-  expect(hasViolation(allowed.result, 'backend-no-transport-libs')).toBe(false);
+test('backend-no-queue-libs rejects queue libraries in every backend layer and permits the worker host', async () => {
+  for (const library of ['bullmq', 'ioredis', 'elysia']) {
+    for (const path of [
+      'modules/works/application/example.ts',
+      'runtime/works/worker.ts',
+      'runtime/diagnostics/client.ts',
+    ]) {
+      const rejected = await check({
+        [`packages/backend/src/${path}`]: `import '${library}';`,
+        ...npmModule(library),
+        'apps/placeholder.ts': 'export {};',
+      });
+      expect(hasViolation(rejected.result, 'backend-no-queue-libs')).toBe(true);
+    }
+    const allowed = await check({
+      'apps/worker/src/queues/index.ts': `import '${library}';`,
+      ...npmModule(library),
+    });
+    expect(hasViolation(allowed.result, 'backend-no-queue-libs')).toBe(false);
+  }
 });
 
 test('backend-contracts-only-zod permits zod and rejects other external or Node dependencies', async () => {

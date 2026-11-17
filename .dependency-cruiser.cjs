@@ -194,24 +194,6 @@ module.exports = {
       to: { path: '^packages/contracts/' },
     },
     {
-      name: 'backend-no-transport-libs',
-      severity: 'error',
-      comment:
-        'backend не зависит от Elysia, BullMQ и ioredis: очередь и HTTP-сервер живут в apps и в адаптерах runtime. Список ниже временный: сокращается этапом #21, новые строки не добавлять.',
-      from: {
-        path: '^packages/backend/',
-        pathNot: [
-          '^packages/backend/src/runtime/diagnostics/client\\.ts$',
-          '^packages/backend/src/runtime/diagnostics/worker\\.ts$',
-          '^packages/backend/src/runtime/documents/worker\\.ts$',
-          '^packages/backend/src/runtime/works/worker\\.ts$',
-          '^packages/backend/tests/integration/diagnostic-worker\\.test\\.ts$',
-          '^packages/backend/tests/integration/documents\\.test\\.ts$',
-        ],
-      },
-      to: { path: '(^|/)node_modules/(?:elysia|bullmq|ioredis)/' },
-    },
-    {
       name: 'backend-contracts-only-zod',
       severity: 'error',
       comment:
@@ -272,6 +254,12 @@ module.exports = {
       to: {
         path: '^packages/backend/src/platform/scope/issue-execution[.]ts$',
       },
+    },
+    {
+      name: 'backend-no-queue-libs',
+      severity: 'error',
+      from: { path: '^packages/backend/' },
+      to: { path: '(^|/)node_modules/(?:elysia|bullmq|ioredis)/' },
     },
     // Web (apps/web): правила через пути и обратные ссылки, без перечисления features.
     // Известных нарушений web-границ нет (список пуст и не пополняется): см. webKnownFeatureViolations.

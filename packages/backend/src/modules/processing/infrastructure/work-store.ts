@@ -3,6 +3,8 @@ import { z } from 'zod';
 import type { Database } from '@anyko/database';
 
 import type { WorkProcessingStore } from '..';
+import { type Clock, systemClock } from '../../../platform/clock';
+import { uuidV7 } from '../../../platform/ids';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
 import { stepOutputSchema, workRunSchema } from '../application/work-ports';
 
@@ -11,7 +13,13 @@ type Connection = Pick<
   'workRun' | 'workStep' | 'workOutbox' | 'workAgentThread' | '$executeRaw'
 >;
 const kindSchema = z.enum(['analysis', 'generation']);
-export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
+export function createWorkProcessingStore(
+  db: Connection,
+  deps: { newId(): string; clock: Clock } = {
+    newId: uuidV7,
+    clock: systemClock,
+  },
+): WorkProcessingStore {
   return {
     async start(input) {
       await db.workRun.create({
@@ -27,12 +35,12 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
           modelSnapshot: input.modelSnapshot,
           initiatedBy: input.actorId,
           correlationId: input.correlationId,
-          outbox: { create: { id: crypto.randomUUID() } },
+          outbox: { create: { id: deps.newId() } },
         },
       });
     },
     async claim(workspaceId, id) {
-      const token = crypto.randomUUID();
+      const token = deps.newId();
       if (
         !(
           await db.workRun.updateMany({
@@ -40,7 +48,7 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
             data: {
               status: 'running',
               attemptToken: token,
-              leaseUntil: new Date(Date.now() + 1_800_000),
+              leaseUntil: new Date(deps.clock.now().getTime() + 1_800_000),
             },
           })
         ).count
@@ -77,7 +85,7 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
           attemptToken: run.attemptToken,
           status: 'running',
         },
-        data: { updatedAt: new Date() },
+        data: { updatedAt: deps.clock.now() },
       });
       if (changed.count !== 1) throw new Error('STALE_WORK_ATTEMPT');
     },
@@ -131,7 +139,7 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
         },
         update: data,
         create: {
-          id: crypto.randomUUID(),
+          id: deps.newId(),
           workspaceId: run.workspaceId,
           runId: run.id,
           stage: input.stage,
@@ -183,18 +191,21 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
       const row = await db.workOutbox.findFirst({
         where: {
           deliveredAt: null,
-          OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date() } }],
+          OR: [{ leaseUntil: null }, { leaseUntil: { lt: deps.clock.now() } }],
         },
       });
       if (!row) return null;
-      const token = crypto.randomUUID();
+      const token = deps.newId();
       const changed = await db.workOutbox.updateMany({
         where: {
           id: row.id,
           deliveredAt: null,
-          OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date() } }],
+          OR: [{ leaseUntil: null }, { leaseUntil: { lt: deps.clock.now() } }],
         },
-        data: { leaseToken: token, leaseUntil: new Date(Date.now() + 10000) },
+        data: {
+          leaseToken: token,
+          leaseUntil: new Date(deps.clock.now().getTime() + 10000),
+        },
       });
       return changed.count
         ? { id: row.id, workspaceId: row.workspaceId, runId: row.runId, token }
@@ -203,7 +214,11 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
     async delivered(id, token) {
       await db.workOutbox.updateMany({
         where: { id, leaseToken: token },
-        data: { deliveredAt: new Date(), leaseUntil: null, leaseToken: null },
+        data: {
+          deliveredAt: deps.clock.now(),
+          leaseUntil: null,
+          leaseToken: null,
+        },
       });
     },
     async release(id, token) {

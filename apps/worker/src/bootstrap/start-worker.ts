@@ -1,11 +1,12 @@
 import {
   BackendConfigError,
   createBackend,
-  createWorkerRuntime,
   resolveBackendMode,
   type WorkerBackend,
 } from '@anyko/backend/runtime';
 import { createLogger } from '@anyko/logger';
+
+import { createWorkerRuntime, startJobWorker } from '../queues';
 
 import { parseBackendEnv } from './backend-config';
 import { parseWorkerConfig } from './config';
@@ -33,10 +34,7 @@ export async function startWorker() {
       shutdownTimeoutMs: config.SHUTDOWN_TIMEOUT_MS,
       logger,
     });
-    let documentWorker:
-      Awaited<ReturnType<WorkerBackend['startDocumentWorker']>> | undefined;
-    let workWorker:
-      Awaited<ReturnType<WorkerBackend['startWorkWorker']>> | undefined;
+    let business: Awaited<ReturnType<typeof startJobWorker>> | undefined;
     if (mode === 'full') {
       backend = createBackend(
         parseBackendEnv(process.env, {
@@ -46,8 +44,9 @@ export async function startWorker() {
         { logger, role: 'worker' },
       );
       await backend.ready();
-      documentWorker = await backend.startDocumentWorker();
-      workWorker = await backend.startWorkWorker();
+      business = await startJobWorker(backend.jobs, {
+        queues: config.WORKER_QUEUES,
+      });
     }
     const server = Bun.serve({
       hostname: config.WORKER_HOST,
@@ -59,9 +58,7 @@ export async function startWorker() {
           const diagnosticState = diagnostic?.state() ?? 'stopped';
           const state =
             diagnosticState === 'ready'
-              ? documentWorker?.state() === 'ready' || !documentWorker
-                ? (workWorker?.state() ?? 'ready')
-                : documentWorker.state()
+              ? (business?.state() ?? 'ready')
               : diagnosticState;
           return Response.json(
             { status: state },

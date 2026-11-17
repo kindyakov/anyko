@@ -41,7 +41,7 @@
     "smoke:windows:components": "bun scripts/smoke-windows-components.mjs",
     "test:logger": "bun run --filter @anyko/logger test",
     "test:worker": "bun run --filter @anyko/worker test",
-    "test:worker:integration": "bun test packages/backend/tests/integration/diagnostic-worker.test.ts",
+    "test:worker:integration": "bun test --timeout 60000 apps/worker/tests/integration",
     "test:idempotency": "bun test packages/backend/src/modules/idempotency/application/fingerprint.test.ts",
     "test:idempotency:integration": "bun test --timeout 60000 packages/backend/tests/integration/idempotency.test.ts",
     "test:audit:integration": "bun test --timeout 60000 packages/backend/tests/integration/audit.test.ts",

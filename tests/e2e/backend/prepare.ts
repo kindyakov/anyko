@@ -7,7 +7,7 @@ import { createDatabase, createDatabasePool } from '@anyko/database';
 
 import { grantMembership } from '../../../packages/backend/src/modules/access/infrastructure/auth';
 
-import { E2E_DOCUMENT_QUEUE, E2E_WORK_QUEUE, parseE2eConfig } from './config';
+import { E2E_QUEUE_PREFIX, parseE2eConfig } from './config';
 
 const config = parseE2eConfig(process.env);
 const pool = createDatabasePool(config.E2E_DATABASE_URL);
@@ -30,14 +30,14 @@ try {
   });
   if ((await migrate.exited) !== 0) throw new Error('E2E_MIGRATION_FAILED');
 
-  for (const queue of [E2E_DOCUMENT_QUEUE, E2E_WORK_QUEUE]) {
+  for (const queue of [E2E_QUEUE_PREFIX]) {
     let cursor = '0';
     const collected: string[] = [];
     do {
       const [next, keys] = await redis.scan(
         cursor,
         'MATCH',
-        `bull:${queue}:*`,
+        `${E2E_QUEUE_PREFIX}:*`,
         'COUNT',
         200,
       );

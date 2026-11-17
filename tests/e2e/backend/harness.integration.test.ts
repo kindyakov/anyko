@@ -4,7 +4,7 @@ import { Redis } from 'ioredis';
 
 import { createDatabase, createDatabasePool } from '@anyko/database';
 
-import { E2E_DOCUMENT_QUEUE, parseE2eConfig } from './config';
+import { E2E_QUEUE_PREFIX, parseE2eConfig } from './config';
 
 test('preparation is repeatable and both OCR outcomes pass through the HTTP API and queue', async () => {
   const env = parseE2eConfig(process.env);
@@ -21,7 +21,7 @@ test('preparation is repeatable and both OCR outcomes pass through the HTTP API 
   };
   const redis = new Redis(env.E2E_REDIS_URL);
   const sentinel = `anyko-e2e-test-sentinel:${crypto.randomUUID()}`;
-  const isolatedKey = `bull:${E2E_DOCUMENT_QUEUE}:fixture-check`;
+  const isolatedKey = `${E2E_QUEUE_PREFIX}:ocr:fixture-check`;
   try {
     await redis.set(sentinel, 'preserve');
     await redis.set(isolatedKey, 'remove');

@@ -43,10 +43,12 @@ import { createGenerationModule } from '../modules/generation/module';
 import { createIdempotency, type IdempotencyApi } from '../modules/idempotency';
 import { createIdempotencyStore } from '../modules/idempotency/infrastructure/store';
 import {
+  createJobProcessing,
   createLlmSettings,
   createProcessingService,
   type LlmSettingsApi,
 } from '../modules/processing';
+import { createJobRunReader } from '../modules/processing/infrastructure/job-store';
 import { createLlmSettingsStore } from '../modules/processing/infrastructure/settings-store';
 import { createProcessingStore } from '../modules/processing/infrastructure/store';
 import {
@@ -64,15 +66,18 @@ import { createWorkIo } from '../modules/works/infrastructure/work-io';
 import { createWorksModule } from '../modules/works/module';
 import { systemClock } from '../platform/clock';
 import { uuidV7 } from '../platform/ids';
+import type { JobRuntime } from '../platform/jobs';
 import { openTransaction } from '../platform/transactions';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
 import type { WorkDependencies } from '../workflows/work-dependencies';
+import { createWorkExecution } from '../workflows/work-execution';
 import {
   createWorkGeneration,
   type WorkGeneration,
 } from '../workflows/work-generation';
 import { createWorkIntake, type WorkIntake } from '../workflows/work-intake';
+import { createWorkCleanup } from '../workflows/work-maintenance';
 import { createWorkReview, type WorkReview } from '../workflows/work-review';
 import { createWorkView, type WorkViews } from '../workflows/work-view';
 
@@ -85,14 +90,8 @@ import {
   createDocumentUnitOfWork,
   finishDocumentDeletion,
 } from './documents/unit-of-work';
-import { createDocumentWorker } from './documents/worker';
+import { createJobRegistry } from './jobs';
 import { createUnitOfWork } from './transactions';
-import { createWorkWorker } from './works/worker';
-
-interface QueueStartOptions {
-  /** Overrides the production queue name; integration tests use isolated queues. */
-  queueName?: string;
-}
 
 /**
  * Test seams: each one replaces an external client. Production passes nothing, so the
@@ -143,12 +142,7 @@ export interface ApiBackend {
 export interface WorkerBackend {
   readonly role: 'worker';
   ready(): Promise<void>;
-  startDocumentWorker(
-    options?: QueueStartOptions,
-  ): ReturnType<typeof createDocumentWorker>;
-  startWorkWorker(
-    options?: QueueStartOptions,
-  ): ReturnType<typeof createWorkWorker>;
+  readonly jobs: JobRuntime;
   stop(): Promise<void>;
 }
 
@@ -391,31 +385,82 @@ export function createBackend(
     deleteDocuments,
     cleanupSources: createSourceCleanup(db, storage),
   };
+  const jobProcessing = createJobProcessing(createJobRunReader(db));
+  const executeWork = createWorkExecution(work);
+  const cleanupWork = createWorkCleanup(work);
+  const maintain = async () => {
+    await deleteDocuments();
+    const before = new Date(systemClock.now().getTime() - 3600000);
+    await documentDeps.cleanupSources(before);
+    for (const artifact of await processing.orphanResults(before)) {
+      await storage.delete(artifact.key);
+      await processing.forgetResult(artifact.key);
+    }
+    await cleanupWork();
+  };
   return {
     role: 'worker',
     ready,
-    async startDocumentWorker(input) {
-      const handle = await createDocumentWorker({
-        deps: documentDeps,
-        redisUrl: worker.redisUrl,
-        logger,
-        queueName: input?.queueName ?? 'anyko-document-ocr',
-        shutdownTimeoutMs: worker.shutdownTimeoutMs,
-      });
-      started.push(handle);
-      return handle;
-    },
-    async startWorkWorker(input) {
-      const handle = await createWorkWorker({
-        deps: work,
-        redisUrl: worker.redisUrl,
-        logger,
-        queueName: input?.queueName ?? 'anyko-work-pipeline',
-        shutdownTimeoutMs: worker.shutdownTimeoutMs,
-      });
-      started.push(handle);
-      return handle;
-    },
     stop,
+    jobs: {
+      registry: createJobRegistry({
+        processing: jobProcessing,
+        ocr: async (scope, signal) => {
+          const documentId = await processing.documentId(
+            scope.workspaceId,
+            scope.runId,
+          );
+          if (documentId)
+            await locks.run(
+              `document:${scope.workspaceId}:${documentId}`,
+              (lockSignal) =>
+                documentDeps.io.run(
+                  { workspaceId: scope.workspaceId, documentId },
+                  () =>
+                    documentDeps.execute(
+                      scope,
+                      AbortSignal.any([signal, lockSignal]),
+                    ),
+                ),
+            );
+        },
+        execute: (scope, signal) =>
+          executeWork(scope.workspaceId, scope.runId, signal),
+        maintain,
+        ocrTimeoutMs: worker.mineru.timeoutMs + 60000,
+      }),
+      deliveries: [
+        {
+          reserve: processing.reserveDelivery,
+          describe: (item) =>
+            jobProcessing.internal.read(
+              item.workspaceId,
+              item.runId,
+              'document',
+            ),
+          delivered: processing.delivered,
+          release: processing.releaseDelivery,
+        },
+        {
+          reserve: processingFacade.internal.delivery,
+          describe: (item) =>
+            jobProcessing.internal.read(item.workspaceId, item.runId, 'work'),
+          delivered: processingFacade.internal.delivered,
+          release: processingFacade.internal.release,
+        },
+      ],
+      reconcile: async () => {
+        await processing.reconcile();
+        await processingFacade.internal.reconcile();
+      },
+      clock: systemClock,
+      newId: uuidV7,
+      logger,
+      redisUrl: worker.redisUrl,
+      shutdownTimeoutMs: worker.shutdownTimeoutMs,
+      track: (handle) => {
+        started.push(handle);
+      },
+    },
   };
 }

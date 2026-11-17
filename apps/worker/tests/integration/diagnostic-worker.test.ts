@@ -6,8 +6,8 @@ import { Redis } from 'ioredis';
 
 import { createLogger } from '@anyko/logger';
 
-import { runDiagnostic } from '../../src/runtime/diagnostics/client';
-import { createWorkerRuntime } from '../../src/runtime/diagnostics/worker';
+import { runDiagnostic } from '../../src/queues/diagnostic-client';
+import { createWorkerRuntime } from '../../src/queues/diagnostic-worker';
 
 const redisUrl = process.env.TEST_REDIS_URL;
 if (!redisUrl)

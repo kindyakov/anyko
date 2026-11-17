@@ -13,6 +13,7 @@ import {
 import { LlmError } from '@anyko/llm';
 import { createLogger } from '@anyko/logger';
 
+import { startJobWorker } from '../../../../apps/worker/src/queues';
 import type { DocumentAgents } from '../../src/modules/agents';
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 import type { SourceStorage } from '../../src/modules/documents';
@@ -162,16 +163,13 @@ const workerBackend = createBackend(testConfig, {
     },
   },
 });
-let worker:
-  Awaited<ReturnType<typeof workerBackend.startWorkWorker>> | undefined;
+let worker: Awaited<ReturnType<typeof startJobWorker>> | undefined;
 async function ready() {
   if (worker) return;
   await workerBackend.ready();
-  await workerBackend.startDocumentWorker({
-    queueName: `test-ocr-${crypto.randomUUID()}`,
-  });
-  worker = await workerBackend.startWorkWorker({
-    queueName: `test-work-${crypto.randomUUID()}`,
+  worker = await startJobWorker(workerBackend.jobs, {
+    prefix: `test-work-${crypto.randomUUID()}`,
+    legacy: false,
   });
 }
 async function create() {

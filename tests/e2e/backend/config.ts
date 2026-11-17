@@ -51,5 +51,4 @@ export function parseE2eConfig(input: unknown) {
   return config;
 }
 
-export const E2E_DOCUMENT_QUEUE = 'anyko-e2e-document';
-export const E2E_WORK_QUEUE = 'anyko-e2e-work';
+export const E2E_QUEUE_PREFIX = 'anyko-e2e';

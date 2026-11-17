@@ -1,6 +1,7 @@
-import { runDiagnostic } from '@anyko/backend/runtime';
+import { uuidV7 } from '@anyko/backend/ids';
 
 import { parseWorkerConfig } from '../bootstrap/config';
+import { runDiagnostic } from '../queues/diagnostic-client';
 try {
   const config = parseWorkerConfig(process.env);
   console.info(
@@ -9,7 +10,7 @@ try {
         redisUrl: config.REDIS_URL,
         queueName: config.QUEUE_NAME,
         timeoutMs: config.STARTUP_TIMEOUT_MS,
-        correlationId: crypto.randomUUID(),
+        correlationId: uuidV7(),
       }),
     ),
   );

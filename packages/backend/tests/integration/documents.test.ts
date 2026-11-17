@@ -1,12 +1,11 @@
 import { afterAll, expect, test } from 'bun:test';
 
-import { Queue } from 'bullmq';
 import { strToU8, zipSync } from 'fflate';
-import { Redis } from 'ioredis';
 
 import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 
+import { createQueueProbe } from '../../../../apps/worker/tests/support/queue';
 import type {
   DocumentParser,
   DocumentView,
@@ -384,8 +383,7 @@ test('a lost Redis job is republished from the aged queued database intent', asy
   if (!item || item.runId !== run.id)
     throw new Error('Expected owned outbox reservation');
   const queueName = `document-lost-${crypto.randomUUID()}`;
-  const connection = new Redis(redisUrl, { maxRetriesPerRequest: 1 });
-  const queue = new Queue(queueName, { connection });
+  const { connection, queue } = createQueueProbe(redisUrl, queueName);
   let worker: Awaited<ReturnType<typeof startDocumentWorker>> | undefined;
   let executions = 0;
   try {

@@ -172,3 +172,38 @@ export function parseScheduledEnvelope(input: unknown, version: number) {
   if (parsed.version !== version) throw new Error('UNKNOWN_JOB_VERSION');
   return parsed;
 }
+
+export interface JobRegistry {
+  definitions: readonly (RunJob | ScheduledJob)[];
+  schedules: readonly { name: string; everyMs: number }[];
+  scope(
+    envelope: ParsedJobEnvelope,
+    name: string,
+  ): Promise<ExecutionScope | null>;
+}
+export interface JobDelivery {
+  id: string;
+  workspaceId: string;
+  runId: string;
+  token: string;
+}
+export interface DeliveryPort {
+  reserve(): Promise<JobDelivery | null>;
+  describe(item: Pick<JobDelivery, 'workspaceId' | 'runId'>): Promise<{
+    jobName: string;
+    correlationId: string;
+  } | null>;
+  delivered(id: string, token: string): Promise<void>;
+  release(id: string, token: string): Promise<void>;
+}
+export interface JobRuntime {
+  registry: JobRegistry;
+  deliveries: readonly DeliveryPort[];
+  reconcile(): Promise<void>;
+  clock: Clock;
+  newId(): string;
+  logger: Logger;
+  redisUrl: string;
+  shutdownTimeoutMs: number;
+  track(handle: { stop(): Promise<void> }): void;
+}

@@ -3,13 +3,14 @@ import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../../../apps/api/src/http/app';
+import { startJobWorker } from '../../../apps/worker/src/queues';
 import type { DocumentAgents } from '../../../packages/backend/src/modules/agents';
 import type {
   DocumentParser,
   SourceStorage,
 } from '../../../packages/backend/src/modules/documents';
 
-import { E2E_DOCUMENT_QUEUE, E2E_WORK_QUEUE, parseE2eConfig } from './config';
+import { E2E_QUEUE_PREFIX, parseE2eConfig } from './config';
 
 const env = parseE2eConfig(process.env);
 const fixturePool = createDatabasePool(env.E2E_DATABASE_URL);
@@ -134,16 +135,16 @@ async function stop() {
 }
 try {
   await Promise.all([api.ready(), worker.ready()]);
-  const documents = await worker.startDocumentWorker({
-    queueName: E2E_DOCUMENT_QUEUE,
+  const jobs = await startJobWorker(worker.jobs, {
+    prefix: E2E_QUEUE_PREFIX,
+    legacy: false,
   });
-  const works = await worker.startWorkWorker({ queueName: E2E_WORK_QUEUE });
   app = createApp({
     logger,
     environment: 'test',
     documentHttp: api.documentHttp,
     workHttp: api.workHttp,
-    ready: () => documents.state() === 'ready' && works.state() === 'ready',
+    ready: () => jobs.state() === 'ready',
   })
     .post('/__e2e/ocr/hold', () => {
       ocrHeld = true;
