@@ -279,6 +279,7 @@ test('blocks a private module import and an unapproved public module edge', asyn
 test('composition root may bind module adapters while application internals stay private', async () => {
   for (const [target, forbidden] of [
     ['infrastructure/store.ts', false],
+    ['module.ts', false],
     ['application/command.ts', true],
   ] as const) {
     const { result } = await check({
@@ -686,6 +687,65 @@ test('backend-modules-database-types-only rejects database client values outside
   expect(
     hasViolation(allowed.result, 'backend-modules-database-types-only'),
   ).toBe(false);
+}, 30000);
+
+test('backend-workflows-use-module-facades rejects module application imports in workflows and permits the public index', async () => {
+  const rejected = await check({
+    'packages/backend/src/workflows/work-intake/example.ts':
+      "import '../../modules/works/application/create-work.ts';",
+    'packages/backend/src/modules/works/application/create-work.ts':
+      'export {};',
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(
+    hasViolation(rejected.result, 'backend-workflows-use-module-facades'),
+  ).toBe(true);
+  const allowed = await check({
+    'packages/backend/src/workflows/work-intake/example.ts':
+      "import '../../modules/works/index.ts';",
+    'packages/backend/src/modules/works/index.ts': 'export {};',
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(
+    hasViolation(allowed.result, 'backend-workflows-use-module-facades'),
+  ).toBe(false);
+}, 30000);
+
+test('backend-transactions-opaque rejects database client values in workflows and permits types', async () => {
+  const database = {
+    'packages/database/package.json': JSON.stringify({
+      name: '@anyko/database',
+      exports: { '.': './src/index.ts' },
+    }),
+    'packages/database/src/index.ts':
+      'export const createDatabase = (url: string) => url; export type Database = string;',
+  };
+  const rejected = await check(
+    {
+      ...database,
+      'packages/backend/src/workflows/work-intake/example.ts':
+        "import { createDatabase } from '@anyko/database';\nexport const client = createDatabase;",
+      'apps/placeholder.ts': 'export {};',
+    },
+    false,
+    ['database'],
+  );
+  expect(hasViolation(rejected.result, 'backend-transactions-opaque')).toBe(
+    true,
+  );
+  const allowed = await check(
+    {
+      ...database,
+      'packages/backend/src/workflows/work-intake/example.ts':
+        "import type { Database } from '@anyko/database';\nexport type Client = Database;",
+      'apps/placeholder.ts': 'export {};',
+    },
+    false,
+    ['database'],
+  );
+  expect(hasViolation(allowed.result, 'backend-transactions-opaque')).toBe(
+    false,
+  );
 }, 30000);
 
 test('ESLint rejects process.env in backend runtime and permits passed-in configuration', async () => {

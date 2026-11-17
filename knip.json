@@ -18,7 +18,8 @@
         "tests/portable-template-probe.ts",
         "tests/templates.test.ts",
         "src/modules/**/*.test.ts",
-        "src/platform/**/*.test.ts"
+        "src/platform/**/*.test.ts",
+        "src/workflows/**/*.test.ts"
       ]
     },
     "packages/database": {

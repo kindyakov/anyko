@@ -76,10 +76,12 @@ module.exports = {
     })),
     {
       name: 'runtime-only-module-adapters',
+      comment:
+        'Композиция собирает фасад модуля (module.ts: createXModule) и хранилища (infrastructure); публичный index.ts даёт типы. application и domain закрыты (ADR 0009).',
       severity: 'error',
       from: { path: '^packages/backend/src/runtime/' },
       to: {
-        path: '^packages/backend/src/modules/[^/]+/(?!index\\.[cm]?[jt]s$|infrastructure/)',
+        path: '^packages/backend/src/modules/[^/]+/(?!index\\.[cm]?[jt]s$|module\\.[cm]?[jt]s$|infrastructure/)',
       },
     },
     {
@@ -250,6 +252,24 @@ module.exports = {
       from: {
         path: '^packages/backend/src/(modules|workflows|platform|profiles)/',
       },
+      to: { path: '^packages/database/', dependencyTypesNot: ['type-only'] },
+    },
+    {
+      name: 'backend-workflows-use-module-facades',
+      comment:
+        'Процесс использует модуль только через index.ts (типы) и module.ts (тип фасада), а не через application, domain или infrastructure (ADR 0009). Фасад получает через зависимости от runtime. Известных нарушений нет: процессы этапа 5b импортируют публичные index.ts, поэтому список исключений пуст и не заводится.',
+      severity: 'error',
+      from: { path: '^packages/backend/src/workflows/' },
+      to: {
+        path: '^packages/backend/src/modules/[^/]+/(?:application|domain|infrastructure)/',
+      },
+    },
+    {
+      name: 'backend-transactions-opaque',
+      comment:
+        'UnitOfWork передаёт сценарию непрозрачный Tx (ADR 0009): процессы не импортируют клиент Prisma и его значения; типы драйвера допустимы.',
+      severity: 'error',
+      from: { path: '^packages/backend/src/workflows/' },
       to: { path: '^packages/database/', dependencyTypesNot: ['type-only'] },
     },
     {
