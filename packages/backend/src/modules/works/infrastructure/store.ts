@@ -2,8 +2,13 @@ import { workSummarySchema } from '@anyko/contracts';
 import type { Database } from '@anyko/database';
 
 import type { WorkStore } from '..';
+import { transactionHandle, type Tx } from '../../../platform/transactions';
 
 type Connection = Pick<Database, 'work' | 'workDocument' | 'workEvent'>;
+// Хранилище внутри транзакции действия: токен превращается в клиент транзакции драйвера.
+export function worksStoreFor(tx: Tx): WorkStore {
+  return createWorkStore(transactionHandle<Connection>(tx));
+}
 export function createWorkStore(db: Connection): WorkStore {
   const summary = (row: {
     id: string;

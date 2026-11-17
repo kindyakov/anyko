@@ -4,6 +4,7 @@ import { workRunSchema } from '@anyko/contracts';
 import type { Database } from '@anyko/database';
 
 import type { WorkProcessingStore } from '..';
+import { transactionHandle, type Tx } from '../../../platform/transactions';
 import { stepOutputSchema } from '../application/work-ports';
 
 type Connection = Pick<
@@ -238,4 +239,9 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
       await db.workAgentThread.deleteMany({ where: { workspaceId, workId } });
     },
   };
+}
+
+// Запуски внутри транзакции действия: токен превращается в клиент транзакции драйвера.
+export function workProcessingStoreFor(tx: Tx): WorkProcessingStore {
+  return createWorkProcessingStore(transactionHandle<Connection>(tx));
 }

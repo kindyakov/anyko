@@ -1,4 +1,8 @@
 import type { FieldValues, WorkView } from '@anyko/contracts';
+
+import type { GenerationId, WorkId } from '../../platform/ids';
+import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
+import type { Tx } from '../../platform/transactions';
 export { generateDocument } from './render';
 
 interface GenerationFile {
@@ -59,3 +63,41 @@ export interface GenerationStore {
   keys(workspaceId: string, workId: string): Promise<string[]>;
   erase(workspaceId: string, workId: string): Promise<void>;
 }
+
+// Фасад результатов генерации: снимок сведений и шаблонов фиксируется командой create.
+export interface GenerationTemplate {
+  templateVersion: string;
+  title: string;
+  filename: string;
+}
+interface GenerationCommands {
+  create(
+    scope: WorkspaceScope,
+    input: {
+      workId: WorkId;
+      revision: number;
+      confirmed: boolean;
+      values: FieldValues;
+      packageVersion: string;
+      templates: GenerationTemplate[];
+    },
+  ): Promise<GenerationId>;
+}
+// Внутренние запросы: право проверяет вызывающий сценарий.
+interface GenerationQueries {
+  get(
+    scope: WorkspaceScope,
+    workId: WorkId,
+    generationId: GenerationId,
+  ): Promise<GenerationRecord | null>;
+  list(scope: WorkspaceScope, workId: WorkId): Promise<WorkView['generations']>;
+}
+export interface GenerationPorts {
+  readonly commands: GenerationCommands;
+  readonly queries: GenerationQueries;
+}
+export interface GenerationModule extends GenerationPorts {
+  in(tx: Tx): GenerationPorts;
+}
+
+export type { FieldValues } from '@anyko/contracts';
