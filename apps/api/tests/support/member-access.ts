@@ -3,7 +3,7 @@ import { scopeFor } from '@anyko/backend/access';
 import { rightCatalog } from '@anyko/backend/scope';
 
 // Участник локальной области с полным набором прав. Сессия есть только у запроса с cookie session=ok.
-export const memberSession: AccessSession = {
+const memberSession: AccessSession = {
   user: { id: 'member-1', name: 'Member', email: 'member@example.test' },
   memberships: [
     { workspace: { id: 'local', name: 'Local' }, rights: [...rightCatalog] },
