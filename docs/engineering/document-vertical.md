@@ -24,8 +24,8 @@ MinerU выполняется отдельно по этой инструкци�
 
 ## HTTP и данные
 
-`/api/auth/*` обслуживает Better Auth; `/api/session` возвращает пользователя и
-рабочую область. `/api/documents` принимает multipart `file` до 20 MiB и UUID
+`/api/auth/*` обслуживает Better Auth; `/api/v1/session` возвращает пользователя и
+его участия с правами. `/api/v1/workspaces/:workspaceId/recognitions` принимает multipart `file` до 20 MiB и UUID
 `Idempotency-Key`; одинаковый вход возвращает прежний документ, иной — конфликт.
 GET списка/документа и GET `/:id/result` проверяют scope. POST `/:id/retry`
 создаёт новую редакцию запуска только после ошибки; история сохраняется.
@@ -60,7 +60,7 @@ Stateless MinerU SDK отдаёт ZIP. Anyko сохраняет `result.json` с
 только key, MIME, size и checksum, без Base64. `DocumentArtifact` регистрирует
 владение каждым объектом до записи, включая незавершённые попытки.
 
-API результата возвращает авторизованные `/api/documents/:id/images/:index`.
+API результата возвращает авторизованные `/api/v1/workspaces/:workspaceId/recognitions/:id/images/:index`.
 Маршрут изображения читает его метаданные из БД и только сам файл из S3, без
 загрузки Markdown. Проверяются сессия и рабочая область; ответы — `no-store` и
 `nosniff`. Пределы: 32 изображения, 3 MiB каждое, суммарно 8 MiB, JSON до 5 MiB.
@@ -72,15 +72,15 @@ API/worker он переносит Base64 в файлы, переключает 
 
 ## Удаление
 
-`DELETE /api/documents/:id` после подтверждения в UI возвращает 202. Транзакция
+`DELETE /api/v1/workspaces/:workspaceId/recognitions/:id` после подтверждения в UI возвращает 202. Транзакция
 ставит tombstone `deletedAt` и аннулирует активные попытки. Список, текст,
 картинки и повторный запуск сразу перестают быть доступны. Проверка публикации
 и удаление сериализуются на строке документа; поздний worker не возвращает его
 к жизни. Повторный DELETE своей tombstone идемпотентен; чужой ID даёт 404.
 
-202 означает только начало. UI опрашивает `GET /api/documents/:id/deletion` и
+202 означает только начало. UI опрашивает `GET /api/v1/workspaces/:workspaceId/recognitions/:id/deletion` и
 закрывает подтверждение лишь при `deleted`.
-Незавершённые удаления также возвращаются в `GET /api/documents` отдельным списком
+Незавершённые удаления также возвращаются в `GET /api/v1/workspaces/:workspaceId/recognitions` отдельным списком
 UUID/status/createdAt без имени и содержимого: UI восстанавливает их после F5 и
 опрашивает до завершения. Статус `needs-recovery` не исчезает при закрытии вкладки.
 

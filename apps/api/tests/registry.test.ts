@@ -1,10 +1,8 @@
 import { expect, test } from 'bun:test';
 
-import * as session from '@anyko/contracts/session';
 import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../src/http/app';
-import { legacyPathOf } from '../src/http/legacy/paths';
 
 import { contractModules, describedEndpoints } from './support/endpoints';
 import { stubHttpOptions } from './support/stub-http';
@@ -14,7 +12,6 @@ test('every contract subpath is listed in the registry test', async () => {
     new URL('../../../packages/contracts/package.json', import.meta.url),
   ).json()) as { exports: Record<string, string> };
   const subpaths = Object.keys(manifest.exports)
-    .filter((key) => key !== '.')
     .map((key) => key.slice(2))
     .sort();
   expect(subpaths).toEqual(Object.keys(contractModules).sort());
@@ -47,7 +44,8 @@ test('every contract endpoint is registered exactly once under /api/v1 and nothi
   expect(registered).toEqual(expected);
 });
 
-test('the temporary unversioned layer registers the same endpoints, except the session and the new work documents', () => {
+// Маршрут под /api вне версии и Better Auth обходит проверку области и версии: таких маршрутов нет.
+test('no route lives under /api outside /api/v1 and /api/auth', () => {
   const { documentHttp, workHttp } = stubHttpOptions();
   const app = createApp({
     logger: createLogger({
@@ -60,24 +58,13 @@ test('the temporary unversioned layer registers the same endpoints, except the s
     documentHttp,
     workHttp,
   });
-  const legacy = app.routes
+  const outside = app.routes
     .filter(
       (item) =>
         item.path.startsWith('/api/') &&
         !item.path.startsWith('/api/v1/') &&
         !item.path.startsWith('/api/auth/'),
     )
-    .map((item) => `${item.method} ${item.path}`)
-    .sort();
-  // Прежняя сессия описана в apps/api (legacy/session.ts), contracts её не регистрирует.
-  // Снимается вместе с web #11.
-  const expected = describedEndpoints()
-    .filter((item) => item !== session.getSession)
-    .flatMap((item) => {
-      const path = legacyPathOf(item);
-      return path === null ? [] : [`${item.method} /api${path}`];
-    })
-    .concat(['GET /api/session'])
-    .sort();
-  expect(legacy).toEqual(expected);
+    .map((item) => `${item.method} ${item.path}`);
+  expect(outside).toEqual([]);
 });

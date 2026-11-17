@@ -42,8 +42,9 @@ packages/backend/src/
     infrastructure/         Prisma-хранилища и внешние адаптеры
     tests/                  интеграционные проверки модуля
   profiles/bfl/             поля, правила значений, схемы извлечения БФЛ
-  workflows/<process>/
-    index.ts                публичные команды и запросы процесса
+  workflows/<process>/      work-intake, work-review, work-generation, work-view (этап 5a)
+    index.ts                фабрика процесса и тип, который использует HTTP
+    <scenario>.ts           один сценарий процесса; общие проверки процесса — рядом (work-guards.ts)
     jobs.ts                 JobDefinition процесса
   runtime/
     create-backend.ts       composition root
@@ -58,27 +59,27 @@ packages/contracts/src/
 
 ## Уровни и импорты
 
-| Откуда                       | Разрешено                                                                            |
-| ---------------------------- | ------------------------------------------------------------------------------------ |
-| `api/bootstrap`              | `@anyko/backend/runtime`, `@anyko/logger`                                            |
-| `api/http`                   | `@anyko/contracts/*`, типы публичных фасадов `@anyko/backend/<module>`, Elysia       |
-| `api/http/realtime`          | ioredis только для подписки на временные потоки; без BullMQ                          |
-| `worker/bootstrap`           | `@anyko/backend/runtime`, `@anyko/logger`                                            |
-| `worker/queues`, `loops`     | BullMQ, ioredis, `JobDefinition` и фасад `processing` из runtime                     |
-| `backend/runtime`            | всё внутри `backend`, включая `modules/*/infrastructure`                             |
-| `backend/workflows`          | `modules/*/index.ts`, `profiles`, `platform`                                         |
-| `modules/<m>/application`    | свой `domain`, свои порты, `platform`, `modules/<n>/index.ts` по allowlist без цикла |
-| `modules/<m>/domain`         | свои файлы, `platform/errors`, `platform/scope` (типы)                               |
-| `modules/<m>/infrastructure` | свои порты, `database`, `platform`, SDK интеграции                                   |
-| `profiles`                   | `platform/errors`; без I/O, Prisma, env, модулей и workflows                         |
-| `platform`                   | технические библиотеки; без модулей, профилей и workflows                            |
-| `backend` (любой файл)       | не импортирует `@anyko/contracts`, BullMQ, ioredis, Elysia                           |
-| `platform/scope` (выдача)    | конструкторы scope импортируют только `modules/access` и `modules/processing`        |
-| `contracts`                  | только Zod                                                                           |
+| Откуда                       | Разрешено                                                                                                                             |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `api/bootstrap`              | `@anyko/backend/runtime`, `@anyko/logger`                                                                                             |
+| `api/http`                   | `@anyko/contracts/*`, типы публичных фасадов `@anyko/backend/<module>`, Elysia                                                        |
+| `api/http/realtime`          | ioredis только для подписки на временные потоки; без BullMQ                                                                           |
+| `worker/bootstrap`           | `@anyko/backend/runtime`, `@anyko/logger`                                                                                             |
+| `worker/queues`, `loops`     | BullMQ, ioredis, `JobDefinition` и фасад `processing` из runtime                                                                      |
+| `backend/runtime`            | всё внутри `backend`, включая `modules/*/infrastructure` и `modules/*/module.ts` (фабрика фасада)                                     |
+| `backend/workflows`          | `modules/*/index.ts` и `module.ts` (только тип фасада), `profiles`, `platform`; без `application`, `domain`, `infrastructure` модулей |
+| `modules/<m>/application`    | свой `domain`, свои порты, `platform`, `modules/<n>/index.ts` по allowlist без цикла                                                  |
+| `modules/<m>/domain`         | свои файлы, `platform/errors`, `platform/scope` (типы)                                                                                |
+| `modules/<m>/infrastructure` | свои порты, `database`, `platform`, SDK интеграции                                                                                    |
+| `profiles`                   | `platform/errors`; без I/O, Prisma, env, модулей и workflows                                                                          |
+| `platform`                   | технические библиотеки; без модулей, профилей и workflows                                                                             |
+| `backend` (любой файл)       | не импортирует `@anyko/contracts`, BullMQ, ioredis, Elysia                                                                            |
+| `platform/scope` (выдача)    | конструкторы scope импортируют только `modules/access` и `modules/processing`                                                         |
+| `contracts`                  | только Zod                                                                                                                            |
 
 ## Модуль
 
-Фасад отделяет команды от запросов и даёт ту же поверхность внутри транзакции:
+Фасад отделяет команды от запросов и даёт ту же поверхность внутри транзакции. Публичные типы и ошибки лежат в `index.ts`; фабрика `createXModule` — в `module.ts`, его собирает runtime. `index.ts` не импортирует `module.ts`, поэтому `application` берёт типы из `index.ts` без цикла. Хранилище внутри транзакции создаёт `storeFor(tx)` в `infrastructure`: токен `Tx` превращается в клиент драйвера только там (`transactionHandle`).
 
 ```ts
 // modules/works/module.ts
@@ -182,7 +183,7 @@ route(app, confirmWork, ({ scope, params, body }) =>
 
 `endpoint()` принимает `json(schema)` или `multipart({ поле: схема })` как тело, `json`, `fileDownload()` или `eventStream()` как ответ. Поле `invalid` обязательно, если есть любой вход (`params`, `query`, `headers`, тело), и указывает код ошибки входа; `invalidHeaders` задаёт код для заголовков, если он отличается. Поле `idempotency` обязательно у POST, PUT, PATCH и DELETE и запрещено у GET. Значение `key` — команда повторяется по `Idempotency-Key`: заголовок, его код ошибки и коды `IDEMPOTENCY_CONFLICT`, `IDEMPOTENCY_IN_PROGRESS` контракт добавляет и проверяет сам (ответ должен быть `json`). `natural` — повтор безопасен по смыслу операции (удаление, правка или подтверждение с ревизией, сохранение настроек). `none` — повтор не проверен, ключа нет. Код ошибки вне `errors` не компилируется. Раздел «Повтор команд» ниже описывает поведение.
 
-`route()` проверяет заголовки, параметры, query и тело через Standard Schema в порядке, который задаёт описание, и отклоняет неверный вход кодом `invalid` без вызова обработчика. Область из адреса проверяет plugin `workspace-scope` до разбора входа: чужая или несуществующая область даёт 404 без чтения тела. Права проверяет сценарий, маршрут их не знает. Ответ `json` проверяется схемой `response`: при нарушении ответ становится `INTERNAL_ERROR` и пишется `http_response_invalid`. Ответ `file` получает `cache-control: no-store` и `x-content-type-options: nosniff`; обработчик задаёт остальные заголовки. Код `AppError` вне `errors` в `NODE_ENV=test` даёт 500 и событие `http_undeclared_error_code`; в остальных средах ответ прежний, событие пишется. Тест по реестру проверяет, что каждое описание зарегистрировано ровно один раз под `/api/v1`; временный слой без версии регистрирует те же описания по своему адресу (`apps/api/src/http/legacy/`, удаляется с web #11). Режим `key` выполняется через модуль `idempotency` после разбора входа и проверки области; подробности — в разделе «Повтор команд».
+`route()` проверяет заголовки, параметры, query и тело через Standard Schema в порядке, который задаёт описание, и отклоняет неверный вход кодом `invalid` без вызова обработчика. Область из адреса проверяет plugin `workspace-scope` до разбора входа: чужая или несуществующая область даёт 404 без чтения тела. Права проверяет сценарий, маршрут их не знает. Ответ `json` проверяется схемой `response`: при нарушении ответ становится `INTERNAL_ERROR` и пишется `http_response_invalid`. Ответ `file` получает `cache-control: no-store` и `x-content-type-options: nosniff`; обработчик задаёт остальные заголовки. Код `AppError` вне `errors` в `NODE_ENV=test` даёт 500 и событие `http_undeclared_error_code`; в остальных средах ответ прежний, событие пишется. Тест по реестру проверяет, что каждое описание зарегистрировано ровно один раз под `/api/v1`, и что под `/api/` вне `/api/v1/` и `/api/auth/` маршрутов нет: иначе адрес обошёл бы проверку области. Режим `key` выполняется через модуль `idempotency` после разбора входа и проверки области; подробности — в разделе «Повтор команд».
 
 ### Область и права
 
@@ -215,11 +216,10 @@ Envelope с версией, IDs и correlation ID разбирает `worker/que
 
 Команды режима `key` (создание работы, загрузка документа в работу, анализ, генерация, загрузка распознавания) принимают `Idempotency-Key` — UUID, который web создаёт на одно намеренное действие и переиспользует при автоматическом повторе. Порядок в `route()`: сессия → origin → область → разбор входа, включая заголовок → отпечаток → захват → сценарий → сохранение ответа.
 
-- Ключ действует в пределах тройки «область, команда, ключ». Команда — `METHOD путь` из описания; у v1 и временного слоя она одна.
+- Ключ действует в пределах тройки «область, команда, ключ». Команда — `METHOD путь` из описания.
 - Отпечаток — SHA-256 канонической формы params, query и body: порядок полей не важен. Файл входит именем и SHA-256 содержимого; значения полей в хранилище не попадают.
 - Тот же ключ и тот же вход возвращают сохранённые статус и тело, сценарий не запускается. Тот же ключ с другим входом — `409 IDEMPOTENCY_CONFLICT`. Тот же ключ, пока первый запрос выполняется, — `409 IDEMPOTENCY_IN_PROGRESS`. Ошибка сценария снимает захват: повтор выполняется заново.
 - Результат хранится 24 часа; просроченная запись считается отсутствующей. Захват без результата (процесс упал между выполнением и записью) перехватывается через 5 минут. Тогда повтор может выполнить сценарий ещё раз: это принятое ограничение до транзакционной записи результата вместе с действием. Очистка просроченных записей — задание maintenance в #21.
-- Временный слой без версии (до web #11): ключ необязателен для создания работы, анализа и генерации; если он пришёл, действует тот же механизм. Загрузки требуют ключ, как и прежде.
 
 Журнал действий (`modules/audit`): `record(tx, событие)` пишет строку в той же транзакции, что и действие. Сбой записи откатывает действие; откат действия отменяет событие. Перечень действий закрыт в `modules/audit/domain/events.ts`:
 
@@ -249,15 +249,15 @@ Envelope с версией, IDs и correlation ID разбирает `worker/que
 
 Принципы — в [quality.md](quality.md#как-проектировать-проверку-правила). Все проверки ниже выражены через соглашения, и новая функция по шаблону проходит их без правки проверок.
 
-| Механизм                   | Правила                                                                                                                                                               | Этап    |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
-| Типы                       | брендированные scope и ID в сигнатурах хранилищ; ответ обработчика по `response` endpoint; `satisfies Record<ErrorKind, number>`; payload `defineJob`                 | 1, 3, 4 |
-| dependency-cruiser         | backend без `contracts`/BullMQ/ioredis/Elysia; `platform` без модулей; конструкторы scope только в `access`/`processing`; `runtime` только в bootstrap; рёбра модулей | 1       |
-| ESLint по папкам           | в `http/routes` нет `request.json()`, `formData()`, ручного разбора ID; в `domain`/`application` нет `new Date()`, `Date.now()`, `crypto.randomUUID()`, `process.env` | 1       |
-| Тест по реестру endpoint   | каждое описание зарегистрировано ровно один раз; возвращаемые коды входят в `errors`; каталог кодов совпадает с `defineErrors` модулей                                | 3       |
-| Обязательное поле описания | у POST/PUT/PATCH/DELETE поле `idempotency` (`key`, `natural`, `none`) обязательно по типу: решение принимается там, где объявлен endpoint                             | 3       |
-| Тест изоляции по реестру   | каждый endpoint с `:workspaceId` с чужой областью и случайными UUID → 404, без сессии → 401                                                                           | 4       |
-| Review                     | владелец сценария, узость портов, отсутствие внешних вызовов в `UnitOfWork`, ожидаемые ошибки через `defineErrors` (технический `throw new Error` законен), имена     | —       |
+| Механизм                   | Правила                                                                                                                                                                                                                                                                                                         | Этап    |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| Типы                       | брендированные scope и ID в сигнатурах хранилищ; ответ обработчика по `response` endpoint; `satisfies Record<ErrorKind, number>`; payload `defineJob`                                                                                                                                                           | 1, 3, 4 |
+| dependency-cruiser         | backend без `contracts`/BullMQ/ioredis/Elysia; `platform` без модулей; конструкторы scope только в `access`/`processing`; `runtime` только в bootstrap; рёбра модулей; процессы через `index.ts`/`module.ts` (`backend-workflows-use-module-facades`); `Tx` без Prisma-значений (`backend-transactions-opaque`) | 1       |
+| ESLint по папкам           | в `http/routes` нет `request.json()`, `formData()`, ручного разбора ID; в `domain`/`application` нет `new Date()`, `Date.now()`, `crypto.randomUUID()`, `process.env`                                                                                                                                           | 1       |
+| Тест по реестру endpoint   | каждое описание зарегистрировано ровно один раз; возвращаемые коды входят в `errors`; каталог кодов совпадает с `defineErrors` модулей                                                                                                                                                                          | 3       |
+| Обязательное поле описания | у POST/PUT/PATCH/DELETE поле `idempotency` (`key`, `natural`, `none`) обязательно по типу: решение принимается там, где объявлен endpoint                                                                                                                                                                       | 3       |
+| Тест изоляции по реестру   | каждый endpoint с `:workspaceId` с чужой областью и случайными UUID → 404, без сессии → 401                                                                                                                                                                                                                     | 4       |
+| Review                     | владелец сценария, узость портов, отсутствие внешних вызовов в `UnitOfWork`, ожидаемые ошибки через `defineErrors` (технический `throw new Error` законен), имена                                                                                                                                               | —       |
 
 Тест изоляции не требует данных под каждый endpoint: plugin scope выполняется до разбора тела и до поиска ресурса, поэтому чужая область отклоняется при любом теле. Этот порядок plugins — часть контракта `route()`.
 

@@ -1,14 +1,17 @@
 import {
   emptyFieldValues,
-  factsSchema,
   fieldDefinitions,
   fieldIdentity,
   type FieldRow,
   type FieldValue,
   type FieldValues,
   readFieldValues,
-  type WorkFacts,
-} from '@anyko/contracts';
+} from '@anyko/contracts/catalog';
+import { factsSchema, type WorkFacts } from '@anyko/contracts/works';
+
+import type { WorkId } from '../../platform/ids';
+import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
+import type { Tx } from '../../platform/transactions';
 
 export function emptyFacts(): WorkFacts {
   return {
@@ -134,3 +137,26 @@ export interface FactsStore {
   save(workspaceId: string, workId: string, facts: WorkFacts): Promise<void>;
   erase(workspaceId: string, workId: string): Promise<void>;
 }
+
+// Фасад сведений. Правка и подтверждение меняют только сведения; ревизию работы меняет сценарий
+// (workflows/work-review), потому что ревизия принадлежит works. Права works.edit проверяет команда.
+interface FactsCommands {
+  edit(
+    scope: WorkspaceScope,
+    input: { workId: WorkId; values: FieldValues },
+  ): Promise<void>;
+  confirm(scope: WorkspaceScope, input: { workId: WorkId }): Promise<void>;
+}
+// Запрос внутренний: право проверяет вызывающий сценарий.
+interface FactsQueries {
+  get(scope: WorkspaceScope, workId: WorkId): Promise<WorkFacts>;
+}
+export interface FactsPorts {
+  readonly commands: FactsCommands;
+  readonly queries: FactsQueries;
+}
+export interface FactsModule extends FactsPorts {
+  in(tx: Tx): FactsPorts;
+}
+
+export type { FieldValues } from '@anyko/contracts/catalog';

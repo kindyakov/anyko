@@ -13,7 +13,6 @@ import {
   type FileResponse,
   type JsonPart,
   type MultipartPart,
-  optionalIdempotencyKeyHeaders,
 } from '@anyko/contracts/common';
 import type { Session } from '@anyko/contracts/session';
 import type { Logger } from '@anyko/logger';
@@ -24,27 +23,14 @@ import { requestState } from './request-state';
 // проверяет ответ и выставляет статус успеха. Сценарий получает уже проверенные значения и
 // доверенную область, если адрес её содержит. Порядок: сессия → origin → область → вход → сценарий.
 
-// Слой адресов: версия API или временный префикс без версии (его удалит web #11).
-export interface RouteLayer {
-  readonly prefix: string;
-  // Путь маршрута внутри слоя или null: слой не регистрирует это описание.
-  pathOf(endpoint: Endpoint): string | null;
-  // Ключ Idempotency-Key у режима key можно не передавать. Только временный слой; v1 требует ключ всегда.
-  keyOptional(endpoint: Endpoint): boolean;
-}
-
-export const versionedLayer: RouteLayer = {
-  prefix: '/api/v1',
-  pathOf: (endpoint) => endpoint.path,
-  keyOptional: () => false,
-};
+// Все маршруты API живут под одной версией; путь описания без префикса.
+const apiPrefix = '/api/v1';
 
 export interface RouteEnv {
-  readonly layer: RouteLayer;
   readonly logger: Logger;
   // В тестах код ошибки, не объявленный в описании, даёт 500: тест ловит расхождение.
   readonly strictErrors: boolean;
-  // Описания версии v1, из них строится OpenAPI; временный слой не добавляет туда ничего.
+  // Описания API, из них строится OpenAPI.
   readonly endpoints?: Set<Endpoint>;
   // Хранилище повтора команд (модуль idempotency): маршруты режима key выполняются через него.
   readonly idempotency: IdempotencyApi;
@@ -87,7 +73,7 @@ type RouteContext<E extends Endpoint> = ScopeOf<E> & {
   readonly query: ParsedPart<E, 'query'>;
   readonly headers: ParsedPart<E, 'headers'>;
   readonly body: BodyOf<E>;
-  // Адрес другого описания в этом слое: ссылки в ответе строятся тем же префиксом, что и вызов.
+  // Адрес другого описания: ссылка в ответе строится тем же префиксом версии, что и маршрут.
   readonly link: (target: Endpoint, params: Record<string, string>) => string;
 };
 
@@ -102,24 +88,19 @@ export type Route = <E extends Endpoint>(
 ) => Elysia;
 
 export function createRoute(env: RouteEnv): Route {
-  const { layer } = env;
   const link = (target: Endpoint, params: Record<string, string>) => {
-    const path = layer.pathOf(target);
-    if (path === null) throw new Error('LINK_TARGET_NOT_IN_LAYER');
-    const filled = path.replaceAll(/:(\w+)/g, (_match, name: string) => {
+    const filled = target.path.replaceAll(/:(\w+)/g, (_match, name: string) => {
       const value = params[name];
       if (value === undefined) throw new Error(`LINK_PARAM_MISSING:${name}`);
       return encodeURIComponent(value);
     });
-    return `${layer.prefix}${filled}`;
+    return `${apiPrefix}${filled}`;
   };
   return function route(app, endpoint, handler) {
-    const path = layer.pathOf(endpoint);
-    if (path === null) return app;
     env.endpoints?.add(endpoint);
     app.route(
       endpoint.method,
-      `${layer.prefix}${path}`,
+      `${apiPrefix}${endpoint.path}`,
       async ({ request, params, query, set }) => {
         const state = requestState(request);
         const session = state?.session;
@@ -127,21 +108,16 @@ export function createRoute(env: RouteEnv): Route {
         const requestId = state.requestId;
         const allowed = new Set<string>(endpoint.errors);
         try {
-          // Во временном слое области нет в адресе: её идентификатор берётся из scope. В v1 он совпадает с адресом.
+          // Идентификатор области берётся из проверенной области: адрес и scope совпадают.
           const pathParams = state.scope
             ? { ...params, workspaceId: state.scope.workspaceId }
             : params;
-          // Временный слой может не требовать ключ у части команд; заголовок без ключа тогда допустим.
-          const headers =
-            endpoint.idempotency === 'key' && env.layer.keyOptional(endpoint)
-              ? optionalIdempotencyKeyHeaders
-              : endpoint.headers;
           const input = await readInput(
             endpoint,
             request,
             pathParams,
             query,
-            headers,
+            endpoint.headers,
           );
           const context = {
             ...input,
@@ -156,8 +132,8 @@ export function createRoute(env: RouteEnv): Route {
             endpoint.idempotency === 'key'
               ? idempotencyKeyOf(input.headers)
               : undefined;
-          // Без ключа команда выполняется как прежде: так работает только временный слой (ADR 0009).
-          if (key === undefined || endpoint.idempotency !== 'key') {
+          // Команды без режима key выполняются напрямую; у режима key ключ обязателен уже при разборе входа.
+          if (key === undefined) {
             const value = await handler(context);
             return await respond(endpoint, value, set, env.logger, requestId);
           }

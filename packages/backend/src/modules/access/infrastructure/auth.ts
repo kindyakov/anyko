@@ -3,10 +3,9 @@ import { betterAuth } from 'better-auth';
 
 import type { Database } from '@anyko/database';
 
-import type { WorkspaceScope } from '../../../platform/scope/workspace-scope';
 import { type AuditWriter, record } from '../../audit';
 import { rightsForRole } from '../domain/roles';
-import { type AccessSession, issueScope, scopeFor } from '../domain/scope';
+import { type AccessSession, scopeFor } from '../domain/scope';
 
 export interface AccessOptions {
   /** Shared client owned by the composition root; access never connects or disconnects it. */
@@ -65,20 +64,6 @@ export function createAccess(options: AccessOptions) {
       };
     },
     scope: scopeFor,
-    // Временно (удаляется вместе с web #11): первое участие по workspaceId, как прежний маршрут
-    // без области в адресе.
-    async legacyScope(userId: string): Promise<WorkspaceScope | null> {
-      const membership = await db.membership.findFirst({
-        where: { userId },
-        orderBy: { workspaceId: 'asc' },
-      });
-      if (!membership) return null;
-      return issueScope(
-        userId,
-        membership.workspaceId,
-        rightsForRole(membership.role),
-      );
-    },
   };
 }
 

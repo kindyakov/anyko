@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 
-import { agentSessionContextSchema } from '@anyko/contracts';
+import { agentSessionContextSchema } from '@anyko/contracts/works';
 
 import { combineCandidates, selectSessionCandidates } from './session';
 

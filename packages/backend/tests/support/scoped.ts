@@ -1,12 +1,6 @@
 import type { RecognitionService } from '../../src/modules/documents';
 import type { LlmSettingsApi } from '../../src/modules/processing';
-import type { WorkApi } from '../../src/modules/works';
-import {
-  brandDocumentId,
-  brandFileId,
-  brandGenerationId,
-  brandWorkId,
-} from '../../src/platform/ids';
+import { brandDocumentId } from '../../src/platform/ids';
 
 import { memberScope } from './scope';
 
@@ -79,107 +73,6 @@ export function recognitionsAs(service: RecognitionService) {
         memberScope(input.workspaceId, input.actorId),
         brandDocumentId(input.documentId),
         input.correlationId,
-      ),
-  };
-}
-
-export function workApiAs(api: WorkApi) {
-  return {
-    packages: () => api.packages(),
-    list: (workspaceId: string, after?: string) =>
-      api.list(memberScope(workspaceId), after),
-    create: (input: {
-      workspaceId: string;
-      actorId: string;
-      title: string;
-      packageVersion: string;
-    }) =>
-      api.create(memberScope(input.workspaceId, input.actorId), {
-        title: input.title,
-        packageVersion: input.packageVersion,
-      }),
-    get: (workspaceId: string, workId: string) =>
-      api.get(memberScope(workspaceId), brandWorkId(workId)),
-    events: (workspaceId: string, workId: string, after: string) =>
-      api.events(memberScope(workspaceId), brandWorkId(workId), after),
-    upload: (input: {
-      workspaceId: string;
-      workId: string;
-      actorId: string;
-      filename: string;
-      bytes: Uint8Array;
-      correlationId: string;
-      requestKey: string;
-    }) =>
-      api.upload(memberScope(input.workspaceId, input.actorId), {
-        workId: brandWorkId(input.workId),
-        filename: input.filename,
-        bytes: input.bytes,
-        correlationId: input.correlationId,
-        requestKey: input.requestKey,
-      }),
-    removeDocument: (input: {
-      workspaceId: string;
-      workId: string;
-      documentId: string;
-    }) =>
-      api.removeDocument(memberScope(input.workspaceId), {
-        workId: brandWorkId(input.workId),
-        documentId: brandDocumentId(input.documentId),
-      }),
-    analyze: (input: {
-      workspaceId: string;
-      workId: string;
-      actorId: string;
-      correlationId: string;
-    }) =>
-      api.analyze(memberScope(input.workspaceId, input.actorId), {
-        workId: brandWorkId(input.workId),
-        correlationId: input.correlationId,
-      }),
-    edit: (input: {
-      workspaceId: string;
-      workId: string;
-      revision: number;
-      values: Parameters<WorkApi['edit']>[1]['values'];
-    }) =>
-      api.edit(memberScope(input.workspaceId), {
-        workId: brandWorkId(input.workId),
-        revision: input.revision,
-        values: input.values,
-      }),
-    confirm: (input: {
-      workspaceId: string;
-      workId: string;
-      revision: number;
-    }) =>
-      api.confirm(memberScope(input.workspaceId), {
-        workId: brandWorkId(input.workId),
-        revision: input.revision,
-      }),
-    generate: (input: {
-      workspaceId: string;
-      workId: string;
-      revision: number;
-      actorId: string;
-      correlationId: string;
-    }) =>
-      api.generate(memberScope(input.workspaceId, input.actorId), {
-        workId: brandWorkId(input.workId),
-        revision: input.revision,
-        correlationId: input.correlationId,
-      }),
-    download: (
-      workspaceId: string,
-      workId: string,
-      generationId: string,
-      fileId?: string,
-    ) =>
-      api.download(
-        memberScope(workspaceId),
-        brandWorkId(workId),
-        brandGenerationId(generationId),
-        fileId === undefined ? undefined : brandFileId(fileId),
       ),
   };
 }

@@ -2,8 +2,8 @@ import {
   emptyFieldValues,
   fieldDefinitions,
   readFieldValues,
-} from '@anyko/contracts';
-import type { FieldValues } from '@anyko/contracts';
+} from '@anyko/contracts/catalog';
+import type { FieldValues } from '@anyko/contracts/catalog';
 
 /** Projection only: unknown values stay visibly unknown; no legal or financial inference. */
 export function templateData(input: FieldValues): FieldValues {

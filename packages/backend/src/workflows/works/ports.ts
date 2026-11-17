@@ -26,6 +26,9 @@ export interface WorkStores {
   audit: AuditSink;
 }
 export interface WorkDependencies extends WorkStores {
+  // Мост до этапа 5b: процессы execute/continue-session/cleanup ещё работают с наборами хранилищ.
+  // Реализация в runtime — uow.run(tx => операция с хранилищами storeFor(tx)); сценарии 5a используют
+  // module.in(tx) и UnitOfWork напрямую.
   transaction<T>(operation: (stores: WorkStores) => Promise<T>): Promise<T>;
   documents: DocumentService;
   settings: LlmSettingsStore;

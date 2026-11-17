@@ -1,7 +1,13 @@
 import type { createAccess } from '@anyko/backend/access';
 import type { RecognitionService } from '@anyko/backend/documents';
 import type { LlmSettingsApi } from '@anyko/backend/processing';
-import type { WorkApi } from '@anyko/backend/works';
+import type {
+  WorkGeneration,
+  WorkIntake,
+  WorkReview,
+  WorkViews,
+} from '@anyko/backend/workflows';
+import type { WorksModule } from '@anyko/backend/works';
 
 import type { DocumentHttpOptions } from '../../src/http/routes/documents';
 import type { WorkHttpOptions } from '../../src/http/routes/works';
@@ -22,7 +28,6 @@ export function stubHttpOptions(): {
     handle: unused,
     session: unused,
     scope: unused,
-    legacyScope: unused,
   };
   const documents: RecognitionService = {
     list: unused,
@@ -36,21 +41,42 @@ export function stubHttpOptions(): {
     remove: unused,
     retry: unused,
   };
-  const works: WorkApi = {
+  const works: WorksModule = {
+    commands: {
+      create: unused,
+      attachDocument: unused,
+      bumpRevision: unused,
+      recordEvent: unused,
+    },
+    queries: {
+      list: unused,
+      find: unused,
+      sources: unused,
+      cursor: unused,
+      events: unused,
+    },
+    in: unused,
+  };
+  const views: WorkViews = {
     packages: unused,
-    list: unused,
-    create: unused,
     get: unused,
-    upload: unused,
-    removeDocument: unused,
     source: unused,
     image: unused,
-    analyze: unused,
-    edit: unused,
-    confirm: unused,
-    generate: unused,
-    download: unused,
-    events: unused,
+    result: unused,
+  };
+  const intake: WorkIntake = {
+    createWork: unused,
+    uploadDocument: unused,
+    removeDocument: unused,
+    analyzeWork: unused,
+  };
+  const review: WorkReview = {
+    editValues: unused,
+    confirmFacts: unused,
+  };
+  const generation: WorkGeneration = {
+    startGeneration: unused,
+    downloadResult: unused,
   };
   const settings: LlmSettingsApi = {
     current: unused,
@@ -68,6 +94,10 @@ export function stubHttpOptions(): {
     workHttp: {
       ...documentHttp,
       works,
+      views,
+      intake,
+      review,
+      generation,
       settings,
     },
   };

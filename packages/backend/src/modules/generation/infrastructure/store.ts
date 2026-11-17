@@ -2,12 +2,13 @@ import { z } from 'zod';
 
 import {
   generationFileSchema,
-  generationSchema,
   readFieldValues,
-} from '@anyko/contracts';
+} from '@anyko/contracts/catalog';
+import { generationSchema } from '@anyko/contracts/works';
 import type { Database } from '@anyko/database';
 
 import type { GenerationStore } from '..';
+import { transactionHandle, type Tx } from '../../../platform/transactions';
 
 export function createGenerationStore(
   db: Pick<Database, 'workGeneration' | 'workGenerationFile' | 'workArtifact'>,
@@ -110,4 +111,13 @@ export function createGenerationStore(
       await db.workArtifact.deleteMany({ where: { workspaceId, workId } });
     },
   };
+}
+
+// Результаты генерации внутри транзакции действия: токен превращается в клиент транзакции драйвера.
+export function generationStoreFor(tx: Tx): GenerationStore {
+  return createGenerationStore(
+    transactionHandle<
+      Pick<Database, 'workGeneration' | 'workGenerationFile' | 'workArtifact'>
+    >(tx),
+  );
 }

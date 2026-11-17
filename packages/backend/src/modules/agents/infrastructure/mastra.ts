@@ -5,11 +5,8 @@ import { Memory } from '@mastra/memory';
 import { PostgresStore } from '@mastra/pg';
 import { z } from 'zod';
 
-import {
-  candidateSchema,
-  fieldDefinitions,
-  legacyFieldKeys,
-} from '@anyko/contracts';
+import { fieldDefinitions, legacyFieldKeys } from '@anyko/contracts/catalog';
+import { candidateSchema } from '@anyko/contracts/works';
 import type { DatabasePool } from '@anyko/database';
 import { createModelGateway, llmError } from '@anyko/llm';
 

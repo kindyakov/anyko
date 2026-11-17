@@ -1,8 +1,5 @@
-import type {
-  AgentSessionContext,
-  FieldDefinition,
-  WorkFacts,
-} from '@anyko/contracts';
+import type { FieldDefinition } from '@anyko/contracts/catalog';
+import type { AgentSessionContext, WorkFacts } from '@anyko/contracts/works';
 import type { ModelConnection } from '@anyko/llm';
 
 interface AgentDocument {

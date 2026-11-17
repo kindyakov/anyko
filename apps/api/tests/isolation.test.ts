@@ -27,8 +27,32 @@ const access: ReturnType<typeof createAccess> = {
   session: (headers: Headers) =>
     Promise.resolve(headers.get('cookie') === 'session=ok' ? member : null),
   scope: scopeFor,
-  legacyScope: () => Promise.resolve(null),
 };
+
+// Маршрут вне /api/v1 и /api/auth обошёл бы проверку области из адреса: такого маршрута нет.
+test('no route lives under /api outside /api/v1 and /api/auth, so the scope check covers every API address', () => {
+  const options = stubHttpOptions();
+  const app = createApp({
+    logger: createLogger({
+      service: 'api',
+      environment: 'test',
+      release: 'isolation',
+      level: 'fatal',
+    }),
+    environment: 'test',
+    documentHttp: { ...options.documentHttp, access },
+    workHttp: { ...options.workHttp, access },
+  });
+  const outside = app.routes
+    .filter(
+      (item) =>
+        item.path.startsWith('/api/') &&
+        !item.path.startsWith('/api/v1/') &&
+        !item.path.startsWith('/api/auth/'),
+    )
+    .map((item) => `${item.method} ${item.path}`);
+  expect(outside).toEqual([]);
+});
 
 // Адрес по описанию: область и прочие параметры подставляются без данных в хранилище.
 function concretePath(path: string, workspaceId: string): string {

@@ -5,7 +5,7 @@ import {
   type DocumentPackage,
   documentPackageSchema,
   fieldDefinitions,
-} from '@anyko/contracts';
+} from '@anyko/contracts/catalog';
 
 import manifest from './assets/package.json';
 import { technicalBytes, technicalPackage } from './technical';
@@ -41,13 +41,17 @@ const bankruptcyPackage: DocumentPackage = documentPackageSchema.parse({
 export function availablePackages(): DocumentPackage[] {
   return [bankruptcyPackage];
 }
+const knownPackages = [
+  bankruptcyPackage,
+  previousPackage,
+  historicalPackage,
+  technicalPackage,
+];
+export function hasPackage(version: string): boolean {
+  return knownPackages.some((entry) => entry.version === version);
+}
 export function requirePackage(version: string): DocumentPackage {
-  const pack = [
-    bankruptcyPackage,
-    previousPackage,
-    historicalPackage,
-    technicalPackage,
-  ].find((entry) => entry.version === version);
+  const pack = knownPackages.find((entry) => entry.version === version);
   if (!pack) throw new Error('PACKAGE_NOT_FOUND');
   return pack;
 }

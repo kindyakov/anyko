@@ -1,7 +1,7 @@
 import Docxtemplater from 'docxtemplater';
 import PizZip from 'pizzip';
 
-import type { FieldValues } from '@anyko/contracts';
+import type { FieldValues } from '@anyko/contracts/catalog';
 
 export function generateDocument(
   source: Uint8Array,

@@ -3,7 +3,7 @@ import { inspect } from 'node:util';
 
 import { z } from 'zod';
 
-import { fieldDefinitions } from '@anyko/contracts';
+import { fieldDefinitions } from '@anyko/contracts/catalog';
 import { createDatabasePool } from '@anyko/database';
 import { llmError } from '@anyko/llm';
 
