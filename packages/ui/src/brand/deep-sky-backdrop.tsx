@@ -8,7 +8,7 @@ import {
   paintDeepSky,
   paintNebula,
   paintSkyMotion,
-} from '@/components/cosmos/deep-sky';
+} from './deep-sky';
 
 // The sky moves slowly, so a low frame rate keeps glass panels cheap to
 // re-blur; a meteor gets full frames only for the second it flies.

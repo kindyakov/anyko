@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
-import { startBlackHole } from '@/components/cosmos/black-hole-renderer';
+import { startBlackHole } from './black-hole-renderer';
 
 export function CosmicBackground({ paused }: { paused: boolean }) {
   const ref = useRef<HTMLCanvasElement>(null);

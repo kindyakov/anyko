@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 
-import { Logo } from '@/components/brand/logo';
+import { LogoLink } from '@/app/_components/logo-link';
 import { SignOut } from '@/features/auth';
 import { routes } from '@/lib/routes';
 import { getSession } from '@/lib/server/session';
@@ -17,7 +17,7 @@ export default async function NoWorkspacePage() {
       className="bg-canvas text-ink relative isolate grid min-h-dvh place-items-center px-6 py-16"
     >
       <div className="flex w-full max-w-md flex-col gap-6">
-        <Logo href={routes.home()} />
+        <LogoLink href={routes.home()} />
         <section className="glass rounded-3xl border border-white/[0.08] p-7">
           <h1 className="font-heading text-2xl font-bold tracking-tight">
             Нет доступа к рабочим областям

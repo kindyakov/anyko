@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { Spinner } from '@/components/ui/spinner';
+import { Spinner } from './spinner';
 
 export type Tone =
   'neutral' | 'progress' | 'success' | 'warning' | 'danger' | 'brand';

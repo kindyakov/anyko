@@ -7,11 +7,12 @@
     "build": "bun --env-file=../../.env --bun next build",
     "start": "bun --env-file=../../.env --bun next start",
     "typecheck": "tsc --noEmit",
-    "test": "bun test --isolate --preload ./test/setup.ts src/features src/app src/components && bun test --isolate src/lib"
+    "test": "bun test --isolate --preload ./test/setup.ts src/features src/app && bun test --isolate src/lib"
   },
   "dependencies": {
     "@anyko/contracts": "workspace:*",
     "@anyko/logger": "workspace:*",
+    "@anyko/ui": "workspace:*",
     "@base-ui/react": "1.9.0",
     "@tanstack/react-form": "1.33.5",
     "@tanstack/react-query": "5.106.1",

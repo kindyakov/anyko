@@ -34,9 +34,17 @@ const storage: SourceStorage = {
   },
 };
 const delay = () => Bun.sleep(env.E2E_PROCESSING_DELAY_MS);
+let ocrHeld = false;
+const ocrWaiters = new Set<() => void>();
+function releaseOcr() {
+  ocrHeld = false;
+  for (const release of ocrWaiters) release();
+  ocrWaiters.clear();
+}
 const parser: DocumentParser = {
   async parseDocument(_bytes, _format, attemptId) {
     await delay();
+    if (ocrHeld) await new Promise<void>((resolve) => ocrWaiters.add(resolve));
     const attempt = await fixtureDb.processorAttempt.findUniqueOrThrow({
       where: { id: attemptId },
     });
@@ -113,11 +121,12 @@ const worker = createBackend(config, {
   role: 'worker',
   dependencies: { storage, agents, parser },
 });
-let app: ReturnType<ReturnType<typeof createApp>['listen']> | undefined;
+let app: { stop(): Promise<unknown> } | undefined;
 let stopping = false;
 async function stop() {
   if (stopping) return;
   stopping = true;
+  releaseOcr();
   await app?.stop();
   await Promise.allSettled([worker.stop(), api.stop()]);
   await fixtureDb.$disconnect();
@@ -135,12 +144,26 @@ try {
     documentHttp: api.documentHttp,
     workHttp: api.workHttp,
     ready: () => documents.state() === 'ready' && works.state() === 'ready',
-  }).listen({
-    hostname: '127.0.0.1',
-    port: env.API_PORT,
-    maxRequestBodySize: 21 * 1024 * 1024,
-    idleTimeout: 30,
-  });
+  })
+    .post('/__e2e/ocr/hold', () => {
+      ocrHeld = true;
+    })
+    .post('/__e2e/ocr/release', releaseOcr)
+    .get('/__e2e/ocr/cursor/:workspaceId/:workId', async ({ params }) => ({
+      cursor:
+        (
+          await fixtureDb.workEvent.findFirst({
+            where: { workspaceId: params.workspaceId, workId: params.workId },
+            orderBy: { id: 'desc' },
+          })
+        )?.id.toString() ?? '0',
+    }))
+    .listen({
+      hostname: '127.0.0.1',
+      port: env.API_PORT,
+      maxRequestBodySize: 21 * 1024 * 1024,
+      idleTimeout: 30,
+    });
   process.on('SIGINT', () => {
     void stop();
   });

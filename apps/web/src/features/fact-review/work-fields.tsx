@@ -9,10 +9,7 @@ import {
   type FieldRow,
   type FieldValue,
 } from '@anyko/contracts/catalog';
-
-import { Button } from '@/components/ui/button';
-import { fieldSurface } from '@/components/ui/input';
-
+import { Button, fieldSurface } from '@anyko/ui';
 const paper =
   'rounded-[2px] border-0 border-b px-0.5 py-px text-zinc-900 transition-[background-color,box-shadow] duration-200 outline-none focus-visible:bg-white focus-visible:shadow-[0_0_0_2px_#db143c] border-dotted border-zinc-400 bg-sky-50/70 hover:bg-sky-100/80 data-[empty]:border-dashed data-[empty]:border-[#db143c]/70 data-[empty]:bg-rose-50 data-[empty]:hover:bg-rose-100/80 placeholder:text-rose-700/55 placeholder:italic disabled:opacity-70';
 const panel = `${fieldSurface} min-h-9 px-2.5 py-1.5 text-[13px] leading-5`;

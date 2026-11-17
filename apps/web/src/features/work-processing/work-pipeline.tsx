@@ -16,16 +16,20 @@ import {
 import { useState } from 'react';
 
 import { getWorkDocumentImage, type WorkView } from '@anyko/contracts/works';
+import {
+  Button,
+  Disclosure,
+  FileIcon,
+  Modal,
+  Notice,
+  RelativeTime,
+  Spinner,
+  stagger,
+  StatusPill,
+  type Tone,
+} from '@anyko/ui';
+import { EventHorizon } from '@anyko/ui/brand';
 
-import { EventHorizon } from '@/components/cosmos/event-horizon';
-import { Button } from '@/components/ui/button';
-import { Disclosure } from '@/components/ui/disclosure';
-import { FileIcon } from '@/components/ui/file-icon';
-import { Modal } from '@/components/ui/modal';
-import { RelativeTime } from '@/components/ui/relative-time';
-import { Spinner } from '@/components/ui/spinner';
-import { stagger } from '@/components/ui/stagger';
-import { Notice, StatusPill, type Tone } from '@/components/ui/status';
 import {
   errorText,
   runStatusLabels,

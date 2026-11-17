@@ -2,12 +2,19 @@ import { afterEach, expect, test } from 'bun:test';
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { renderToStaticMarkup } from 'react-dom/server';
 
 import { expectFocused } from '../../../test/focus';
 
 import { SignIn } from './sign-in';
 
 const originalFetch = globalThis.fetch;
+
+test('server-rendered sign-in cannot submit credentials as URL parameters before hydration', () => {
+  const view = renderToStaticMarkup(<SignIn onSignedIn={() => {}} />);
+  expect(view).toMatch(/<form\b[^>]*method="post"/);
+  expect(view).toMatch(/<fieldset\b[^>]*disabled/);
+});
 
 afterEach(() => {
   globalThis.fetch = originalFetch;

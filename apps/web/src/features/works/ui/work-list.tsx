@@ -17,18 +17,21 @@ import { type RefObject, useRef, useState } from 'react';
 import { z } from 'zod';
 
 import type { DocumentPackage } from '@anyko/contracts/catalog';
+import {
+  Button,
+  HoverMist,
+  Input,
+  Modal,
+  Notice,
+  RelativeTime,
+  SegmentedControl,
+  Skeleton,
+  stagger,
+  StatusPill,
+} from '@anyko/ui';
+import { EventHorizon } from '@anyko/ui/brand';
+import { FormErrorNotice, FormRoot, useAppForm } from '@anyko/ui/form';
 
-import { EventHorizon } from '@/components/cosmos/event-horizon';
-import { Button } from '@/components/ui/button';
-import { FormErrorNotice, FormRoot, useAppForm } from '@/components/ui/form';
-import { HoverMist } from '@/components/ui/hover-mist';
-import { Input } from '@/components/ui/input';
-import { Modal } from '@/components/ui/modal';
-import { RelativeTime } from '@/components/ui/relative-time';
-import { SegmentedControl } from '@/components/ui/segmented-control';
-import { Skeleton } from '@/components/ui/skeleton';
-import { stagger } from '@/components/ui/stagger';
-import { Notice, StatusPill } from '@/components/ui/status';
 import { useCreateWork } from '@/features/works/api/mutations';
 import {
   documentPackagesQueryOptions,

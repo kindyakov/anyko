@@ -3,16 +3,19 @@ import { Check, Eye, Sparkles, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 
 import { type WorkView } from '@anyko/contracts/works';
+import {
+  Button,
+  Confirm,
+  FileIcon,
+  HoverMist,
+  RelativeTime,
+  Spinner,
+  stagger,
+  StatusPill,
+  type Tone,
+} from '@anyko/ui';
+import { DropZone } from '@anyko/ui/brand';
 
-import { Button } from '@/components/ui/button';
-import { Confirm } from '@/components/ui/confirm';
-import { DropZone } from '@/components/ui/drop-zone';
-import { FileIcon } from '@/components/ui/file-icon';
-import { HoverMist } from '@/components/ui/hover-mist';
-import { RelativeTime } from '@/components/ui/relative-time';
-import { Spinner } from '@/components/ui/spinner';
-import { stagger } from '@/components/ui/stagger';
-import { StatusPill, type Tone } from '@/components/ui/status';
 import type { WorkStage } from '@/features/works';
 
 import type { Upload } from './api/commands';

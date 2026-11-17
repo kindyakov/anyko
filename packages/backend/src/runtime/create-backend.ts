@@ -64,6 +64,7 @@ import { createWorkIo } from '../modules/works/infrastructure/work-io';
 import { createWorksModule } from '../modules/works/module';
 import { systemClock } from '../platform/clock';
 import { uuidV7 } from '../platform/ids';
+import { openTransaction } from '../platform/transactions';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
 import type { WorkDependencies } from '../workflows/work-dependencies';
@@ -351,10 +352,17 @@ export function createBackend(
       baseUrl: worker.mineru.baseUrl,
       timeoutMs: worker.mineru.timeoutMs,
     });
-  const processing = createProcessingService(createProcessingStore(db), {
-    clock: systemClock,
-    newId: uuidV7,
-  });
+  const processing = createProcessingService(
+    createProcessingStore(db, async (handle, workspaceId, documentId) => {
+      const work = works.in(openTransaction(handle)).internal;
+      const workId = await work.workForDocument(workspaceId, documentId);
+      if (workId) await work.event(workspaceId, workId, 'documents.changed');
+    }),
+    {
+      clock: systemClock,
+      newId: uuidV7,
+    },
+  );
   const deleteDocuments = createDocumentDeletionWorkflow({
     ...createDeletionStore(db),
     resultKeys: processing.resultKeys,

@@ -55,6 +55,7 @@ export function stubHttpOptions(): {
     internal: {
       get: unused,
       documents: unused,
+      workForDocument: unused,
       dirty: unused,
       touch: unused,
       event: unused,

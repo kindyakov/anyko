@@ -1,7 +1,8 @@
 'use client';
 import Link from 'next/link';
 
-import { EventHorizon } from '@/components/cosmos/event-horizon';
+import { EventHorizon } from '@anyko/ui/brand';
+
 import { useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 

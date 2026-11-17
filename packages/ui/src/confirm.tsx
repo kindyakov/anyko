@@ -3,7 +3,7 @@ import { AlertDialog } from '@base-ui/react/alert-dialog';
 import { Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from './button';
 
 /** Destructive confirmation; it stays open while the action is pending. */
 export function Confirm({

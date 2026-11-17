@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef } from 'react';
 
-import { paintBlackHole } from '@/components/cosmos/black-hole-renderer';
+import { paintBlackHole } from './black-hole-renderer';
 
 type HorizonState = 'idle' | 'active' | 'hungry' | 'calm';
 

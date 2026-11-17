@@ -1,24 +1,28 @@
 'use client';
 import { ArrowRight, Eye, EyeOff } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { z } from 'zod';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@anyko/ui';
 import {
   FormRoot,
   setServerErrors,
   useAppForm,
   useFormSelector,
-} from '@/components/ui/form';
+} from '@anyko/ui/form';
 
 const emailSchema = z
   .string()
   .min(1, 'Введите почту')
   .pipe(z.email('Укажите почту в формате name@company.ru'));
 const passwordSchema = z.string().min(1, 'Введите пароль');
+const subscribe = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
 
 export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   const [showPassword, setShowPassword] = useState(false);
+  const ready = useSyncExternalStore(subscribe, clientReady, serverReady);
   const form = useAppForm({
     defaultValues: { email: '', password: '' },
     onSubmit: async ({ value, formApi }) => {
@@ -73,67 +77,69 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
       <p className="mt-3 text-sm leading-6 text-zinc-400">
         Продолжите работу с документами
       </p>
-      <FormRoot form={form} className="mt-9 grid gap-6">
-        <form.AppField name="email" validators={{ onChange: emailSchema }}>
-          {(field) => (
-            <field.TextField
-              label="Почта"
-              type="email"
-              autoComplete="username"
-              placeholder="name@company.ru"
-              required
-              className="min-h-12 px-4"
-            />
-          )}
-        </form.AppField>
-        <form.AppField
-          name="password"
-          validators={{ onChange: passwordSchema }}
-        >
-          {(field) => (
-            <field.TextField
-              label="Пароль"
-              type={showPassword ? 'text' : 'password'}
-              autoComplete="current-password"
-              placeholder="Введите пароль"
-              required
-              className="min-h-12 px-4 pr-14"
-              trailing={
-                <span className="absolute top-1.5 right-1.5">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={
-                      showPassword ? 'Скрыть пароль' : 'Показать пароль'
-                    }
-                    aria-pressed={showPassword}
-                    disabled={submitting}
-                    onClick={() => {
-                      setShowPassword(!showPassword);
-                    }}
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </Button>
-                </span>
-              }
-            />
-          )}
-        </form.AppField>
-        {typeof formError === 'string' && formError !== '' && (
-          <p
-            role="alert"
-            className="rounded-xl border border-rose-400/20 bg-rose-950/40 p-3 text-sm leading-6 text-rose-200"
+      <FormRoot form={form} className="mt-9 grid gap-6" method="post">
+        <fieldset disabled={!ready} className="contents">
+          <form.AppField name="email" validators={{ onChange: emailSchema }}>
+            {(field) => (
+              <field.TextField
+                label="Почта"
+                type="email"
+                autoComplete="username"
+                placeholder="name@company.ru"
+                required
+                className="min-h-12 px-4"
+              />
+            )}
+          </form.AppField>
+          <form.AppField
+            name="password"
+            validators={{ onChange: passwordSchema }}
           >
-            {formError}
-          </p>
-        )}
-        <form.SubmitButton size="lg" className="mt-1 w-full">
-          Войти
-          <ArrowRight
-            size={17}
-            className="transition-transform duration-300 group-hover/button:translate-x-1"
-          />
-        </form.SubmitButton>
+            {(field) => (
+              <field.TextField
+                label="Пароль"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                placeholder="Введите пароль"
+                required
+                className="min-h-12 px-4 pr-14"
+                trailing={
+                  <span className="absolute top-1.5 right-1.5">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={
+                        showPassword ? 'Скрыть пароль' : 'Показать пароль'
+                      }
+                      aria-pressed={showPassword}
+                      disabled={submitting}
+                      onClick={() => {
+                        setShowPassword(!showPassword);
+                      }}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </Button>
+                  </span>
+                }
+              />
+            )}
+          </form.AppField>
+          {typeof formError === 'string' && formError !== '' && (
+            <p
+              role="alert"
+              className="rounded-xl border border-rose-400/20 bg-rose-950/40 p-3 text-sm leading-6 text-rose-200"
+            >
+              {formError}
+            </p>
+          )}
+          <form.SubmitButton size="lg" className="mt-1 w-full">
+            Войти
+            <ArrowRight
+              size={17}
+              className="transition-transform duration-300 group-hover/button:translate-x-1"
+            />
+          </form.SubmitButton>
+        </fieldset>
       </FormRoot>
       <p className="mt-8 max-w-xs text-xs leading-6 text-zinc-500">
         Доступ предоставляется участникам рабочей области.

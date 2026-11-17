@@ -5,8 +5,8 @@ import { RadioGroup } from '@base-ui/react/radio-group';
 import { type AnyFieldApi, useSelector } from '@tanstack/react-form';
 import { type ComponentProps, type ReactNode, type Ref, useId } from 'react';
 
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Button } from '../button';
+import { Input } from '../input';
 
 import { useFieldContext, useFormContext } from './contexts';
 import { clearServerErrors } from './server-errors';

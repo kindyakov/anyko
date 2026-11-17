@@ -1,7 +1,7 @@
 import { RotateCw } from 'lucide-react';
 
-import { EventHorizon } from '@/components/cosmos/event-horizon';
-import { Button } from '@/components/ui/button';
+import { Button } from '@anyko/ui';
+import { EventHorizon } from '@anyko/ui/brand';
 
 // Состояния загрузки и недоступности сервера для разделов рабочей области и корневых маршрутов.
 export function WorkspaceLoading() {

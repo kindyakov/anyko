@@ -11,12 +11,15 @@ import {
   getWorkDocumentImage,
   getWorkDocumentSource,
 } from '@anyko/contracts/works';
+import {
+  Button,
+  buttonStyles,
+  Modal,
+  Notice,
+  SegmentedControl,
+  Skeleton,
+} from '@anyko/ui';
 
-import { Button, buttonStyles } from '@/components/ui/button';
-import { Modal } from '@/components/ui/modal';
-import { SegmentedControl } from '@/components/ui/segmented-control';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Notice } from '@/components/ui/status';
 import {
   type DocumentOwner,
   documentResultQueryOptions,

@@ -110,7 +110,9 @@ module.exports = {
       name: 'ui-no-business',
       severity: 'error',
       from: { path: '^packages/ui/' },
-      to: { path: '^packages/(backend|database|contracts|llm)/' },
+      to: {
+        path: '^(?:packages/(?:backend|database|contracts|llm)/|apps/web/src/(?:features|lib/api)/)',
+      },
     },
     {
       name: 'domain-no-infrastructure',

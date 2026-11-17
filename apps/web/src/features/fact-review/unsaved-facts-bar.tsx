@@ -1,7 +1,7 @@
 'use client';
 import { Save, Undo2 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@anyko/ui';
 
 import type { FactsForm } from './facts-form';
 import { conflictSummary } from './model/facts-messages';

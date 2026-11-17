@@ -75,6 +75,13 @@ export function createWorkStore(db: Connection): WorkStore {
         deleted: document.deletedAt !== null,
       }));
     },
+    async workForDocument(workspaceId, documentId) {
+      const row = await db.workDocument.findFirst({
+        where: { workspaceId, documentId },
+        select: { workId: true },
+      });
+      return row?.workId ?? null;
+    },
     async touch(workspaceId, id, input) {
       const row = await db.work.findFirstOrThrow({
         where: { workspaceId, id },

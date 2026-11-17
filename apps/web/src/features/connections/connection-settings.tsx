@@ -6,17 +6,15 @@ import { useState } from 'react';
 import { z } from 'zod';
 
 import { llmSettingsResponseSchema } from '@anyko/contracts/connections';
-
+import { Input, Notice, Skeleton, StatusPill } from '@anyko/ui';
 import {
   FormErrorNotice,
   FormRoot,
   useAppForm,
   useFormSelector,
   useUnsavedChangesWarning,
-} from '@/components/ui/form';
-import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Notice, StatusPill } from '@/components/ui/status';
+} from '@anyko/ui/form';
+
 import { useSaveLlmSettings } from '@/features/connections/api/mutations';
 import { llmSettingsQueryOptions } from '@/features/connections/api/queries';
 import { sharedCodeTexts } from '@/lib/api/errors';

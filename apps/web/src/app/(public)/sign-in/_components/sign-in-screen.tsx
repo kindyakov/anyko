@@ -4,9 +4,10 @@ import { Pause, Play } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import { Logo } from '@/components/brand/logo';
-import { CosmicBackground } from '@/components/cosmos/cosmic-background';
-import { Button } from '@/components/ui/button';
+import { Button } from '@anyko/ui';
+import { CosmicBackground } from '@anyko/ui/brand';
+
+import { LogoLink } from '@/app/_components/logo-link';
 import { SignIn } from '@/features/auth';
 import { routes, safeNextPath } from '@/lib/routes';
 
@@ -18,7 +19,7 @@ export function SignInScreen({ next }: { next: string | undefined }) {
     <div className="dark relative isolate min-h-dvh bg-black text-white">
       <CosmicBackground paused={motionPaused} />
       <header className="relative z-10 flex flex-wrap items-center justify-between gap-3 px-6 py-5 sm:px-10 lg:px-12 lg:py-8">
-        <Logo href={routes.home()} />
+        <LogoLink href={routes.home()} />
         <Button
           variant="secondary"
           size="icon"

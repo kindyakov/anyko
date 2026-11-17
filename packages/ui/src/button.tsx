@@ -1,7 +1,7 @@
 'use client';
 import { Button as Primitive } from '@base-ui/react/button';
 
-import { Spinner } from '@/components/ui/spinner';
+import { Spinner } from './spinner';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'xs' | 'sm' | 'md' | 'lg' | 'icon' | 'icon-sm';

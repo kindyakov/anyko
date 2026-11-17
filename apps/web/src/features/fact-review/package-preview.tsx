@@ -20,9 +20,7 @@ import {
   type PreviewParagraph,
   type PreviewRow,
 } from '@anyko/contracts/catalog';
-
-import { Button } from '@/components/ui/button';
-import { Disclosure } from '@/components/ui/disclosure';
+import { Button, Disclosure } from '@anyko/ui';
 
 import { FieldEditor, TextSlot } from './work-fields';
 

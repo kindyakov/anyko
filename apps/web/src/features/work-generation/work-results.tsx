@@ -8,14 +8,19 @@ import {
 } from 'lucide-react';
 
 import { downloadGeneratedFile, type WorkView } from '@anyko/contracts/works';
+import {
+  Button,
+  buttonStyles,
+  Disclosure,
+  Notice,
+  RelativeTime,
+  Spinner,
+  stagger,
+  StatusPill,
+  type Tone,
+} from '@anyko/ui';
+import { EventHorizon } from '@anyko/ui/brand';
 
-import { EventHorizon } from '@/components/cosmos/event-horizon';
-import { Button, buttonStyles } from '@/components/ui/button';
-import { Disclosure } from '@/components/ui/disclosure';
-import { RelativeTime } from '@/components/ui/relative-time';
-import { Spinner } from '@/components/ui/spinner';
-import { stagger } from '@/components/ui/stagger';
-import { Notice, StatusPill, type Tone } from '@/components/ui/status';
 import { endpointUrl } from '@/lib/api/call';
 import { useWorkspaceId } from '@/lib/api/workspace';
 

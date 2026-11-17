@@ -87,3 +87,22 @@ jobs:
           bun -e "import { createDatabasePool } from '@anyko/database'; const pool = createDatabasePool(process.env.TEST_DATABASE_URL); await pool.query('CREATE DATABASE anyko_e2e'); await pool.end();"
           bun run test:e2e:config
           bun run test:e2e:integration
+      - name: Browser E2E
+        env:
+          E2E_DATABASE_URL: postgresql://anyko_test:anyko_test@127.0.0.1:5432/anyko_e2e
+          E2E_REDIS_URL: redis://127.0.0.1:16379
+          E2E_OWNER_EMAIL: owner@example.test
+          E2E_OWNER_PASSWORD: owner-fixture-password
+          E2E_MEMBER_EMAIL: member@example.test
+          E2E_MEMBER_PASSWORD: member-fixture-password
+          E2E_OUTSIDER_EMAIL: outsider@example.test
+          E2E_OUTSIDER_PASSWORD: outsider-fixture-password
+          E2E_PROCESSING_DELAY_MS: 300
+          API_PORT: 3031
+          APP_ORIGIN: http://127.0.0.1:3030
+          AUTH_BASE_URL: http://127.0.0.1:3031
+          AUTH_SECRET: e2e-fixture-auth-secret-not-for-production
+          LLM_CONFIG_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        run: |
+          node node_modules/@playwright/test/cli.js install --with-deps chromium
+          bun run test:e2e

@@ -255,6 +255,70 @@ test('outbox survives before worker start; real queue publishes result and retry
   }
 }, 15000);
 
+test('a failed work notification rolls back the OCR claim and attempt', async () => {
+  const own = await workspace();
+  const doc = await upload(own);
+  const run = await db.processingRun.findFirstOrThrow({
+    where: { workspaceId: own, documentId: doc.id },
+  });
+  const store = createProcessingStore(db, () =>
+    Promise.reject(new Error('WORK_EVENT_FAILED')),
+  );
+  await expectRejected(
+    store.claim(
+      run.id,
+      own,
+      'event-failure-attempt',
+      new Date(Date.now() + 60000),
+    ),
+  );
+  const saved = await db.processingRun.findUniqueOrThrow({
+    where: { id: run.id },
+  });
+  expect(saved.status).toBe('queued');
+  expect(saved.attempts).toBe(0);
+  expect(
+    await db.processorAttempt.count({
+      where: { workspaceId: own, documentId: doc.id },
+    }),
+  ).toBe(0);
+  await db.processingOutbox.deleteMany({
+    where: { workspaceId: own, runId: run.id },
+  });
+});
+
+test('recovery notifies the work when an expired final OCR attempt fails', async () => {
+  const own = await workspace();
+  const doc = await upload(own);
+  const run = await db.processingRun.findFirstOrThrow({
+    where: { workspaceId: own, documentId: doc.id },
+  });
+  await db.processingRun.update({
+    where: { id: run.id },
+    data: {
+      status: 'running',
+      attempts: 3,
+      attemptToken: crypto.randomUUID(),
+      leaseUntil: new Date(Date.now() - 60000),
+    },
+  });
+  const notifications: string[] = [];
+  const store = createProcessingStore(db, (_tx, workspaceId, documentId) => {
+    notifications.push(`${workspaceId}:${documentId}`);
+    return Promise.resolve();
+  });
+  await store.reconcile();
+  const saved = await db.processingRun.findUniqueOrThrow({
+    where: { id: run.id },
+  });
+  expect(saved.status).toBe('failed');
+  expect(saved.errorCode).toBe('ATTEMPTS_EXHAUSTED');
+  expect(notifications).toContain(`${own}:${doc.id}`);
+  await db.processingOutbox.deleteMany({
+    where: { workspaceId: own, runId: run.id },
+  });
+});
+
 test('expired attempt cannot publish after a new claim; database rejects impossible state', async () => {
   const own = await workspace();
   const doc = await upload(own);

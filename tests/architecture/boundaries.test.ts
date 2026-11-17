@@ -117,6 +117,11 @@ const cases = [
   ],
   ['ui-no-business', 'packages/ui/index.ts', '../contracts/index.ts'],
   [
+    'ui-no-business',
+    'packages/ui/src/form/example.ts',
+    '../../../../apps/web/src/lib/api/client.ts',
+  ],
+  [
     'modules-no-workflows',
     'packages/backend/src/modules/facts/index.ts',
     '../../workflows/index.ts',

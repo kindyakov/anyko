@@ -1,7 +1,5 @@
-import {
-  type ServerErrorTarget,
-  setServerErrors,
-} from '@/components/ui/form/server-errors';
+import { type ServerErrorTarget, setServerErrors } from '@anyko/ui/form';
+
 import {
   ApiError,
   type ApiErrorTexts,

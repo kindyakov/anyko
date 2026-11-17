@@ -2,7 +2,8 @@
 import { LogOut } from 'lucide-react';
 import { useState } from 'react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@anyko/ui';
+
 import { routes } from '@/lib/routes';
 
 export function SignOut() {

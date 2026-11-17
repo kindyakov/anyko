@@ -6,7 +6,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from '@anyko/ui';
+
 import type { StepKey, WorkStage } from '@/features/works';
 
 // Блок «Сейчас»: что происходит с работой и какой следующий шаг предложить.

@@ -11,12 +11,9 @@ import { useState } from 'react';
 
 import { type FieldKey, type FieldValue } from '@anyko/contracts/catalog';
 import { type WorkView } from '@anyko/contracts/works';
+import { Button, SegmentedControl, stagger, StatusPill } from '@anyko/ui';
+import { EventHorizon } from '@anyko/ui/brand';
 
-import { EventHorizon } from '@/components/cosmos/event-horizon';
-import { Button } from '@/components/ui/button';
-import { SegmentedControl } from '@/components/ui/segmented-control';
-import { stagger } from '@/components/ui/stagger';
-import { StatusPill } from '@/components/ui/status';
 import { conflictingFields } from '@/features/works';
 
 import type { FactsForm } from './facts-form';

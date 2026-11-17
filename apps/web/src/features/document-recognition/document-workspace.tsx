@@ -4,16 +4,20 @@ import { Eye, RefreshCw, RotateCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { type DocumentSummary } from '@anyko/contracts/documents';
+import {
+  Button,
+  Confirm,
+  FileIcon,
+  HoverMist,
+  Notice,
+  RelativeTime,
+  Skeleton,
+  stagger,
+  StatusPill,
+  type Tone,
+} from '@anyko/ui';
+import { DropZone } from '@anyko/ui/brand';
 
-import { Button } from '@/components/ui/button';
-import { Confirm } from '@/components/ui/confirm';
-import { DropZone } from '@/components/ui/drop-zone';
-import { FileIcon } from '@/components/ui/file-icon';
-import { HoverMist } from '@/components/ui/hover-mist';
-import { RelativeTime } from '@/components/ui/relative-time';
-import { Skeleton } from '@/components/ui/skeleton';
-import { stagger } from '@/components/ui/stagger';
-import { Notice, StatusPill, type Tone } from '@/components/ui/status';
 import {
   DocumentViewer,
   type ViewedDocument,

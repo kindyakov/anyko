@@ -5,11 +5,9 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 import { type WorkView } from '@anyko/contracts/works';
+import { Button, Notice, Skeleton, StatusPill } from '@anyko/ui';
+import { EventHorizon } from '@anyko/ui/brand';
 
-import { EventHorizon } from '@/components/cosmos/event-horizon';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Notice, StatusPill } from '@/components/ui/status';
 import {
   DocumentViewer,
   type ViewedDocument,

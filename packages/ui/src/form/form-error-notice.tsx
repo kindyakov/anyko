@@ -2,7 +2,7 @@
 import type { AnyFormApi } from '@tanstack/react-form';
 import { useSelector } from '@tanstack/react-form';
 
-import { Notice } from '@/components/ui/status';
+import { Notice } from '../status';
 
 // Общая ошибка формы из серверного ключа `onServer`. Выводится там, где нужна разметкой страницы.
 export function FormErrorNotice({ form }: { form: AnyFormApi }) {

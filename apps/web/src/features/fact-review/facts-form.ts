@@ -9,12 +9,12 @@ import {
   type FieldValues,
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
-
 import {
   useAppForm,
   useFormSelector,
   useUnsavedChangesWarning,
-} from '@/components/ui/form';
+} from '@anyko/ui/form';
+
 import { invalidateWork, useSaveFacts } from '@/features/works';
 import { ApiError, isUnauthorized } from '@/lib/api/errors';
 import { useWorkspaceId } from '@/lib/api/workspace';

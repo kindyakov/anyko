@@ -1,12 +1,38 @@
 import eslintComments from '@eslint-community/eslint-plugin-eslint-comments';
 
 import base from '@anyko/eslint-config/base';
-import frontend, { frontendTests } from '@anyko/eslint-config/frontend';
+import frontend, {
+  frontendLibrary,
+  frontendTests,
+} from '@anyko/eslint-config/frontend';
 
 import {
   architectureRules,
   restrictedIoGlobals,
 } from './packages/eslint-config/architecture.js';
+
+const browserStorageMessage =
+  'Браузерное хранилище запрещено в features и @anyko/ui: черновик живёт в памяти формы, серверные данные в TanStack Query, клиентские настройки в Zustand без persist.';
+
+const browserStorageRules = {
+  'no-restricted-globals': [
+    'error',
+    ...['localStorage', 'sessionStorage', 'indexedDB'].map((name) => ({
+      name,
+      message: browserStorageMessage,
+    })),
+  ],
+  'no-restricted-properties': [
+    'error',
+    ...['localStorage', 'sessionStorage', 'indexedDB'].flatMap((property) =>
+      ['window', 'globalThis'].map((object) => ({
+        object,
+        property,
+        message: browserStorageMessage,
+      })),
+    ),
+  ],
+};
 
 export default [
   {
@@ -114,6 +140,11 @@ export default [
     ...config,
     files: ['apps/web/**/*.{ts,tsx}'],
   })),
+  // packages/ui: React-правила без Next; браузерное хранилище запрещено так же, как в features.
+  ...frontendLibrary.map((config) => ({
+    ...config,
+    files: ['packages/ui/**/*.{ts,tsx}'],
+  })),
   {
     ...frontendTests,
     files: ['apps/web/**/*.test.{ts,tsx}'],
@@ -121,6 +152,7 @@ export default [
   {
     files: ['apps/web/src/features/**/*.{ts,tsx}'],
     rules: {
+      ...browserStorageRules,
       'no-restricted-imports': [
         'error',
         {
@@ -138,26 +170,11 @@ export default [
           ],
         },
       ],
-      'no-restricted-globals': [
-        'error',
-        ...['localStorage', 'sessionStorage', 'indexedDB'].map((name) => ({
-          name,
-          message:
-            'Браузерное хранилище запрещено в features: черновик живёт в памяти формы, серверные данные в TanStack Query, клиентские настройки в Zustand без persist.',
-        })),
-      ],
-      'no-restricted-properties': [
-        'error',
-        ...['localStorage', 'sessionStorage', 'indexedDB'].flatMap((property) =>
-          ['window', 'globalThis'].map((object) => ({
-            object,
-            property,
-            message:
-              'Браузерное хранилище запрещено в features: черновик живёт в памяти формы, серверные данные в TanStack Query, клиентские настройки в Zustand без persist.',
-          })),
-        ),
-      ],
     },
+  },
+  {
+    files: ['packages/ui/**/*.{ts,tsx}'],
+    rules: browserStorageRules,
   },
   {
     files: ['**/*.{js,mjs,cjs,ts,tsx}'],

@@ -6,10 +6,10 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { type ReactNode, useEffect } from 'react';
 
 import type { Session } from '@anyko/contracts/session';
+import { buttonStyles } from '@anyko/ui';
+import { DeepSkyBackdrop } from '@anyko/ui/brand';
 
-import { Logo } from '@/components/brand/logo';
-import { DeepSkyBackdrop } from '@/components/cosmos/deep-sky-backdrop';
-import { buttonStyles } from '@/components/ui/button';
+import { LogoLink } from '@/app/_components/logo-link';
 import { SignOut } from '@/features/auth';
 import { sessionQueryOptions } from '@/lib/api/session';
 import { useCan, useMembership, useWorkspaceId } from '@/lib/api/workspace';
@@ -81,7 +81,7 @@ function ShellFrame({
       </a>
       <aside className="sticky top-0 z-30 border-b border-white/[0.06] bg-black/60 backdrop-blur-xl md:flex md:h-dvh md:flex-col md:border-r md:border-b-0 md:bg-black/30">
         <div className="flex h-16 items-center justify-between gap-3 px-4 md:h-24 md:px-6">
-          <Logo href={routes.works(workspace)} />
+          <LogoLink href={routes.works(workspace)} />
           <div className="flex items-center gap-1 md:hidden">
             {settingsLink}
             <SignOut />

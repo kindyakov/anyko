@@ -1,5 +1,5 @@
-import { createGalaxyRenderer } from '@/components/cosmos/galaxy';
-import { createLensedSky } from '@/components/cosmos/lensed-sky';
+import { createGalaxyRenderer } from './galaxy';
+import { createLensedSky } from './lensed-sky';
 
 // Canvas gas emission over a ray-bent WebGL sky.
 export function startBlackHole(

@@ -3,8 +3,9 @@ import { Input } from '@base-ui/react/input';
 import { FileText, ImageIcon, Upload } from 'lucide-react';
 import { type DragEvent, useEffect, useRef, useState } from 'react';
 
-import { EventHorizon } from '@/components/cosmos/event-horizon';
-import { Button } from '@/components/ui/button';
+import { Button } from '../button';
+
+import { EventHorizon } from './event-horizon';
 
 // Start offsets of files falling into the horizon; reused cyclically.
 const orbits = [

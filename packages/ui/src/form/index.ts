@@ -3,4 +3,4 @@ export { FormRoot } from './form-root';
 export { useAppForm } from './use-app-form';
 export { useFormSelector } from './use-form-selector';
 export { useUnsavedChangesWarning } from './use-unsaved-changes-warning';
-export { setServerErrors } from './server-errors';
+export { type ServerErrorTarget, setServerErrors } from './server-errors';

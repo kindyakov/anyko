@@ -22,3 +22,10 @@ export default [
 ];
 
 export const frontendTests = testingLibrary.configs['flat/react'];
+
+// Правила для packages/ui: библиотека не знает о Next, поэтому без core-web-vitals.
+export const frontendLibrary = [
+  ...base,
+  reactHooks.configs.flat['recommended-latest'],
+  jsxA11y.configs.recommended,
+];

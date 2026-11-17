@@ -23,10 +23,12 @@ function focusFirstInvalid(root: HTMLElement | null) {
 export function FormRoot({
   form,
   className,
+  method,
   children,
 }: {
   form: AnyFormApi & { AppForm: ComponentType<{ children?: ReactNode }> };
   className?: string;
+  method?: 'post';
   children: ReactNode;
 }) {
   const ref = useRef<HTMLFormElement>(null);
@@ -36,6 +38,7 @@ export function FormRoot({
       <form
         ref={ref}
         noValidate
+        method={method}
         className={className}
         onSubmit={(event) => {
           event.preventDefault();

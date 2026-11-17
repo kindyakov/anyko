@@ -52,6 +52,10 @@ export interface WorkStore {
     documentId: string,
   ): Promise<void>;
   documents(workspaceId: string, workId: string): Promise<WorkSourceRow[]>;
+  workForDocument(
+    workspaceId: string,
+    documentId: string,
+  ): Promise<string | null>;
   touch(
     workspaceId: string,
     workId: string,
@@ -125,7 +129,13 @@ export interface WorksPorts {
   // Внутренний порт исполнения (worker и процессы после проверки права): ревизия, события, очистка.
   readonly internal: Pick<
     WorkStore,
-    'get' | 'documents' | 'dirty' | 'touch' | 'event' | 'detachDeleted'
+    | 'get'
+    | 'documents'
+    | 'workForDocument'
+    | 'dirty'
+    | 'touch'
+    | 'event'
+    | 'detachDeleted'
   >;
 }
 

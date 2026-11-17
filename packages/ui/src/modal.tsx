@@ -3,7 +3,7 @@ import { Dialog } from '@base-ui/react/dialog';
 import { X } from 'lucide-react';
 import type { ReactNode, RefObject } from 'react';
 
-import { Button } from '@/components/ui/button';
+import { Button } from './button';
 
 const backdrop =
   'fixed inset-0 z-40 bg-black/70 backdrop-blur-sm transition-opacity duration-300 data-ending-style:opacity-0 data-starting-style:opacity-0';
