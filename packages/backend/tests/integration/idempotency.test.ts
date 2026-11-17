@@ -5,9 +5,11 @@ import { createLogger } from '@anyko/logger';
 
 import {
   createIdempotency,
+  createIdempotencyMaintenance,
   fingerprintInput,
   IdempotencyFailure,
 } from '../../src/modules/idempotency';
+import { createIdempotencyMaintenanceStore } from '../../src/modules/idempotency/infrastructure/maintenance-store';
 import { createIdempotencyStore } from '../../src/modules/idempotency/infrastructure/store';
 import type { Clock } from '../../src/platform/clock';
 
@@ -266,4 +268,77 @@ test('a capture left by a crashed process is taken over after its lease expires'
   } finally {
     current = start;
   }
+});
+
+test('retention cleanup batches expired keys and preserves fresh and actively claimed keys', async () => {
+  const workspaceId = await workspace();
+  const now = new Date('2026-11-18T10:00:00.000Z');
+  const old = new Date(now.getTime() - 25 * 3600000);
+  const expired = new Date(now.getTime() - 3600000);
+  const future = new Date(now.getTime() + 3600000);
+  const expiredKeys = Array.from({ length: 105 }, () => crypto.randomUUID());
+  const fresh = crypto.randomUUID();
+  const claimed = crypto.randomUUID();
+  await db.idempotencyKey.createMany({
+    data: [
+      ...expiredKeys.map((key) => ({
+        workspaceId,
+        command,
+        key,
+        fingerprint: 'expired',
+        token: crypto.randomUUID(),
+        state: 'completed',
+        createdAt: old,
+        expiresAt: expired,
+        lockedUntil: old,
+      })),
+      {
+        workspaceId,
+        command,
+        key: fresh,
+        fingerprint: 'fresh',
+        token: crypto.randomUUID(),
+        state: 'completed',
+        createdAt: now,
+        expiresAt: future,
+        lockedUntil: now,
+      },
+      {
+        workspaceId,
+        command,
+        key: claimed,
+        fingerprint: 'claimed',
+        token: crypto.randomUUID(),
+        state: 'in_progress',
+        createdAt: old,
+        expiresAt: expired,
+        lockedUntil: future,
+      },
+    ],
+  });
+  const maintenance = createIdempotencyMaintenance({
+    store: createIdempotencyMaintenanceStore(db),
+    clock: { now: () => now },
+  });
+  await Promise.all([
+    maintenance.internal.cleanup(new AbortController().signal),
+    maintenance.internal.cleanup(new AbortController().signal),
+  ]);
+  expect(
+    await db.idempotencyKey.count({
+      where: { workspaceId, key: { in: expiredKeys } },
+    }),
+  ).toBe(0);
+  expect(
+    (
+      await db.idempotencyKey.findMany({
+        where: { workspaceId },
+        select: { key: true },
+      })
+    )
+      .map((row) => row.key)
+      .sort(),
+  ).toEqual([fresh, claimed].sort());
+  await maintenance.internal.cleanup(new AbortController().signal);
+  expect(await db.idempotencyKey.count({ where: { workspaceId } })).toBe(2);
 });

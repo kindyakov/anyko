@@ -40,7 +40,12 @@ import {
   generationStoreFor,
 } from '../modules/generation/infrastructure/store';
 import { createGenerationModule } from '../modules/generation/module';
-import { createIdempotency, type IdempotencyApi } from '../modules/idempotency';
+import {
+  createIdempotency,
+  createIdempotencyMaintenance,
+  type IdempotencyApi,
+} from '../modules/idempotency';
+import { createIdempotencyMaintenanceStore } from '../modules/idempotency/infrastructure/maintenance-store';
 import { createIdempotencyStore } from '../modules/idempotency/infrastructure/store';
 import {
   createJobProcessing,
@@ -388,16 +393,6 @@ export function createBackend(
   const jobProcessing = createJobProcessing(createJobRunReader(db));
   const executeWork = createWorkExecution(work);
   const cleanupWork = createWorkCleanup(work);
-  const maintain = async () => {
-    await deleteDocuments();
-    const before = new Date(systemClock.now().getTime() - 3600000);
-    await documentDeps.cleanupSources(before);
-    for (const artifact of await processing.orphanResults(before)) {
-      await storage.delete(artifact.key);
-      await processing.forgetResult(artifact.key);
-    }
-    await cleanupWork();
-  };
   return {
     role: 'worker',
     ready,
@@ -426,12 +421,17 @@ export function createBackend(
         },
         execute: (scope, signal) =>
           executeWork(scope.workspaceId, scope.runId, signal),
-        maintain,
+        maintain: cleanupWork,
+        documents: documentDeps,
+        idempotency: createIdempotencyMaintenance({
+          store: createIdempotencyMaintenanceStore(db),
+          clock: systemClock,
+        }),
         ocrTimeoutMs: worker.mineru.timeoutMs + 60000,
       }),
       deliveries: [
         {
-          reserve: processing.reserveDelivery,
+          reserve: () => processing.reserveDelivery(),
           describe: (item) =>
             jobProcessing.internal.read(
               item.workspaceId,
@@ -442,11 +442,12 @@ export function createBackend(
           release: processing.releaseDelivery,
         },
         {
-          reserve: processingFacade.internal.delivery,
+          reserve: () => processingFacade.internal.delivery(),
           describe: (item) =>
             jobProcessing.internal.read(item.workspaceId, item.runId, 'work'),
-          delivered: processingFacade.internal.delivered,
-          release: processingFacade.internal.release,
+          delivered: (id, token) =>
+            processingFacade.internal.delivered(id, token),
+          release: (id, token) => processingFacade.internal.release(id, token),
         },
       ],
       reconcile: async () => {

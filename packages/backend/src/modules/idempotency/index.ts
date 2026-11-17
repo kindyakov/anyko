@@ -11,3 +11,6 @@ export type {
   IdempotencyStore,
   StoredResponse,
 } from './application/ports';
+
+export { createIdempotencyMaintenance } from './maintenance';
+export { idempotencyCleanupJob } from './jobs';
