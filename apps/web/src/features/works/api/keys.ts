@@ -6,6 +6,8 @@ export const workKeys = {
     [...workKeys.all(workspaceId), 'list'] as const,
   detail: (workspaceId: string, id: string) =>
     [...workKeys.all(workspaceId), 'detail', id] as const,
+  deletion: (workspaceId: string, id: string | undefined) =>
+    [...workKeys.all(workspaceId), 'deletion', id] as const,
 };
 
 export const documentPackageKeys = {

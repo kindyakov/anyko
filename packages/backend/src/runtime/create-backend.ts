@@ -51,7 +51,6 @@ import {
   type IdempotencyApi,
 } from '../modules/idempotency';
 import { createIdempotencyMaintenanceStore } from '../modules/idempotency/infrastructure/maintenance-store';
-import { createIdempotencyStore } from '../modules/idempotency/infrastructure/store';
 import {
   createJobProcessing,
   createProcessingService,
@@ -88,7 +87,11 @@ import {
   type WorkGeneration,
 } from '../workflows/work-generation';
 import { createWorkIntake, type WorkIntake } from '../workflows/work-intake';
-import { createWorkCleanup } from '../workflows/work-maintenance';
+import {
+  createWorkCleanup,
+  createWorkDeletionApi,
+  type WorkDeletionApi,
+} from '../workflows/work-maintenance';
 import { createWorkReview, type WorkReview } from '../workflows/work-review';
 import { createWorkView, type WorkViews } from '../workflows/work-view';
 
@@ -100,9 +103,14 @@ import {
 import {
   createDocumentUnitOfWork,
   finishDocumentDeletion,
+  requestDocumentDeletion,
 } from './documents/unit-of-work';
 import { createJobRegistry } from './jobs';
 import { createUnitOfWork } from './transactions';
+import {
+  createResourceAwareIdempotencyStore,
+  redactDeletedWorkResponses,
+} from './works/idempotency';
 
 /**
  * Test seams: each one replaces an external client. Production passes nothing, so the
@@ -138,6 +146,7 @@ export interface ApiBackend {
     works: WorksModule;
     views: WorkViews;
     intake: WorkIntake;
+    deletion: WorkDeletionApi;
     review: WorkReview;
     generation: WorkGeneration;
     settings: ConnectionSettingsApi;
@@ -255,6 +264,7 @@ export function createBackend(
     storeFor: (tx) => agentSessionStoreFor(tx, uuidV7),
     model,
   });
+  const documentDeletions = createDeletionStore(db);
   const work: WorkDependencies = {
     newId: uuidV7,
     uow,
@@ -268,11 +278,7 @@ export function createBackend(
     locks,
     io,
     assertNoDocumentWriters: (workspaceId, documentId, requestKey) =>
-      createDeletionStore(db).assertNoWriters(
-        workspaceId,
-        documentId,
-        requestKey,
-      ),
+      documentDeletions.assertNoWriters(workspaceId, documentId, requestKey),
     storage,
     logger,
   };
@@ -314,7 +320,7 @@ export function createBackend(
       origin: auth.origin,
     });
     const idempotency = createIdempotency({
-      store: createIdempotencyStore(db),
+      store: createResourceAwareIdempotencyStore(db, uow),
       clock: systemClock,
       newToken: uuidV7,
       logger,
@@ -344,6 +350,16 @@ export function createBackend(
         works,
         views: createWorkView(workflows),
         intake: createWorkIntake(workflows),
+        deletion: createWorkDeletionApi({
+          works,
+          processing: processingFacade,
+          locks,
+          uow,
+          clock: systemClock,
+          audit,
+          removeDocument: requestDocumentDeletion,
+          redactResponses: redactDeletedWorkResponses,
+        }),
         review: createWorkReview(workflows),
         generation: createWorkGeneration(workflows),
         settings: { ...connections.queries, ...connections.commands },
@@ -381,7 +397,7 @@ export function createBackend(
     },
   );
   const deleteDocuments = createDocumentDeletionWorkflow({
-    ...createDeletionStore(db),
+    ...documentDeletions,
     resultKeys: processing.resultKeys,
     attemptIds: processing.attemptIds,
     eraseAttempt: (id) => parser.eraseAttempt(id),
@@ -410,7 +426,11 @@ export function createBackend(
   };
   const jobProcessing = createJobProcessing(createJobRunReader(db));
   const executeWork = createWorkExecution(work);
-  const cleanupWork = createWorkCleanup(work);
+  const cleanupWork = createWorkCleanup(work, {
+    clock: systemClock,
+    sourcesDeleted: (workspaceId, ids) =>
+      documentDeletions.completed(workspaceId, ids),
+  });
   const registry = createJobRegistry({
     processing: jobProcessing,
     ocr: async (scope, signal) => {

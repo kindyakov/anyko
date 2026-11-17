@@ -109,9 +109,28 @@ export const workResponseSchema = z.object({
   cleanupPending: z.boolean(),
 });
 export type WorkView = z.infer<typeof workResponseSchema>;
+export const workListStatusSchema = z.enum(['all', 'draft', 'confirmed']);
+export type WorkListStatus = z.infer<typeof workListStatusSchema>;
+export const workPageSizes = [6, 12, 24, 48] as const;
+export const defaultWorkPageSize = 24;
+export const workPageSizeSchema = z.literal(workPageSizes);
+const workDeletionStatus = z.enum(['deleting', 'needs-recovery']);
+export const workDeletionResponseSchema = z.object({
+  status: z.union([workDeletionStatus, z.literal('deleted')]),
+});
 export const worksResponseSchema = z.object({
   works: z.array(workSummarySchema),
   nextCursor: z.uuid().nullable().default(null),
+  pagination: z
+    .object({
+      page: z.int().positive(),
+      pageSize: z.int().positive(),
+      total: z.int().nonnegative(),
+    })
+    .optional(),
+  deletions: z
+    .array(z.object({ id: z.uuid(), status: workDeletionStatus }))
+    .optional(),
 });
 export type WorkPage = z.infer<typeof worksResponseSchema>;
 export const createWorkSchema = z

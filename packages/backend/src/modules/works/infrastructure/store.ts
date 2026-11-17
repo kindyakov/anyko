@@ -4,12 +4,19 @@ import { workSummarySchema } from '..';
 import type { WorkStore } from '..';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
 
-type Connection = Pick<Database, 'work' | 'workDocument' | 'workEvent'>;
+import { createWorkDeletionStore } from './deletion-store';
+
+type Connection = Pick<
+  Database,
+  'work' | 'workDocument' | 'workEvent' | 'workDeletion'
+>;
 // Хранилище внутри транзакции действия: токен превращается в клиент транзакции драйвера.
 export function worksStoreFor(tx: Tx): WorkStore {
   return createWorkStore(transactionHandle<Connection>(tx));
 }
-export function createWorkStore(db: Connection): WorkStore {
+export function createWorkStore(
+  db: Connection & Partial<Pick<Database, '$transaction'>>,
+): WorkStore {
   const summary = (row: {
     id: string;
     title: string;
@@ -26,18 +33,67 @@ export function createWorkStore(db: Connection): WorkStore {
       updatedAt: row.updatedAt.toISOString(),
     });
   return {
+    ...createWorkDeletionStore(db),
     async list(workspaceId, after) {
       return (
         await db.work.findMany({
-          where: { workspaceId },
+          where: { workspaceId, deletedAt: null },
           orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
           take: 51,
           ...(after ? { cursor: { id: after }, skip: 1 } : {}),
         })
       ).map(summary);
     },
+    async search(workspaceId, { q, status, page, pageSize }) {
+      const revision = db.work.fields.revision;
+      const where = {
+        workspaceId,
+        deletedAt: null,
+        ...(q
+          ? {
+              title: {
+                contains: q.replace(/[\\%_]/g, '\\$&'),
+                mode: 'insensitive' as const,
+              },
+            }
+          : {}),
+        ...(status === 'confirmed'
+          ? { confirmedRevision: { equals: revision } }
+          : {}),
+        ...(status === 'draft'
+          ? {
+              OR: [
+                { confirmedRevision: null },
+                { NOT: { confirmedRevision: { equals: revision } } },
+              ],
+            }
+          : {}),
+      };
+      const read = async (tx: Connection) => {
+        const total = await tx.work.count({ where });
+        const current = Math.min(
+          page,
+          Math.max(1, Math.ceil(total / pageSize)),
+        );
+        const rows = await tx.work.findMany({
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: (current - 1) * pageSize,
+          take: pageSize,
+        });
+        return {
+          works: rows.map(summary),
+          pagination: { page: current, pageSize, total },
+        };
+      };
+      return db.$transaction
+        ? db.$transaction(read, { isolationLevel: 'RepeatableRead' })
+        : read(db);
+    },
     async get(workspaceId, id) {
-      const row = await db.work.findFirst({ where: { workspaceId, id } });
+      const row = await db.work.findFirst({
+        where: { workspaceId, id, deletedAt: null },
+      });
       return row ? summary(row) : null;
     },
     async create(input) {
@@ -121,6 +177,7 @@ export function createWorkStore(db: Connection): WorkStore {
       return db.work
         .findMany({
           where: {
+            deletedAt: null,
             documents: { some: { document: { deletedAt: { not: null } } } },
           },
           select: { workspaceId: true, id: true },

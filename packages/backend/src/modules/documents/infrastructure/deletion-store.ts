@@ -2,6 +2,13 @@ import type { Database } from '@anyko/database';
 
 export function createDeletionStore(db: Database) {
   return {
+    async completed(workspaceId: string, ids: string[]) {
+      return (
+        (await db.documentDeletion.count({
+          where: { workspaceId, id: { in: ids }, completedAt: { not: null } },
+        })) === ids.length
+      );
+    },
     async assertNoWriters(
       workspaceId: string,
       documentId: string,

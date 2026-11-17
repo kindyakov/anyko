@@ -15,6 +15,7 @@ function store(calls: string[]): WorkStore {
   const unused = () => Promise.reject(new Error('UNUSED'));
   return {
     list: unused,
+    search: unused,
     get: unused,
     documents: unused,
     workForDocument: unused,
@@ -24,6 +25,12 @@ function store(calls: string[]): WorkStore {
     cursor: unused,
     dirty: unused,
     detachDeleted: unused,
+    deletion: unused,
+    requestDeletion: unused,
+    pendingDeletions: unused,
+    prepareDeletion: unused,
+    failDeletion: unused,
+    finishDeletion: unused,
     create(input) {
       calls.push(`create:${input.id}:${input.workspaceId}`);
       return Promise.resolve();

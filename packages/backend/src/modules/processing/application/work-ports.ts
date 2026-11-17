@@ -107,6 +107,7 @@ export interface WorkProcessingStore {
   ): Promise<StepOutput | null>;
   list(workspaceId: string, workId: string): Promise<WorkRuns>;
   reconcile(): Promise<void>;
+  cancel(workspaceId: string, workId: string): Promise<void>;
   erase(workspaceId: string, workId: string): Promise<void>;
   thread(workspaceId: string, workId: string, threadId: string): Promise<void>;
   threads(workspaceId: string, workId: string): Promise<string[]>;

@@ -1,8 +1,8 @@
 import { type Right, rightCatalog } from '../../../platform/scope';
 
-// Роли фиксированы в коде (ADR 0009): owner получает все права, member — все, кроме управления
-// подключениями и приглашения участников. Неизвестная роль не даёт прав.
+// Owner получает все права, member — права за вычетом действий владельца.
 const ownerOnlyRights: readonly Right[] = [
+  'works.delete',
   'connections.manage',
   'members.invite',
 ];

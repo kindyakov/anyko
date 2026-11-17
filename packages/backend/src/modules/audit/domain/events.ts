@@ -3,7 +3,7 @@
 // журнал не попадают, потому что произвольного объекта данных здесь нет.
 
 interface AuditTarget {
-  readonly kind: 'user' | 'workspace' | 'document' | 'generation';
+  readonly kind: 'user' | 'workspace' | 'document' | 'generation' | 'work';
   readonly id: string;
 }
 
@@ -32,6 +32,11 @@ type AuditEvent =
     }
   | {
       readonly action: 'documents.deleted';
+      readonly target: AuditTarget;
+      readonly data?: undefined;
+    }
+  | {
+      readonly action: 'works.deletion_requested';
       readonly target: AuditTarget;
       readonly data?: undefined;
     }

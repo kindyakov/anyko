@@ -30,6 +30,12 @@ const unusedWorkInternal: WorksPorts['internal'] = {
   touch: unused,
   event: unused,
   detachDeleted: unused,
+  deletion: unused,
+  requestDeletion: unused,
+  pendingDeletions: unused,
+  prepareDeletion: unused,
+  failDeletion: unused,
+  finishDeletion: unused,
 };
 const unusedFactsInternal: FactsModule['internal'] = {
   get: unused,
@@ -59,6 +65,7 @@ function ports(calls: string[]): {
       },
       queries: {
         list: unused,
+        search: unused,
         find: () => Promise.resolve(work),
         sources: () =>
           Promise.resolve({ documents: [], cleanupPending: false }),

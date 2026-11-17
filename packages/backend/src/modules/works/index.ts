@@ -46,8 +46,32 @@ export interface WorkSourceRow {
   deleted: boolean;
 }
 
-export interface WorkStore {
+export interface WorkDeletion {
+  id: string;
+  workspaceId: string;
+  documentIds: string[];
+  preparedAt: Date | null;
+  completedAt: Date | null;
+  failedAt: Date | null;
+}
+
+export interface WorkDeletionStore {
+  deletion(workspaceId: string, workId: string): Promise<WorkDeletion | null>;
+  requestDeletion(
+    workspaceId: string,
+    workId: string,
+    documentIds: string[],
+    at: Date,
+  ): Promise<void>;
+  pendingDeletions(workspaceId?: string): Promise<WorkDeletion[]>;
+  prepareDeletion(workspaceId: string, workId: string, at: Date): Promise<void>;
+  failDeletion(workspaceId: string, workId: string, at: Date): Promise<void>;
+  finishDeletion(workspaceId: string, workId: string, at: Date): Promise<void>;
+}
+
+export interface WorkStore extends WorkDeletionStore {
   list(workspaceId: string, after?: string): Promise<WorkSummary[]>;
+  search(workspaceId: string, input: WorkSearch): Promise<WorkSearchPage>;
   get(workspaceId: string, workId: string): Promise<WorkSummary | null>;
   create(input: {
     id: string;
@@ -98,6 +122,18 @@ export interface WorkListPage {
   nextCursor: string | null;
 }
 
+export interface WorkSearch {
+  q: string;
+  status: 'all' | 'draft' | 'confirmed';
+  page: number;
+  pageSize: number;
+}
+
+export interface WorkSearchPage {
+  works: WorkSummary[];
+  pagination: { page: number; pageSize: number; total: number };
+}
+
 // Команды меняют данные работы. Право проверяет сама команда, если она сценарий владельца;
 // внутренние шаги (ревизия, событие) вызывает сценарий, который уже проверил право.
 export interface WorksCommands {
@@ -123,6 +159,7 @@ export interface WorksCommands {
 // внутренние: сценарий, который их вызывает, проверяет право сам.
 export interface WorksQueries {
   list(scope: WorkspaceScope, after?: string): Promise<WorkListPage>;
+  search(scope: WorkspaceScope, input: WorkSearch): Promise<WorkSearchPage>;
   find(scope: WorkspaceScope, workId: WorkId): Promise<WorkSummary | null>;
   sources(scope: WorkspaceScope, workId: WorkId): Promise<WorkSources>;
   cursor(scope: WorkspaceScope, workId: WorkId): Promise<string>;
@@ -146,7 +183,8 @@ export interface WorksPorts {
     | 'touch'
     | 'event'
     | 'detachDeleted'
-  >;
+  > &
+    WorkDeletionStore;
 }
 
 // Фасад модуля: те же команды и запросы внутри транзакции через in(tx).

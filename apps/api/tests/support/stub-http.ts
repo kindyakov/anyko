@@ -60,6 +60,12 @@ export function stubHttpOptions(): {
       touch: unused,
       event: unused,
       detachDeleted: unused,
+      deletion: unused,
+      requestDeletion: unused,
+      pendingDeletions: unused,
+      prepareDeletion: unused,
+      failDeletion: unused,
+      finishDeletion: unused,
     },
     commands: {
       create: unused,
@@ -69,6 +75,7 @@ export function stubHttpOptions(): {
     },
     queries: {
       list: unused,
+      search: unused,
       find: unused,
       sources: unused,
       cursor: unused,
@@ -116,6 +123,7 @@ export function stubHttpOptions(): {
       works,
       views,
       intake,
+      deletion: { request: unused, status: unused, pending: unused },
       review,
       generation,
       settings,

@@ -69,6 +69,7 @@ model AnykoWorkspace {
  deletions DocumentDeletion[]
  processingIo ProcessingIo[]
  works Work[]
+ workDeletions WorkDeletion[]
  llmSettings LlmSettings[]
  idempotencyKeys IdempotencyKey[]
  auditEvents AuditEvent[]
@@ -116,6 +117,7 @@ model Work {
  createdBy String
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
+ deletedAt DateTime?
  documents WorkDocument[]
  runs Run[]
  facts WorkFacts?
@@ -127,6 +129,20 @@ model Work {
  io ProcessingIo[]
  @@unique([workspaceId,id])
  @@index([workspaceId,updatedAt])
+ @@index([workspaceId,deletedAt,createdAt,id])
+}
+
+model WorkDeletion {
+ id String @id
+ workspaceId String
+ workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
+ documentIds String[] @default([])
+ createdAt DateTime @default(now())
+ preparedAt DateTime?
+ completedAt DateTime?
+ failedAt DateTime?
+ @@index([completedAt,failedAt,createdAt])
+ @@index([workspaceId,completedAt])
 }
 model WorkDocument {
  documentId String @id

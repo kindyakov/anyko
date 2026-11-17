@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import type { Database } from '@anyko/database';
 
+import { transactionHandle, type Tx } from '../../../platform/transactions';
 import type {
   AcquireInput,
   AcquireOutcome,
@@ -11,6 +12,26 @@ import type {
 } from '../application/ports';
 
 type Connection = Pick<Database, 'idempotencyKey' | '$executeRaw'>;
+
+export function idempotencyStoreFor(tx: Tx) {
+  return createIdempotencyStore(transactionHandle<Connection>(tx));
+}
+
+export async function redactResourceResponses(
+  tx: Tx,
+  workspaceId: string,
+  resources: { path: string[]; id: string }[],
+  response: { status: number; body: z.infer<typeof storedBodySchema> },
+) {
+  await transactionHandle<Connection>(tx).idempotencyKey.updateMany({
+    where: {
+      workspaceId,
+      state: 'completed',
+      OR: resources.map(({ path, id }) => ({ body: { path, equals: id } })),
+    },
+    data: { status: response.status, body: response.body },
+  });
+}
 
 // Тело хранится как JSON-объект; запись проверяет его форму и приводит к JSON так же, как ответ.
 const storedBodySchema = z.record(z.string(), z.json());

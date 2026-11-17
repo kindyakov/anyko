@@ -9,6 +9,7 @@ import {
   analyzeWork,
   confirmWork,
   createWork,
+  deleteWork,
   editWork,
 } from '@anyko/contracts/works';
 
@@ -51,6 +52,18 @@ export function useCreateWork(workspaceId: string) {
       }),
     onSuccess: () =>
       client.invalidateQueries({ queryKey: workKeys.list(workspaceId) }),
+  });
+}
+
+export function useDeleteWork(workspaceId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (workId: string) =>
+      callApi(deleteWork, { params: { workspaceId, workId } }),
+    onSuccess: (status, workId) => {
+      client.setQueryData(workKeys.deletion(workspaceId, workId), status);
+      return invalidateWork(client, workspaceId, workId);
+    },
   });
 }
 

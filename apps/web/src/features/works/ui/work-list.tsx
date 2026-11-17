@@ -1,17 +1,11 @@
 'use client';
-import { Field } from '@base-ui/react/field';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { ArrowRight, Plus, RotateCw, Search, X } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Plus, RotateCw, Search } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import {
-  Button,
-  Input,
-  Modal,
-  Notice,
-  SegmentedControl,
-  Skeleton,
-} from '@anyko/ui';
+import type { WorkPage } from '@anyko/contracts/works';
+import { Button, Modal, Notice, Skeleton } from '@anyko/ui';
 import { EventHorizon } from '@anyko/ui/brand';
 
 import { useCreateWork } from '@/features/works/api/mutations';
@@ -19,33 +13,69 @@ import {
   documentPackagesQueryOptions,
   worksQueryOptions,
 } from '@/features/works/api/queries';
-import { filterWorks } from '@/features/works/model/work-list';
-import { useListPreferences } from '@/features/works/ui/list-preferences';
+import {
+  readWorkListParams,
+  workListHref,
+  type WorkListParams,
+} from '@/features/works/model/work-list';
 import { CreateWorkForm } from '@/features/works/ui/list/create-work-form';
 import { Journey } from '@/features/works/ui/list/journey';
 import { WorkCard } from '@/features/works/ui/list/work-card';
+import { WorkDeletionDialog } from '@/features/works/ui/list/work-deletion-dialog';
+import { WorkListControls } from '@/features/works/ui/list/work-list-controls';
+import { WorkPagination } from '@/features/works/ui/list/work-pagination';
 import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 
 export function WorkList() {
   const titleRef = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
-  const { search, filter, setSearch, setFilter } = useListPreferences();
+  const [deleting, setDeleting] = useState<WorkPage['works'][number]>();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { page, pageSize, q, status, view } = readWorkListParams(searchParams);
   const workspaceId = useWorkspaceId();
   // Право только для отображения: без него создание не предлагается, а отказ даёт API.
   const canCreate = useCan('works.create');
-  const list = useInfiniteQuery({
-    ...worksQueryOptions(workspaceId),
+  const canDelete = useCan('works.delete');
+  const list = useQuery({
+    ...worksQueryOptions(workspaceId, { page, pageSize, q, status }),
     refetchOnMount: 'always',
   });
   const catalog = useQuery(documentPackagesQueryOptions(workspaceId));
   const create = useCreateWork(workspaceId);
-  const works = list.data?.pages.flatMap((page) => page.works) ?? [];
-  const visible = filterWorks(works, search, filter);
+  const works = list.data?.works ?? [];
+  const pagination = list.data?.pagination;
+  const pendingPage = list.isPending || list.isPlaceholderData;
+  const hasFilters = q !== '' || status !== 'all';
   const packages = catalog.data?.packages ?? [];
+  const change = useCallback(
+    (changes: Partial<WorkListParams>, mode: 'push' | 'replace' = 'push') => {
+      router[mode](
+        workListHref(workspaceId, {
+          page,
+          pageSize,
+          q,
+          status,
+          view,
+          ...changes,
+        }),
+        { scroll: false },
+      );
+    },
+    [router, workspaceId, page, pageSize, q, status, view],
+  );
+  useEffect(() => {
+    if (!list.isPlaceholderData && pagination && pagination.page !== page)
+      change({ page: pagination.page }, 'replace');
+  }, [pagination, page, change, list.isPlaceholderData]);
   const openCreate = () => {
     create.reset();
     setCreating(true);
   };
+  function navigatePage(next: number, size = pageSize) {
+    change({ page: next, pageSize: size });
+    window.scrollTo({ top: 0 });
+  }
   return (
     <>
       <header className="animate-rise mb-8 flex flex-wrap items-end justify-between gap-5 sm:mb-10">
@@ -68,52 +98,30 @@ export function WorkList() {
           </Button>
         )}
       </header>
-      {(list.isPending || works.length > 0) && (
-        <div className="animate-rise mb-6 flex flex-wrap items-center justify-between gap-3 [animation-delay:80ms]">
-          <SegmentedControl
-            label="Статус работы"
-            value={filter}
-            onValueChange={setFilter}
-            items={[
-              { value: 'all', label: 'Все', accessibleLabel: 'Все работы' },
-              { value: 'draft', label: 'В работе' },
-              { value: 'confirmed', label: 'Подтверждённые' },
-            ]}
-          />
-          <Field.Root className="relative w-full min-w-0 sm:w-80">
-            <Search
-              size={16}
-              className="text-muted pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2"
-            />
-            <Input
-              aria-label="Поиск по загруженным работам"
-              placeholder="Найти работу"
-              className="pr-11 pl-10"
-              value={search}
-              onChange={(event) => {
-                setSearch(event.target.value);
-              }}
-            />
-            {search && (
-              <span className="absolute top-1 right-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Очистить поиск"
-                  onClick={() => {
-                    setSearch('');
-                  }}
-                >
-                  <X size={15} />
-                </Button>
-              </span>
-            )}
-          </Field.Root>
-        </div>
+      {(pendingPage || works.length > 0 || hasFilters) && (
+        <WorkListControls
+          params={{ page, pageSize, q, status, view }}
+          onChange={change}
+        />
       )}
-      {list.isPending ? (
+      {canDelete && (
+        <WorkDeletionDialog
+          key={workspaceId}
+          workspaceId={workspaceId}
+          target={deleting}
+          pending={list.data?.deletions}
+          onClose={() => {
+            setDeleting(undefined);
+          }}
+        />
+      )}
+      {pendingPage ? (
         <ul
-          className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3"
+          className={
+            view === 'tiles'
+              ? 'grid gap-4 md:grid-cols-2 2xl:grid-cols-3'
+              : 'grid gap-3'
+          }
           aria-busy
           aria-label="Список работ загружается"
         >
@@ -150,7 +158,7 @@ export function WorkList() {
         >
           Проверьте подключение и попробуйте ещё раз.
         </Notice>
-      ) : !works.length ? (
+      ) : !works.length && !hasFilters ? (
         <section className="animate-rise glass relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(90%_120%_at_50%_0%,#2a0a12aa,transparent_60%)] px-6 py-14 text-center sm:px-12">
           <EventHorizon state="idle" className="mx-auto size-56" />
           <h2 className="font-heading mt-8 text-2xl font-bold tracking-tight">
@@ -170,7 +178,7 @@ export function WorkList() {
             <Journey />
           </div>
         </section>
-      ) : !visible.length ? (
+      ) : !works.length ? (
         <section className="glass animate-rise flex flex-col items-center rounded-3xl border border-dashed border-white/10 px-6 py-16 text-center">
           <span className="grid size-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.03] text-zinc-400">
             <Search size={24} />
@@ -185,8 +193,7 @@ export function WorkList() {
             variant="secondary"
             className="mt-6"
             onClick={() => {
-              setSearch('');
-              setFilter('all');
+              change({ page: 1, q: '', status: 'all' });
             }}
           >
             Сбросить фильтры
@@ -194,37 +201,42 @@ export function WorkList() {
         </section>
       ) : (
         <ul
-          className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3"
+          className={
+            view === 'tiles'
+              ? 'grid gap-4 md:grid-cols-2 2xl:grid-cols-3'
+              : 'grid gap-3'
+          }
           aria-label="Список работ"
         >
-          {visible.map((work, index) => (
+          {works.map((work, index) => (
             <WorkCard
               key={work.id}
               work={work}
               index={index}
               packages={packages}
               workspaceId={workspaceId}
+              view={view}
+              onDelete={
+                canDelete
+                  ? () => {
+                      setDeleting(work);
+                    }
+                  : undefined
+              }
             />
           ))}
         </ul>
       )}
-      {list.hasNextPage && (
-        <div className="mt-8 flex flex-col items-center gap-3">
-          <Button
-            variant="secondary"
-            loading={list.isFetchingNextPage}
-            onClick={() => {
-              void list.fetchNextPage();
-            }}
-          >
-            Показать ещё
-            <ArrowRight size={16} />
-          </Button>
-          <p className="text-muted text-xs">
-            Поиск и фильтр применяются к загруженным работам · показано{' '}
-            {visible.length} из {works.length}
-          </p>
-        </div>
+      {pagination && (
+        <WorkPagination
+          {...pagination}
+          page={list.isPlaceholderData ? page : pagination.page}
+          pageSize={list.isPlaceholderData ? pageSize : pagination.pageSize}
+          onPage={navigatePage}
+          onPageSize={(size) => {
+            navigatePage(1, size);
+          }}
+        />
       )}
       <Modal
         open={creating}

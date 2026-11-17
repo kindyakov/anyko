@@ -1,27 +1,29 @@
 import { expect, test } from 'bun:test';
 
-import type { WorkPage } from '@anyko/contracts/works';
+import { readWorkListParams, workListHref } from './work-list';
 
-import { filterWorks } from './work-list';
-
-test('filters loaded works by case insensitive Russian title and current confirmation', () => {
-  const works = [
-    { title: 'ИВАНОВ', revision: 2, confirmedRevision: 2 },
-    { title: 'Иванова', revision: 2, confirmedRevision: 1 },
-    { title: 'Петров', revision: 1, confirmedRevision: null },
-  ] as WorkPage['works'];
-  expect(filterWorks(works, 'иван', 'all').map((work) => work.title)).toEqual([
-    'ИВАНОВ',
-    'Иванова',
-  ]);
-  expect(
-    filterWorks(works, 'ИВАН', 'confirmed').map((work) => work.title),
-  ).toEqual(['ИВАНОВ']);
-  expect(filterWorks(works, 'иван', 'draft').map((work) => work.title)).toEqual(
-    ['Иванова'],
+test('a works link preserves search, filter, page and layout', () => {
+  const params = readWorkListParams(
+    new URLSearchParams(
+      'q=%D0%90%D0%BD%D0%BD%D0%B0&status=confirmed&page=3&pageSize=12&view=list',
+    ),
   );
-  expect(filterWorks(works, '', 'draft').map((work) => work.title)).toEqual([
-    'Иванова',
-    'Петров',
-  ]);
+  expect(params).toEqual({
+    q: 'Анна',
+    status: 'confirmed',
+    page: 3,
+    pageSize: 12,
+    view: 'list',
+  });
+  expect(workListHref('local', params)).toBe(
+    '/w/local/works?q=%D0%90%D0%BD%D0%BD%D0%B0&status=confirmed&page=3&pageSize=12&view=list',
+  );
+});
+
+test('invalid options fall back to the first page of all works', () => {
+  const params = readWorkListParams(
+    new URLSearchParams('status=old&page=-2&pageSize=999&view=other'),
+  );
+  expect(params.pageSize).toBe(24);
+  expect(workListHref('local', params)).toBe('/w/local/works');
 });

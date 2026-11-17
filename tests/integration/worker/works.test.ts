@@ -5,6 +5,7 @@ import { PostgresStore } from '@mastra/pg';
 import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
+import { httpErrorSchema } from '@anyko/contracts/common';
 import {
   createDatabase,
   createDatabasePool,
@@ -252,6 +253,8 @@ afterAll(async () => {
   await db.workArtifact.deleteMany({ where });
   await db.workAgentThread.deleteMany({ where });
   await db.work.deleteMany({ where });
+  await db.workDeletion.deleteMany({ where });
+  await db.idempotencyKey.deleteMany({ where });
   await db.llmSettings.deleteMany({ where });
   await db.processingIo.deleteMany({ where });
   await db.documentArtifact.deleteMany({ where });
@@ -738,6 +741,243 @@ test('all works remain reachable across stable cursor pages', async () => {
   expect(seen).toHaveLength(104);
   expect(new Set(seen).size).toBe(104);
 });
+
+test('numbered search filters the whole workspace and counts only matching revisions', async () => {
+  const input = await create();
+  const foreign = await create();
+  const data = Array.from({ length: 25 }, (_, index) => ({
+    id: crypto.randomUUID(),
+    workspaceId: input.workspaceId,
+    title: `Дело Анны ${String(index)}`,
+    packageVersion: 'technical-document-v1',
+    createdBy: 'fixture',
+    revision: 2,
+    confirmedRevision: 2,
+    createdAt: new Date(2026, 0, index + 1),
+  }));
+  const oldest = data[0];
+  if (!oldest) throw new Error('Missing fixture');
+  await db.work.createMany({
+    data: [
+      ...data,
+      {
+        ...oldest,
+        id: crypto.randomUUID(),
+        title: 'Дело Анны 100%',
+        confirmedRevision: null,
+      },
+      { ...oldest, id: crypto.randomUUID(), workspaceId: foreign.workspaceId },
+      { ...oldest, id: crypto.randomUUID(), title: 'Другое дело' },
+    ],
+  });
+  const page = await apiBackend.workHttp.works.queries.search(
+    memberScope(input.workspaceId),
+    {
+      q: 'АННЫ',
+      status: 'confirmed',
+      page: 2,
+      pageSize: 24,
+    },
+  );
+  expect(page.pagination).toEqual({ page: 2, pageSize: 24, total: 25 });
+  expect(page.works.map(({ id }) => id)).toEqual([oldest.id]);
+  const shorterPage = await apiBackend.workHttp.works.queries.search(
+    memberScope(input.workspaceId),
+    { q: 'АННЫ', status: 'confirmed', page: 2, pageSize: 6 },
+  );
+  expect(shorterPage.pagination).toEqual({ page: 2, pageSize: 6, total: 25 });
+  expect(shorterPage.works.map(({ id }) => id)).toEqual(
+    data
+      .slice(13, 19)
+      .reverse()
+      .map(({ id }) => id),
+  );
+  const draft = await apiBackend.workHttp.works.queries.search(
+    memberScope(input.workspaceId),
+    {
+      q: 'АННЫ',
+      status: 'draft',
+      page: 1,
+      pageSize: 24,
+    },
+  );
+  expect(draft.pagination.total).toBe(1);
+  expect(draft.works[0]?.confirmedRevision).toBeNull();
+  const literal = await apiBackend.workHttp.works.queries.search(
+    memberScope(input.workspaceId),
+    {
+      q: '%',
+      status: 'all',
+      page: 1,
+      pageSize: 24,
+    },
+  );
+  expect(literal.works.map(({ title }) => title)).toEqual(['Дело Анны 100%']);
+});
+
+test('owner deletion fences a running writer then physically purges the work and its files', async () => {
+  const input = await create();
+  const source = await upload(input);
+  const scope = memberScope(input.workspaceId, 'fixture');
+  const spare = await apiBackend.documentHttp.documents.commands.upload(scope, {
+    filename: 'standalone.pdf',
+    bytes: new TextEncoder().encode('%PDF-1.7\n standalone'),
+    correlationId: crypto.randomUUID(),
+    requestKey: crypto.randomUUID(),
+  });
+  await analyze(input);
+  const analyzed = await until(input, terminal);
+  expect(analyzed.facts.values.personName).toBe('Анна');
+  const responses = apiBackend.workHttp.idempotency;
+  const makeRef = (command: string) => ({
+    workspaceId: input.workspaceId,
+    command,
+    key: crypto.randomUUID(),
+    fingerprint: 'synthetic',
+  });
+  const cachedWork = makeRef('POST /workspaces/:workspaceId/works');
+  const cachedSource = makeRef(
+    'POST /workspaces/:workspaceId/works/:workId/documents',
+  );
+  const workResponse = () => Promise.resolve({ status: 201, body: analyzed });
+  const sourceResponse = () =>
+    Promise.resolve({ status: 202, body: { document: source } });
+  expect((await responses.run(cachedWork, workResponse)).status).toBe(201);
+  expect((await responses.run(cachedSource, sourceResponse)).status).toBe(202);
+  const ref = { workspaceId: input.workspaceId, workId: input.workId };
+  const ownedThreads = await db.workAgentThread.findMany({
+    where: ref,
+    select: { id: true },
+  });
+  expect(ownedThreads.some(({ id }) => threads.has(id))).toBe(true);
+  const sourceKey = (
+    await db.sourceDocument.findUniqueOrThrow({ where: { id: source.id } })
+  ).sourceKey;
+  expect(files.has(sourceKey)).toBe(true);
+  const writeStarted = Promise.withResolvers<undefined>();
+  const finishWrite = Promise.withResolvers<undefined>();
+  pauseGeneratedWrite = () => {
+    writeStarted.resolve(undefined);
+    return finishWrite.promise;
+  };
+  const deletion = apiBackend.workHttp.deletion;
+  let generationKey: string;
+  try {
+    await apiBackend.workHttp.generation.startGeneration(scope, {
+      workId: input.workId,
+      revision: analyzed.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    await Promise.race([
+      writeStarted.promise,
+      Bun.sleep(12000).then(() => {
+        throw new Error('WRITE_DID_NOT_START');
+      }),
+    ]);
+    generationKey = (await db.workArtifact.findFirstOrThrow({ where: ref }))
+      .key;
+    await rejects(
+      deletion.request(
+        memberScope(input.workspaceId, 'member', ['works.read', 'works.edit']),
+        input.workId,
+        crypto.randomUUID(),
+      ),
+      'FORBIDDEN',
+    );
+    await rejects(
+      deletion.request(
+        memberScope(crypto.randomUUID()),
+        input.workId,
+        crypto.randomUUID(),
+      ),
+      'NOT_FOUND',
+    );
+    expect(
+      await deletion.request(scope, input.workId, crypto.randomUUID()),
+    ).toEqual({ status: 'deleting' });
+    await rejects(
+      apiBackend.workHttp.views.get(scope, input.workId),
+      'NOT_FOUND',
+    );
+    expect(
+      (
+        await apiBackend.workHttp.works.queries.search(scope, {
+          page: 1,
+          pageSize: 24,
+          q: '',
+          status: 'all',
+        })
+      ).works,
+    ).toEqual([]);
+    expect(
+      await db.run.findFirst({
+        where: { ...ref, kind: 'work.generation' },
+        select: { status: true, attemptToken: true },
+      }),
+    ).toEqual({ status: 'cancelled', attemptToken: null });
+    expect((await deletion.status(scope, input.workId)).status).not.toBe(
+      'deleted',
+    );
+    const lateResponse = makeRef(cachedWork.command);
+    await responses.run(lateResponse, workResponse);
+    for (const ref of [cachedWork, cachedSource, lateResponse]) {
+      const response = await responses.run(ref, () => {
+        throw new Error('DELETED_RESPONSE_REEXECUTED');
+      });
+      expect(response.status).toBe(404);
+      expect(response.replayed).toBe(true);
+      expect(httpErrorSchema.parse(response.body).error.code).toBe('NOT_FOUND');
+    }
+  } finally {
+    finishWrite.resolve(undefined);
+    pauseGeneratedWrite = undefined;
+  }
+  const deadline = Date.now() + 15000;
+  while (
+    Date.now() < deadline &&
+    (await deletion.status(scope, input.workId)).status !== 'deleted'
+  ) {
+    await Bun.sleep(50);
+  }
+  expect(await deletion.status(scope, input.workId)).toEqual({
+    status: 'deleted',
+  });
+  expect(
+    await deletion.request(scope, input.workId, crypto.randomUUID()),
+  ).toEqual({ status: 'deleted' });
+  expect(await db.work.findUnique({ where: { id: input.workId } })).toBeNull();
+  expect(await db.workFacts.count({ where: ref })).toBe(0);
+  expect(await db.workGeneration.count({ where: ref })).toBe(0);
+  expect(await db.workAgentSession.count({ where: ref })).toBe(0);
+  expect(
+    await db.run.count({
+      where: {
+        workspaceId: input.workspaceId,
+        OR: [{ workId: input.workId }, { documentId: source.id }],
+      },
+    }),
+  ).toBe(0);
+  expect(
+    await db.sourceDocument.findUnique({ where: { id: source.id } }),
+  ).toBeNull();
+  expect(ownedThreads.some(({ id }) => threads.has(id))).toBe(false);
+  expect(files.has(sourceKey)).toBe(false);
+  expect(files.has(generationKey)).toBe(false);
+  expect(
+    await apiBackend.documentHttp.documents.queries.get(
+      scope,
+      brandDocumentId(spare.id),
+    ),
+  ).toMatchObject({ id: spare.id });
+  expect(
+    await db.auditEvent.count({
+      where: {
+        workspaceId: input.workspaceId,
+        action: 'works.deletion_requested',
+      },
+    }),
+  ).toBe(1);
+}, 45000);
 
 const fixtureImage = Uint8Array.fromBase64(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=',

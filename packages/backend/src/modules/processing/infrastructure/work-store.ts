@@ -214,6 +214,12 @@ export function createWorkProcessingStore(
           deps.clock.now(),
         ),
       ),
+    async cancel(workspaceId, workId) {
+      await db.run.updateMany({
+        where: { workspaceId, workId, status: { in: ['queued', 'running'] } },
+        data: { status: 'cancelled', attemptToken: null, leaseUntil: null },
+      });
+    },
     async erase(workspaceId, workId) {
       await db.run.deleteMany({ where: { workspaceId, workId } });
     },

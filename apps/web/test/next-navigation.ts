@@ -9,10 +9,12 @@ export type NavigationCall =
 
 export const navigation = {
   pathname: '/',
+  search: '',
   params: {} as Record<string, string>,
   calls: [] as NavigationCall[],
   reset() {
     this.pathname = '/';
+    this.search = '';
     this.params = {};
     this.calls = [];
   },
@@ -21,7 +23,7 @@ export const navigation = {
 await mock.module('next/navigation', () => ({
   usePathname: () => navigation.pathname,
   useParams: () => navigation.params,
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(navigation.search),
   useRouter: () => ({
     push: (href: string) => {
       navigation.calls.push({ method: 'push', href });

@@ -96,12 +96,21 @@ export function createGenerationStore(
       await db.workArtifact.create({ data: { workspaceId, workId, key } });
     },
     async keys(workspaceId, workId) {
-      return (
-        await db.workArtifact.findMany({
+      const [artifacts, published] = await Promise.all([
+        db.workArtifact.findMany({
           where: { workspaceId, workId },
           select: { key: true },
-        })
-      ).map((row) => row.key);
+        }),
+        db.workGenerationFile.findMany({
+          where: { workspaceId, workId, key: { not: null } },
+          select: { key: true },
+        }),
+      ]);
+      return [
+        ...new Set(
+          [...artifacts, ...published].flatMap(({ key }) => (key ? [key] : [])),
+        ),
+      ];
     },
     async erase(workspaceId, workId) {
       await db.workGeneration.deleteMany({ where: { workspaceId, workId } });

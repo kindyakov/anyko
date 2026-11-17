@@ -1,5 +1,6 @@
 import type { Database } from '@anyko/database';
 
+import { transactionHandle, type Tx } from '../../../platform/transactions';
 import type { DocumentStore } from '../application/ports';
 import { DocumentError } from '../errors';
 type Connection = Pick<
@@ -11,6 +12,17 @@ type Connection = Pick<
   | '$queryRaw'
 >;
 type Registration = Parameters<DocumentStore['register']>[0];
+export function lockLiveDocumentForResponse(
+  tx: Tx,
+  workspaceId: string,
+  documentId: string,
+) {
+  return createDocumentCommands(transactionHandle<Connection>(tx)).lock(
+    workspaceId,
+    documentId,
+  );
+}
+
 export function createDocumentCommands(db: Connection) {
   return {
     async forgetSource(key: string) {

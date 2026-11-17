@@ -6,6 +6,7 @@ export const rightSchema = z.enum([
   'works.read',
   'works.create',
   'works.edit',
+  'works.delete',
   'works.generate',
   'documents.upload',
   'documents.delete',

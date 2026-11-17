@@ -43,6 +43,7 @@ export type ProcessingInternal = Pick<
   | 'cached'
   | 'thread'
   | 'threads'
+  | 'cancel'
   | 'erase'
   | 'eraseThreads'
   | 'reconcile'

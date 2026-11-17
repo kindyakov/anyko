@@ -7,6 +7,7 @@ import {
   brandWorkId,
 } from '@anyko/backend/ids';
 import type {
+  WorkDeletionApi,
   WorkGeneration,
   WorkIntake,
   WorkReview,
@@ -17,10 +18,13 @@ import {
   analyzeWork,
   confirmWork,
   createWork,
+  defaultWorkPageSize,
+  deleteWork,
   downloadGeneratedFile,
   editWork,
   generateWork,
   getWork,
+  getWorkDeletion,
   getWorkDocumentImage,
   getWorkDocumentResult,
   getWorkDocumentSource,
@@ -47,6 +51,7 @@ export interface WorkHttpOptions
   works: WorksModule;
   views: WorkViews;
   intake: WorkIntake;
+  deletion: WorkDeletionApi;
   review: WorkReview;
   generation: WorkGeneration;
 }
@@ -59,9 +64,33 @@ export function worksRoutes(
   app: Elysia,
   options: WorkHttpOptions,
 ) {
-  const { works, views, intake, review, generation, access } = options;
-  route(app, listWorks, ({ scope, query }) =>
-    works.queries.list(scope, query.after || undefined),
+  const { works, views, intake, review, generation, access, deletion } =
+    options;
+  route(app, listWorks, async ({ scope, query }) => {
+    if (
+      query.page === undefined &&
+      query.pageSize === undefined &&
+      query.q === undefined &&
+      query.status === undefined
+    )
+      return works.queries.list(scope, query.after || undefined);
+    const page = await works.queries.search(scope, {
+      page: query.page ?? 1,
+      pageSize: query.pageSize ?? defaultWorkPageSize,
+      q: query.q ?? '',
+      status: query.status ?? 'all',
+    });
+    return {
+      ...page,
+      nextCursor: null,
+      deletions: await deletion.pending(scope),
+    };
+  });
+  route(app, deleteWork, ({ scope, params, requestId }) =>
+    deletion.request(scope, brandWorkId(params.workId), requestId),
+  );
+  route(app, getWorkDeletion, ({ scope, params }) =>
+    deletion.status(scope, brandWorkId(params.workId)),
   );
   route(app, createWork, async ({ scope, body }) =>
     views.get(scope, await intake.createWork(scope, body)),

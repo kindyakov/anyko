@@ -20,6 +20,9 @@ import {
   editWorkSchema,
   queuedStatusSchema,
   revisionSchema,
+  workDeletionResponseSchema,
+  workListStatusSchema,
+  workPageSizeSchema,
   workResponseSchema,
   worksResponseSchema,
 } from './schemas';
@@ -33,7 +36,25 @@ export const listWorks = endpoint({
   path: '/workspaces/:workspaceId/works',
   params: workspaceParams,
   // Пустой after означает первую страницу, как и раньше.
-  query: z.object({ after: z.union([uuid, z.literal('')]).optional() }),
+  query: z
+    .object({
+      after: z.union([uuid, z.literal('')]).optional(),
+      page: z.coerce.number<string | number>().int().positive().optional(),
+      pageSize: z.coerce
+        .number<string | number>()
+        .pipe(workPageSizeSchema)
+        .optional(),
+      q: z.string().trim().max(200).optional(),
+      status: workListStatusSchema.optional(),
+    })
+    .refine(
+      ({ after, page, pageSize, q, status }) =>
+        !after ||
+        (page === undefined &&
+          pageSize === undefined &&
+          q === undefined &&
+          status === undefined),
+    ),
   response: json(worksResponseSchema),
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
@@ -57,6 +78,27 @@ export const createWork = endpoint({
   ],
   invalid: 'INVALID_WORK_INPUT',
   idempotency: 'key',
+});
+
+export const deleteWork = endpoint({
+  method: 'DELETE',
+  path: '/workspaces/:workspaceId/works/:workId',
+  params: workParams,
+  response: json(workDeletionResponseSchema),
+  status: 202,
+  errors: ['FORBIDDEN', 'NOT_FOUND'],
+  invalid: 'NOT_FOUND',
+  idempotency: 'natural',
+});
+
+export const getWorkDeletion = endpoint({
+  method: 'GET',
+  path: '/workspaces/:workspaceId/works/:workId/deletion',
+  params: workParams,
+  response: json(workDeletionResponseSchema),
+  status: 200,
+  errors: ['FORBIDDEN', 'NOT_FOUND'],
+  invalid: 'NOT_FOUND',
 });
 
 export const getWork = endpoint({

@@ -2,7 +2,7 @@ import '../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import type { Right, Session } from '@anyko/contracts/session';
@@ -11,6 +11,7 @@ import { createQueryClient } from '@/lib/api/query-client';
 import { sessionKeys } from '@/lib/api/session';
 import { routes } from '@/lib/routes';
 
+import { serveApi } from '../../../../test/api';
 import { expectFocused } from '../../../../test/focus';
 import { navigation } from '../../../../test/next-navigation';
 
@@ -26,6 +27,7 @@ afterEach(() => {
 const workId = '11111111-1111-4111-8111-111111111111';
 const createdId = '22222222-2222-4222-8222-222222222222';
 const worksAddress = '/api/v1/workspaces/workspace-1/works';
+const worksFirstPage = `${worksAddress}?page=1`;
 const documentPackagesAddress = '/api/v1/document-packages';
 const template = {
   id: 'doc-1',
@@ -106,7 +108,7 @@ function serveWorkList(creation: { status: number; body: unknown }) {
       return Promise.resolve(json(creation.status, creation.body));
     if (url === documentPackagesAddress)
       return Promise.resolve(json(200, { packages }));
-    if (url === worksAddress)
+    if (url === worksFirstPage)
       return Promise.resolve(
         json(200, { works: [existingWork], nextCursor: null }),
       );
@@ -151,7 +153,7 @@ test('without the create right no creation button is offered, the list still sho
   expect(requests.filter((request) => request.method === 'POST')).toEqual([]);
   // Список и каталог читаются по адресам API v1: список — в области рабочего пространства.
   expect(requests.map((request) => request.url).sort()).toEqual(
-    [documentPackagesAddress, worksAddress].sort(),
+    [documentPackagesAddress, worksFirstPage].sort(),
   );
 });
 
@@ -165,7 +167,7 @@ test('without the create right the empty list offers no creation either', async 
           : input.url;
     if (url === documentPackagesAddress)
       return Promise.resolve(json(200, { packages }));
-    if (url === worksAddress)
+    if (url === worksFirstPage)
       return Promise.resolve(json(200, { works: [], nextCursor: null }));
     return Promise.resolve(json(404, {}));
   }) as typeof fetch;
@@ -187,6 +189,100 @@ test('the title field gets focus when the create dialog opens', async () => {
   await waitFor(() => {
     expectFocused(title);
   });
+});
+
+test.each([0, 1])(
+  'shows pagination with both arrows disabled for %i works',
+  async (total) => {
+    serveApi(({ url }) =>
+      url === documentPackagesAddress
+        ? json(200, { packages })
+        : json(200, {
+            works: total ? [existingWork] : [],
+            pagination: { page: 1, pageSize: 24, total },
+          }),
+    );
+    renderWorkList();
+    const pager = within(
+      await screen.findByRole('navigation', { name: 'Страницы работ' }),
+    );
+    expect(pager.getByText(`Найдено работ: ${String(total)}`)).toBeTruthy();
+    expect(
+      pager.getByRole('button', { name: 'Страница 1', current: 'page' }),
+    ).toBeTruthy();
+    for (const name of ['Предыдущая страница', 'Следующая страница'])
+      expect(pager.getByRole('button', { name }).hasAttribute('disabled')).toBe(
+        true,
+      );
+  },
+);
+
+test('a linked filter and page size are sent to the server and changing size resets the page', async () => {
+  navigation.search = 'q=Иван&status=confirmed&page=2&pageSize=12&view=list';
+  const requests = serveApi(({ url }) =>
+    url === documentPackagesAddress
+      ? json(200, { packages })
+      : json(200, {
+          works: [existingWork],
+          pagination: { page: 2, pageSize: 12, total: 25 },
+        }),
+  );
+  renderWorkList();
+  expect(await screen.findByText('Найдено работ: 25')).toBeTruthy();
+  expect(
+    screen.getByRole('button', { name: 'Страница 2', current: 'page' }),
+  ).toBeTruthy();
+  expect(requests.map(({ url }) => url)).toContain(
+    `${worksAddress}?page=2&pageSize=12&q=%D0%98%D0%B2%D0%B0%D0%BD&status=confirmed`,
+  );
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('combobox', { name: 'Вид списка работ' }));
+  await user.click(await screen.findByRole('option', { name: 'Плитка' }));
+  expect(navigation.calls).toContainEqual({
+    method: 'replace',
+    href: '/w/workspace-1/works?q=%D0%98%D0%B2%D0%B0%D0%BD&status=confirmed&page=2&pageSize=12',
+  });
+  await user.click(screen.getByRole('combobox', { name: 'Работ на странице' }));
+  await user.click(await screen.findByRole('option', { name: '6' }));
+  expect(navigation.calls).toContainEqual({
+    method: 'push',
+    href: '/w/workspace-1/works?q=%D0%98%D0%B2%D0%B0%D0%BD&status=confirmed&pageSize=6&view=list',
+  });
+});
+
+test('an authorized owner must confirm before the work is deleted', async () => {
+  let available = true;
+  const requests = serveApi(({ method, url }) => {
+    if (url === documentPackagesAddress) return json(200, { packages });
+    if (method === 'DELETE') {
+      available = false;
+      return json(202, { status: 'deleting' });
+    }
+    if (url.endsWith('/deletion')) return json(200, { status: 'deleted' });
+    return json(200, {
+      works: available ? [existingWork] : [],
+      pagination: { page: 1, pageSize: 24, total: available ? 1 : 0 },
+    });
+  });
+  const user = userEvent.setup();
+  renderWorkList(['works.read', 'works.delete']);
+  const action = await screen.findByRole('button', {
+    name: 'Действия с работой «Иванов»',
+  });
+  await user.click(action);
+  await user.click(screen.getByRole('menuitem', { name: 'Удалить' }));
+  const dialog = within(
+    screen.getByRole('alertdialog', { name: 'Удалить работу «Иванов»?' }),
+  );
+  expect(requests.some(({ method }) => method === 'DELETE')).toBe(false);
+  await user.click(dialog.getByRole('button', { name: 'Удалить работу' }));
+  expect(
+    await screen.findByText('Работа «Иванов» и её файлы удалены.'),
+  ).toBeTruthy();
+  expect(screen.queryByRole('link', { name: /Иванов/ })).toBeNull();
+  expect(
+    requests.filter(({ method }) => method === 'DELETE').map(({ url }) => url),
+  ).toEqual([`${worksAddress}/${workId}`]);
 });
 
 test('an empty title is refused on the client, nothing is sent and the title is focused', async () => {
