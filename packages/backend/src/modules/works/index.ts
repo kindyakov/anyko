@@ -85,6 +85,11 @@ export interface WorkStore extends WorkDeletionStore {
     documentId: string,
   ): Promise<void>;
   documents(workspaceId: string, workId: string): Promise<WorkSourceRow[]>;
+  hasActiveDocument(
+    workspaceId: string,
+    workId: string,
+    documentId: string,
+  ): Promise<boolean>;
   workForDocument(
     workspaceId: string,
     documentId: string,
@@ -151,12 +156,17 @@ export interface WorksCommands {
   ): Promise<void>;
 }
 
-// Запросы читают данные работы. Право чтения проверяют list и events; find, sources и cursor
-// внутренние: сценарий, который их вызывает, проверяет право сам.
+// Запросы читают данные работы. Право чтения проверяют list и events.
+// Для остальных запросов право проверяет вызывающий сценарий.
 export interface WorksQueries {
   list(scope: WorkspaceScope, input: WorkSearch): Promise<WorkListPage>;
   find(scope: WorkspaceScope, workId: WorkId): Promise<WorkSummary | null>;
   sources(scope: WorkspaceScope, workId: WorkId): Promise<WorkSources>;
+  hasActiveDocument(
+    scope: WorkspaceScope,
+    workId: WorkId,
+    documentId: DocumentId,
+  ): Promise<boolean>;
   cursor(scope: WorkspaceScope, workId: WorkId): Promise<string>;
   events(
     scope: WorkspaceScope,

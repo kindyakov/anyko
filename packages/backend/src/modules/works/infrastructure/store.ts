@@ -130,6 +130,19 @@ export function createWorkStore(
       });
       return row?.workId ?? null;
     },
+    async hasActiveDocument(workspaceId, workId, documentId) {
+      const row = await db.workDocument.findFirst({
+        where: {
+          workspaceId,
+          workId,
+          documentId,
+          work: { deletedAt: null },
+          document: { deletedAt: null },
+        },
+        select: { documentId: true },
+      });
+      return row !== null;
+    },
     async touch(workspaceId, id, input) {
       const row = await db.work.findFirstOrThrow({
         where: { workspaceId, id },

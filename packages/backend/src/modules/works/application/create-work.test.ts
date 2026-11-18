@@ -18,6 +18,7 @@ function store(calls: string[]): WorkStore {
     get: unused,
     documents: unused,
     workForDocument: unused,
+    hasActiveDocument: unused,
     attach: unused,
     touch: unused,
     events: unused,

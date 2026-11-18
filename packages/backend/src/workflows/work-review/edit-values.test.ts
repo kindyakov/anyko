@@ -66,6 +66,7 @@ function ports(calls: string[]): {
         find: () => Promise.resolve(work),
         sources: () =>
           Promise.resolve({ documents: [], cleanupPending: false }),
+        hasActiveDocument: unused,
         cursor: unused,
         events: unused,
       },

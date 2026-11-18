@@ -19,6 +19,7 @@ import {
 import type { Route } from '../../route';
 
 import { imageHeaders, imageIndex, sourceFileHeaders } from './files';
+import { presentDocumentResult } from './result';
 import { documentSummary } from './summary';
 
 export interface DocumentHttpOptions {
@@ -64,18 +65,13 @@ export function documentRoutes(
       scope,
       brandDocumentId(params.documentId),
     );
-    return {
-      markdown: result.markdown,
-      processorVersion: result.processorVersion,
-      images: result.images.map((image) => ({
-        path: image.path,
-        url: link(getDocumentImage, {
-          workspaceId: scope.workspaceId,
-          documentId: params.documentId,
-          index: String(image.index),
-        }),
-      })),
-    };
+    return presentDocumentResult(result, (index) =>
+      link(getDocumentImage, {
+        workspaceId: scope.workspaceId,
+        documentId: params.documentId,
+        index,
+      }),
+    );
   });
   route(app, getDocumentSource, async ({ scope, params }) => {
     const source = await documents.queries.source(
