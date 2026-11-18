@@ -942,9 +942,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/runtime/documents/unit-of-work.ts": {
-    "mtime": 1795024980.7082496,
-    "seen": 1795025598.3899095,
-    "ast_hash": "342bbb022dbd965fd5d3050281783483",
+    "mtime": 1795031944.0751069,
+    "seen": 1795032275.2408242,
+    "ast_hash": "5081e37729c3adbc6ec66cbf5d4ddb7d",
     "semantic_hash": ""
   },
   "infra/mineru/processor.py": {
@@ -3594,9 +3594,9 @@
     "semantic_hash": ""
   },
   "tests/integration/worker/works.test.ts": {
-    "mtime": 1795025548.5908217,
-    "seen": 1795025598.3903253,
-    "ast_hash": "00a353d6e1e57792b99f6c88fb75591e",
+    "mtime": 1795031944.0751069,
+    "seen": 1795032275.241258,
+    "ast_hash": "3a536f317a7e544b5794e600d8250d94",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/io.ts": {
