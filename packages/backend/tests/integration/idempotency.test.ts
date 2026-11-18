@@ -12,6 +12,11 @@ import {
 import { createIdempotencyMaintenanceStore } from '../../src/modules/idempotency/infrastructure/maintenance-store';
 import { createIdempotencyStore } from '../../src/modules/idempotency/infrastructure/store';
 import type { Clock } from '../../src/platform/clock';
+import { createUnitOfWork } from '../../src/runtime/transactions';
+import {
+  createResourceAwareIdempotencyStore,
+  redactDeletedWorkResponses,
+} from '../../src/runtime/works/idempotency';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (
@@ -71,6 +76,154 @@ afterAll(async () => {
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
   await db.$disconnect();
   await pool.end();
+});
+
+test('backfill recovers resource references for legacy create replies and redacts a saved 404', async () => {
+  const migrations = new URL(
+    '../../../database/prisma/migrations/',
+    import.meta.url,
+  );
+  const legacy = await Bun.file(
+    new URL('202611170013_idempotency_keys/migration.sql', migrations),
+  ).text();
+  const backfill = await Bun.file(
+    new URL(
+      '202611180035_idempotency_resource_reference/migration.sql',
+      migrations,
+    ),
+  ).text();
+  const client = await pool.connect();
+  const schema = `"idempotency_backfill_${crypto.randomUUID().replaceAll('-', '')}"`;
+  const workspaceId = crypto.randomUUID();
+  const workId = crypto.randomUUID();
+  const recognitionId = crypto.randomUUID();
+  const documentId = crypto.randomUUID();
+  const deleted = { error: { code: 'NOT_FOUND', requestId: 'old-request' } };
+  const fixtures = [
+    {
+      key: 'work',
+      command: 'POST /workspaces/:workspaceId/works',
+      status: 201,
+      body: { work: { id: workId } },
+      reference: ['work', workId],
+    },
+    {
+      key: 'recognition',
+      command: 'POST /workspaces/:workspaceId/recognitions',
+      status: 202,
+      body: { document: { id: recognitionId } },
+      reference: ['document', recognitionId],
+    },
+    {
+      key: 'work-document',
+      command: 'POST /workspaces/:workspaceId/works/:workId/documents',
+      status: 202,
+      body: { document: { id: documentId } },
+      reference: ['document', documentId],
+    },
+    {
+      key: 'analyze',
+      command: 'POST /workspaces/:workspaceId/works/:workId/analyze',
+      status: 202,
+      body: { work: { id: workId }, document: { id: documentId } },
+      reference: [null, null],
+    },
+    {
+      key: 'deleted',
+      command: 'POST /workspaces/:workspaceId/works',
+      status: 404,
+      body: deleted,
+      reference: [null, null],
+    },
+  ] as const;
+  try {
+    await client.query(`CREATE SCHEMA ${schema}`);
+    await client.query(`SET search_path TO ${schema}`);
+    await client.query('CREATE TABLE "AnykoWorkspace" (id TEXT PRIMARY KEY)');
+    await client.query(legacy);
+    await client.query('INSERT INTO "AnykoWorkspace" VALUES ($1)', [
+      workspaceId,
+    ]);
+    for (const row of fixtures) {
+      await client.query(
+        `INSERT INTO "IdempotencyKey"
+          ("workspaceId", "command", "key", "fingerprint", "token", "state", "status", "body", "expiresAt", "lockedUntil")
+          VALUES ($1, $2, $3, 'fingerprint', 'token', 'completed', $4, $5::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        [
+          workspaceId,
+          row.command,
+          row.key,
+          row.status,
+          JSON.stringify(row.body),
+        ],
+      );
+    }
+    await client.query(backfill);
+    const { rows } = await client.query<{
+      key: string;
+      state: string;
+      status: number | null;
+      body: unknown;
+      resourceKind: string | null;
+      resourceId: string | null;
+    }>(
+      'SELECT key, state, status, body::jsonb AS body, "resourceKind", "resourceId" FROM "IdempotencyKey"',
+    );
+    expect(rows).toHaveLength(fixtures.length);
+    for (const { key, reference, status, body } of fixtures) {
+      expect(rows.find((row) => row.key === key)).toEqual({
+        key,
+        state: status === 404 ? 'resource_unavailable' : 'completed',
+        status: status === 404 ? null : status,
+        body: status === 404 ? null : body,
+        resourceKind: reference[0],
+        resourceId: reference[1],
+      });
+    }
+  } finally {
+    try {
+      // The migration owns its transaction and may leave it aborted on error.
+      await client.query('ROLLBACK');
+      await client.query('RESET search_path');
+      await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    } finally {
+      client.release();
+    }
+  }
+});
+
+test('redacting a work leaves the stored reply of a command without a resource reference replayable', async () => {
+  const workspaceId = await workspace();
+  const workId = crypto.randomUUID();
+  const uow = createUnitOfWork(db);
+  const idempotency = createIdempotency({
+    store: createResourceAwareIdempotencyStore(db, uow),
+    clock,
+    newToken: () => crypto.randomUUID(),
+    logger,
+  });
+  const reference = {
+    workspaceId,
+    command: 'POST /workspaces/:workspaceId/works/:workId/analyze',
+    key: crypto.randomUUID(),
+    fingerprint: await fingerprintInput({ params: { workspaceId, workId } }),
+  };
+  const response = { status: 202, body: '{"status":"queued"}' };
+  expect(
+    await idempotency.run(reference, () => Promise.resolve({ response })),
+  ).toEqual({
+    kind: 'response',
+    replayed: false,
+    response,
+  });
+  await uow.run((tx) =>
+    redactDeletedWorkResponses(tx, workspaceId, workId, []),
+  );
+  expect(
+    await idempotency.run(reference, () => {
+      throw new Error('UNEXPECTED_REEXECUTION');
+    }),
+  ).toEqual({ kind: 'response', replayed: true, response });
 });
 
 test('the same key and input return the stored response and run the command once', async () => {

@@ -8,6 +8,7 @@ import { createLogger } from '@anyko/logger';
 import { createApp } from '../src/http/app';
 
 import { memberAccess } from './support/member-access';
+import { memoryIdempotency } from './support/memory-idempotency';
 import { stubHttpOptions } from './support/stub-http';
 
 const origin = 'http://localhost:3000';
@@ -150,6 +151,40 @@ test('a replay for a deleted work answers NOT_FOUND with the current request ID'
       error: { code: 'NOT_FOUND', requestId },
     });
   });
+});
+
+test('analyze replay does not become unavailable when no created resource is recorded', async () => {
+  let calls = 0;
+  let hasResource = false;
+  const idempotency = memoryIdempotency();
+  const app = appWith(
+    () => {
+      calls++;
+      return Promise.resolve();
+    },
+    {
+      async run(command, execute) {
+        const result = await idempotency.run(command, async () => {
+          const reply = await execute();
+          hasResource = reply.resource !== undefined;
+          return reply;
+        });
+        // Simulate erasure of the reply only if the route recorded a created resource.
+        return result.replayed && hasResource
+          ? { kind: 'resource_unavailable', replayed: true }
+          : result;
+      },
+    },
+  );
+  await withServer(app, async (base) => {
+    const path = `/api/v1/workspaces/local/works/${crypto.randomUUID()}/analyze`;
+    const headers = { 'idempotency-key': crypto.randomUUID() };
+    expect((await analyzeRequest(base, path, headers)).status).toBe(202);
+    const replay = await analyzeRequest(base, path, headers);
+    expect(replay.status).toBe(202);
+    expect(await replay.json()).toEqual({ status: 'queued' });
+  });
+  expect(calls).toBe(1);
 });
 
 test('the same key with another work is a conflict and runs nothing new', async () => {
