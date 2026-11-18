@@ -5,6 +5,8 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { ToastProvider } from '@anyko/ui';
+
 import { createQueryClient } from '@/lib/api/query-client';
 
 import { json, serveApi } from '../../../../test/api';
@@ -34,7 +36,9 @@ function renderWorkspace() {
   navigation.params = { workspace: workspaceId };
   return render(
     <QueryClientProvider client={createQueryClient()}>
-      <DocumentWorkspace />
+      <ToastProvider>
+        <DocumentWorkspace />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -110,6 +114,11 @@ test('each file of a multi-file upload gets its own idempotency key', async () =
   });
   expect(names).toEqual(['a.pdf', 'b.pdf']);
   expect(await screen.findByText('Принято 2 файла')).toBeTruthy();
+  expect(
+    await within(
+      screen.getByRole('region', { name: 'Уведомления' }),
+    ).findByText('Файлы отправлены на распознавание'),
+  ).toBeTruthy();
 });
 
 test('only server-confirmed recognition uploads contribute to the receipt', async () => {
@@ -133,12 +142,13 @@ test('only server-confirmed recognition uploads contribute to the receipt', asyn
     new File(['good'], 'good.pdf', { type: 'application/pdf' }),
   ]);
   expect(await screen.findByText('Принято 1 файл')).toBeTruthy();
-  expect((await screen.findByRole('alert')).textContent).toContain('bad.pdf');
+  const notices = within(screen.getByRole('region', { name: 'Уведомления' }));
+  expect(await notices.findByText(/bad\.pdf:/)).toBeTruthy();
 
   await user.upload(input, [
     new File(['bad'], 'bad-again.pdf', { type: 'application/pdf' }),
   ]);
-  expect(await screen.findByText(/bad-again\.pdf:/)).toBeTruthy();
+  expect(await notices.findByText(/bad-again\.pdf:/)).toBeTruthy();
   expect(screen.queryByText(/Принято \d/)).toBeNull();
 });
 
@@ -311,9 +321,9 @@ test('bulk retry runs only for selected failed files and reports partial success
     screen.getByRole('button', { name: 'Повторить распознавание (2)' }),
   );
 
-  const report = within(await screen.findByRole('alert'));
+  const report = within(screen.getByRole('region', { name: 'Уведомления' }));
   expect(
-    report.getByText('Повторное распознавание запущено: 1 из 2'),
+    await report.findByText('Повторное распознавание запущено: 1 из 2'),
   ).toBeTruthy();
   expect(report.getByText(/second\.pdf: Недостаточно прав/)).toBeTruthy();
   expect(
@@ -372,7 +382,8 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
   await user.click(screen.getByRole('button', { name: 'Удалить выбранные' }));
   await user.click(dialog().getByRole('button', { name: 'Удалить файлы' }));
 
-  expect(await screen.findByText('Удалено: 2 из 2')).toBeTruthy();
+  const notices = within(screen.getByRole('region', { name: 'Уведомления' }));
+  expect(await notices.findByText('Удалено: 2 из 2')).toBeTruthy();
   expect(
     exchanges.filter(({ method }) => method === 'DELETE').map(({ url }) => url),
   ).toEqual([`${recognitionsAddress}/first`, `${recognitionsAddress}/second`]);

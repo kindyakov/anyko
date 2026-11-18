@@ -2,7 +2,7 @@ import { RotateCw, Trash2 } from 'lucide-react';
 import { useId, useState } from 'react';
 
 import type { DocumentSummary } from '@anyko/contracts/documents';
-import { Button, Confirm, Notice, Skeleton, StatusPill } from '@anyko/ui';
+import { Button, Confirm, Skeleton, StatusPill, useToast } from '@anyko/ui';
 
 import { isUnauthorized } from '@/lib/api/errors';
 
@@ -29,10 +29,7 @@ export function DocumentList({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [viewing, setViewing] = useState<ViewedDocument>();
   const [deleting, setDeleting] = useState<DocumentSummary[]>([]);
-  const [feedback, setFeedback] = useState<{
-    title: string;
-    problems: { id: string; text: string }[];
-  }>();
+  const { add } = useToast();
   const selected = documents.filter((document) => selectedIds.has(document.id));
   const retryable = selected.filter((document) => document.status === 'failed');
   const allSelected =
@@ -57,7 +54,6 @@ export function DocumentList({
     bulk = false,
   ) {
     if (pending || targets.length === 0) return;
-    setFeedback(undefined);
     const documentIds = targets.map((document) => document.id);
     if (kind === 'delete') {
       setViewing((current) =>
@@ -73,26 +69,48 @@ export function DocumentList({
             for (const id of succeeded) next.delete(id);
             return next;
           });
-          if (bulk || failed.length) {
-            const names = new Map(
-              targets.map(({ id, filename }) => [id, filename]),
-            );
-            const count = `${String(succeeded.length)} из ${String(targets.length)}`;
-            setFeedback({
-              title:
-                kind === 'retry'
-                  ? `Повторное распознавание запущено: ${count}`
-                  : `Удалено: ${count}`,
-              problems: failed.map(({ id, error }) => ({
-                id,
-                text: `${names.get(id) ?? id}: ${describeDocumentError(error)}`,
-              })),
-            });
-          }
+          const names = new Map(
+            targets.map(({ id, filename }) => [id, filename]),
+          );
+          const count = `${String(succeeded.length)} из ${String(targets.length)}`;
+          const title =
+            kind === 'retry'
+              ? succeeded.length
+                ? `Повторное распознавание запущено: ${count}`
+                : 'Не удалось повторить распознавание'
+              : succeeded.length
+                ? `Удалено: ${count}`
+                : 'Не удалось удалить файлы';
+          const description = failed.length
+            ? failed
+                .map(
+                  ({ id, error }) =>
+                    `${names.get(id) ?? id}: ${describeDocumentError(error)}`,
+                )
+                .join('\n')
+            : targets.map(({ filename }) => filename).join('\n');
+          add({
+            title,
+            description,
+            variant: failed.length
+              ? succeeded.length
+                ? 'warning'
+                : 'error'
+              : 'success',
+            mode: failed.length ? 'persistent' : 'timed',
+          });
         },
         onError: (error) => {
           if (!isUnauthorized(error))
-            setFeedback({ title: describeDocumentError(error), problems: [] });
+            add({
+              variant: 'error',
+              mode: 'persistent',
+              title:
+                kind === 'retry'
+                  ? 'Не удалось повторить распознавание'
+                  : 'Не удалось удалить файлы',
+              description: describeDocumentError(error),
+            });
         },
         onSettled: () => {
           setDeleting([]);
@@ -177,29 +195,6 @@ export function DocumentList({
               </div>
             </>
           )}
-        </div>
-      )}
-      {feedback && (
-        <div className="mb-3">
-          <Notice
-            tone={
-              feedback.problems.length || mutation.isError
-                ? 'danger'
-                : 'success'
-            }
-            role={
-              feedback.problems.length || mutation.isError ? 'alert' : 'status'
-            }
-            title={feedback.title}
-          >
-            {feedback.problems.length > 0 && (
-              <ul className="mt-1 grid gap-1 wrap-anywhere">
-                {feedback.problems.map(({ id, text }) => (
-                  <li key={id}>{text}</li>
-                ))}
-              </ul>
-            )}
-          </Notice>
         </div>
       )}
       {loading ? (

@@ -6,6 +6,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import type { Right, Session } from '@anyko/contracts/session';
+import { ToastProvider } from '@anyko/ui';
 
 import { createQueryClient } from '@/lib/api/query-client';
 import { sessionKeys } from '@/lib/api/session';
@@ -136,7 +137,9 @@ function renderWorkList(rights: Right[] = ['works.read', 'works.create']) {
   client.setQueryData(sessionKeys.all, session);
   render(
     <QueryClientProvider client={client}>
-      <WorkList />
+      <ToastProvider>
+        <WorkList />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }
@@ -299,8 +302,11 @@ test('an authorized owner must confirm before the work is deleted', async () => 
   );
   expect(requests.some(({ method }) => method === 'DELETE')).toBe(false);
   await user.click(dialog.getByRole('button', { name: 'Удалить работу' }));
+  const notifications = within(
+    screen.getByRole('region', { name: 'Уведомления' }),
+  );
   expect(
-    await screen.findByText('Работа «Иванов» и её файлы удалены.'),
+    await notifications.findByText('Работа «Иванов» и её файлы удалены.'),
   ).toBeTruthy();
   expect(screen.queryByRole('link', { name: /Иванов/ })).toBeNull();
   expect(

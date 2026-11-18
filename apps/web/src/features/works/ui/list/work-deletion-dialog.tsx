@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { WorkPage } from '@anyko/contracts/works';
-import { Confirm, Notice } from '@anyko/ui';
+import { Confirm, Notice, useToast } from '@anyko/ui';
 
 import { useDeleteWork } from '@/features/works/api/mutations';
 import { workDeletionQueryOptions } from '@/features/works/api/queries';
@@ -22,9 +22,19 @@ export function WorkDeletionDialog({
   onClose: () => void;
 }) {
   const [last, setLast] = useState<Work>();
+  const announced = useRef<string>(undefined);
+  const { add } = useToast();
   const action = useDeleteWork(workspaceId);
   const status = useQuery(workDeletionQueryOptions(workspaceId, last?.id)).data
     ?.status;
+  useEffect(() => {
+    if (!last || status !== 'deleted' || announced.current === last.id) return;
+    announced.current = last.id;
+    add({
+      variant: 'success',
+      title: `Работа «${last.title}» и её файлы удалены.`,
+    });
+  }, [add, last, status]);
   const needsRecovery =
     status === 'needs-recovery' ||
     pending.some((item) => item.status === 'needs-recovery');
@@ -42,13 +52,6 @@ export function WorkDeletionDialog({
               Удаляем работы и их файлы.
             </Notice>
           )}
-        </div>
-      )}
-      {last && status === 'deleted' && (
-        <div className="mb-4">
-          <Notice role="status" tone="success">
-            Работа «{last.title}» и её файлы удалены.
-          </Notice>
         </div>
       )}
       <Confirm

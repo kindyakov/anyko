@@ -179,7 +179,268 @@
   }
 }
 
+@layer components {
+  .anyko-toast-viewport {
+    --toast-gap: 8px;
+    position: fixed;
+    z-index: 80;
+    inset-inline-end: max(1rem, env(safe-area-inset-right));
+    inset-block-end: max(1rem, env(safe-area-inset-bottom));
+    width: min(24rem, calc(100vw - 2rem));
+    height: var(--toast-frontmost-height, 0px);
+    pointer-events: none;
+    outline: none;
+  }
+
+  .anyko-toast {
+    --toast-accent: #bcb3d0;
+    --toast-depth: min(var(--toast-index, 0), 4);
+    --toast-y: calc(var(--toast-depth) * -9px);
+    --toast-scale: calc(1 - var(--toast-depth) * 0.045);
+    position: absolute;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: calc(10 - var(--toast-index, 0));
+    min-width: 0;
+    height: var(--toast-frontmost-height, auto);
+    border: 1px solid color-mix(in srgb, var(--toast-accent) 22%, #28242e);
+    border-radius: 1rem;
+    background:
+      radial-gradient(
+        ellipse at 0 0,
+        color-mix(in srgb, var(--toast-accent) 11%, transparent),
+        transparent 66%
+      ),
+      linear-gradient(155deg, #1a171f, var(--surface) 75%);
+    box-shadow:
+      0 12px 36px -16px #000d,
+      inset 0 1px #ffffff09;
+    color: var(--ink);
+    pointer-events: auto;
+    transform: translate(
+        var(--toast-swipe-movement-x, 0px),
+        calc(var(--toast-y) + var(--toast-swipe-movement-y, 0px))
+      )
+      scale(var(--toast-scale));
+    transform-origin: bottom center;
+    transition:
+      transform 300ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      height 240ms ease,
+      opacity 180ms ease;
+  }
+
+  .anyko-toast[data-type='success'] {
+    --toast-accent: #82dfb5;
+  }
+  .anyko-toast[data-type='error'] {
+    --toast-accent: #ff8799;
+  }
+  .anyko-toast[data-type='warning'] {
+    --toast-accent: #f9cb81;
+  }
+  .anyko-toast[data-type='progress'] {
+    --toast-accent: #ff5479;
+  }
+
+  .anyko-toast[data-expanded] {
+    --toast-y: calc(
+      -1 *
+        (var(--toast-offset-y, 0px) + var(--toast-index, 0) * var(--toast-gap))
+    );
+    --toast-scale: 1;
+    height: var(--toast-height, auto);
+  }
+
+  /* Keep the viewport hovered while crossing the gaps in the expanded stack. */
+  .anyko-toast[data-expanded]::after {
+    position: absolute;
+    inset: 100% 0 auto;
+    height: var(--toast-gap);
+    content: '';
+  }
+
+  .anyko-toast[data-swiping] {
+    transition: none;
+  }
+
+  .anyko-toast[data-starting-style],
+  .anyko-toast[data-ending-style],
+  .anyko-toast[data-limited] {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(calc(var(--toast-y) + 12px)) scale(0.96);
+  }
+
+  .anyko-toast[data-ending-style][data-swipe-direction='right'] {
+    transform: translate(115%, var(--toast-y));
+  }
+
+  .anyko-toast[data-ending-style][data-swipe-direction='down'] {
+    transform: translateY(calc(var(--toast-y) + 110%));
+  }
+
+  .anyko-toast-content {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0.75rem;
+    padding: 0.875rem;
+    transition: opacity 180ms ease;
+  }
+
+  .anyko-toast-content[data-behind]:not([data-expanded]) {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .anyko-toast-icon {
+    display: grid;
+    width: 2.25rem;
+    height: 2.25rem;
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--toast-accent) 24%, transparent);
+    border-radius: 0.625rem;
+    background: color-mix(in srgb, var(--toast-accent) 10%, transparent);
+    color: var(--toast-accent);
+  }
+
+  .anyko-toast-copy {
+    padding-block: 0.15rem;
+    overflow-wrap: anywhere;
+  }
+  .anyko-toast-title {
+    font-size: 0.875rem;
+    font-weight: 650;
+    line-height: 1.35;
+  }
+  .anyko-toast-description {
+    margin-top: 0.25rem;
+    color: var(--muted);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    white-space: pre-line;
+    max-block-size: 8rem;
+    overflow-y: auto;
+  }
+
+  .anyko-toast-extra {
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+  }
+
+  .anyko-toast-extra a {
+    color: var(--toast-accent);
+    text-decoration: underline;
+    text-underline-offset: 0.16em;
+  }
+
+  .anyko-toast[data-timed] .anyko-toast-content {
+    padding-bottom: 1rem;
+  }
+
+  .anyko-toast-timer {
+    position: absolute;
+    inset-inline: 0.875rem;
+    bottom: 0.375rem;
+    height: 2px;
+    border-radius: 999px;
+    background: #ffffff0d;
+    opacity: 1;
+    transition: opacity 180ms ease;
+    pointer-events: none;
+  }
+
+  .anyko-toast-timer > span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--toast-accent) 40%, transparent),
+      var(--toast-accent)
+    );
+    box-shadow: 0 0 8px color-mix(in srgb, var(--toast-accent) 55%, transparent);
+    transform-origin: left;
+    animation: anyko-toast-countdown linear both;
+  }
+
+  .anyko-toast[data-expanded]
+    .anyko-toast-timer
+    > span:not([data-window-resumed]),
+  .anyko-toast-viewport[data-timer-paused] .anyko-toast-timer > span {
+    animation-play-state: paused;
+  }
+
+  .anyko-toast:has(.anyko-toast-content[data-behind]:not([data-expanded]))
+    .anyko-toast-timer {
+    opacity: 0;
+  }
+
+  .anyko-toast-close {
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border-radius: 0.5rem;
+    color: var(--muted);
+  }
+
+  .anyko-toast-close:hover {
+    background: #ffffff0d;
+    color: var(--ink);
+  }
+
+  .anyko-toast-close:focus-visible,
+  .anyko-toast:focus-visible {
+    outline: 2px solid var(--toast-accent);
+    outline-offset: 2px;
+  }
+
+  @media (max-height: 620px) {
+    .anyko-toast-viewport[data-expanded] {
+      display: flex;
+      max-height: calc(100dvh - 2rem);
+      height: auto;
+      flex-direction: column-reverse;
+      gap: var(--toast-gap);
+      overflow-y: auto;
+      padding: 3px;
+      overscroll-behavior: contain;
+      pointer-events: auto;
+    }
+
+    .anyko-toast[data-expanded] {
+      --toast-y: 0px;
+      position: relative;
+      flex: none;
+      height: auto;
+    }
+
+    .anyko-toast[data-expanded]::after {
+      content: none;
+    }
+
+    .anyko-toast[data-expanded][data-limited] {
+      display: none;
+    }
+  }
+}
+
+@keyframes anyko-toast-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .anyko-toast-timer {
+    display: none;
+  }
+
   *,
   *::before,
   *::after {

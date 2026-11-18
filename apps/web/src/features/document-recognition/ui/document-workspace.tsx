@@ -3,7 +3,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 
-import { Button, Notice, RelativeTime } from '@anyko/ui';
+import { Button, Notice, RelativeTime, useToast } from '@anyko/ui';
 import { DropZone } from '@anyko/ui/brand';
 
 import { newIdempotencyKey } from '@/lib/api/call';
@@ -24,15 +24,13 @@ export function DocumentWorkspace() {
   const documents = list.data?.pages.flatMap((page) => page.items) ?? [];
   const deletions = list.data?.pages[0]?.pendingDeletions ?? [];
   const uploadMutation = useUploadDocument(workspaceId);
-  const [error, setError] = useState('');
+  const { add } = useToast();
   const [refreshing, setRefreshing] = useState(false);
   const listError =
     list.error && !isUnauthorized(list.error)
       ? describeDocumentError(list.error)
       : '';
-  const shownError = error || listError;
   async function upload(files: File[]) {
-    setError('');
     const problems: string[] = [];
     let accepted = 0;
     for (const file of files) {
@@ -58,7 +56,22 @@ export function DocumentWorkspace() {
         problems.push(`${file.name}: ${describeDocumentError(failure)}`);
       }
     }
-    if (problems.length) setError(problems.join(' '));
+    if (problems.length) {
+      add({
+        variant: accepted ? 'warning' : 'error',
+        mode: 'persistent',
+        title: accepted
+          ? `На распознавание принято ${String(accepted)} из ${String(files.length)}`
+          : 'Не удалось загрузить файлы на распознавание',
+        description: problems.join('\n'),
+      });
+    } else if (accepted) {
+      add({
+        variant: 'success',
+        title: 'Файлы отправлены на распознавание',
+        description: `Принято файлов: ${String(accepted)}.`,
+      });
+    }
     return accepted;
   }
   return (
@@ -77,7 +90,6 @@ export function DocumentWorkspace() {
           variant="secondary"
           loading={refreshing}
           onClick={() => {
-            setError('');
             setRefreshing(true);
             void list.refetch().finally(() => {
               setRefreshing(false);
@@ -97,10 +109,10 @@ export function DocumentWorkspace() {
           onFiles={upload}
         />
       </div>
-      {shownError && (
+      {listError && (
         <div className="mt-6">
           <Notice tone="danger" role="alert" title="Не всё получилось">
-            {shownError}
+            {listError}
           </Notice>
         </div>
       )}
