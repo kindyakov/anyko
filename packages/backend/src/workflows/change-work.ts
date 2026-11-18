@@ -16,7 +16,7 @@ import {
   workCommandPolicy,
   workCommandSources,
 } from './work-command-guards';
-import { requireWork, workLockKey } from './work-guards';
+import { guardWorkRevision, requireWork, workLockKey } from './work-guards';
 
 interface ChangeWorkDeps {
   locks: ResourceLocks;
@@ -46,28 +46,38 @@ export async function changeWork(
 ): Promise<void> {
   const { workspaceId } = scope;
   const { workId, expectedRevision, advance, event } = input;
-  await deps.locks.run(workLockKey(workspaceId, workId), async () => {
-    const work = await requireWork(deps.works.queries, scope, workId);
-    const documents = workCommandSources(
-      input.command,
-      await deps.works.queries.sources(scope, workId),
-    );
-    if (expectedRevision !== undefined && work.revision !== expectedRevision)
-      throw new WorkError('REVISION_CONFLICT');
-    // У анализа входные данные и подключение проверяются до занятости работы.
-    const apply = await prepare({ work, documents });
-    if (workCommandPolicy[input.command].idle)
-      requireIdleWork(await deps.processing.queries.isActive(scope, workId));
-    await deps.uow.run(async (tx) => {
-      await apply(tx);
-      const works = deps.works.in(tx).internal;
-      if (advance)
-        await works.touch(
-          workspaceId,
-          workId,
-          advance === 'confirmed' ? { confirmed: true } : {},
+  await deps.locks.run(workLockKey(workspaceId, workId), async (signal) => {
+    try {
+      const work = await requireWork(deps.works.queries, scope, workId);
+      const documents = workCommandSources(
+        input.command,
+        await deps.works.queries.sources(scope, workId),
+      );
+      if (expectedRevision !== undefined && work.revision !== expectedRevision)
+        throw new WorkError('REVISION_CONFLICT');
+      // У анализа входные данные и подключение проверяются до занятости работы.
+      signal.throwIfAborted();
+      const apply = await prepare({ work, documents });
+      signal.throwIfAborted();
+      if (workCommandPolicy[input.command].idle)
+        requireIdleWork(await deps.processing.queries.isActive(scope, workId));
+      await deps.uow.run(async (tx) => {
+        const works = deps.works.in(tx).internal;
+        await guardWorkRevision(
+          works,
+          { workspaceId, workId },
+          work.revision,
+          signal,
+          advance,
         );
-      await works.event(workspaceId, workId, event);
-    });
+        await apply(tx);
+        signal.throwIfAborted();
+        await works.event(workspaceId, workId, event);
+      }, signal);
+    } catch (error) {
+      if (signal.aborted && error === signal.reason)
+        throw new WorkError('REVISION_CONFLICT');
+      throw error;
+    }
   });
 }

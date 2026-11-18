@@ -27,7 +27,10 @@ export interface WorkAttempt extends RunAttempt<
   ): Promise<StepOutput | null>;
   step(input: WorkStepInput): Promise<void>;
   // Блокирует строку попытки до конца транзакции с записями других модулей.
-  write<T>(apply: (tx: Tx, attempt: AttemptWrite) => Promise<T>): Promise<T>;
+  write<T>(
+    apply: (tx: Tx, attempt: AttemptWrite) => Promise<T>,
+    signal?: AbortSignal,
+  ): Promise<T>;
 }
 
 export function claimWorkAttempt(deps: {
@@ -60,10 +63,11 @@ export function claimWorkAttempt(deps: {
       cached: (documentId, stage, sourceDigest) =>
         deps.store.cached(claim.snapshot, documentId, stage, sourceDigest),
       step: (input) => deps.store.step(claim, input),
-      write: (apply) =>
+      write: (apply, signal) =>
         deps.uow.run(async (tx) => {
           const store = deps.storeFor(tx);
           await store.fence(claim);
+          signal?.throwIfAborted();
           return apply(tx, {
             step: (input) => store.step(claim, input),
             finish: async (outcome) => {
@@ -71,7 +75,7 @@ export function claimWorkAttempt(deps: {
                 throw new Error('STALE_WORK_ATTEMPT');
             },
           });
-        }),
+        }, signal),
     };
   };
 }

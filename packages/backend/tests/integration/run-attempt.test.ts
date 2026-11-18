@@ -234,26 +234,35 @@ test('the attempt commits the step, work change and outcome together', async () 
   expect(attempt.run).not.toHaveProperty('attemptToken');
   expect(attempt.run).not.toHaveProperty('leaseUntil');
 
-  const save = (fail: boolean) =>
-    attempt.write(async (tx, active) => {
-      await worksStoreFor(tx).touch(workspaceId, workId, {});
-      await active.step({ stage: 'reconciliation', status: 'succeeded' });
-      await active.finish({ status: 'succeeded' });
-      if (fail) throw new Error('SYNTHETIC_FAILURE');
-    });
+  const cancellation = new AbortController();
+  const lost = new Error('RESOURCE_LOCK_LOST');
+  const save = (mode: 'error' | 'abort' | 'success') =>
+    attempt.write(
+      async (tx, active) => {
+        await worksStoreFor(tx).touch(workspaceId, workId, {
+          expectedRevision: 0,
+        });
+        await active.step({ stage: 'reconciliation', status: 'succeeded' });
+        await active.finish({ status: 'succeeded' });
+        if (mode === 'error') throw new Error('SYNTHETIC_FAILURE');
+        if (mode === 'abort') cancellation.abort(lost);
+      },
+      mode === 'abort' ? cancellation.signal : undefined,
+    );
   const where = { workspaceId, runId };
   const revision = async () =>
     (await db.work.findUniqueOrThrow({ where: { id: workId } })).revision;
-  expect(await failureOf(save(true))).toMatchObject({
+  expect(await failureOf(save('error'))).toMatchObject({
     message: 'SYNTHETIC_FAILURE',
   });
+  expect(await failureOf(save('abort'))).toBe(lost);
   expect(await revision()).toBe(0);
   expect(await db.runStep.count({ where })).toBe(0);
   expect(
     await db.run.findUniqueOrThrow({ where: { id: runId } }),
   ).toMatchObject({ status: 'running' });
 
-  await save(false);
+  await save('success');
   expect(await revision()).toBe(1);
   expect(await db.runStep.findFirstOrThrow({ where })).toMatchObject({
     stage: 'reconciliation',

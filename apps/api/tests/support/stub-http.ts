@@ -58,6 +58,7 @@ export function stubHttpOptions(): {
       notifyDocumentChanged: unused,
       dirty: unused,
       touch: unused,
+      lockRevision: unused,
       event: unused,
       detachDeleted: unused,
       deletion: unused,

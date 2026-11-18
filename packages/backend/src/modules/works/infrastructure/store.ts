@@ -1,6 +1,6 @@
 import type { Database } from '@anyko/database';
 
-import { workSummarySchema } from '..';
+import { WorkError, workSummarySchema } from '..';
 import type { WorkStore } from '..';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
 
@@ -8,7 +8,7 @@ import { createWorkDeletionStore } from './deletion-store';
 
 type Connection = Pick<
   Database,
-  'work' | 'workDocument' | 'workEvent' | 'workDeletion'
+  'work' | 'workDocument' | 'workEvent' | 'workDeletion' | '$queryRaw'
 >;
 // Хранилище внутри транзакции действия: токен превращается в клиент транзакции драйвера.
 export function worksStoreFor(tx: Tx): WorkStore {
@@ -144,17 +144,35 @@ export function createWorkStore(
       return row !== null;
     },
     async touch(workspaceId, id, input) {
-      const row = await db.work.findFirstOrThrow({
-        where: { workspaceId, id },
-      });
-      await db.work.update({
-        where: { workspaceId_id: { workspaceId, id } },
+      const { expectedRevision } = input;
+      const updated = await db.work.updateMany({
+        where: {
+          workspaceId,
+          id,
+          ...(expectedRevision === undefined
+            ? {}
+            : { revision: expectedRevision, deletedAt: null }),
+        },
         data: {
           revision: { increment: 1 },
           ...(input.inputChanged ? { inputRevision: { increment: 1 } } : {}),
-          confirmedRevision: input.confirmed ? row.revision + 1 : null,
+          confirmedRevision: input.confirmed
+            ? input.expectedRevision + 1
+            : null,
         },
       });
+      if (updated.count !== 1)
+        throw new WorkError(
+          expectedRevision === undefined ? 'NOT_FOUND' : 'REVISION_CONFLICT',
+        );
+    },
+    async lockRevision(workspaceId, id, revision) {
+      const work = await db.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "Work"
+        WHERE "workspaceId" = ${workspaceId} AND id = ${id}
+          AND revision = ${revision} AND "deletedAt" IS NULL
+        FOR UPDATE`;
+      if (work.length !== 1) throw new WorkError('REVISION_CONFLICT');
     },
     async event(workspaceId, workId, kind) {
       await db.workEvent.create({ data: { workspaceId, workId, kind } });

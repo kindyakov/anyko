@@ -269,6 +269,112 @@ test('two concurrent changes of the same revision save one effect, one revision 
   );
 });
 
+test.each([
+  { phase: 'before write', inside: false, delayNotification: false },
+  { phase: 'inside transaction', inside: true, delayNotification: false },
+  {
+    phase: 'before the callback is notified',
+    inside: false,
+    delayNotification: true,
+  },
+])(
+  'losing the work lock $phase leaves no stale effect, revision or event',
+  async ({ inside, delayNotification }) => {
+    const { workspaceId, workId, revision } = await workspaceWithWork();
+    const scope = memberScope(workspaceId);
+    const id = brandWorkId(workId);
+    const applicationName = `anyko-lock-test-${uuidV7()}`;
+    const lockUrl = new URL(databaseUrl);
+    lockUrl.searchParams.set('application_name', applicationName);
+    const doomedPool = createLockPool(lockUrl.href);
+    const doomedLocks = createResourceLocks(doomedPool);
+    const paused = Promise.withResolvers<true>();
+    const resume = Promise.withResolvers<true>();
+    const aborted = Promise.withResolvers<true>();
+    const pause = async () => {
+      paused.resolve(true);
+      await resume.promise;
+    };
+    const loser = failureOf(
+      changeWork(
+        {
+          ...changeDeps,
+          locks: {
+            run: (key, operation) =>
+              doomedLocks.run(key, (signal) => {
+                signal.addEventListener(
+                  'abort',
+                  () => {
+                    aborted.resolve(true);
+                  },
+                  { once: true },
+                );
+                return operation(
+                  delayNotification ? new AbortController().signal : signal,
+                );
+              }),
+          },
+        },
+        scope,
+        {
+          workId: id,
+          expectedRevision: revision,
+          command: 'edit',
+          advance: 'draft',
+          event: 'facts.changed',
+        },
+        async () => {
+          if (!inside) await pause();
+          return async (tx) => {
+            const facts = emptyFacts();
+            facts.values.personName = 'Устаревшее имя';
+            await factsStoreFor(tx).save(workspaceId, workId, facts);
+            if (inside) await pause();
+          };
+        },
+      ),
+    );
+    try {
+      await paused.promise;
+      const { rows } = await pool.query<{ terminated: boolean }>(
+        `SELECT pg_terminate_backend(activity.pid) AS terminated
+           FROM pg_stat_activity AS activity
+           WHERE activity.datname = current_database() AND activity.application_name = $1
+             AND EXISTS (
+               SELECT 1 FROM pg_locks AS locks
+               WHERE locks.pid = activity.pid AND locks.locktype = 'advisory' AND locks.granted
+             )`,
+        [applicationName],
+      );
+      expect(rows).toEqual([{ terminated: true }]);
+      await aborted.promise;
+      const winner = !inside;
+      if (winner)
+        await normal.workHttp.review.editValues(scope, {
+          workId: id,
+          revision,
+          values: { ...emptyFacts().values, personName: 'Сохранённое имя' },
+        });
+      resume.resolve(true);
+      const failure = await loser;
+      const final = await normal.workHttp.views.get(scope, id);
+      expect(final.facts.values.personName).toBe(
+        winner ? 'Сохранённое имя' : null,
+      );
+      expect(final.work.revision).toBe(winner ? revision + 1 : revision);
+      const events = await normal.workHttp.works.queries.events(scope, id, '0');
+      expect(
+        events.filter((event) => event.kind === 'facts.changed'),
+      ).toHaveLength(winner ? 1 : 0);
+      expect(failure).toMatchObject({ code: 'REVISION_CONFLICT' });
+    } finally {
+      resume.resolve(true);
+      await loser;
+      await doomedPool.end();
+    }
+  },
+);
+
 test('an unknown fact table column fails validation and leaves the saved work untouched', async () => {
   const { workspaceId, workId, revision } = await workspaceWithWork();
   const scope = memberScope(workspaceId);

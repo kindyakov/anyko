@@ -8,7 +8,7 @@ import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
-import { workLockKey } from '../work-guards';
+import { guardWorkRevision, workLockKey } from '../work-guards';
 
 import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
@@ -43,21 +43,27 @@ export function createWorkContinuation(deps: WorkDependencies) {
     for (let attempt = 0; attempt < 2; attempt++) {
       const snapshot = await deps.locks.run(
         workLockKey(run.workspaceId, run.workId),
-        async () => {
+        async (signal) => {
           const work = await input.current();
-          const facts = await deps.facts.queries.forAnalysis(run);
-          const session = await deps.agents.internal.ensure(
-            run.workspaceId,
-            run.workId,
-          );
           const threadId = deps.newId();
-          await deps.processing.internal.thread(
-            run.workspaceId,
-            run.workId,
-            threadId,
-          );
-          return { work, facts, session, threadId };
+          return workAttempt.write(async (tx) => {
+            await guardWorkRevision(
+              deps.works.in(tx).internal,
+              run,
+              work.revision,
+              signal,
+            );
+            const facts = await deps.facts.in(tx).queries.forAnalysis(run);
+            const session = await deps.agents
+              .in(tx)
+              .internal.ensure(run.workspaceId, run.workId);
+            await deps.processing
+              .in(tx)
+              .internal.thread(run.workspaceId, run.workId, threadId);
+            return { work, facts, session, threadId };
+          }, signal);
         },
+        input.signal,
       );
       const candidates = candidatesForContext(
         input.candidates,
@@ -139,7 +145,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
       }
       const accepted = await deps.locks.run(
         workLockKey(run.workspaceId, run.workId),
-        async () => {
+        async (signal) => {
           const work = await input.current();
           if (work.revision !== snapshot.work.revision && attempt === 0)
             return false;
@@ -149,6 +155,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
             const facts = deps.facts.in(tx).commands;
             const works = deps.works.in(tx).internal;
             const sessions = deps.agents.in(tx).internal;
+            await guardWorkRevision(works, run, work.revision, signal, 'draft');
             const acceptedFacts = await facts.acceptRunCandidates({
               workspaceId: run.workspaceId,
               workId: run.workId,
@@ -158,7 +165,6 @@ export function createWorkContinuation(deps: WorkDependencies) {
               ...(validOutput && { contextCandidates: validOutput.candidates }),
             });
             if (!acceptedFacts.contextAccepted) validOutput = undefined;
-            await works.touch(run.workspaceId, run.workId, {});
             if (validOutput && settingsRevision !== null) {
               const context: AgentSessionContext = {
                 version: 1,
@@ -210,9 +216,10 @@ export function createWorkContinuation(deps: WorkDependencies) {
                     : 'succeeded',
             });
             await works.event(run.workspaceId, run.workId, 'facts.changed');
-          });
+          }, signal);
           return true;
         },
+        input.signal,
       );
       if (accepted) return;
     }

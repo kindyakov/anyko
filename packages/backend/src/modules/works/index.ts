@@ -93,7 +93,15 @@ export interface WorkStore extends WorkDeletionStore {
   touch(
     workspaceId: string,
     workId: string,
-    input: { inputChanged?: boolean; confirmed?: boolean },
+    input: { inputChanged?: boolean } & (
+      | { expectedRevision?: number; confirmed?: false }
+      | { expectedRevision: number; confirmed: true }
+    ),
+  ): Promise<void>;
+  lockRevision(
+    workspaceId: string,
+    workId: string,
+    revision: number,
   ): Promise<void>;
   event(workspaceId: string, workId: string, kind: string): Promise<void>;
   events(
@@ -167,7 +175,13 @@ export interface WorksPorts {
   // Внутренний порт исполнения (worker и процессы после проверки права): ревизия, события, очистка.
   readonly internal: Pick<
     WorkStore,
-    'get' | 'documents' | 'dirty' | 'touch' | 'event' | 'detachDeleted'
+    | 'get'
+    | 'documents'
+    | 'dirty'
+    | 'touch'
+    | 'lockRevision'
+    | 'event'
+    | 'detachDeleted'
   > &
     WorkDeletionStore & {
       notifyDocumentChanged(

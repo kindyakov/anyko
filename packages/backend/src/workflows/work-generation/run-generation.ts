@@ -8,7 +8,7 @@ import {
 } from '../../modules/templates';
 import type { WorkDependencies } from '../work-dependencies';
 import { createRunState } from '../work-execution/run-state';
-import { workLockKey } from '../work-guards';
+import { guardWorkRevision, workLockKey } from '../work-guards';
 
 const DOCX =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -19,6 +19,23 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
   return async (attempt: WorkAttempt, signal: AbortSignal) => {
     const { run } = attempt;
     const { current, step } = createRunState(deps, attempt);
+    const write: WorkAttempt['write'] = (apply) =>
+      deps.locks.run(
+        workLockKey(run.workspaceId, run.workId),
+        async (lockSignal) => {
+          const work = await current();
+          return attempt.write(async (tx, attemptWrite) => {
+            await guardWorkRevision(
+              deps.works.in(tx).internal,
+              run,
+              work.revision,
+              lockSignal,
+            );
+            return apply(tx, attemptWrite);
+          }, lockSignal);
+        },
+        signal,
+      );
     if (!run.generationId) throw new Error('GENERATION_MISSING');
     const record = await deps.generation.internal.get(
       run.workspaceId,
@@ -48,7 +65,7 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       try {
         bytes = generateDocument(source, data);
       } catch {
-        await attempt.write(async (tx) => {
+        await write(async (tx) => {
           await deps.generation
             .in(tx)
             .internal.failFile(run.workspaceId, record.id, file.id);
@@ -66,29 +83,19 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       await deps.generation.internal.stage(run.workspaceId, run.workId, key);
       // Storage errors propagate to the durable I/O barrier; never hide an unknown PUT outcome.
       await deps.storage.put(key, bytes, DOCX, signal);
-      await deps.locks.run(
-        workLockKey(run.workspaceId, run.workId),
-        async () => {
-          await current();
-          await attempt.write(async (tx) => {
-            await deps.generation.in(tx).internal.publish({
-              workspaceId: run.workspaceId,
-              workId: run.workId,
-              id: record.id,
-              fileId: file.id,
-              key,
-              checksum: await checksum(bytes),
-            });
-            await deps.works
-              .in(tx)
-              .internal.event(
-                run.workspaceId,
-                run.workId,
-                'generation.file.ready',
-              );
-          });
-        },
-      );
+      await write(async (tx) => {
+        await deps.generation.in(tx).internal.publish({
+          workspaceId: run.workspaceId,
+          workId: run.workId,
+          id: record.id,
+          fileId: file.id,
+          key,
+          checksum: await checksum(bytes),
+        });
+        await deps.works
+          .in(tx)
+          .internal.event(run.workspaceId, run.workId, 'generation.file.ready');
+      });
       completed++;
     }
     const status =
@@ -97,20 +104,17 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
         : completed
           ? 'partial'
           : 'failed';
-    await deps.locks.run(workLockKey(run.workspaceId, run.workId), async () => {
-      await current();
-      await attempt.write(async (tx, attemptWrite) => {
-        const generation = deps.generation.in(tx).internal;
-        await generation.finish(run.workspaceId, record.id, status);
-        await attemptWrite.step({
-          stage: 'generation',
-          status: status === 'succeeded' ? 'succeeded' : 'failed',
-        });
-        await attemptWrite.finish({ status });
-        await deps.works
-          .in(tx)
-          .internal.event(run.workspaceId, run.workId, 'generation.ready');
+    await write(async (tx, attemptWrite) => {
+      const generation = deps.generation.in(tx).internal;
+      await generation.finish(run.workspaceId, record.id, status);
+      await attemptWrite.step({
+        stage: 'generation',
+        status: status === 'succeeded' ? 'succeeded' : 'failed',
       });
+      await attemptWrite.finish({ status });
+      await deps.works
+        .in(tx)
+        .internal.event(run.workspaceId, run.workId, 'generation.ready');
     });
   };
 }

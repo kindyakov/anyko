@@ -43,6 +43,7 @@ export interface ResourceLocks {
   run<T>(
     key: string,
     operation: (signal: AbortSignal) => Promise<T>,
+    parentSignal?: AbortSignal,
   ): Promise<T>;
 }
 export { StorageWriteOutcomeUnknown } from '../../../platform/storage-write-outcome';
