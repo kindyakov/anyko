@@ -100,6 +100,8 @@ export async function deleteCatalogDocument(
   )
     throw new DocumentError('REVISION_CONFLICT');
   if (works.some(({ busy }) => busy)) throw new DocumentError('WORK_BUSY');
+  // OCR claims and completions take the Run lock before notifying linked works.
+  await ports.cancelDocument(workspaceId, documentId);
   const workIds = works.map(({ id }) => id);
   if (workIds.length) {
     for (const { id, revision } of works)
@@ -127,7 +129,6 @@ export async function deleteCatalogDocument(
     }
   }
   await ports.markDeleted(workspaceId, documentId);
-  await ports.cancelDocument(workspaceId, documentId);
   await ports.redactResponses(workspaceId, documentId);
   await ports.recordDeletion(workspaceId, documentId, actorId);
   return true;

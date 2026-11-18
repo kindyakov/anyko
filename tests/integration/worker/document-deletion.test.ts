@@ -17,11 +17,17 @@ import { createDeletionStore } from '../../../packages/backend/src/modules/docum
 import { claimDocumentAttempt } from '../../../packages/backend/src/modules/processing';
 import { createProcessingIo } from '../../../packages/backend/src/modules/processing/infrastructure/io';
 import { createDocumentProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/store';
+import { notifyDocumentChanged } from '../../../packages/backend/src/modules/works/application/notify-document-changed';
+import { createWorkStore } from '../../../packages/backend/src/modules/works/infrastructure/store';
 import {
   brandDocumentId,
   uuidV7,
 } from '../../../packages/backend/src/platform/ids';
 import { createBackend } from '../../../packages/backend/src/runtime';
+import {
+  readCatalogDeletionImpact,
+  requestCatalogDeletion,
+} from '../../../packages/backend/src/runtime/documents/catalog-deletion';
 import { finishDocumentDeletion } from '../../../packages/backend/src/runtime/documents/unit-of-work';
 import { createUnitOfWork } from '../../../packages/backend/src/runtime/transactions';
 import { createDocumentDeletionWorkflow } from '../../../packages/backend/src/workflows/document-deletion';
@@ -67,6 +73,127 @@ async function rejected(operation: Promise<unknown>, code: string) {
   }
   expect(String(caught)).toContain(code);
 }
+
+test('catalog deletion and claiming a replacement OCR run share the same lock order', async () => {
+  const pool = createDatabasePool(databaseUrl);
+  const db = createDatabase(pool);
+  const workspaceId = crypto.randomUUID();
+  const documentId = crypto.randomUUID();
+  const workId = crypto.randomUUID();
+  const runId = crypto.randomUUID();
+  const where = { workspaceId };
+  const notifyEntered = Promise.withResolvers<number>();
+  const releaseNotify = Promise.withResolvers<void>();
+  let completed: Promise<PromiseSettledResult<unknown>[]> | undefined;
+  try {
+    await db.anykoWorkspace.create({
+      data: { id: workspaceId, name: 'OCR lock order' },
+    });
+    await db.sourceDocument.create({
+      data: {
+        workspaceId,
+        id: documentId,
+        filename: 'ocr-lock.pdf',
+        size: 1,
+        sourceKey: documentId,
+        sourceChecksum: documentId,
+        requestKey: documentId,
+        createdBy: 'fixture',
+      },
+    });
+    await db.run.createMany({
+      data: [1, 2].map((revision) => ({
+        workspaceId,
+        documentId,
+        id: revision === 2 ? runId : crypto.randomUUID(),
+        kind: 'document.ocr',
+        revision,
+        status: revision === 2 ? 'queued' : 'succeeded',
+        ...(revision === 1 && {
+          resultKey: 'fixture',
+          processorVersion: 'fixture',
+        }),
+        initiatedBy: 'fixture',
+        correlationId: crypto.randomUUID(),
+      })),
+    });
+    await db.work.create({
+      data: {
+        workspaceId,
+        id: workId,
+        title: 'OCR lock order',
+        createdBy: 'fixture',
+        packageVersion: 'technical-document-v1',
+        documents: { create: { documentId, ocrRevision: 1 } },
+      },
+    });
+    const impact = await readCatalogDeletionImpact(db, workspaceId, documentId);
+    if (!impact) throw new Error('Missing deletion impact');
+    const processing = createDocumentProcessingStore(
+      db,
+      async (tx, workspace, document) => {
+        const [row] = await tx.$queryRaw<
+          { pid: number }[]
+        >`SELECT pg_backend_pid() AS pid`;
+        if (!row) throw new Error('Missing OCR connection');
+        notifyEntered.resolve(row.pid);
+        await releaseNotify.promise;
+        await notifyDocumentChanged(createWorkStore(tx))(workspace, document);
+      },
+    );
+    const claim = processing.claim(
+      workspaceId,
+      runId,
+      crypto.randomUUID(),
+      new Date(Date.now() + 60_000),
+    );
+    completed = Promise.allSettled([claim]);
+    const pid = await notifyEntered.promise;
+    const deletion = db.$transaction((tx) =>
+      requestCatalogDeletion(tx, workspaceId, documentId, 'fixture', {
+        canDeleteLinked: true,
+        token: impact.token,
+      }),
+    );
+    completed = Promise.allSettled([claim, deletion]);
+    const deadline = Date.now() + 2500;
+    for (;;) {
+      const result = await pool.query<{ waiting: boolean }>(
+        'SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))) AS waiting',
+        [pid],
+      );
+      if (result.rows[0]?.waiting) break;
+      if (Date.now() > deadline)
+        throw new Error('Deletion did not wait for the OCR transaction');
+      await Bun.sleep(15);
+    }
+    releaseNotify.resolve();
+    const [claimed, deleted] = await completed;
+    expect(claimed).toMatchObject({
+      status: 'fulfilled',
+      value: { snapshot: { id: runId } },
+    });
+    expect(deleted).toEqual({ status: 'fulfilled', value: true });
+    expect(
+      await db.run.findUnique({
+        where: { id: runId },
+        select: { errorCode: true },
+      }),
+    ).toEqual({ errorCode: 'DOCUMENT_DELETED' });
+  } finally {
+    releaseNotify.resolve();
+    await completed;
+    await db.workEvent.deleteMany({ where });
+    await db.work.deleteMany({ where });
+    await db.run.deleteMany({ where });
+    await db.documentDeletion.deleteMany({ where });
+    await db.sourceDocument.deleteMany({ where });
+    await db.auditEvent.deleteMany({ where });
+    await db.anykoWorkspace.deleteMany({ where: { id: workspaceId } });
+    await db.$disconnect();
+    await pool.end();
+  }
+}, 15000);
 
 test('separate images and all document data are physically erased; unknown/active writers block completion', async () => {
   const pool = createDatabasePool(databaseUrl),
