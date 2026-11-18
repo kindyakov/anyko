@@ -8,6 +8,7 @@ export const rightCatalog = [
   'works.generate',
   'documents.upload',
   'documents.delete',
+  'documents.deleteLinked',
   'recognitions.use',
   'connections.read',
   'connections.manage',

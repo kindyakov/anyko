@@ -144,12 +144,44 @@ export const deleteDocument = endpoint({
   method: 'DELETE',
   path: '/workspaces/:workspaceId/recognitions/:documentId',
   params: documentParams,
+  query: z.object({
+    impact: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/u)
+      .optional(),
+  }),
   response: json(deletingStatusSchema),
   status: 202,
-  errors: ['FORBIDDEN', 'NOT_FOUND', 'DOCUMENT_IN_USE'],
+  errors: [
+    'FORBIDDEN',
+    'NOT_FOUND',
+    'DOCUMENT_IN_USE',
+    'REVISION_CONFLICT',
+    'WORK_BUSY',
+  ],
   invalid: 'NOT_FOUND',
   // Повтор после принятого удаления даёт NOT_FOUND, состояние остаётся тем же.
   idempotency: 'natural',
+});
+
+export const getDocumentDeletionImpact = endpoint({
+  summary:
+    'Показывает, какие работы потеряют исходник при удалении из каталога',
+  method: 'GET',
+  path: '/workspaces/:workspaceId/recognitions/:documentId/deletion-impact',
+  params: documentParams,
+  response: json(
+    z.object({
+      token: z.string().regex(/^[a-f0-9]{64}$/u),
+      canDelete: z.boolean(),
+      works: z.array(
+        z.object({ id: z.uuid(), title: z.string(), busy: z.boolean() }),
+      ),
+    }),
+  ),
+  status: 200,
+  errors: ['FORBIDDEN', 'NOT_FOUND'],
+  invalid: 'NOT_FOUND',
 });
 
 export const retryDocument = endpoint({

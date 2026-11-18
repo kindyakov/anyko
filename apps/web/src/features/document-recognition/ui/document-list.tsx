@@ -3,9 +3,10 @@ import { type ComponentType, type ReactNode, useState } from 'react';
 import type { DocumentSummary } from '@anyko/contracts/documents';
 import { Skeleton, StatusPill, useToast } from '@anyko/ui';
 
-import { isUnauthorized } from '@/lib/api/errors';
+import { ApiError, isUnauthorized } from '@/lib/api/errors';
 
 import { useRecognitionAction } from '../api/commands';
+import { actionNotice } from '../model/action-notice';
 import {
   describeDocumentError,
   recognitionRetryCode,
@@ -89,6 +90,7 @@ export function DocumentList({
     kind: 'retry' | 'delete',
     targets: DocumentSummary[],
     bulk = false,
+    impacts?: ReadonlyMap<string, string>,
   ) {
     if (pending || targets.length === 0) return;
     const documentIds = targets.map((document) => document.id);
@@ -98,44 +100,31 @@ export function DocumentList({
       );
     }
     mutation.mutate(
-      { kind, documentIds, bulk },
+      { kind, documentIds, bulk, impacts },
       {
         onSuccess: ({ succeeded, failed }) => {
+          if (kind === 'delete') {
+            const retryConfirmation = new Set(
+              failed
+                .filter(
+                  ({ error }) =>
+                    error instanceof ApiError &&
+                    [
+                      'REVISION_CONFLICT',
+                      'WORK_BUSY',
+                      'DOCUMENT_IN_USE',
+                    ].includes(error.code),
+                )
+                .map(({ id }) => id),
+            );
+            setDeleting(targets.filter(({ id }) => retryConfirmation.has(id)));
+          }
           setSelection((previous) => {
             const next = new Map(previous);
             for (const id of succeeded) next.delete(id);
             return next;
           });
-          const names = new Map(
-            targets.map(({ id, filename }) => [id, filename]),
-          );
-          const count = `${String(succeeded.length)} из ${String(targets.length)}`;
-          const title =
-            kind === 'retry'
-              ? succeeded.length
-                ? `Повторное распознавание запущено: ${count}`
-                : 'Не удалось повторить распознавание'
-              : succeeded.length
-                ? `Удалено: ${count}`
-                : 'Не удалось удалить файлы';
-          const description = failed.length
-            ? failed
-                .map(
-                  ({ id, error }) =>
-                    `${names.get(id) ?? id}: ${describeDocumentError(error)}`,
-                )
-                .join('\n')
-            : targets.map(({ filename }) => filename).join('\n');
-          add({
-            title,
-            description,
-            variant: failed.length
-              ? succeeded.length
-                ? 'warning'
-                : 'error'
-              : 'success',
-            mode: failed.length ? 'persistent' : 'timed',
-          });
+          add(actionNotice(kind, targets, { succeeded, failed }));
         },
         onError: (error) => {
           if (!isUnauthorized(error))
@@ -148,9 +137,6 @@ export function DocumentList({
                   : 'Не удалось удалить файлы',
               description: describeDocumentError(error),
             });
-        },
-        onSettled: () => {
-          setDeleting([]);
         },
       },
     );
@@ -295,10 +281,11 @@ export function DocumentList({
       />
       <ConfirmDocumentDeletion
         deleting={deleting}
+        workspaceId={workspaceId}
         visible={visibleIds}
         pending={pending?.kind === 'delete'}
-        onConfirm={() => {
-          run('delete', deleting, deleting.length > 1);
+        onConfirm={(impacts) => {
+          run('delete', deleting, deleting.length > 1, impacts);
         }}
         onCancel={() => {
           setDeleting([]);

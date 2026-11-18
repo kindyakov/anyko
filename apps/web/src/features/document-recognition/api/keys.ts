@@ -3,6 +3,8 @@ export const documentKeys = {
   all: (workspaceId: string) => ['documents', workspaceId] as const,
   list: (workspaceId: string) =>
     [...documentKeys.all(workspaceId), 'list'] as const,
+  deletionImpact: (workspaceId: string) =>
+    [...documentKeys.all(workspaceId), 'deletion-impact'] as const,
   // Результат документа работы и распознавания читается разными адресами: владелец входит в ключ.
   result: (
     workspaceId: string,

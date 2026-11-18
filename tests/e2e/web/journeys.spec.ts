@@ -352,6 +352,84 @@ test('ready catalog files can be used when creating and extending a work', async
   await expect(sources.getByText('Каталог E2E 32.pdf')).toBeVisible();
 });
 
+test('linked catalog deletion shows affected works and requires deliberate confirmation', async ({
+  page,
+}) => {
+  await page.goto('/sign-in');
+  await signIn(page, 'OWNER');
+  const work = 'E2E удаление связанного источника';
+  const filename = 'Каталог E2E 35.pdf';
+  const bulkFiles = ['Каталог E2E 36.pdf', 'Каталог E2E 37.pdf'];
+  await page.getByRole('button', { name: 'Новая работа' }).click();
+  const creation = page.getByRole('dialog', { name: 'Новая работа' });
+  await creation.getByLabel('Название работы').fill(work);
+  await creation
+    .getByRole('button', { name: 'Выбрать файлы из каталога' })
+    .click();
+  for (const file of [filename, ...bulkFiles]) {
+    await creation
+      .getByRole('searchbox', { name: 'Поиск файлов по имени' })
+      .fill(file);
+    await creation.getByRole('checkbox', { name: `Выбрать ${file}` }).click();
+  }
+  await creation.getByRole('button', { name: 'Создать и открыть' }).click();
+  await expect(
+    page.getByRole('region', { name: /Файлы работы/ }).getByText(filename),
+  ).toBeVisible();
+  await page.getByRole('link', { name: /Распознавание/ }).click();
+  await page
+    .getByRole('searchbox', { name: 'Поиск файлов по имени' })
+    .fill(filename);
+  const remove = page.getByRole('button', { name: `Удалить ${filename}` });
+  await remove.click();
+  const confirmation = page.getByRole('alertdialog');
+  await expect(
+    confirmation
+      .getByRole('list', { name: 'Затронутые работы' })
+      .getByText(work),
+  ).toBeVisible();
+  const hold = confirmation.getByRole('button', {
+    name: 'Удерживайте 3 секунды',
+  });
+  await hold.hover();
+  await page.mouse.down();
+  const progress = confirmation.getByRole('progressbar');
+  await expect
+    .poll(() =>
+      progress.evaluate((element) => (element as HTMLProgressElement).value),
+    )
+    .toBeGreaterThan(0);
+  await page.mouse.up();
+  await expect(progress).toHaveAttribute('value', '0');
+  await confirmation.getByRole('button', { name: 'Отмена' }).click();
+  await expect(remove).toBeVisible();
+  await remove.click();
+  const confirm = confirmation.getByRole('button', {
+    name: 'Удалить документ',
+  });
+  await expect(confirm).toBeDisabled();
+  await confirmation
+    .getByRole('checkbox', {
+      name: 'Подтверждаю удаление из перечисленных работ',
+    })
+    .check();
+  await confirm.click();
+  await expect(confirmation).toBeHidden();
+  await expect(remove).toBeHidden();
+  for (const file of bulkFiles) {
+    await page
+      .getByRole('searchbox', { name: 'Поиск файлов по имени' })
+      .fill(file);
+    await page.getByRole('checkbox', { name: `Выбрать ${file}` }).check();
+  }
+  await page.getByRole('button', { name: 'Удалить выбранные' }).click();
+  await hold.hover();
+  await page.mouse.down();
+  await expect(confirmation).toBeHidden();
+  await page.mouse.up();
+  await expect(page.getByText('Удалено: 2 из 2')).toBeVisible();
+});
+
 test('uploading matching content offers reuse or a separate source in recognition and works', async ({
   page,
 }) => {

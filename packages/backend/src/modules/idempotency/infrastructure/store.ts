@@ -20,15 +20,15 @@ export function idempotencyStoreFor(tx: Tx) {
 export async function redactResourceResponses(
   tx: Tx,
   workspaceId: string,
-  resources: { path: string[]; id: string; command?: string }[],
+  resources: { path: string[]; id: string; command?: string; array?: true }[],
   response: { status: number; body: z.infer<typeof storedBodySchema> },
 ) {
   await transactionHandle<Connection>(tx).idempotencyKey.updateMany({
     where: {
       workspaceId,
       state: 'completed',
-      OR: resources.map(({ path, id, command }) => ({
-        body: { path, equals: id },
+      OR: resources.map(({ path, id, command, array }) => ({
+        body: array ? { path, array_contains: [{ id }] } : { path, equals: id },
         ...(command === undefined ? {} : { command }),
       })),
     },

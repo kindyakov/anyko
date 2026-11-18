@@ -8,6 +8,7 @@ import {
   deleteDocument,
   getDocument,
   getDocumentDeletion,
+  getDocumentDeletionImpact,
   getDocumentImage,
   getDocumentResult,
   getDocumentSource,
@@ -105,8 +106,15 @@ export function documentRoutes(
   route(app, getDocumentDeletion, ({ scope, params }) =>
     documents.queries.deletion(scope, brandDocumentId(params.documentId)),
   );
-  route(app, deleteDocument, async ({ scope, params }) => {
-    await documents.commands.remove(scope, brandDocumentId(params.documentId));
+  route(app, getDocumentDeletionImpact, ({ scope, params }) =>
+    documents.queries.deletionImpact(scope, brandDocumentId(params.documentId)),
+  );
+  route(app, deleteDocument, async ({ scope, params, query }) => {
+    await documents.commands.remove(
+      scope,
+      brandDocumentId(params.documentId),
+      query.impact,
+    );
     return { status: 'deleting' as const };
   });
   route(app, retryDocument, async ({ scope, params, requestId }) => ({

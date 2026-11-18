@@ -79,22 +79,20 @@ type RecognitionAction = {
   kind: 'retry' | 'delete';
   documentIds: string[];
   bulk: boolean;
+  impacts?: ReadonlyMap<string, string> | undefined;
 };
 
 async function runForDocuments(
   documentIds: string[],
   signal: AbortSignal | undefined,
   command: (documentId: string) => Promise<unknown>,
+  concurrency = concurrentDocuments,
 ) {
   const succeeded: string[] = [];
   const failed: { id: string; error: unknown }[] = [];
-  for (
-    let offset = 0;
-    offset < documentIds.length;
-    offset += concurrentDocuments
-  ) {
+  for (let offset = 0; offset < documentIds.length; offset += concurrency) {
     if (signal?.aborted) break;
-    const group = documentIds.slice(offset, offset + concurrentDocuments);
+    const group = documentIds.slice(offset, offset + concurrency);
     const outcomes = await Promise.allSettled(group.map(command));
     for (const [index, id] of group.entries()) {
       const outcome = outcomes[index];
@@ -124,7 +122,7 @@ export function useRecognitionAction(
     };
   }, []);
   return useMutation({
-    mutationFn: async ({ kind, documentIds }: RecognitionAction) => {
+    mutationFn: async ({ kind, documentIds, impacts }: RecognitionAction) => {
       const signal = screen.current?.signal;
       if (kind === 'retry')
         return runForDocuments(documentIds, signal, async (id) => {
@@ -136,7 +134,11 @@ export function useRecognitionAction(
         documentIds,
         signal,
         (documentId) =>
-          callApi(deleteDocument, { params: { workspaceId, documentId } }),
+          callApi(deleteDocument, {
+            params: { workspaceId, documentId },
+            query: { impact: impacts?.get(documentId) },
+          }),
+        1,
       );
       if (!requested.succeeded.length) return requested;
       // Сначала отправляем все удаления. Список показывает принятые операции, пока мы ждём их завершения.
@@ -152,7 +154,13 @@ export function useRecognitionAction(
         failed: [...requested.failed, ...completed.failed],
       };
     },
-    onSettled: () => invalidateDocumentCatalog(client, workspaceId),
+    onSettled: () =>
+      Promise.all([
+        invalidateDocumentCatalog(client, workspaceId),
+        client.invalidateQueries({
+          queryKey: documentKeys.deletionImpact(workspaceId),
+        }),
+      ]),
   });
 }
 

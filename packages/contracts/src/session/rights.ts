@@ -10,6 +10,7 @@ export const rightSchema = z.enum([
   'works.generate',
   'documents.upload',
   'documents.delete',
+  'documents.deleteLinked',
   'recognitions.use',
   'connections.read',
   'connections.manage',

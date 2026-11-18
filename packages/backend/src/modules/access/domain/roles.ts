@@ -3,6 +3,7 @@ import { type Right, rightCatalog } from '../../../platform/scope';
 // Owner получает все права, member — права за вычетом действий владельца.
 const ownerOnlyRights: readonly Right[] = [
   'works.delete',
+  'documents.deleteLinked',
   'connections.manage',
   'members.invite',
 ];

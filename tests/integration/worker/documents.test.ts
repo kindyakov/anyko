@@ -260,7 +260,12 @@ test('content matches include only live originals in the selected workspace', as
     new TextEncoder().encode('%PDF-1.7\n same filename, different content'),
   );
   expect(different.filename).toBe(first.filename);
-  await recognition.commands.remove(scope, brandDocumentId(deleted.id));
+  const member = memberScope(own, 'member', ['recognitions.use']);
+  const deletedId = brandDocumentId(deleted.id);
+  const impact = await recognition.queries.deletionImpact(member, deletedId);
+  expect(impact.works).toEqual([]);
+  expect(impact.canDelete).toBe(true);
+  await recognition.commands.remove(member, deletedId, impact.token);
   const checksum = Bun.CryptoHasher.hash('sha256', pdf, 'hex');
   const page = await recognition.queries.list(scope, { limit: 1, checksum });
   expect(page.items.map(({ id }) => id)).toEqual([copy.id]);

@@ -17,6 +17,16 @@ export interface DocumentView {
   processingRevision?: number;
   readyRevision?: number | null;
 }
+export interface DocumentDeletionImpact {
+  token: string;
+  works: { id: string; title: string; busy: boolean }[];
+}
+
+export interface DocumentDeletionConfirmation {
+  token?: string | undefined;
+  canDeleteLinked: boolean;
+}
+
 export interface DocumentResult {
   markdown: string;
   processorVersion: string;
@@ -138,7 +148,12 @@ export interface DocumentStore {
     workspaceId: string,
     documentId: string,
     actorId: string,
+    confirmation?: DocumentDeletionConfirmation,
   ): Promise<boolean>;
+  deletionImpact(
+    workspaceId: string,
+    documentId: string,
+  ): Promise<DocumentDeletionImpact | null>;
   deletion(
     workspaceId: string,
     documentId: string,

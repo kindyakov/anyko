@@ -789,6 +789,152 @@ test('updating OCR in one work preserves the other pin and marks only unsupporte
   }
 }, 30000);
 
+test('global source deletion confirms live links, refuses running works, and keeps generated history and values', async () => {
+  const input = await create();
+  const scope = memberScope(input.workspaceId);
+  const member = memberScope(input.workspaceId, 'member', [
+    'recognitions.use',
+    'works.read',
+  ]);
+  const { intake, views, review, generation } = apiBackend.workHttp;
+  const catalog = apiBackend.documentHttp.documents;
+  const documentId = brandDocumentId((await upload(input)).id);
+  await until(input, (state) => state.documents[0]?.status === 'succeeded');
+  const original = await catalog.queries.deletionImpact(scope, documentId);
+  const other = await intake.createWork(scope, {
+    title: 'Новая связь',
+    packageVersion: 'technical-document-v1',
+    documentIds: [documentId],
+  });
+  const cache = apiBackend.workHttp.idempotency;
+  const ref = {
+    workspaceId: input.workspaceId,
+    command: 'POST /workspaces/:workspaceId/works',
+    key: crypto.randomUUID(),
+    fingerprint: 'catalog-source-deletion',
+  };
+  const creation = await views.get(scope, other);
+  const response = () => Promise.resolve({ status: 201, body: creation });
+  expect((await cache.run(ref, response)).status).toBe(201);
+  await rejects(
+    catalog.commands.remove(scope, documentId, original.token),
+    'REVISION_CONFLICT',
+  );
+  const impact = await catalog.queries.deletionImpact(scope, documentId);
+  expect(impact.works.map(({ title }) => title).sort()).toEqual([
+    'Новая связь',
+    'Тестовая работа',
+  ]);
+  expect(
+    (await catalog.queries.deletionImpact(member, documentId)).canDelete,
+  ).toBe(false);
+  await rejects(
+    catalog.commands.remove(member, documentId, impact.token),
+    'FORBIDDEN',
+  );
+  const pause = pauseStep();
+  waitForExtraction = () => pause.wait();
+  try {
+    await analyze(input);
+    await pause.entered();
+    expect(
+      (await catalog.queries.deletionImpact(scope, documentId)).works.find(
+        ({ id }) => id === input.workId,
+      )?.busy,
+    ).toBe(true);
+    await rejects(
+      catalog.commands.remove(scope, documentId, impact.token),
+      'WORK_BUSY',
+    );
+  } finally {
+    pause.release();
+    waitForExtraction = undefined;
+  }
+  const analyzed = await until(input, terminal);
+  await review.confirmFacts(scope, {
+    workId: input.workId,
+    revision: analyzed.work.revision,
+  });
+  const confirmed = await views.get(scope, input.workId);
+  const rendering = pauseStep();
+  pauseGeneratedWrite = () => rendering.wait();
+  try {
+    await generation.startGeneration(scope, {
+      workId: input.workId,
+      revision: confirmed.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    await rendering.entered();
+    await rejects(
+      catalog.commands.remove(scope, documentId, impact.token),
+      'WORK_BUSY',
+    );
+  } finally {
+    rendering.release();
+    pauseGeneratedWrite = undefined;
+  }
+  const generated = await until(
+    input,
+    (state) => state.generations[0]?.status === 'succeeded',
+  );
+  const history = generated.generations[0];
+  const file = history?.files[0];
+  if (!history || !file) throw new Error('Expected generated history');
+  await catalog.commands.remove(scope, documentId, impact.token);
+  await rejects(catalog.queries.get(scope, documentId), 'NOT_FOUND');
+  await rejects(catalog.queries.source(scope, documentId), 'NOT_FOUND');
+  await rejects(catalog.queries.result(scope, documentId), 'NOT_FOUND');
+  await rejects(views.source(scope, other, documentId), 'NOT_FOUND');
+  await rejects(views.result(scope, other, documentId), 'NOT_FOUND');
+  expect(await cache.run(ref, response)).toMatchObject({
+    status: 404,
+    replayed: true,
+  });
+  expect((await views.get(scope, other)).documents).toEqual([]);
+  const changed = await views.get(scope, input.workId);
+  expect(changed.documents).toEqual([]);
+  expect(changed.facts.values.personName).toBe('Анна');
+  expect(changed.facts.needsReview).toEqual(['personName']);
+  expect(changed.facts.candidates).toEqual([]);
+  expect(changed.generations[0]?.id).toBe(history.id);
+  const deadline = Date.now() + 15000;
+  while (
+    (await catalog.queries.deletion(scope, documentId)).status !== 'deleted'
+  ) {
+    if (Date.now() > deadline) throw new Error('Deletion did not finish');
+    await Bun.sleep(30);
+  }
+  const output = await generation.downloadResult(scope, {
+    workId: brandWorkId(input.workId),
+    generationId: brandGenerationId(history.id),
+  });
+  expect(output.bytes.byteLength).toBeGreaterThan(0);
+  await rejects(
+    generation.startGeneration(scope, {
+      workId: input.workId,
+      revision: changed.work.revision,
+      correlationId: crypto.randomUUID(),
+    }),
+    'NOT_READY',
+  );
+  await review.confirmFacts(scope, {
+    workId: input.workId,
+    revision: changed.work.revision,
+  });
+  const reviewed = await views.get(scope, input.workId);
+  await generation.startGeneration(scope, {
+    workId: input.workId,
+    revision: reviewed.work.revision,
+    correlationId: crypto.randomUUID(),
+  });
+  const regenerated = await until(input, (state) =>
+    state.generations.some(
+      (item) => item.id !== history.id && item.status === 'succeeded',
+    ),
+  );
+  expect(regenerated.generations).toHaveLength(2);
+}, 35000);
+
 test('work creation rolls back a stale catalog selection and pins ready sources on retry', async () => {
   const input = await create();
   const scope = memberScope(input.workspaceId);

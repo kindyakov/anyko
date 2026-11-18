@@ -6,6 +6,7 @@ import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 export { documentImageLimit } from '../../platform/document-output';
 
 import type {
+  DocumentDeletionImpact,
   DocumentListInput,
   DocumentPage,
   DocumentResult,
@@ -14,6 +15,8 @@ import type {
 
 export type {
   ArtifactRegistry,
+  DocumentDeletionConfirmation,
+  DocumentDeletionImpact,
   DocumentDeps,
   DocumentParser,
   DocumentResult,
@@ -91,7 +94,11 @@ export interface DocumentsCommands {
     scope: WorkspaceScope,
     input: DocumentUploadInput,
   ): Promise<DocumentView>;
-  remove(scope: WorkspaceScope, documentId: DocumentId): Promise<void>;
+  remove(
+    scope: WorkspaceScope,
+    documentId: DocumentId,
+    token?: string,
+  ): Promise<void>;
   retry(
     scope: WorkspaceScope,
     documentId: DocumentId,
@@ -100,6 +107,10 @@ export interface DocumentsCommands {
 }
 
 export interface DocumentsQueries {
+  deletionImpact(
+    scope: WorkspaceScope,
+    documentId: DocumentId,
+  ): Promise<DocumentDeletionImpact & { canDelete: boolean }>;
   list(scope: WorkspaceScope, input: DocumentListInput): Promise<DocumentPage>;
   pendingDeletions(scope: WorkspaceScope): Promise<PendingDocumentDeletion[]>;
   get(scope: WorkspaceScope, documentId: DocumentId): Promise<DocumentView>;

@@ -35,6 +35,7 @@ function store(overrides: Partial<DocumentStore>): DocumentStore {
     readyResult: unused,
     remove: unused,
     deletion: unused,
+    deletionImpact: unused,
     image: unused,
     assertUploadAllowed: unused,
     retry: unused,

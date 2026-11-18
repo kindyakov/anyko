@@ -215,9 +215,17 @@ test('only server-confirmed recognition uploads contribute to the receipt', asyn
   expect(screen.queryByText(/Принято \d/)).toBeNull();
 });
 
+const deletionImpactToken = 'a'.repeat(64);
+
 test('a deletion that is still pending stops polling when the screen leaves the page', async () => {
   const exchanges = serveApi((exchange) => {
     if (exchange.method === 'DELETE') return json(202, { status: 'deleting' });
+    if (exchange.url.endsWith('/deletion-impact'))
+      return json(200, {
+        token: deletionImpactToken,
+        canDelete: true,
+        works: [],
+      });
     if (exchange.url.endsWith('/deletion'))
       return json(200, { status: 'deleting' });
     return json(200, {
@@ -231,7 +239,13 @@ test('a deletion that is still pending stops polling when the screen leaves the 
   await user.click(
     await screen.findByRole('button', { name: 'Удалить scan.pdf' }),
   );
-  await user.click(screen.getByRole('button', { name: 'Удалить документ' }));
+  const confirm = screen.getByRole<HTMLButtonElement>('button', {
+    name: 'Удалить документ',
+  });
+  await waitFor(() => {
+    expect(confirm.disabled).toBe(false);
+  });
+  await user.click(confirm);
 
   const polls = () =>
     exchanges.filter((item) => item.url.endsWith('/deletion')).length;
@@ -448,10 +462,17 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
   const exchanges = serveApi(({ method, url }) => {
     if (method === 'DELETE') {
       documents = documents.filter(
-        ({ id }) => url !== `${recognitionsAddress}/${id}`,
+        ({ id }) =>
+          url !== `${recognitionsAddress}/${id}?impact=${deletionImpactToken}`,
       );
       return json(202, { status: 'deleting' });
     }
+    if (url.endsWith('/deletion-impact'))
+      return json(200, {
+        token: deletionImpactToken,
+        canDelete: true,
+        works: [],
+      });
     if (url.endsWith('/deletion')) return json(200, { status: 'deleted' });
     return json(200, {
       items: documents,
@@ -478,13 +499,23 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
   expect(screen.getByText('Выбрано: 2')).toBeTruthy();
 
   await user.click(screen.getByRole('button', { name: 'Удалить выбранные' }));
-  await user.click(dialog().getByRole('button', { name: 'Удалить файлы' }));
+  const confirm = dialog().getByRole<HTMLButtonElement>('button', {
+    name: 'Удалить файлы',
+  });
+  await waitFor(() => {
+    expect(confirm.disabled).toBe(false);
+  });
+  await user.click(confirm);
 
   const notices = within(screen.getByRole('region', { name: 'Уведомления' }));
   expect(await notices.findByText('Удалено: 2 из 2')).toBeTruthy();
   expect(
     exchanges.filter(({ method }) => method === 'DELETE').map(({ url }) => url),
-  ).toEqual([`${recognitionsAddress}/first`, `${recognitionsAddress}/second`]);
+  ).toEqual(
+    ['first', 'second'].map(
+      (id) => `${recognitionsAddress}/${id}?impact=${deletionImpactToken}`,
+    ),
+  );
   expect(screen.queryByRole('alertdialog')).toBeNull();
   expect(
     screen.getByRole('checkbox', { name: 'Выбрать kept.pdf', checked: false }),

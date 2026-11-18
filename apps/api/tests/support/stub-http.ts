@@ -39,6 +39,7 @@ export function stubHttpOptions(): {
       source: unused,
       image: unused,
       deletion: unused,
+      deletionImpact: unused,
     },
     internal: {
       commands: { upload: unused, remove: unused, retry: unused },

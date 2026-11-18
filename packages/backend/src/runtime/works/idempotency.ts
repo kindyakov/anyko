@@ -19,6 +19,7 @@ import { type Tx, type UnitOfWork } from '../../platform/transactions';
 const resourceIdentity = z.object({
   work: z.object({ id: z.uuid() }).optional(),
   document: z.object({ id: z.uuid() }).optional(),
+  documents: z.array(z.object({ id: z.uuid() })).optional(),
 });
 const unavailable = () => ({
   status: 404,
@@ -45,20 +46,29 @@ export function createResourceAwareIdempotencyStore(
       if (!resource?.work && !resource?.document)
         return store.complete(ref, token, response, now);
       return uow.run(async (tx) => {
-        const visible = resource.work
-          ? await lockLiveWorkForResponse(tx, ref.workspaceId, resource.work.id)
-          : resource.document &&
-            (ref.command === workUploadCommand
-              ? await lockLiveWorkUploadForResponse(
-                  tx,
-                  ref.workspaceId,
-                  resource.document.id,
-                )
-              : await lockLiveDocumentForResponse(
-                  tx,
-                  ref.workspaceId,
-                  resource.document.id,
-                ));
+        const documentIds = resource.document
+          ? [resource.document.id]
+          : (resource.documents?.map(({ id }) => id) ?? []);
+        let documentsVisible = true;
+        for (const id of [...new Set(documentIds)].sort())
+          if (!(await lockLiveDocumentForResponse(tx, ref.workspaceId, id)))
+            documentsVisible = false;
+        const visible =
+          documentsVisible &&
+          (resource.work
+            ? await lockLiveWorkForResponse(
+                tx,
+                ref.workspaceId,
+                resource.work.id,
+              )
+            : resource.document &&
+              (ref.command === workUploadCommand
+                ? await lockLiveWorkUploadForResponse(
+                    tx,
+                    ref.workspaceId,
+                    resource.document.id,
+                  )
+                : true));
         return idempotencyStoreFor(tx).complete(
           ref,
           token,
@@ -68,6 +78,27 @@ export function createResourceAwareIdempotencyStore(
       });
     },
   };
+}
+
+export function redactDeletedDocumentResponses(
+  tx: Tx,
+  workspaceId: string,
+  documentId: string,
+) {
+  return redactResourceResponses(
+    tx,
+    workspaceId,
+    [
+      { path: ['document', 'id'], id: documentId },
+      {
+        path: ['documents'],
+        id: documentId,
+        command: 'POST /workspaces/:workspaceId/works',
+        array: true,
+      },
+    ],
+    unavailable(),
+  );
 }
 
 export function redactDeletedWorkResponses(

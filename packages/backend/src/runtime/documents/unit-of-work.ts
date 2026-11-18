@@ -1,37 +1,14 @@
 import type { Database } from '@anyko/database';
 
-import { record } from '../../modules/audit';
-import { DocumentError, type DocumentStore } from '../../modules/documents';
+import type { DocumentStore } from '../../modules/documents';
 import { createDocumentCommands } from '../../modules/documents/infrastructure/commands';
 import { createDocumentReadModel } from '../../modules/documents/infrastructure/read-model';
 import { createProcessingCommands } from '../../modules/processing/infrastructure/commands';
 
-type DeletionTransaction = Parameters<typeof createDocumentCommands>[0] &
-  Parameters<typeof createProcessingCommands>[0] &
-  Parameters<typeof record>[0] &
-  Pick<Database, 'workDocument'>;
-
-async function removeDocument(
-  tx: DeletionTransaction,
-  workspaceId: string,
-  documentId: string,
-  actorId: string,
-) {
-  const commands = createDocumentCommands(tx);
-  const exists = await commands.lock(workspaceId, documentId);
-  if (!exists) return commands.isDeleted(workspaceId, documentId);
-  if (await tx.workDocument.count({ where: { workspaceId, documentId } }))
-    throw new DocumentError('DOCUMENT_IN_USE');
-  await commands.markDeleted(workspaceId, documentId);
-  await createProcessingCommands(tx).cancelDocument(workspaceId, documentId);
-  await record(tx, {
-    workspaceId,
-    actorId,
-    action: 'documents.deleted',
-    target: { kind: 'document', id: documentId },
-  });
-  return true;
-}
+import {
+  readCatalogDeletionImpact,
+  requestCatalogDeletion,
+} from './catalog-deletion';
 
 /** Binds module-owned commands to the same short database transaction. */
 export function createDocumentUnitOfWork(db: Database): DocumentStore {
@@ -43,9 +20,17 @@ export function createDocumentUnitOfWork(db: Database): DocumentStore {
       documents.assertUploadAllowed(scope, key),
     forgetSource: (key) => documents.forgetSource(key),
     stageSource: (key, workspaceId) => documents.stageSource(key, workspaceId),
-    remove: (workspaceId, documentId, actorId) =>
+    deletionImpact: (workspaceId, documentId) =>
+      readCatalogDeletionImpact(db, workspaceId, documentId),
+    remove: (workspaceId, documentId, actorId, confirmation) =>
       db.$transaction((tx) =>
-        removeDocument(tx, workspaceId, documentId, actorId),
+        requestCatalogDeletion(
+          tx,
+          workspaceId,
+          documentId,
+          actorId,
+          confirmation,
+        ),
       ),
     async register(input) {
       let documentId = input.id;

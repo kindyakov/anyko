@@ -29,6 +29,7 @@ const singletons = new Set([
   'source',
   'fields',
   'deletion',
+  'deletion-impact',
   'llm',
 ]);
 const actions = new Set(['analyze', 'attach', 'confirm', 'generate', 'retry']);
@@ -68,7 +69,7 @@ const declaredOverlaps = [
   {
     pair: ['deleteDocument', 'removeWorkDocument'],
     reason:
-      'Удаление исходника работы меняет её состав, автономное распознавание работы не имеет',
+      'Удаление в каталоге стирает исходник и все связи, операция в работе снимает только её связь',
   },
 ] as const;
 

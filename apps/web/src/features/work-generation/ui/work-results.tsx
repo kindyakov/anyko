@@ -143,7 +143,7 @@ export function WorkResults({
           role="status"
           title="Проверьте сведения перед формированием"
         >
-          Часть доказательств изменилась после обновления распознавания.
+          Часть доказательств изменилась после изменения источников работы.
           Проверьте сохранённые значения и подтвердите сведения.
         </Notice>
       )}
@@ -256,8 +256,9 @@ export function WorkResults({
             {!fresh && (
               <div className="mb-5">
                 <Notice tone="neutral">
-                  Сведения изменились после формирования. Сформируйте комплект
-                  заново, чтобы документы совпадали с текущей версией.
+                  Сведения или источники изменились после формирования.
+                  Сформируйте комплект заново, чтобы документы совпадали с
+                  текущей версией.
                 </Notice>
               </div>
             )}
@@ -281,6 +282,11 @@ export function WorkResults({
                     {generation.revision} ·{' '}
                     <RelativeTime value={generation.createdAt} />
                   </p>
+                  {generation.revision !== view.work.revision && (
+                    <p className="text-muted mb-2 text-xs">
+                      Сведения или источники изменились после формирования.
+                    </p>
+                  )}
                   <Files workId={view.work.id} generation={generation} />
                 </li>
               ))}

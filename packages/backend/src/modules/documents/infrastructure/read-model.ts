@@ -82,6 +82,12 @@ export function createDocumentReadModel(
     };
   }
   return {
+    async exists(workspaceId: string, documentId: string) {
+      return !!(await db.sourceDocument.findFirst({
+        where: { workspaceId, id: documentId, deletedAt: null },
+        select: { id: true },
+      }));
+    },
     async source(workspaceId: string, documentId: string) {
       const row = await db.sourceDocument.findFirst({
         where: { workspaceId, id: documentId, deletedAt: null },

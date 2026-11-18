@@ -59,8 +59,8 @@ export function WorkReview({
       {!!view.facts.needsReview?.length && (
         <Notice tone="warning" role="status" title="Нужна повторная проверка">
           <p>
-            Значения сохранены. Проверьте сведения, чьи доказательства
-            недоступны в новой версии файла.
+            Значения сохранены. Проверьте сведения, для которых больше нет
+            доказательств в источниках работы.
           </p>
           <ul className="mt-2 flex flex-wrap gap-2">
             {view.package.fields
