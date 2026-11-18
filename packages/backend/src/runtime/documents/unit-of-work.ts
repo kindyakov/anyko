@@ -4,24 +4,33 @@ import { record } from '../../modules/audit';
 import type { DocumentStore } from '../../modules/documents';
 import { createDocumentCommands } from '../../modules/documents/infrastructure/commands';
 import { createDocumentReadModel } from '../../modules/documents/infrastructure/read-model';
+import { redactResourceResponses } from '../../modules/idempotency/infrastructure/store';
 import { createProcessingCommands } from '../../modules/processing/infrastructure/commands';
-import { transactionHandle, type Tx } from '../../platform/transactions';
+import {
+  openTransaction,
+  transactionHandle,
+  type Tx,
+} from '../../platform/transactions';
 
 type DeletionTransaction = Parameters<typeof createDocumentCommands>[0] &
   Parameters<typeof createProcessingCommands>[0] &
   Parameters<typeof record>[0];
 
-async function removeDocument(
-  tx: DeletionTransaction,
+export async function requestDocumentDeletion(
+  transaction: Tx,
   workspaceId: string,
   documentId: string,
   actorId: string,
 ) {
+  const tx = transactionHandle<DeletionTransaction>(transaction);
   const commands = createDocumentCommands(tx);
   const exists = await commands.lock(workspaceId, documentId);
   if (!exists) return commands.isDeleted(workspaceId, documentId);
   await commands.markDeleted(workspaceId, documentId);
   await createProcessingCommands(tx).cancelDocument(workspaceId, documentId);
+  await redactResourceResponses(transaction, workspaceId, [
+    { kind: 'document', id: documentId },
+  ]);
   await record(tx, {
     workspaceId,
     actorId,
@@ -29,20 +38,6 @@ async function removeDocument(
     target: { kind: 'document', id: documentId },
   });
   return true;
-}
-
-export function requestDocumentDeletion(
-  tx: Tx,
-  workspaceId: string,
-  documentId: string,
-  actorId: string,
-) {
-  return removeDocument(
-    transactionHandle<DeletionTransaction>(tx),
-    workspaceId,
-    documentId,
-    actorId,
-  );
 }
 
 /** Binds module-owned commands to the same short database transaction. */
@@ -57,7 +52,12 @@ export function createDocumentUnitOfWork(db: Database): DocumentStore {
     stageSource: (key, workspaceId) => documents.stageSource(key, workspaceId),
     remove: (workspaceId, documentId, actorId) =>
       db.$transaction((tx) =>
-        removeDocument(tx, workspaceId, documentId, actorId),
+        requestDocumentDeletion(
+          openTransaction(tx),
+          workspaceId,
+          documentId,
+          actorId,
+        ),
       ),
     async register(input) {
       let documentId = input.id;

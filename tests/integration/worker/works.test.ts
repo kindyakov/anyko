@@ -5,11 +5,13 @@ import { PostgresStore } from '@mastra/pg';
 import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
+import { rightCatalog } from '@anyko/backend/scope';
 import { createDatabase, createDatabasePool } from '@anyko/database';
 import { LlmError } from '@anyko/llm';
 import { createLogger } from '@anyko/logger';
 import { startJobWorker } from '@anyko/worker/queues';
 
+import { createApp } from '../../../apps/api/src/http/app';
 import type { DocumentAgents } from '../../../packages/backend/src/modules/agents';
 import { createDocumentAgents } from '../../../packages/backend/src/modules/agents/infrastructure/mastra';
 import type {
@@ -844,6 +846,96 @@ test('numbered search filters the whole workspace and counts only matching revis
   );
   expect(literal.items.map(({ title }) => title)).toEqual(['Дело Анны 100%']);
 });
+
+test.each(['work document', 'standalone recognition'])(
+  'replaying an upload after deletion of the %s returns NOT_FOUND',
+  async (kind) => {
+    const { workspaceId, workId } = await create();
+    const { workHttp, documentHttp } = apiBackend;
+    const access = {
+      ...workHttp.access,
+      session: () =>
+        Promise.resolve({
+          user: {
+            id: 'fixture',
+            name: 'Fixture',
+            email: 'fixture@example.test',
+          },
+          memberships: [
+            {
+              workspace: { id: workspaceId, name: 'Workspace' },
+              rights: [...rightCatalog],
+            },
+          ],
+        }),
+    };
+    const app = createApp({
+      environment: 'test',
+      logger,
+      workHttp: { ...workHttp, access },
+      documentHttp: { ...documentHttp, access },
+    }).listen({ hostname: '127.0.0.1', port: 0 });
+    try {
+      const port = app.server?.port;
+      if (port === undefined) throw new Error('NO_HTTP_LISTENER');
+      const workspacePath = `http://127.0.0.1:${String(port)}/api/v1/workspaces/${workspaceId}`;
+      const target =
+        kind === 'work document'
+          ? `${workspacePath}/works/${workId}/documents`
+          : `${workspacePath}/recognitions`;
+      const key = crypto.randomUUID();
+      const origin = workHttp.origin;
+      const post = () => {
+        const body = new FormData();
+        body.set(
+          'file',
+          new File(['%PDF-1.7\n synthetic'], 'fixture.pdf', {
+            type: 'application/pdf',
+          }),
+        );
+        return fetch(target, {
+          method: 'POST',
+          headers: { origin, 'idempotency-key': key },
+          body,
+        });
+      };
+      const first = await post();
+      expect(first.status).toBe(202);
+      const payload = z
+        .object({ document: z.object({ id: z.uuid() }) })
+        .parse(await first.clone().json());
+      const cached = await post();
+      expect(cached.status).toBe(202);
+      expect(await cached.text()).toBe(await first.text());
+      const deletion = await fetch(`${target}/${payload.document.id}`, {
+        method: 'DELETE',
+        headers: { origin },
+      });
+      expect(deletion.status).toBe(202);
+
+      const replay = await post();
+      expect(replay.status).toBe(404);
+      const requestId = replay.headers.get('x-request-id');
+      expect(requestId).toBeTruthy();
+      expect(await replay.json()).toEqual({
+        error: { code: 'NOT_FOUND', requestId },
+      });
+      expect(
+        await db.idempotencyKey.findFirstOrThrow({
+          where: { workspaceId, key },
+        }),
+      ).toMatchObject({
+        resourceKind: 'document',
+        resourceId: payload.document.id,
+        state: 'resource_unavailable',
+        status: null,
+        body: null,
+      });
+    } finally {
+      await app.stop();
+    }
+  },
+);
 
 test('owner deletion fences a running writer then physically purges the work and its files', async () => {
   const input = await create();
