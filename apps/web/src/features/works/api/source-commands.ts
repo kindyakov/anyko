@@ -11,11 +11,12 @@ import {
   invalidateDocumentCatalog,
   useRetryDocument,
 } from '@/features/document-recognition';
-import { invalidateWork } from '@/features/works';
 import { callApi, newIdempotencyKey } from '@/lib/api/call';
 import { isUnauthorized } from '@/lib/api/errors';
 
 import { uploadFailureMessage } from '../model/upload-errors';
+
+import { invalidateWork } from './mutations';
 
 export interface Upload {
   id: string;

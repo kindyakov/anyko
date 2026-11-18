@@ -3,6 +3,7 @@ import type { z } from 'zod';
 
 import { AppError, fieldErrors, isAppError } from '@anyko/backend/errors';
 import {
+  type CreatedResource,
   fingerprintInput,
   type IdempotencyApi,
 } from '@anyko/backend/idempotency';
@@ -77,9 +78,18 @@ type RouteContext<E extends Endpoint> = ScopeOf<E> & {
   readonly link: (target: Endpoint, params: Record<string, string>) => string;
 };
 
+interface KeyedResponse<Body> {
+  readonly body: Body;
+  readonly resource: CreatedResource | null;
+}
+
+type RouteResult<E extends Endpoint> = E extends { idempotency: 'key' }
+  ? KeyedResponse<ResponseOf<E>>
+  : ResponseOf<E>;
+
 type RouteHandler<E extends Endpoint> = (
   context: RouteContext<E>,
-) => ResponseOf<E> | Promise<ResponseOf<E>>;
+) => RouteResult<E> | Promise<RouteResult<E>>;
 
 export type Route = <E extends Endpoint>(
   app: Elysia,
@@ -152,15 +162,24 @@ export function createRoute(env: RouteEnv): Route {
               }),
             },
             async () => {
-              const value = await handler(context);
+              // Режим key связывает тип обработчика с KeyedResponse.
+              const { body, resource } = (await handler(
+                context,
+              )) as KeyedResponse<ResponseOf<typeof endpoint>>;
+              await checkedJson(endpoint, body, env.logger, requestId);
               return {
-                status: endpoint.status,
-                body: await checkedJson(endpoint, value, env.logger, requestId),
+                response: {
+                  status: endpoint.status,
+                  body: JSON.stringify(body),
+                },
+                ...(resource ? { resource } : {}),
               };
             },
           );
-          set.status = stored.status;
-          return stored.body;
+          if (stored.kind === 'resource_unavailable')
+            throw new AppError('NOT_FOUND', 'not_found');
+          set.status = stored.response.status;
+          return JSON.parse(stored.response.body) as unknown;
         } catch (error) {
           if (isAppError(error) && !allowed.has(error.code)) {
             env.logger.error({
@@ -311,7 +330,7 @@ async function checkedJson(
   value: unknown,
   logger: Logger,
   requestId: string,
-): Promise<unknown> {
+): Promise<void> {
   if (endpoint.response.kind !== 'json')
     throw new Error('JSON_RESPONSE_EXPECTED');
   const check = await endpoint.response.schema['~standard'].validate(value);
@@ -323,7 +342,6 @@ async function checkedJson(
     });
     throw new Error('RESPONSE_CONTRACT_VIOLATION');
   }
-  return value;
 }
 
 // Заголовок Idempotency-Key уже проверен схемой; здесь только выбор значения.

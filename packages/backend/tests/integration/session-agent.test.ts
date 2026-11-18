@@ -13,7 +13,9 @@ import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 test('real coordinator validates source evidence, keeps its scope, and removes persisted attempt messages', async () => {
   const databaseUrl = z
     .url()
-    .refine((url) => new URL(url).pathname === '/anyko_test')
+    .refine((url) =>
+      /^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(url).pathname),
+    )
     .parse(process.env.TEST_DATABASE_URL);
   const pool = createDatabasePool(databaseUrl);
   const documentId = crypto.randomUUID();
@@ -129,7 +131,9 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
 test('provider failures do not leak document or provider bodies through SDK console logging', async () => {
   const databaseUrl = z
     .url()
-    .refine((url) => new URL(url).pathname === '/anyko_test')
+    .refine((url) =>
+      /^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(url).pathname),
+    )
     .parse(process.env.TEST_DATABASE_URL);
   const pool = createDatabasePool(databaseUrl);
   const canary = crypto.randomUUID();

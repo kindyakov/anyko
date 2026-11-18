@@ -17,6 +17,7 @@ import {
 } from '../documents';
 
 import {
+  createdWorkResponseSchema,
   createWorkSchema,
   defaultWorkPageSize,
   editWorkSchema,
@@ -63,7 +64,7 @@ export const createWork = endpoint({
   path: '/workspaces/:workspaceId/works',
   params: workspaceParams,
   body: json(createWorkSchema),
-  response: json(workResponseSchema),
+  response: json(createdWorkResponseSchema),
   status: 201,
   errors: [
     'FORBIDDEN',
@@ -102,7 +103,8 @@ export const getWorkDeletion = endpoint({
 });
 
 export const getWork = endpoint({
-  summary: 'Возвращает данные работы и состояние её подготовки',
+  summary:
+    'Возвращает данные работы, расхождения в сведениях, отметки выбранных кандидатов и доступность команд',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId',
   params: workParams,
@@ -136,6 +138,7 @@ export const uploadWorkDocument = endpoint({
   errors: [
     'FORBIDDEN',
     'NOT_FOUND',
+    'REVISION_CONFLICT',
     'CLEANUP_PENDING',
     'INVALID_WORK_INPUT',
     'INVALID_DOCUMENT',
@@ -159,6 +162,7 @@ export const attachWorkDocuments = endpoint({
   errors: [
     'FORBIDDEN',
     'NOT_FOUND',
+    'REVISION_CONFLICT',
     'INVALID_WORK_INPUT',
     'NOT_READY',
     'WORK_BUSY',
@@ -224,6 +228,7 @@ export const analyzeWork = endpoint({
     'CLEANUP_PENDING',
     'INVALID_WORK_INPUT',
     'LLM_NOT_CONFIGURED',
+    'CONNECTION_REVOKED',
     'WORK_BUSY',
     'INVALID_IDEMPOTENCY_KEY',
     'IDEMPOTENCY_CONFLICT',
@@ -240,7 +245,7 @@ export const removeWorkDocument = endpoint({
   params: workDocumentParams,
   response: json(deletingStatusSchema),
   status: 202,
-  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'REVISION_CONFLICT', 'INVALID_WORK_INPUT'],
   invalid: 'INVALID_WORK_INPUT',
   // Повтор после принятого удаления даёт NOT_FOUND для того же документа.
   idempotency: 'natural',
@@ -261,6 +266,7 @@ export const editWorkDocumentRecognition = endpoint({
   errors: [
     'FORBIDDEN',
     'NOT_FOUND',
+    'REVISION_CONFLICT',
     'CLEANUP_PENDING',
     'NOT_READY',
     'WORK_BUSY',

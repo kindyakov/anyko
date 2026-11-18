@@ -10,8 +10,13 @@ import { integrationConfig } from '../support/composition';
 import { memberScope } from '../support/scope';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
-  throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
+if (
+  !databaseUrl ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+)
+  throw new Error(
+    'Dedicated anyko_test or anyko_test_<worktree> TEST_DATABASE_URL required',
+  );
 const redisUrl = process.env.TEST_REDIS_URL;
 if (!redisUrl) throw new Error('TEST_REDIS_URL required');
 const pool = createDatabasePool(databaseUrl);

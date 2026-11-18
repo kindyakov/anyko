@@ -26,6 +26,9 @@ export const candidateSchema = z
   .object({
     origin: z.enum(['document', 'context']).optional(),
     field: fieldKeySchema,
+    selected: z
+      .boolean()
+      .describe('Значение кандидата вошло в сохранённые сведения'),
     value: fieldValueSchema.refine(
       (value) =>
         value !== null &&
@@ -42,6 +45,7 @@ export const factsSchema = z
     confirmed: z.array(fieldKeySchema).default([]),
     needsReview: z.array(fieldKeySchema).optional(),
     candidates: z.array(candidateSchema).max(500),
+    discrepancyFields: z.array(fieldKeySchema),
   })
   .strict();
 export type WorkFacts = z.infer<typeof factsSchema>;
@@ -101,6 +105,35 @@ export const generationSchema = z.object({
   files: z.array(generationFileSchema),
   createdAt: z.iso.datetime(),
 });
+const workCommandBlockReasonSchema = z.enum([
+  'WORK_BUSY',
+  'FACTS_NEED_REVIEW',
+  'CLEANUP_PENDING',
+  'NO_DOCUMENTS',
+  'SOURCE_LIMIT_REACHED',
+  'CONNECTION_REVOKED',
+  'LLM_NOT_CONFIGURED',
+  'FORBIDDEN',
+]);
+export type WorkCommandBlockReason = z.infer<
+  typeof workCommandBlockReasonSchema
+>;
+const workCommandAvailabilitySchema = z.discriminatedUnion('available', [
+  z.object({ available: z.literal(true) }),
+  z.object({
+    available: z.literal(false),
+    reason: workCommandBlockReasonSchema,
+  }),
+]);
+const workAvailabilitySchema = z.object({
+  analyze: workCommandAvailabilitySchema,
+  generate: workCommandAvailabilitySchema,
+  confirm: workCommandAvailabilitySchema,
+  upload: workCommandAvailabilitySchema,
+  remove: workCommandAvailabilitySchema,
+  attach: workCommandAvailabilitySchema,
+  updateRecognition: workCommandAvailabilitySchema,
+});
 export const workResponseSchema = z.object({
   work: workSummarySchema,
   session: agentSessionSchema.nullable().optional(),
@@ -111,8 +144,25 @@ export const workResponseSchema = z.object({
   generations: z.array(generationSchema),
   cursor: z.string().regex(/^\d+$/),
   cleanupPending: z.boolean(),
+  availability: workAvailabilitySchema,
 });
 export type WorkView = z.infer<typeof workResponseSchema>;
+// Повтор создания может вернуть ответ, сохранённый до появления списка и отметок.
+export const createdWorkResponseSchema = workResponseSchema.extend({
+  availability: workAvailabilitySchema
+    .partial({ attach: true, updateRecognition: true })
+    .optional(),
+  facts: factsSchema.extend({
+    discrepancyFields: factsSchema.shape.discrepancyFields.default([]),
+    candidates: z
+      .array(
+        candidateSchema.extend({
+          selected: candidateSchema.shape.selected.default(false),
+        }),
+      )
+      .max(500),
+  }),
+});
 export const workListStatusSchema = z.enum(['all', 'draft', 'confirmed']);
 export type WorkListStatus = z.infer<typeof workListStatusSchema>;
 export const workPageSizes = [6, 12, 24, 48] as const;

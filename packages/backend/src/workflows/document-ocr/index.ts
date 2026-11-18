@@ -11,7 +11,10 @@ import {
   sourceFormatFromKey,
   StorageWriteOutcomeUnknown,
 } from '../../modules/documents';
-import type { createProcessingService } from '../../modules/processing';
+import type {
+  DocumentArtifacts,
+  DocumentAttempt,
+} from '../../modules/processing';
 import { documentImageLimit } from '../../platform/document-output';
 
 const failureCodes = new Map([
@@ -28,40 +31,40 @@ const failureCodes = new Map([
   ['MINERU_INVALID_RESPONSE', 'OCR_INVALID_RESULT'],
 ]);
 export function createDocumentOcrWorkflow(options: {
-  processing: ReturnType<typeof createProcessingService>;
+  processing: Pick<DocumentArtifacts, 'stageResult' | 'forgetResult'>;
+  claimAttempt(
+    workspaceId: string,
+    runId: string,
+  ): Promise<DocumentAttempt | null>;
   storage: SourceStorage;
   parser: DocumentParser;
   artifacts: ArtifactRegistry;
   logger: Logger;
-  leaseMs: number;
 }) {
   return async (
     input: { workspaceId: string; runId: string },
     signal: AbortSignal,
   ) => {
     signal.throwIfAborted();
-    const claim = await options.processing.claim(
-      input.runId,
-      input.workspaceId,
-      options.leaseMs,
-    );
-    if (!claim) return;
-    const prefix = `results/${claim.workspaceId}/${claim.runId}/${claim.attemptToken}`;
+    const attempt = await options.claimAttempt(input.workspaceId, input.runId);
+    if (!attempt) return;
+    const { attemptId, run } = attempt;
+    const prefix = `results/${run.workspaceId}/${run.id}/${attemptId}`;
     const resultKey = `${prefix}/result.json`;
     const written: string[] = [];
     try {
-      const source = await options.storage.get(claim.sourceKey, signal);
-      const format = sourceFormatFromKey(claim.sourceKey);
+      const source = await options.storage.get(run.sourceKey, signal);
+      const format = sourceFormatFromKey(run.sourceKey);
       if (!format) throw new Error('INVALID_SOURCE_FORMAT');
       options.logger.info({
         event: 'document_parse_started',
-        jobId: claim.runId,
-        correlationId: claim.correlationId,
+        jobId: run.id,
+        correlationId: run.correlationId,
       });
       const parsed = await options.parser.parseDocument(
         source,
         format,
-        claim.attemptToken,
+        attemptId,
       );
       signal.throwIfAborted();
       const images = [];
@@ -88,8 +91,8 @@ export function createDocumentOcrWorkflow(options: {
         });
         await options.artifacts.stage({
           ...metadata,
-          workspaceId: claim.workspaceId,
-          documentId: claim.documentId,
+          workspaceId: run.workspaceId,
+          documentId: run.documentId,
           manifestKey: resultKey,
           kind: 'image',
           position,
@@ -111,8 +114,8 @@ export function createDocumentOcrWorkflow(options: {
         throw new Error('OCR_RESULT_TOO_LARGE');
       await options.artifacts.stage({
         key: resultKey,
-        workspaceId: claim.workspaceId,
-        documentId: claim.documentId,
+        workspaceId: run.workspaceId,
+        documentId: run.documentId,
         manifestKey: resultKey,
         kind: 'result',
         contentType: 'application/json',
@@ -120,15 +123,15 @@ export function createDocumentOcrWorkflow(options: {
         checksum: await checksum(bytes),
       });
       written.push(resultKey);
-      await options.processing.stageResult(resultKey, claim.workspaceId);
+      await options.processing.stageResult(resultKey, run.workspaceId);
       signal.throwIfAborted();
       await options.storage.put(resultKey, bytes, 'application/json', signal);
       signal.throwIfAborted();
-      const published = await options.processing.complete(
-        claim,
+      const published = await attempt.finish({
+        status: 'succeeded',
         resultKey,
-        result.processorVersion,
-      );
+        processorVersion: result.processorVersion,
+      });
       if (!published)
         for (const key of written) {
           await options.storage.delete(key);
@@ -137,8 +140,8 @@ export function createDocumentOcrWorkflow(options: {
         }
       options.logger.info({
         event: published ? 'document_ocr_completed' : 'document_ocr_stale',
-        jobId: claim.runId,
-        correlationId: claim.correlationId,
+        jobId: run.id,
+        correlationId: run.correlationId,
       });
     } catch (error) {
       const errorCode =
@@ -147,29 +150,29 @@ export function createDocumentOcrWorkflow(options: {
           : undefined) ?? 'OCR_FAILED';
       options.logger.error({
         event: 'document_ocr_failed',
-        jobId: claim.runId,
-        correlationId: claim.correlationId,
+        jobId: run.id,
+        correlationId: run.correlationId,
         errorCode,
       });
       if (error instanceof StorageWriteOutcomeUnknown) {
         try {
-          await options.processing.fail(claim, errorCode);
+          await attempt.finish({ status: 'failed', errorCode });
         } catch {
           options.logger.warn({
             event: 'document_failure_status_pending',
-            jobId: claim.runId,
+            jobId: run.id,
           });
         }
         throw error;
       }
-      await options.processing.fail(claim, errorCode);
+      await attempt.finish({ status: 'failed', errorCode });
     } finally {
       try {
-        await options.parser.eraseAttempt(claim.attemptToken);
+        await options.parser.eraseAttempt(attemptId);
       } catch {
         options.logger.warn({
           event: 'processor_cleanup_pending',
-          jobId: claim.runId,
+          jobId: run.id,
         });
       }
     }

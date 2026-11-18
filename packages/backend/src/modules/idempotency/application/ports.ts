@@ -6,11 +6,25 @@ export interface IdempotencyKeyRef {
   readonly key: string;
 }
 
-export interface StoredResponse {
+interface StoredResponse {
   readonly status: number;
-  // JSON-объект, как его отдаёт маршрут; хранилище проверяет форму на границе записи.
-  readonly body: unknown;
+  readonly body: string;
 }
+
+export interface CreatedResource {
+  readonly kind: 'work' | 'document';
+  readonly id: string;
+  readonly documentIds?: readonly string[];
+}
+
+export interface CommandResponse {
+  readonly response: StoredResponse;
+  readonly resource?: CreatedResource;
+}
+
+export type StoredOutcome =
+  | { readonly kind: 'response'; readonly response: StoredResponse }
+  | { readonly kind: 'resource_unavailable' };
 
 export interface AcquireInput extends IdempotencyKeyRef {
   readonly fingerprint: string;
@@ -23,7 +37,7 @@ export interface AcquireInput extends IdempotencyKeyRef {
 
 export type AcquireOutcome =
   | { readonly kind: 'acquired' }
-  | { readonly kind: 'replay'; readonly response: StoredResponse }
+  | { readonly kind: 'replay'; readonly outcome: StoredOutcome }
   | { readonly kind: 'conflict' }
   | { readonly kind: 'in_progress' };
 
@@ -34,7 +48,8 @@ export interface IdempotencyStore {
   complete(
     ref: IdempotencyKeyRef,
     token: string,
-    response: StoredResponse,
+    outcome: StoredOutcome,
+    resource: CreatedResource | undefined,
     now: Date,
   ): Promise<boolean>;
   release(ref: IdempotencyKeyRef, token: string): Promise<void>;

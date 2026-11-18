@@ -12,7 +12,10 @@ export interface LlmSettingsStore {
     workspaceId: string,
     now: Date,
   ): Promise<{ revision: number; count: number } | null>;
-  current(workspaceId: string): Promise<LlmConfiguration | null>;
+  current(
+    workspaceId: string,
+    rejectRevoked?: boolean,
+  ): Promise<LlmConfiguration | null>;
   connection(
     workspaceId: string,
     revision: number | null,

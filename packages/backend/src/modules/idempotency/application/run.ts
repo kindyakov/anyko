@@ -9,9 +9,10 @@ import {
 import { IdempotencyFailure } from '../errors';
 
 import type {
+  CommandResponse,
   IdempotencyKeyRef,
   IdempotencyStore,
-  StoredResponse,
+  StoredOutcome,
 } from './ports';
 
 export interface IdempotentCommand extends IdempotencyKeyRef {
@@ -25,16 +26,16 @@ export interface IdempotencyDeps {
   readonly logger: Logger;
 }
 
-export interface IdempotentResult extends StoredResponse {
+export type IdempotentResult = StoredOutcome & {
   readonly replayed: boolean;
-}
+};
 
 // Захват → выполнение → сохранение ответа. Повтор с тем же входом получает сохранённый ответ и
 // сценарий не запускается. Ошибка выполнения снимает захват: повтор с тем же ключом выполнится заново.
 export async function runIdempotent(
   deps: IdempotencyDeps,
   command: IdempotentCommand,
-  execute: () => Promise<StoredResponse>,
+  execute: () => Promise<CommandResponse>,
 ): Promise<IdempotentResult> {
   const ref: IdempotencyKeyRef = {
     workspaceId: command.workspaceId,
@@ -53,7 +54,7 @@ export async function runIdempotent(
   });
   switch (outcome.kind) {
     case 'replay':
-      return { ...outcome.response, replayed: true };
+      return { ...outcome.outcome, replayed: true };
     case 'conflict':
       throw new IdempotencyFailure('IDEMPOTENCY_CONFLICT');
     case 'in_progress':
@@ -61,17 +62,22 @@ export async function runIdempotent(
     case 'acquired':
       break;
   }
-  let response: StoredResponse;
+  let completed: CommandResponse;
   try {
-    response = await execute();
+    completed = await execute();
   } catch (error) {
     await deps.store.release(ref, token);
     throw error;
   }
+  const outcomeToStore = {
+    kind: 'response',
+    response: completed.response,
+  } as const;
   const saved = await deps.store.complete(
     ref,
     token,
-    response,
+    outcomeToStore,
+    completed.resource,
     deps.clock.now(),
   );
   if (!saved)
@@ -81,5 +87,5 @@ export async function runIdempotent(
       event: 'idempotency_lease_lost',
       route: command.command,
     });
-  return { ...response, replayed: false };
+  return { ...outcomeToStore, replayed: false };
 }

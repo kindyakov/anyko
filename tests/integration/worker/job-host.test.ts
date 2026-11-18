@@ -9,9 +9,12 @@ import { createLogger } from '@anyko/logger';
 import { startJobWorker } from '@anyko/worker/queues';
 import { createQueueProbe } from '@anyko/worker/testing';
 
-import { createProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/store';
-import { createWorkProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/work-store';
+import { claimDocumentAttempt } from '../../../packages/backend/src/modules/processing';
+import { createDocumentProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/store';
+import { systemClock } from '../../../packages/backend/src/platform/clock';
 import { createBackend } from '../../../packages/backend/src/runtime';
+import { createUnitOfWork } from '../../../packages/backend/src/runtime/transactions';
+import { createWorkProcessing } from '../../../packages/backend/src/runtime/works/processing';
 
 import { integrationConfig } from './support/composition';
 
@@ -19,7 +22,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
 const redisUrl = process.env.TEST_REDIS_URL;
 if (
   !databaseUrl ||
-  new URL(databaseUrl).pathname !== '/anyko_test' ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname) ||
   !redisUrl
 )
   throw new Error('Dedicated anyko_test and TEST_REDIS_URL required');
@@ -330,22 +333,28 @@ test.each(runKinds)(
         deliveredAt: new Date(),
       },
     });
-    const ocr = createProcessingStore(db);
-    const work = createWorkProcessingStore(db);
+    const uow = createUnitOfWork(db);
+    const claimOcr = claimDocumentAttempt({
+      store: createDocumentProcessingStore(db),
+      uow,
+      clock: systemClock,
+      newId: uuidV7,
+      leaseMs: 60_000,
+    });
+    const { claimAttempt: claimWork } = createWorkProcessing(db, uow);
     const claim = async () => {
-      if (name === 'document.ocr') {
-        const acquired = await ocr.claim(
-          data.runId,
-          workspaceId,
-          uuidV7(),
-          new Date(Date.now() + 60000),
-        );
-        if (!acquired) return null;
-        const key = `run-test/${data.runId}/${acquired.attemptToken}.json`;
-        return () => ocr.complete(acquired, key, 'fixture');
+      if (name !== 'document.ocr') {
+        const attempt = await claimWork(workspaceId, data.runId);
+        return attempt && (() => attempt.finish({ status: 'succeeded' }));
       }
-      const acquired = await work.claim(workspaceId, data.runId);
-      return acquired ? () => work.finish(acquired, 'succeeded') : null;
+      const attempt = await claimOcr(workspaceId, data.runId);
+      if (!attempt) return null;
+      return () =>
+        attempt.finish({
+          status: 'succeeded',
+          resultKey: `run-test/${data.runId}/${attempt.attemptId}.json`,
+          processorVersion: 'fixture',
+        });
     };
     const stale = await claim();
     if (!stale) throw new Error('FIRST_CLAIM_MISSING');

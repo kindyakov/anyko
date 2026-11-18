@@ -2,16 +2,20 @@ import { z } from 'zod';
 
 import type { Database } from '@anyko/database';
 
-import type { WorkProcessingStore } from '..';
 import { type Clock, systemClock } from '../../../platform/clock';
 import { uuidV7 } from '../../../platform/ids';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
-import { stepOutputSchema, workRunSchema } from '../application/work-ports';
+import {
+  type ClaimedWorkRun,
+  stepOutputSchema,
+  type WorkProcessingStore,
+  workRunSchema,
+} from '../application/work-ports';
 
 import {
   activeAttempt,
   claimRun,
-  recoverRuns,
+  finishRun,
   type RunConnection,
 } from './run-engine';
 
@@ -30,12 +34,12 @@ export function createWorkProcessingStore(
     db.$transaction ? db.$transaction(operation) : operation(db);
   const fence = async (
     tx: Connection,
-    run: Parameters<WorkProcessingStore['fence']>[0],
+    { snapshot: run, attemptToken }: ClaimedWorkRun,
   ) => {
     const now = deps.clock.now();
     const change = await tx.run.updateMany({
       where: {
-        ...activeAttempt(run.workspaceId, run.id, run.attemptToken, now),
+        ...activeAttempt(run.workspaceId, run.id, attemptToken, now),
         kind: { in: workKinds },
       },
       data: { updatedAt: now },
@@ -61,29 +65,30 @@ export function createWorkProcessingStore(
         },
       });
     },
-    async claim(workspaceId, id) {
-      const token = deps.newId();
+    async claim(workspaceId, id, attemptToken, leaseUntil) {
       const row = await atomic((tx) =>
         claimRun(tx, {
           workspaceId,
           id,
-          attemptToken: token,
+          attemptToken,
           kinds: workKinds,
-          leaseUntil: new Date(deps.clock.now().getTime() + 1800000),
+          leaseUntil,
         }),
       );
       if (!row?.workId || row.inputRevision === null) return null;
       return {
-        id: row.id,
-        workspaceId,
-        workId: row.workId,
-        kind: workKind(row.kind),
-        inputRevision: row.inputRevision,
-        settingsRevision: row.settingsRevision,
-        generationId: row.generationId,
-        documentIds: z.array(z.uuid()).parse(row.documentIds),
-        correlationId: row.correlationId,
-        attemptToken: token,
+        attemptToken,
+        snapshot: {
+          id: row.id,
+          workspaceId,
+          workId: row.workId,
+          kind: workKind(row.kind),
+          inputRevision: row.inputRevision,
+          settingsRevision: row.settingsRevision,
+          generationId: row.generationId,
+          documentIds: z.array(z.uuid()).parse(row.documentIds),
+          correlationId: row.correlationId,
+        },
       };
     },
     async active(workspaceId, workId) {
@@ -94,14 +99,14 @@ export function createWorkProcessingStore(
       );
     },
     fence: (run) => fence(db, run),
-    async valid(run) {
+    async valid({ snapshot: run, attemptToken }) {
       return (
         (await db.run.count({
           where: {
             ...activeAttempt(
               run.workspaceId,
               run.id,
-              run.attemptToken,
+              attemptToken,
               deps.clock.now(),
             ),
             kind: { in: workKinds },
@@ -109,29 +114,22 @@ export function createWorkProcessingStore(
         })) === 1
       );
     },
-    async finish(run, status, errorCode) {
-      const updated = await db.run.updateMany({
-        where: {
-          ...activeAttempt(
-            run.workspaceId,
-            run.id,
-            run.attemptToken,
-            deps.clock.now(),
-          ),
-          kind: { in: workKinds },
-        },
-        data: {
-          status,
-          errorCode: errorCode ?? null,
-          attemptToken: null,
-          leaseUntil: null,
-        },
-      });
-      return updated.count === 1;
+    async finish({ snapshot: run, attemptToken }, { status, errorCode }) {
+      return (
+        (await finishRun(db, {
+          workspaceId: run.workspaceId,
+          id: run.id,
+          attemptToken,
+          kinds: workKinds,
+          now: deps.clock.now(),
+          outcome: { status, errorCode: errorCode ?? null },
+        })) !== null
+      );
     },
-    async step(run, input) {
+    async step(claim, input) {
       await atomic(async (tx) => {
-        await fence(tx, run);
+        await fence(tx, claim);
+        const run = claim.snapshot;
         const documentId = input.documentId ?? '';
         const data = {
           status: input.status,
@@ -202,18 +200,6 @@ export function createWorkProcessingStore(
         }),
       );
     },
-    reconcile: () =>
-      atomic((tx) =>
-        recoverRuns(
-          tx,
-          workKinds.map((name) => ({
-            name,
-            maxRunAttempts: null,
-            redeliverQueued: false,
-          })),
-          deps.clock.now(),
-        ),
-      ),
     async cancel(workspaceId, workId) {
       await db.run.updateMany({
         where: { workspaceId, workId, status: { in: ['queued', 'running'] } },

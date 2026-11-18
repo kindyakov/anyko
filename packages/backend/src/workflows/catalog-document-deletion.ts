@@ -2,10 +2,11 @@ import {
   type DocumentDeletionConfirmation,
   DocumentError,
 } from '../modules/documents';
-import { type FactsStore, refreshFactEvidence } from '../modules/facts';
+import type { FactsPorts } from '../modules/facts';
 import type { WorkStore } from '../modules/works';
 import { sha256Hex } from '../platform/digest';
 
+import { finishSourceChange } from './change-work';
 import { workLockKey } from './work-guards';
 
 type AffectedWork = {
@@ -38,8 +39,8 @@ interface DeletionPorts extends ImpactPorts {
     documentId: string,
     workIds: string[],
   ): Promise<void>;
-  facts: Pick<FactsStore, 'get' | 'save'>;
-  works: Pick<WorkStore, 'touch' | 'event'>;
+  facts: Pick<FactsPorts['internal'], 'refreshEvidence'>;
+  works: Pick<WorkStore, 'touch' | 'event' | 'lockRevision'>;
   eraseSession(workspaceId: string, workId: string): Promise<void>;
   markDeleted(workspaceId: string, documentId: string): Promise<boolean>;
   cancelDocument(workspaceId: string, documentId: string): Promise<void>;
@@ -101,21 +102,28 @@ export async function deleteCatalogDocument(
   if (works.some(({ busy }) => busy)) throw new DocumentError('WORK_BUSY');
   const workIds = works.map(({ id }) => id);
   if (workIds.length) {
+    for (const { id, revision } of works)
+      await ports.works.lockRevision(workspaceId, id, revision);
     await ports.unlink(workspaceId, documentId, workIds);
     await ports.eraseSteps(workspaceId, documentId, workIds);
     for (const { id, revision, confirmedRevision } of works) {
-      const updated = refreshFactEvidence(
-        await ports.facts.get(workspaceId, id),
+      const updated = await ports.facts.refreshEvidence(
+        workspaceId,
+        id,
         (entry) => (entry.documentId === documentId ? null : entry),
       );
-      await ports.facts.save(workspaceId, id, updated);
       await ports.eraseSession(workspaceId, id);
-      await ports.works.touch(workspaceId, id, {
-        inputChanged: true,
-        confirmed:
-          confirmedRevision === revision && !updated.needsReview?.length,
-      });
-      await ports.works.event(workspaceId, id, 'documents.changed');
+      await finishSourceChange(
+        ports.works,
+        workspaceId,
+        id,
+        revision,
+        'documents.changed',
+        {
+          confirmed:
+            confirmedRevision === revision && !updated.needsReview?.length,
+        },
+      );
     }
   }
   await ports.markDeleted(workspaceId, documentId);

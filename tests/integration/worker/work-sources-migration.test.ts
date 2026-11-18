@@ -5,7 +5,10 @@ import { createDatabasePool } from '@anyko/database';
 
 test('the shared-source migration preserves old links and fills only usable OCR revisions', async () => {
   const databaseUrl = process.env.TEST_DATABASE_URL;
-  if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
+  if (
+    !databaseUrl ||
+    !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+  )
     throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
   const migrations = new URL(
     '../../../packages/database/prisma/migrations/',

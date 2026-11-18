@@ -10,18 +10,5 @@ export const attachDocuments =
     input: { workId: WorkId; documents: readonly WorkSourceAttachment[] },
   ) => {
     scope.require('documents.upload');
-    const added = await deps.store.attach(
-      scope.workspaceId,
-      input.workId,
-      input.documents,
-    );
-    if (!added) return;
-    await deps.store.touch(scope.workspaceId, input.workId, {
-      inputChanged: true,
-    });
-    await deps.store.event(
-      scope.workspaceId,
-      input.workId,
-      'documents.changed',
-    );
+    return deps.store.attach(scope.workspaceId, input.workId, input.documents);
   };

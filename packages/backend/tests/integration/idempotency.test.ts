@@ -12,9 +12,17 @@ import {
 import { createIdempotencyMaintenanceStore } from '../../src/modules/idempotency/infrastructure/maintenance-store';
 import { createIdempotencyStore } from '../../src/modules/idempotency/infrastructure/store';
 import type { Clock } from '../../src/platform/clock';
+import { createUnitOfWork } from '../../src/runtime/transactions';
+import {
+  createResourceAwareIdempotencyStore,
+  redactDeletedWorkResponses,
+} from '../../src/runtime/works/idempotency';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
+if (
+  !databaseUrl ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+)
   throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabase(pool);
@@ -38,6 +46,8 @@ const store = createIdempotencyStore(db);
 
 const command = 'POST /workspaces/:workspaceId/works';
 const owned: string[] = [];
+
+const reply = (body: string) => ({ response: { status: 201, body } });
 
 async function workspace() {
   const id = crypto.randomUUID();
@@ -68,6 +78,154 @@ afterAll(async () => {
   await pool.end();
 });
 
+test('backfill recovers resource references for legacy create replies and redacts a saved 404', async () => {
+  const migrations = new URL(
+    '../../../database/prisma/migrations/',
+    import.meta.url,
+  );
+  const legacy = await Bun.file(
+    new URL('202611170013_idempotency_keys/migration.sql', migrations),
+  ).text();
+  const backfill = await Bun.file(
+    new URL(
+      '202611180035_idempotency_resource_reference/migration.sql',
+      migrations,
+    ),
+  ).text();
+  const client = await pool.connect();
+  const schema = `"idempotency_backfill_${crypto.randomUUID().replaceAll('-', '')}"`;
+  const workspaceId = crypto.randomUUID();
+  const workId = crypto.randomUUID();
+  const recognitionId = crypto.randomUUID();
+  const documentId = crypto.randomUUID();
+  const deleted = { error: { code: 'NOT_FOUND', requestId: 'old-request' } };
+  const fixtures = [
+    {
+      key: 'work',
+      command: 'POST /workspaces/:workspaceId/works',
+      status: 201,
+      body: { work: { id: workId } },
+      reference: ['work', workId],
+    },
+    {
+      key: 'recognition',
+      command: 'POST /workspaces/:workspaceId/recognitions',
+      status: 202,
+      body: { document: { id: recognitionId } },
+      reference: ['document', recognitionId],
+    },
+    {
+      key: 'work-document',
+      command: 'POST /workspaces/:workspaceId/works/:workId/documents',
+      status: 202,
+      body: { document: { id: documentId } },
+      reference: ['document', documentId],
+    },
+    {
+      key: 'analyze',
+      command: 'POST /workspaces/:workspaceId/works/:workId/analyze',
+      status: 202,
+      body: { work: { id: workId }, document: { id: documentId } },
+      reference: [null, null],
+    },
+    {
+      key: 'deleted',
+      command: 'POST /workspaces/:workspaceId/works',
+      status: 404,
+      body: deleted,
+      reference: [null, null],
+    },
+  ] as const;
+  try {
+    await client.query(`CREATE SCHEMA ${schema}`);
+    await client.query(`SET search_path TO ${schema}`);
+    await client.query('CREATE TABLE "AnykoWorkspace" (id TEXT PRIMARY KEY)');
+    await client.query(legacy);
+    await client.query('INSERT INTO "AnykoWorkspace" VALUES ($1)', [
+      workspaceId,
+    ]);
+    for (const row of fixtures) {
+      await client.query(
+        `INSERT INTO "IdempotencyKey"
+          ("workspaceId", "command", "key", "fingerprint", "token", "state", "status", "body", "expiresAt", "lockedUntil")
+          VALUES ($1, $2, $3, 'fingerprint', 'token', 'completed', $4, $5::jsonb, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        [
+          workspaceId,
+          row.command,
+          row.key,
+          row.status,
+          JSON.stringify(row.body),
+        ],
+      );
+    }
+    await client.query(backfill);
+    const { rows } = await client.query<{
+      key: string;
+      state: string;
+      status: number | null;
+      body: unknown;
+      resourceKind: string | null;
+      resourceId: string | null;
+    }>(
+      'SELECT key, state, status, body::jsonb AS body, "resourceKind", "resourceId" FROM "IdempotencyKey"',
+    );
+    expect(rows).toHaveLength(fixtures.length);
+    for (const { key, reference, status, body } of fixtures) {
+      expect(rows.find((row) => row.key === key)).toEqual({
+        key,
+        state: status === 404 ? 'resource_unavailable' : 'completed',
+        status: status === 404 ? null : status,
+        body: status === 404 ? null : body,
+        resourceKind: reference[0],
+        resourceId: reference[1],
+      });
+    }
+  } finally {
+    try {
+      // The migration owns its transaction and may leave it aborted on error.
+      await client.query('ROLLBACK');
+      await client.query('RESET search_path');
+      await client.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    } finally {
+      client.release();
+    }
+  }
+});
+
+test('redacting a work leaves the stored reply of a command without a resource reference replayable', async () => {
+  const workspaceId = await workspace();
+  const workId = crypto.randomUUID();
+  const uow = createUnitOfWork(db);
+  const idempotency = createIdempotency({
+    store: createResourceAwareIdempotencyStore(db, uow),
+    clock,
+    newToken: () => crypto.randomUUID(),
+    logger,
+  });
+  const reference = {
+    workspaceId,
+    command: 'POST /workspaces/:workspaceId/works/:workId/analyze',
+    key: crypto.randomUUID(),
+    fingerprint: await fingerprintInput({ params: { workspaceId, workId } }),
+  };
+  const response = { status: 202, body: '{"status":"queued"}' };
+  expect(
+    await idempotency.run(reference, () => Promise.resolve({ response })),
+  ).toEqual({
+    kind: 'response',
+    replayed: false,
+    response,
+  });
+  await uow.run((tx) =>
+    redactDeletedWorkResponses(tx, workspaceId, workId, []),
+  );
+  expect(
+    await idempotency.run(reference, () => {
+      throw new Error('UNEXPECTED_REEXECUTION');
+    }),
+  ).toEqual({ kind: 'response', replayed: true, response });
+});
+
 test('the same key and input return the stored response and run the command once', async () => {
   const ws = await workspace();
   const key = crypto.randomUUID();
@@ -75,10 +233,7 @@ test('the same key and input return the stored response and run the command once
   let calls = 0;
   const execute = () => {
     calls++;
-    return Promise.resolve({
-      status: 201,
-      body: { id: crypto.randomUUID(), title: 'Synthetic work' },
-    });
+    return Promise.resolve(reply(crypto.randomUUID()));
   };
   const first = await api.run(
     { workspaceId: ws, command, key, fingerprint },
@@ -90,6 +245,7 @@ test('the same key and input return the stored response and run the command once
   );
   expect(calls).toBe(1);
   expect(first.replayed).toBe(false);
+  expect(first.kind).toBe('response');
   expect(second).toEqual({ ...first, replayed: true });
 });
 
@@ -101,7 +257,7 @@ test('the same key with another input is a conflict and runs nothing', async () 
   let calls = 0;
   const execute = () => {
     calls++;
-    return Promise.resolve({ status: 201, body: { ok: true } });
+    return Promise.resolve(reply('accepted'));
   };
   await api.run(
     { workspaceId: ws, command, key, fingerprint: original },
@@ -133,7 +289,7 @@ test('a request with the same key while the first is running is refused as in pr
       calls++;
       started();
       await gate;
-      return { status: 201, body: { ok: true } };
+      return reply('accepted');
     },
   );
   // Второй запрос приходит только после того, как первый захватил ключ и начал выполнение.
@@ -141,7 +297,7 @@ test('a request with the same key while the first is running is refused as in pr
   await expectFailure(
     api.run({ workspaceId: ws, command, key, fingerprint }, () => {
       calls++;
-      return Promise.resolve({ status: 201, body: { ok: false } });
+      return Promise.resolve(reply('unexpected'));
     }),
     'IDEMPOTENCY_IN_PROGRESS',
   );
@@ -173,13 +329,13 @@ test('a failed run releases its capture so the same key runs again', async () =>
     { workspaceId: ws, command, key, fingerprint },
     () => {
       calls++;
-      return Promise.resolve({ status: 201, body: { attempt: 2 } });
+      return Promise.resolve(reply('second attempt'));
     },
   );
   expect(calls).toBe(2);
   expect(retried).toEqual({
-    status: 201,
-    body: { attempt: 2 },
+    kind: 'response',
+    ...reply('second attempt'),
     replayed: false,
   });
 });
@@ -192,7 +348,7 @@ test('the same key in another workspace is an independent command', async () => 
   let calls = 0;
   const execute = () => {
     calls++;
-    return Promise.resolve({ status: 201, body: { calls } });
+    return Promise.resolve(reply(String(calls)));
   };
   await api.run({ workspaceId: first, command, key, fingerprint }, execute);
   const other = await api.run(
@@ -209,15 +365,19 @@ test('an expired result is treated as absent and the command runs again', async 
   const fingerprint = await fingerprintInput({ body: { title: 'Expiring' } });
   const start = current;
   await api.run({ workspaceId: ws, command, key, fingerprint }, () =>
-    Promise.resolve({ status: 201, body: { round: 1 } }),
+    Promise.resolve(reply('original')),
   );
   current = new Date(start.getTime() + 24 * 60 * 60 * 1000 + 1000);
   try {
     const again = await api.run(
       { workspaceId: ws, command, key, fingerprint },
-      () => Promise.resolve({ status: 201, body: { round: 2 } }),
+      () => Promise.resolve(reply('renewed')),
     );
-    expect(again).toEqual({ status: 201, body: { round: 2 }, replayed: false });
+    expect(again).toEqual({
+      kind: 'response',
+      ...reply('renewed'),
+      replayed: false,
+    });
   } finally {
     current = start;
   }
@@ -243,25 +403,26 @@ test('a capture left by a crashed process is taken over after its lease expires'
   // Пока захват действует, повтор ждёт.
   await expectFailure(
     api.run({ ...ref, fingerprint }, () =>
-      Promise.resolve({ status: 201, body: {} }),
+      Promise.resolve(reply('unexpected')),
     ),
     'IDEMPOTENCY_IN_PROGRESS',
   );
   current = new Date(start.getTime() + 6 * 60 * 1000);
   try {
     const taken = await api.run({ ...ref, fingerprint }, () =>
-      Promise.resolve({ status: 201, body: { taken: true } }),
+      Promise.resolve(reply('new owner')),
     );
     expect(taken).toEqual({
-      status: 201,
-      body: { taken: true },
+      kind: 'response',
+      ...reply('new owner'),
       replayed: false,
     });
     // Старый владелец больше не может записать результат: токен захвата уже сменился.
     const lateWrite = await store.complete(
       ref,
       crashedToken,
-      { status: 201, body: { late: true } },
+      { kind: 'response', ...reply('old owner') },
+      undefined,
       current,
     );
     expect(lateWrite).toBe(false);

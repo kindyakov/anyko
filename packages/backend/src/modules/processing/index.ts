@@ -2,13 +2,16 @@ import type { GenerationId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
 
+import type { WorkAttempt } from './application/work-attempt';
 import type { WorkProcessingStore, WorkRuns } from './application/work-ports';
 
-export { createProcessingService } from './application/service';
-export type {
-  WorkProcessingStore,
-  WorkRunRecord,
-} from './application/work-ports';
+export {
+  claimDocumentAttempt,
+  type DocumentAttempt,
+  documentOcrPolicy,
+} from './application/document-attempt';
+export type { DocumentArtifacts } from './application/ports';
+export type { WorkAttempt } from './application/work-attempt';
 export { stepOutputSchema } from './application/work-ports';
 
 // Фасад запусков работы. Старт — внутренний шаг сценария, который уже проверил право (works.edit
@@ -31,29 +34,21 @@ export interface ProcessingQueries {
   isActive(scope: WorkspaceScope, workId: WorkId): Promise<boolean>;
   runs(scope: WorkspaceScope, workId: WorkId): Promise<WorkRuns>;
 }
-// Внутренний порт исполнения запуска: исполнитель (worker) и процесс работы, который уже проверил право.
-// Операции внутри UnitOfWork получаются через in(tx) тем же набором имён.
-export type ProcessingInternal = Pick<
+// Управление запусками при удалении работы и учёт зарегистрированных потоков модели.
+type WorkMaintenance = Pick<
   WorkProcessingStore,
-  | 'claim'
-  | 'valid'
-  | 'fence'
-  | 'step'
-  | 'finish'
-  | 'cached'
-  | 'thread'
-  | 'threads'
-  | 'cancel'
-  | 'erase'
-  | 'eraseThreads'
-  | 'reconcile'
+  'thread' | 'threads' | 'cancel' | 'erase' | 'eraseThreads'
 >;
 export interface ProcessingPorts {
   readonly commands: ProcessingCommands;
   readonly queries: ProcessingQueries;
-  readonly internal: ProcessingInternal;
+  readonly internal: WorkMaintenance;
 }
 export interface ProcessingModule extends ProcessingPorts {
+  claimAttempt: (
+    workspaceId: string,
+    runId: string,
+  ) => Promise<WorkAttempt | null>;
   in(tx: Tx): ProcessingPorts;
 }
 

@@ -8,8 +8,13 @@ import {
 } from '@anyko/database';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
-  throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
+if (
+  !databaseUrl ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+)
+  throw new Error(
+    'Dedicated anyko_test or anyko_test_<worktree> TEST_DATABASE_URL required',
+  );
 
 // Same wiring as the composition root: queries and session locks use separate pools.
 // Waiters on one key hold a connection each while they poll, so 20 of them would take a

@@ -3,10 +3,9 @@ import { useState } from 'react';
 
 import { Button, Modal, Notice } from '@anyko/ui';
 
+import { useUpdateWorkDocumentRecognition } from '@/features/works';
 import { describeApiError, sharedCodeTexts } from '@/lib/api/errors';
 import { useCan, useWorkspaceId } from '@/lib/api/workspace';
-
-import { useUpdateWorkDocumentRecognition } from '../api/commands';
 
 export function OcrRevisionAction({
   workId,
@@ -89,6 +88,7 @@ export function OcrRevisionAction({
               Отмена
             </Button>
             <Button
+              disabled={disabled}
               loading={update.isPending}
               onClick={() => {
                 update.mutate(

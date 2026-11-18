@@ -15,7 +15,8 @@ export function Hero({
   stage,
   step,
   busy,
-  locked,
+  analyzeDisabled,
+  generateDisabled,
   onStep,
   onAnalyze,
   onGenerate,
@@ -23,7 +24,8 @@ export function Hero({
   stage: WorkStage;
   step: StepKey;
   busy: boolean;
-  locked: boolean;
+  analyzeDisabled: boolean;
+  generateDisabled: boolean;
   onStep: (step: StepKey) => void;
   onAnalyze: () => void;
   onGenerate: () => void;
@@ -60,7 +62,7 @@ export function Hero({
             <Button
               size="lg"
               loading={busy}
-              disabled={locked}
+              disabled={analyzeDisabled}
               onClick={onAnalyze}
             >
               <Sparkles size={18} />
@@ -119,7 +121,7 @@ export function Hero({
             <Button
               size="lg"
               loading={busy}
-              disabled={locked}
+              disabled={generateDisabled}
               onClick={onGenerate}
             >
               <PackageCheck size={18} />

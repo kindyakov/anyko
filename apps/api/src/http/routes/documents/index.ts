@@ -20,6 +20,7 @@ import {
 import type { Route } from '../../route';
 
 import { imageHeaders, imageIndex, sourceFileHeaders } from './files';
+import { presentDocumentResult } from './result';
 import { documentSummary } from './summary';
 
 export interface DocumentHttpOptions {
@@ -46,16 +47,18 @@ export function documentRoutes(
       pendingDeletions: await documents.queries.pendingDeletions(scope),
     };
   });
-  route(app, uploadDocument, async ({ scope, headers, body, requestId }) => ({
-    document: documentSummary(
-      await documents.commands.upload(scope, {
-        requestKey: headers['idempotency-key'],
-        filename: body.file.name,
-        bytes: new Uint8Array(await body.file.arrayBuffer()),
-        correlationId: requestId,
-      }),
-    ),
-  }));
+  route(app, uploadDocument, async ({ scope, headers, body, requestId }) => {
+    const document = await documents.commands.upload(scope, {
+      requestKey: headers['idempotency-key'],
+      filename: body.file.name,
+      bytes: new Uint8Array(await body.file.arrayBuffer()),
+      correlationId: requestId,
+    });
+    return {
+      body: { document: documentSummary(document) },
+      resource: { kind: 'document' as const, id: document.id },
+    };
+  });
   route(app, getDocument, async ({ scope, params }) => ({
     document: documentSummary(
       await documents.queries.get(scope, brandDocumentId(params.documentId)),
@@ -67,19 +70,13 @@ export function documentRoutes(
       brandDocumentId(params.documentId),
       query.revision,
     );
-    return {
-      markdown: result.markdown,
-      processorVersion: result.processorVersion,
-      images: result.images.map((image) => ({
-        path: image.path,
-        url:
-          link(getDocumentImage, {
-            workspaceId: scope.workspaceId,
-            documentId: params.documentId,
-            index: String(image.index),
-          }) + `?revision=${String(result.revision)}`,
-      })),
-    };
+    return presentDocumentResult(result, (index) =>
+      link(getDocumentImage, {
+        workspaceId: scope.workspaceId,
+        documentId: params.documentId,
+        index,
+      }),
+    );
   });
   route(app, getDocumentSource, async ({ scope, params }) => {
     const source = await documents.queries.source(

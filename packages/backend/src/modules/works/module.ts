@@ -1,14 +1,14 @@
 import type { Tx } from '../../platform/transactions';
 
+import { activeDocument } from './application/active-document';
 import { attachDocuments } from './application/attach-document';
-import { bumpRevision } from './application/bump-revision';
 import { createWork } from './application/create-work';
 import { findWork } from './application/find-work';
 import { listEvents } from './application/list-events';
 import { listWorks } from './application/list-works';
+import { notifyDocumentChanged } from './application/notify-document-changed';
 import { readCursor } from './application/read-cursor';
 import { readSources } from './application/read-sources';
-import { recordEvent } from './application/record-event';
 
 import type { WorkIoPort, WorksModule, WorksPorts, WorkStore } from './index';
 
@@ -23,7 +23,7 @@ export interface WorksDeps {
 
 export function createWorksModule(deps: WorksDeps): WorksModule {
   const bind = (store: WorkStore): WorksPorts => ({
-    internal: store,
+    internal: { ...store, notifyDocumentChanged: notifyDocumentChanged(store) },
     commands: {
       create: createWork({
         store,
@@ -31,13 +31,12 @@ export function createWorksModule(deps: WorksDeps): WorksModule {
         knownPackage: deps.knownPackage,
       }),
       attachDocuments: attachDocuments({ store }),
-      bumpRevision: bumpRevision({ store }),
-      recordEvent: recordEvent({ store }),
     },
     queries: {
       list: listWorks({ store }),
       find: findWork({ store }),
       sources: readSources({ store, io: deps.io }),
+      activeDocument: activeDocument({ store }),
       cursor: readCursor({ store }),
       events: listEvents({ store }),
     },

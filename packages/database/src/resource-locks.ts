@@ -10,9 +10,14 @@ export function createResourceLocks(pool: DatabasePool) {
     async run<T>(
       key: string,
       operation: (signal: AbortSignal) => Promise<T>,
+      parentSignal?: AbortSignal,
     ): Promise<T> {
+      parentSignal?.throwIfAborted();
       const client = await pool.connect();
       const controller = new AbortController();
+      const signal = parentSignal
+        ? AbortSignal.any([parentSignal, controller.signal])
+        : controller.signal;
       const lost = () => {
         controller.abort(new Error('RESOURCE_LOCK_LOST'));
       };
@@ -22,6 +27,7 @@ export function createResourceLocks(pool: DatabasePool) {
       try {
         const deadline = Date.now() + 30000;
         while (!locked) {
+          signal.throwIfAborted();
           const result = await client.query<{ locked: boolean }>(
             'SELECT pg_try_advisory_lock(hashtextextended($1,0)) AS locked',
             [key],
@@ -32,12 +38,12 @@ export function createResourceLocks(pool: DatabasePool) {
             await new Promise((resolve) => setTimeout(resolve, 50));
           }
         }
-        controller.signal.throwIfAborted();
-        const result = await operation(controller.signal);
-        controller.signal.throwIfAborted();
+        signal.throwIfAborted();
+        const result = await operation(signal);
+        signal.throwIfAborted();
         return result;
       } finally {
-        if (locked)
+        if (locked && !controller.signal.aborted)
           await client
             .query('SELECT pg_advisory_unlock(hashtextextended($1,0))', [key])
             .catch(() => undefined);

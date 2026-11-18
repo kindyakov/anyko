@@ -1,6 +1,7 @@
-import { confirmFacts, type FactsStore } from '..';
+import type { FactsStore } from '..';
 import type { WorkId } from '../../../platform/ids';
 import type { WorkspaceScope } from '../../../platform/scope/workspace-scope';
+import { confirmFacts } from '../domain/values';
 
 // Подтверждение всех сведений: выполняется сценарием правки после проверки ревизии.
 export const confirmValues =

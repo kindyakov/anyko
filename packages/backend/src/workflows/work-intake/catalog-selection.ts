@@ -1,10 +1,9 @@
 import { WorkError } from '../../modules/works';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
+import { workSourceLimit } from '../work-command-guards';
 
 import type { WorkIntakeDeps } from './deps';
-
-export const workSourceLimit = 20;
 
 export function requireCatalogSelection(scope: WorkspaceScope) {
   scope.require('documents.upload');

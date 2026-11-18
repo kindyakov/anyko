@@ -101,7 +101,8 @@ function Files({
 
 export function WorkResults({
   view,
-  locked,
+  confirmDisabled,
+  generateDisabled,
   busy,
   hasDraft,
   onConfirm,
@@ -109,7 +110,8 @@ export function WorkResults({
   onReview,
 }: {
   view: WorkView;
-  locked: boolean;
+  confirmDisabled: boolean;
+  generateDisabled: boolean;
   busy: boolean;
   hasDraft: boolean;
   onConfirm: () => void;
@@ -127,7 +129,6 @@ export function WorkResults({
       (run.status === 'queued' || run.status === 'running'),
   );
   const fresh = latest?.revision === view.work.revision;
-  const blocked = busy || locked || hasDraft;
   const needsReview = !!view.facts.needsReview?.length;
   return (
     <div className="grid grid-cols-1 gap-8">
@@ -173,7 +174,7 @@ export function WorkResults({
               <>
                 <Button
                   loading={busy && !generating}
-                  disabled={blocked || generating}
+                  disabled={confirmDisabled || hasDraft}
                   onClick={onConfirm}
                 >
                   <ShieldCheck size={17} />
@@ -201,8 +202,8 @@ export function WorkResults({
           <div className="mt-5">
             <Button
               variant={confirmed ? 'primary' : 'secondary'}
-              loading={generating}
-              disabled={blocked || needsReview}
+              loading={generating && generateDisabled}
+              disabled={generateDisabled || hasDraft}
               onClick={onGenerate}
             >
               <PackageCheck size={17} />

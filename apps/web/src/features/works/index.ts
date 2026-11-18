@@ -1,13 +1,11 @@
 export {
   invalidateWork,
-  useAnalyzeWork,
   useAttachWorkDocuments,
-  useConfirmWork,
   useSaveFacts,
 } from '@/features/works/api/mutations';
+export { invalidateWorkspaceWorks } from '@/features/works/api/queries';
 export { useWorkView } from '@/features/works/api/use-work-view';
 export {
-  conflictingFields,
   errorText,
   journeySteps,
   runStatusLabels,
@@ -18,6 +16,10 @@ export {
   type WorkStage,
   workStage,
 } from '@/features/works/model/journey';
-export { describeWorkCommandError } from '@/features/works/model/command-errors';
+export { useWorkCommands } from '@/features/works/api/use-work-commands';
+export {
+  type Upload,
+  useUpdateWorkDocumentRecognition,
+} from '@/features/works/api/source-commands';
 export { WorkList } from '@/features/works/ui/work-list';
 export { AddRecognitionsToWork } from './ui/list/add-recognitions-to-work';

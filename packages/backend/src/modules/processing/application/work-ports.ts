@@ -74,9 +74,9 @@ export const stepOutputSchema = z
     candidates: z.array(candidateSchema).max(500),
   })
   .strict();
-type StepOutput = z.infer<typeof stepOutputSchema>;
+export type StepOutput = z.infer<typeof stepOutputSchema>;
 
-export interface WorkRunRecord {
+export interface WorkRunSnapshot {
   id: string;
   workspaceId: string;
   workId: string;
@@ -86,47 +86,57 @@ export interface WorkRunRecord {
   settingsRevision: number | null;
   generationId: string | null;
   correlationId: string;
-  attemptToken: string | null;
+}
+export interface ClaimedWorkRun {
+  snapshot: WorkRunSnapshot;
+  attemptToken: string;
+}
+
+export interface WorkStepInput {
+  stage: 'parsing' | 'vision' | 'extraction' | 'reconciliation' | 'generation';
+  documentId?: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped';
+  errorCode?: string;
+  usage?: { inputTokens: number | null; outputTokens: number | null };
+  output?: StepOutput;
+}
+
+export interface WorkRunOutcome {
+  status: 'succeeded' | 'partial' | 'failed' | 'cancelled';
+  errorCode?: string;
 }
 export interface WorkProcessingStore {
   start(
-    input: WorkRunRecord & {
+    input: WorkRunSnapshot & {
       actorId: string;
       modelSnapshot: { vision: string; extraction: string };
     },
   ): Promise<void>;
-  claim(workspaceId: string, runId: string): Promise<WorkRunRecord | null>;
+  claim: (
+    workspaceId: string,
+    runId: string,
+    attemptToken: string,
+    leaseUntil: Date,
+  ) => Promise<ClaimedWorkRun | null>;
   active(workspaceId: string, workId: string): Promise<boolean>;
-  valid(run: WorkRunRecord): Promise<boolean>;
-  fence(run: WorkRunRecord): Promise<void>;
-  finish(
-    run: WorkRunRecord,
-    status: 'succeeded' | 'partial' | 'failed' | 'cancelled',
-    errorCode?: string,
-  ): Promise<boolean>;
-  step(
-    run: WorkRunRecord,
-    input: {
-      stage:
-        'parsing' | 'vision' | 'extraction' | 'reconciliation' | 'generation';
-      documentId?: string;
-      status: 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped';
-      errorCode?: string;
-      usage?: { inputTokens: number | null; outputTokens: number | null };
-      output?: StepOutput;
-    },
-  ): Promise<void>;
+  valid(run: ClaimedWorkRun): Promise<boolean>;
+  fence(run: ClaimedWorkRun): Promise<void>;
+  finish(run: ClaimedWorkRun, outcome: WorkRunOutcome): Promise<boolean>;
+  step(run: ClaimedWorkRun, input: WorkStepInput): Promise<void>;
   cached(
-    run: WorkRunRecord,
+    run: WorkRunSnapshot,
     documentId: string,
     stage: 'vision' | 'extraction',
     sourceDigest: string,
   ): Promise<StepOutput | null>;
   list(workspaceId: string, workId: string): Promise<WorkRuns>;
-  reconcile(): Promise<void>;
-  cancel(workspaceId: string, workId: string): Promise<void>;
-  erase(workspaceId: string, workId: string): Promise<void>;
-  thread(workspaceId: string, workId: string, threadId: string): Promise<void>;
-  threads(workspaceId: string, workId: string): Promise<string[]>;
-  eraseThreads(workspaceId: string, workId: string): Promise<void>;
+  cancel: (workspaceId: string, workId: string) => Promise<void>;
+  erase: (workspaceId: string, workId: string) => Promise<void>;
+  thread: (
+    workspaceId: string,
+    workId: string,
+    threadId: string,
+  ) => Promise<void>;
+  threads: (workspaceId: string, workId: string) => Promise<string[]>;
+  eraseThreads: (workspaceId: string, workId: string) => Promise<void>;
 }

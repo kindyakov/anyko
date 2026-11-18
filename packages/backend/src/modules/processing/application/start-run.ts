@@ -1,5 +1,7 @@
-import type { WorkProcessingStore, WorkRunStart } from '..';
+import type { WorkRunStart } from '..';
 import type { WorkspaceScope } from '../../../platform/scope/workspace-scope';
+
+import type { WorkProcessingStore } from './work-ports';
 
 // Постановка запуска в очередь: строка запуска и исходящее сообщение в одной транзакции (вызывает сценарий).
 export const startRun =
@@ -15,7 +17,6 @@ export const startRun =
       settingsRevision: input.settingsRevision,
       generationId: input.generationId,
       correlationId: input.correlationId,
-      attemptToken: null,
       actorId: scope.userId,
       modelSnapshot: input.modelSnapshot,
     });

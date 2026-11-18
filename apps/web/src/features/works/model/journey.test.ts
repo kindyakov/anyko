@@ -2,11 +2,9 @@ import { expect, test } from 'bun:test';
 
 import { type WorkView } from '@anyko/contracts/works';
 
-import {
-  conflictingFields,
-  stepOf,
-  workStage,
-} from '@/features/works/model/journey';
+import { stepOf, workStage } from '@/features/works/model/journey';
+
+import { availableWorkCommands } from '../../../../test/fixtures';
 
 const id = () => crypto.randomUUID();
 function view(patch: Partial<WorkView> = {}): WorkView {
@@ -35,12 +33,14 @@ function view(patch: Partial<WorkView> = {}): WorkView {
       values: {},
       manual: [],
       confirmed: [],
+      discrepancyFields: [],
       candidates: [],
     },
     runs: [],
     generations: [],
     cursor: '0',
     cleanupPending: false,
+    availability: availableWorkCommands,
     ...patch,
   };
 }
@@ -160,25 +160,4 @@ test('review, confirmation and a generation for the current revision lead to doc
   });
   expect(workStage(fresh)).toEqual({ kind: 'generated', files: 1 });
   expect(stepOf(workStage(fresh))).toBe('documents');
-});
-
-test('conflicts are fields whose extracted variants disagree', () => {
-  const evidence = [{ documentId: id(), imagePath: null, quote: 'Иванов' }];
-  const conflicts = conflictingFields(
-    view({
-      facts: {
-        version: 1,
-        values: {},
-        manual: [],
-        confirmed: [],
-        candidates: [
-          { field: 'lastName', value: 'Иванов', evidence },
-          { field: 'lastName', value: 'Иванова', evidence },
-          { field: 'firstName', value: 'Иван', evidence },
-          { field: 'firstName', value: 'Иван', evidence },
-        ],
-      },
-    }),
-  );
-  expect([...conflicts]).toEqual(['lastName']);
 });
