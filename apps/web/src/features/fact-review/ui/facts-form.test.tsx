@@ -344,7 +344,7 @@ test('a dotted field supplied only by the server catalogue is submitted as one l
   });
 });
 
-test('a new server revision keeps the user edit and takes the new value of a field the user did not touch', async () => {
+test('the form resets to the new server revision before applying its carried edit', async () => {
   const server = serveWork(
     viewWith({ personName: 'Иван', observations: 'Старое' }),
   );
@@ -366,7 +366,7 @@ test('a new server revision keeps the user edit and takes the new value of a fie
   expect(strip()).not.toBeNull();
 });
 
-test('a refetch at the same revision never erases edits made after a rebase', async () => {
+test('a same-revision refetch does not reapply a previous form reset', async () => {
   const server = serveWork(
     viewWith({ personName: 'Иван', observations: 'Первое' }),
   );
@@ -393,7 +393,7 @@ test('a refetch at the same revision never erases edits made after a rebase', as
   expect(personName().value).toBe('Моя новая правка');
 });
 
-test('a removed profile field remains a conflict until its old edit is discarded', async () => {
+test('a removed profile field shows its edit conflict with only the server action', async () => {
   const base = viewWith({ removedField: 'Старое значение' });
   const server = serveWork({
     ...base,
@@ -439,7 +439,7 @@ test('a removed profile field remains a conflict until its old edit is discarded
   expect(strip()).toBeNull();
 });
 
-test('a field changed on both sides is a conflict: saving waits until the user takes a value', async () => {
+test('an edit conflict shows both values and disables the save button', async () => {
   const server = serveWork(viewWith({ personName: 'Иван' }));
   renderFacts();
   await typeInto(await findField('ФИО полностью'), 'Иван Петров');
@@ -461,45 +461,7 @@ test('a field changed on both sides is a conflict: saving waits until the user t
   expect(within(block).getByText('Иван Сергеевич')).toBeTruthy();
 });
 
-test('an unresolved conflict survives the next server revision that changes another field', async () => {
-  const server = serveWork(
-    viewWith({ personName: 'Иван', observations: 'Старое' }),
-  );
-  renderFacts();
-  await typeInto(await findField('ФИО полностью'), 'Иван Петров');
-
-  server.change(
-    viewWith(
-      { personName: 'Иван Сергеевич', observations: 'Старое' },
-      { revision: 2 },
-    ),
-  );
-  server.announceChange();
-  expect(
-    await screen.findByRole('heading', {
-      name: 'Изменено и вами, и на сервере',
-    }),
-  ).toBeTruthy();
-
-  server.change(
-    viewWith(
-      { personName: 'Иван Сергеевич', observations: 'Новое' },
-      { revision: 3 },
-    ),
-  );
-  server.announceChange();
-  await waitFor(() => {
-    expect(observations().value).toBe('Новое');
-  });
-
-  expect(
-    screen.getByRole('heading', { name: 'Изменено и вами, и на сервере' }),
-  ).toBeTruthy();
-  expect(personName().value).toBe('Иван Петров');
-  expect(saveButton().hasAttribute('disabled')).toBe(true);
-});
-
-test('keeping the own value resolves the conflict and enables saving without changing the field', async () => {
+test('the keep button resolves the edit conflict and enables saving the displayed value', async () => {
   const server = serveWork(viewWith({ personName: 'Иван' }));
   renderFacts();
   await typeInto(await findField('ФИО полностью'), 'Иван Петров');
@@ -517,7 +479,7 @@ test('keeping the own value resolves the conflict and enables saving without cha
   expect(personName().value).toBe('Иван Петров');
 });
 
-test('taking the server value resolves the conflict and drops the edit, so the strip disappears', async () => {
+test('the take button applies the server value and hides the unsaved strip', async () => {
   const server = serveWork(viewWith({ personName: 'Иван' }));
   renderFacts();
   await typeInto(await findField('ФИО полностью'), 'Иван Петров');

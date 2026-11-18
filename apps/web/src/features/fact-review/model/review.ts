@@ -5,6 +5,8 @@ import type {
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 
+import { sameFieldValue } from './field-value';
+
 export type ReviewFilter = 'all' | 'conflicts' | 'pending';
 export type ReviewField = {
   field: WorkView['package']['fields'][number];
@@ -13,6 +15,15 @@ export type ReviewField = {
 
 const filled = (value: FieldValue | undefined) =>
   Array.isArray(value) ? value.length > 0 : !!value;
+
+export function candidateSelection(
+  value: FieldValue | undefined,
+  saved: FieldValue | undefined,
+) {
+  const unchanged = sameFieldValue(value, saved);
+  return (candidate: ReviewField['candidates'][number]) =>
+    unchanged ? candidate.selected : sameFieldValue(value, candidate.value);
+}
 
 export function reviewFields(
   view: WorkView,
