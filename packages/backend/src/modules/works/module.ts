@@ -7,6 +7,7 @@ import { findWork } from './application/find-work';
 import { hasActiveDocument } from './application/has-active-document';
 import { listEvents } from './application/list-events';
 import { listWorks } from './application/list-works';
+import { notifyDocumentChanged } from './application/notify-document-changed';
 import { readCursor } from './application/read-cursor';
 import { readSources } from './application/read-sources';
 import { recordEvent } from './application/record-event';
@@ -24,7 +25,7 @@ export interface WorksDeps {
 
 export function createWorksModule(deps: WorksDeps): WorksModule {
   const bind = (store: WorkStore): WorksPorts => ({
-    internal: store,
+    internal: { ...store, notifyDocumentChanged: notifyDocumentChanged(store) },
     commands: {
       create: createWork({
         store,

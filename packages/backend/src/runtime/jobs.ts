@@ -15,30 +15,22 @@ import { workMaintenanceJob } from '../workflows/work-maintenance/jobs';
 
 export function createJobRegistry(input: {
   processing: ReturnType<typeof createJobProcessing>;
-  ocr(scope: ExecutionScope, signal: AbortSignal): Promise<void>;
-  execute(
+  ocr: Parameters<typeof documentOcrJob>[0];
+  execute: (
     scope: ExecutionScope,
     signal: AbortSignal,
     connection: RunPolicy['connection'],
-  ): Promise<void>;
-  maintain(): Promise<void>;
+  ) => Promise<void>;
+  maintain: () => Promise<void>;
   documents: Parameters<typeof documentMaintenanceJob>[0];
   idempotency: ReturnType<typeof createIdempotencyMaintenance>;
-  ocrTimeoutMs: number;
 }): JobRegistry {
   return {
     definitions: [
-      documentOcrJob(
-        (scope, signal) => input.ocr(scope, signal),
-        input.ocrTimeoutMs,
-      ),
-      workAnalysisJob((scope, signal, connection) =>
-        input.execute(scope, signal, connection),
-      ),
-      workGenerationJob((scope, signal, connection) =>
-        input.execute(scope, signal, connection),
-      ),
-      workMaintenanceJob(() => input.maintain()),
+      documentOcrJob(input.ocr),
+      workAnalysisJob(input.execute),
+      workGenerationJob(input.execute),
+      workMaintenanceJob(input.maintain),
       documentMaintenanceJob(input.documents),
       idempotencyCleanupJob(input.idempotency),
     ],

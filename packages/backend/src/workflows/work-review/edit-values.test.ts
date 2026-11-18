@@ -25,7 +25,7 @@ const unused = () => Promise.reject(new Error('UNUSED'));
 const unusedWorkInternal: WorksPorts['internal'] = {
   get: unused,
   documents: unused,
-  workForDocument: unused,
+  notifyDocumentChanged: unused,
   dirty: unused,
   touch: unused,
   event: unused,
