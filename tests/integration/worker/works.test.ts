@@ -5,7 +5,6 @@ import { PostgresStore } from '@mastra/pg';
 import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
-import { httpErrorSchema } from '@anyko/contracts/common';
 import {
   createDatabase,
   createDatabasePool,
@@ -936,11 +935,33 @@ test('owner deletion fences a running writer then physically purges the work and
   const cachedSource = makeRef(
     'POST /workspaces/:workspaceId/works/:workId/documents',
   );
-  const workResponse = () => Promise.resolve({ status: 201, body: analyzed });
+  const workResponse = () =>
+    Promise.resolve({
+      response: { status: 201, body: 'opaque work reply' },
+      resource: { kind: 'work' as const, id: input.workId },
+    });
   const sourceResponse = () =>
-    Promise.resolve({ status: 202, body: { document: source } });
-  expect((await responses.run(cachedWork, workResponse)).status).toBe(201);
-  expect((await responses.run(cachedSource, sourceResponse)).status).toBe(202);
+    Promise.resolve({
+      response: { status: 202, body: 'opaque document reply' },
+      resource: { kind: 'document' as const, id: source.id },
+    });
+  const unrelated = makeRef(cachedWork.command);
+  const similarResponse = await responses.run(unrelated, () =>
+    Promise.resolve({
+      response: {
+        status: 201,
+        body: JSON.stringify({ work: { id: input.workId } }),
+      },
+    }),
+  );
+  expect(await responses.run(cachedWork, workResponse)).toMatchObject({
+    kind: 'response',
+    replayed: false,
+  });
+  expect(await responses.run(cachedSource, sourceResponse)).toMatchObject({
+    kind: 'response',
+    replayed: false,
+  });
   const ref = { workspaceId: input.workspaceId, workId: input.workId };
   const ownedThreads = await db.workAgentThread.findMany({
     where: ref,
@@ -1016,15 +1037,33 @@ test('owner deletion fences a running writer then physically purges the work and
       'deleted',
     );
     const lateResponse = makeRef(cachedWork.command);
-    await responses.run(lateResponse, workResponse);
+    expect(await responses.run(lateResponse, workResponse)).toMatchObject({
+      kind: 'response',
+      replayed: false,
+    });
     for (const ref of [cachedWork, cachedSource, lateResponse]) {
       const response = await responses.run(ref, () => {
         throw new Error('DELETED_RESPONSE_REEXECUTED');
       });
-      expect(response.status).toBe(404);
-      expect(response.replayed).toBe(true);
-      expect(httpErrorSchema.parse(response.body).error.code).toBe('NOT_FOUND');
+      expect(response).toEqual({
+        kind: 'resource_unavailable',
+        replayed: true,
+      });
     }
+    expect(
+      await db.idempotencyKey.count({
+        where: {
+          workspaceId: input.workspaceId,
+          key: { in: [cachedWork.key, cachedSource.key, lateResponse.key] },
+          body: { not: null },
+        },
+      }),
+    ).toBe(0);
+    expect(
+      await responses.run(unrelated, () => {
+        throw new Error('UNRELATED_RESPONSE_REEXECUTED');
+      }),
+    ).toEqual({ ...similarResponse, replayed: true });
   } finally {
     finishWrite.resolve(undefined);
     pauseGeneratedWrite = undefined;

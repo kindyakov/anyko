@@ -1,4 +1,4 @@
-import type { StoredResponse } from './application/ports';
+import type { CommandResponse } from './application/ports';
 import {
   type IdempotencyDeps,
   type IdempotentCommand,
@@ -10,7 +10,7 @@ export interface IdempotencyApi {
   // Выполняет команду один раз на ключ: повтор отдаёт сохранённый ответ (ADR 0009).
   run(
     command: IdempotentCommand,
-    execute: () => Promise<StoredResponse>,
+    execute: () => Promise<CommandResponse>,
   ): Promise<IdempotentResult>;
 }
 

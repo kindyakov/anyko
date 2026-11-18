@@ -90,9 +90,13 @@ export function worksRoutes(
   route(app, getWorkDeletion, ({ scope, params }) =>
     deletion.status(scope, brandWorkId(params.workId)),
   );
-  route(app, createWork, async ({ scope, body }) =>
-    presentWork(await views.get(scope, await intake.createWork(scope, body))),
-  );
+  route(app, createWork, async ({ scope, body }) => {
+    const workId = await intake.createWork(scope, body);
+    return {
+      body: presentWork(await views.get(scope, workId)),
+      resource: { kind: 'work' as const, id: workId },
+    };
+  });
   route(app, getWork, async ({ scope, params }) =>
     presentWork(await views.get(scope, brandWorkId(params.workId))),
   );
@@ -110,15 +114,19 @@ export function worksRoutes(
   route(
     app,
     uploadWorkDocument,
-    async ({ scope, params, headers, body, requestId }) => ({
-      document: await intake.uploadDocument(scope, {
+    async ({ scope, params, headers, body, requestId }) => {
+      const document = await intake.uploadDocument(scope, {
         workId: brandWorkId(params.workId),
         filename: body.file.name,
         bytes: new Uint8Array(await body.file.arrayBuffer()),
         correlationId: requestId,
         requestKey: headers['idempotency-key'],
-      }),
-    }),
+      });
+      return {
+        body: { document },
+        resource: { kind: 'document' as const, id: document.id },
+      };
+    },
   );
   route(app, getWorkDocumentSource, async ({ scope, params }) => {
     const source = await views.source(
@@ -157,7 +165,7 @@ export function worksRoutes(
       workId: brandWorkId(params.workId),
       correlationId: requestId,
     });
-    return { status: 'queued' as const };
+    return { body: { status: 'queued' as const }, resource: null };
   });
   route(app, removeWorkDocument, async ({ scope, params }) => {
     await intake.removeDocument(scope, {
@@ -182,7 +190,7 @@ export function worksRoutes(
       workId: brandWorkId(params.workId),
       correlationId: requestId,
     });
-    return { status: 'queued' as const };
+    return { body: { status: 'queued' as const }, resource: null };
   });
   route(app, downloadGeneratedFile, async ({ scope, params }) => {
     const result = await generation.downloadResult(scope, {
