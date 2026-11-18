@@ -1,5 +1,6 @@
 import { LlmError } from '@anyko/llm';
 
+import type { ExecutionScope } from '../../modules/processing';
 import { isAppError } from '../../platform/errors';
 import type { RunPolicy } from '../../platform/jobs';
 import { createWorkAnalysis } from '../work-analysis';
@@ -12,8 +13,7 @@ export function createWorkExecution(deps: WorkDependencies) {
   const generation = createWorkGenerationRun(deps);
 
   return async (
-    workspaceId: string,
-    runId: string,
+    { workspaceId, runId }: ExecutionScope,
     signal: AbortSignal,
     connection: RunPolicy['connection'],
   ) => {

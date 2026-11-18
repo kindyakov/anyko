@@ -171,15 +171,14 @@ export interface WorksPorts {
   // Внутренний порт исполнения (worker и процессы после проверки права): ревизия, события, очистка.
   readonly internal: Pick<
     WorkStore,
-    | 'get'
-    | 'documents'
-    | 'workForDocument'
-    | 'dirty'
-    | 'touch'
-    | 'event'
-    | 'detachDeleted'
+    'get' | 'documents' | 'dirty' | 'touch' | 'event' | 'detachDeleted'
   > &
-    WorkDeletionStore;
+    WorkDeletionStore & {
+      notifyDocumentChanged(
+        workspaceId: string,
+        documentId: string,
+      ): Promise<void>;
+    };
 }
 
 // Фасад модуля: те же команды и запросы внутри транзакции через in(tx).
