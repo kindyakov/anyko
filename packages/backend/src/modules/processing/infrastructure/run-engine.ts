@@ -13,11 +13,6 @@ export type NotifyDocumentRun = (
   workspaceId: string,
   documentId: string,
 ) => Promise<void>;
-export const documentPolicy = {
-  name: 'document.ocr',
-  maxRunAttempts: 3,
-  redeliverQueued: true,
-} as const;
 type RecoveryPolicy = Pick<
   RunJob,
   'name' | 'maxRunAttempts' | 'redeliverQueued'
@@ -36,6 +31,33 @@ export function activeAttempt(
     status: 'running',
     leaseUntil: { gt: now },
   };
+}
+
+export async function finishRun(
+  tx: RunConnection,
+  input: {
+    workspaceId: string;
+    id: string;
+    attemptToken: string;
+    kinds: string[];
+    now: Date;
+    outcome: {
+      status: 'succeeded' | 'partial' | 'failed' | 'cancelled';
+      errorCode?: string | null;
+      resultKey?: string;
+      processorVersion?: string;
+    };
+  },
+): Promise<boolean> {
+  const { workspaceId, id, attemptToken, kinds, now, outcome } = input;
+  const updated = await tx.run.updateMany({
+    where: {
+      ...activeAttempt(workspaceId, id, attemptToken, now),
+      kind: { in: kinds },
+    },
+    data: { ...outcome, attemptToken: null, leaseUntil: null },
+  });
+  return updated.count === 1;
 }
 
 /** All run kinds use the same conditional state change and attempt history. */

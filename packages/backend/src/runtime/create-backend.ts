@@ -52,8 +52,8 @@ import {
 } from '../modules/idempotency';
 import { createIdempotencyMaintenanceStore } from '../modules/idempotency/infrastructure/maintenance-store';
 import {
+  claimDocumentAttempt,
   createJobProcessing,
-  createProcessingService,
 } from '../modules/processing';
 import { createProcessingIo } from '../modules/processing/infrastructure/io';
 import { createJobRunReader } from '../modules/processing/infrastructure/job-store';
@@ -62,7 +62,7 @@ import {
   recoverRuns,
   runDelivery,
 } from '../modules/processing/infrastructure/run-engine';
-import { createProcessingStore } from '../modules/processing/infrastructure/store';
+import { createDocumentProcessingStore } from '../modules/processing/infrastructure/store';
 import { hasPackage } from '../modules/templates';
 import type { WorksModule } from '../modules/works';
 import {
@@ -376,13 +376,7 @@ export function createBackend(
     works
       .in(openTransaction(handle))
       .internal.notifyDocumentChanged(workspaceId, documentId);
-  const processing = createProcessingService(
-    createProcessingStore(db, notifyWork),
-    {
-      clock: systemClock,
-      newId: uuidV7,
-    },
-  );
+  const processing = createDocumentProcessingStore(db, notifyWork);
   const deleteDocuments = createDocumentDeletionWorkflow({
     ...documentDeletions,
     resultKeys: processing.resultKeys,
@@ -405,11 +399,17 @@ export function createBackend(
       timeoutMs: ocrTimeoutMs,
       recognize: createDocumentOcrWorkflow({
         processing,
+        claimAttempt: claimDocumentAttempt({
+          store: processing,
+          uow,
+          clock: systemClock,
+          newId: uuidV7,
+          leaseMs: ocrTimeoutMs,
+        }),
         artifacts: createArtifactRegistry(db),
         storage,
         parser,
         logger,
-        leaseMs: ocrTimeoutMs,
       }),
     },
     execute: createWorkExecution(work),

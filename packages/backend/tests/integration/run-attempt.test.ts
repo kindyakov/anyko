@@ -2,7 +2,12 @@ import { afterAll, expect, test } from 'bun:test';
 
 import { createDatabase, createDatabasePool } from '@anyko/database';
 
+import {
+  claimDocumentAttempt,
+  documentOcrPolicy,
+} from '../../src/modules/processing';
 import { recoverRuns } from '../../src/modules/processing/infrastructure/run-engine';
+import { createDocumentProcessingStore } from '../../src/modules/processing/infrastructure/store';
 import { worksStoreFor } from '../../src/modules/works/infrastructure/store';
 import { brandWorkId, uuidV7 } from '../../src/platform/ids';
 import { createUnitOfWork } from '../../src/runtime/transactions';
@@ -17,7 +22,8 @@ if (
   throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabase(pool);
-const processing = createWorkProcessing(db, createUnitOfWork(db));
+const uow = createUnitOfWork(db);
+const processing = createWorkProcessing(db, uow);
 const owned: string[] = [];
 const policy = {
   name: 'work.analysis',
@@ -67,11 +73,147 @@ async function failureOf(operation: Promise<unknown>): Promise<unknown> {
 
 afterAll(async () => {
   const where = { workspaceId: { in: owned } };
+  await db.resultUpload.deleteMany({ where });
   await db.run.deleteMany({ where });
+  await db.runAttempt.deleteMany({ where });
+  await db.sourceDocument.deleteMany({ where });
   await db.work.deleteMany({ where });
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
   await db.$disconnect();
   await pool.end();
+});
+
+test('the OCR attempt rolls back failed notifications and fences publication after lease expiry or replacement', async () => {
+  const workspaceId = uuidV7();
+  owned.push(workspaceId);
+  await db.anykoWorkspace.create({
+    data: { id: workspaceId, name: 'OCR attempt fixture' },
+  });
+  const documentId = uuidV7();
+  const sourceKey = `sources/${workspaceId}/${documentId}.pdf`;
+  await db.sourceDocument.create({
+    data: {
+      id: documentId,
+      workspaceId,
+      filename: 'fixture.pdf',
+      sourceKey,
+      sourceChecksum: '0'.repeat(64),
+      size: 1,
+      requestKey: uuidV7(),
+      createdBy: 'fixture',
+    },
+  });
+  const runId = uuidV7();
+  const correlationId = uuidV7();
+  await db.run.create({
+    data: {
+      id: runId,
+      workspaceId,
+      documentId,
+      revision: 1,
+      kind: documentOcrPolicy.name,
+      initiatedBy: 'fixture',
+      correlationId,
+      outbox: { create: { id: uuidV7(), deliveredAt: new Date() } },
+    },
+  });
+  let now = new Date();
+  const clock = { now: () => now };
+  let rejectNotification = true;
+  const store = createDocumentProcessingStore(
+    db,
+    () =>
+      rejectNotification
+        ? Promise.reject(new Error('WORK_EVENT_FAILED'))
+        : Promise.resolve(),
+    clock,
+  );
+  const claim = claimDocumentAttempt({
+    store,
+    uow,
+    clock,
+    newId: uuidV7,
+    leaseMs: 60_000,
+  });
+  const load = () => db.run.findUniqueOrThrow({ where: { id: runId } });
+  const countAttempts = () => db.runAttempt.count({ where: { runId } });
+  expect(await failureOf(claim(workspaceId, runId))).toMatchObject({
+    message: 'WORK_EVENT_FAILED',
+  });
+  expect(await load()).toMatchObject({ status: 'queued', attempts: 0 });
+  expect(await countAttempts()).toBe(0);
+
+  rejectNotification = false;
+  const old = await claim(workspaceId, runId);
+  if (!old) throw new Error('CLAIM_MISSING');
+  expect(old.run).toEqual({
+    id: runId,
+    workspaceId,
+    documentId,
+    sourceKey,
+    correlationId,
+  });
+  const expires = now.getTime() + 60_000;
+  expect(await load()).toMatchObject({
+    status: 'running',
+    leaseUntil: new Date(expires),
+    attemptToken: old.attemptId,
+  });
+  now = new Date(expires);
+  const stale = {
+    status: 'succeeded',
+    resultKey: 'results/old-fixture',
+    processorVersion: 'fixture',
+  } as const;
+  expect(await old.finish(stale)).toBe(false);
+  expect(await load()).toMatchObject({ status: 'running', resultKey: null });
+
+  now = new Date(expires + 1);
+  await db.$transaction((tx) => recoverRuns(tx, [documentOcrPolicy], now));
+  const fresh = await claim(workspaceId, runId);
+  if (!fresh) throw new Error('RECLAIM_MISSING');
+  expect(await old.finish(stale)).toBe(false);
+  expect(await old.finish({ status: 'failed', errorCode: 'STALE_ERROR' })).toBe(
+    false,
+  );
+  expect(await countAttempts()).toBe(2);
+
+  const resultKey = `results/${workspaceId}/${fresh.attemptId}.json`;
+  await store.stageResult(resultKey, workspaceId);
+  const success = {
+    status: 'succeeded',
+    resultKey,
+    processorVersion: 'fixture',
+  } as const;
+  rejectNotification = true;
+  expect(await failureOf(fresh.finish(success))).toMatchObject({
+    message: 'WORK_EVENT_FAILED',
+  });
+  expect(await load()).toMatchObject({
+    status: 'running',
+    resultKey: null,
+    errorCode: null,
+  });
+  expect(await db.resultUpload.count({ where: { key: resultKey } })).toBe(1);
+
+  rejectNotification = false;
+  expect(await fresh.finish(success)).toBe(true);
+  expect(
+    await fresh.finish({ ...success, resultKey: 'results/duplicate-fixture' }),
+  ).toBe(false);
+  expect(await db.resultUpload.count({ where: { key: resultKey } })).toBe(0);
+  expect(await load()).toMatchObject({
+    status: 'succeeded',
+    resultKey,
+    processorVersion: 'fixture',
+    leaseUntil: null,
+    attemptToken: null,
+  });
+  expect(
+    await failureOf(
+      db.run.update({ where: { id: runId }, data: { status: 'unrecognised' } }),
+    ),
+  ).toBeInstanceOf(Error);
 });
 
 test('the attempt commits the step, work change and outcome together', async () => {

@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
 import type { SourceStorage } from '../../modules/documents';
-import type { createProcessingService } from '../../modules/processing';
+import type { DocumentArtifacts } from '../../modules/processing';
 import { defineJob } from '../../platform/jobs';
 
 export function documentMaintenanceJob(deps: {
-  processing: ReturnType<typeof createProcessingService>;
+  processing: Pick<DocumentArtifacts, 'orphanResults' | 'forgetResult'>;
   storage: SourceStorage;
   deleteDocuments(): Promise<void>;
   cleanupSources(before: Date): Promise<void>;

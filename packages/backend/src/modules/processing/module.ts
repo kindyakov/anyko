@@ -1,3 +1,4 @@
+import type { Clock } from '../../platform/clock';
 import type { Tx, UnitOfWork } from '../../platform/transactions';
 
 import { isActive } from './application/is-active';
@@ -14,6 +15,7 @@ export interface ProcessingDeps {
   // Хранилище внутри транзакции действия (infrastructure).
   storeFor: (tx: Tx) => WorkProcessingStore;
   newId: () => string;
+  clock: Clock;
 }
 
 export function createProcessingModule(deps: ProcessingDeps): ProcessingModule {

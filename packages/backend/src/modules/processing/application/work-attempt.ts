@@ -1,5 +1,7 @@
+import type { Clock } from '../../../platform/clock';
 import type { Tx, UnitOfWork } from '../../../platform/transactions';
 
+import { claimRunAttempt, type RunAttempt } from './run-attempt';
 import type {
   StepOutput,
   WorkProcessingStore,
@@ -13,8 +15,10 @@ interface AttemptWrite {
   finish(outcome: WorkRunOutcome): Promise<void>;
 }
 
-export interface WorkAttempt {
-  readonly run: WorkRunSnapshot;
+export interface WorkAttempt extends RunAttempt<
+  WorkRunSnapshot,
+  WorkRunOutcome
+> {
   assertCurrent(): Promise<void>;
   cached(
     documentId: string,
@@ -24,24 +28,31 @@ export interface WorkAttempt {
   step(input: WorkStepInput): Promise<void>;
   // Блокирует строку попытки до конца транзакции с записями других модулей.
   write<T>(apply: (tx: Tx, attempt: AttemptWrite) => Promise<T>): Promise<T>;
-  // При отказе активность проверяется до обновления производных данных.
-  finish(
-    outcome: WorkRunOutcome,
-    onAccepted: (tx: Tx) => Promise<void>,
-  ): Promise<boolean>;
 }
 
-export const claimWorkAttempt =
-  (deps: {
-    store: WorkProcessingStore;
-    storeFor(tx: Tx): WorkProcessingStore;
-    uow: UnitOfWork;
-  }) =>
-  async (workspaceId: string, runId: string): Promise<WorkAttempt | null> => {
-    const claim = await deps.store.claim(workspaceId, runId);
-    if (!claim) return null;
+export function claimWorkAttempt(deps: {
+  store: WorkProcessingStore;
+  storeFor(tx: Tx): WorkProcessingStore;
+  uow: UnitOfWork;
+  clock: Clock;
+  newId(): string;
+}) {
+  const acquire = claimRunAttempt({
+    ...deps,
+    leaseMs: 1_800_000,
+    claim: deps.store.claim,
+    finish: (tx, claim, outcome: WorkRunOutcome) =>
+      deps.storeFor(tx).finish(claim, outcome),
+  });
+  return async (
+    workspaceId: string,
+    runId: string,
+  ): Promise<WorkAttempt | null> => {
+    const acquired = await acquire(workspaceId, runId);
+    if (!acquired) return null;
+    const { claim, attempt } = acquired;
     return {
-      run: claim.snapshot,
+      ...attempt,
       assertCurrent: async () => {
         if (!(await deps.store.valid(claim)))
           throw new Error('STALE_WORK_ATTEMPT');
@@ -61,11 +72,6 @@ export const claimWorkAttempt =
             },
           });
         }),
-      finish: (outcome, onAccepted) =>
-        deps.uow.run(async (tx) => {
-          if (!(await deps.storeFor(tx).finish(claim, outcome))) return false;
-          await onAccepted(tx);
-          return true;
-        }),
     };
   };
+}

@@ -5,7 +5,12 @@ import type { Tx } from '../../platform/transactions';
 import type { WorkAttempt } from './application/work-attempt';
 import type { WorkProcessingStore, WorkRuns } from './application/work-ports';
 
-export { createProcessingService } from './application/service';
+export {
+  claimDocumentAttempt,
+  type DocumentAttempt,
+  documentOcrPolicy,
+} from './application/document-attempt';
+export type { DocumentArtifacts } from './application/ports';
 export type { WorkAttempt } from './application/work-attempt';
 export { stepOutputSchema } from './application/work-ports';
 

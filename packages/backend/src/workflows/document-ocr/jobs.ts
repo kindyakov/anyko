@@ -1,15 +1,16 @@
 import { z } from 'zod';
 
 import { documentLockKey, type ResourceLocks } from '../../modules/documents';
-import type {
-  createProcessingService,
-  ExecutionScope,
-  ProcessingIo,
+import {
+  type DocumentArtifacts,
+  documentOcrPolicy,
+  type ExecutionScope,
+  type ProcessingIo,
 } from '../../modules/processing';
 import { defineJob } from '../../platform/jobs';
 
 export function documentOcrJob(deps: {
-  processing: Pick<ReturnType<typeof createProcessingService>, 'documentId'>;
+  processing: Pick<DocumentArtifacts, 'documentId'>;
   locks: ResourceLocks;
   io: Pick<ProcessingIo, 'run'>;
   recognize(scope: ExecutionScope, signal: AbortSignal): Promise<void>;
@@ -18,9 +19,7 @@ export function documentOcrJob(deps: {
   return defineJob({
     kind: 'run',
     connection: 'none',
-    maxRunAttempts: 3,
-    redeliverQueued: true,
-    name: 'document.ocr',
+    ...documentOcrPolicy,
     version: 1,
     queue: 'ocr',
     payload: z.object({}).strict(),

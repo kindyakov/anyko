@@ -5,6 +5,7 @@ import {
   workProcessingStoreFor,
 } from '../../modules/processing/infrastructure/work-store';
 import { createProcessingModule } from '../../modules/processing/module';
+import { systemClock } from '../../platform/clock';
 import { uuidV7 } from '../../platform/ids';
 import type { UnitOfWork } from '../../platform/transactions';
 
@@ -14,5 +15,6 @@ export function createWorkProcessing(db: Database, uow: UnitOfWork) {
     store: createWorkProcessingStore(db),
     storeFor: workProcessingStoreFor,
     newId: uuidV7,
+    clock: systemClock,
   });
 }

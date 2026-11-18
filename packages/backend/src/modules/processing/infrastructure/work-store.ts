@@ -12,7 +12,12 @@ import {
   workRunSchema,
 } from '../application/work-ports';
 
-import { activeAttempt, claimRun, type RunConnection } from './run-engine';
+import {
+  activeAttempt,
+  claimRun,
+  finishRun,
+  type RunConnection,
+} from './run-engine';
 
 type Connection = RunConnection & Pick<Database, 'runStep' | 'workAgentThread'>;
 const workKinds = ['work.analysis', 'work.generation'];
@@ -60,20 +65,19 @@ export function createWorkProcessingStore(
         },
       });
     },
-    async claim(workspaceId, id) {
-      const token = deps.newId();
+    async claim(workspaceId, id, attemptToken, leaseUntil) {
       const row = await atomic((tx) =>
         claimRun(tx, {
           workspaceId,
           id,
-          attemptToken: token,
+          attemptToken,
           kinds: workKinds,
-          leaseUntil: new Date(deps.clock.now().getTime() + 1800000),
+          leaseUntil,
         }),
       );
       if (!row?.workId || row.inputRevision === null) return null;
       return {
-        attemptToken: token,
+        attemptToken,
         snapshot: {
           id: row.id,
           workspaceId,
@@ -110,26 +114,15 @@ export function createWorkProcessingStore(
         })) === 1
       );
     },
-    async finish({ snapshot: run, attemptToken }, { status, errorCode }) {
-      const updated = await db.run.updateMany({
-        where: {
-          ...activeAttempt(
-            run.workspaceId,
-            run.id,
-            attemptToken,
-            deps.clock.now(),
-          ),
-          kind: { in: workKinds },
-        },
-        data: {
-          status,
-          errorCode: errorCode ?? null,
-          attemptToken: null,
-          leaseUntil: null,
-        },
-      });
-      return updated.count === 1;
-    },
+    finish: ({ snapshot: run, attemptToken }, { status, errorCode }) =>
+      finishRun(db, {
+        workspaceId: run.workspaceId,
+        id: run.id,
+        attemptToken,
+        kinds: workKinds,
+        now: deps.clock.now(),
+        outcome: { status, errorCode: errorCode ?? null },
+      }),
     async step(claim, input) {
       await atomic(async (tx) => {
         await fence(tx, claim);

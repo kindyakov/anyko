@@ -1,23 +1,25 @@
 import type { Database } from '@anyko/database';
 
 import { type Clock, systemClock } from '../../../platform/clock';
-import type { ProcessingStore } from '../application/ports';
+import { transactionHandle } from '../../../platform/transactions';
+import { documentOcrPolicy } from '../application/document-attempt';
+import type {
+  DocumentArtifacts,
+  DocumentAttemptStore,
+} from '../application/ports';
 
 import {
-  activeAttempt,
   claimRun,
-  documentPolicy,
+  finishRun,
   type NotifyDocumentRun,
-  recoverRuns,
-  runDelivery,
+  type RunConnection,
 } from './run-engine';
 
-export function createProcessingStore(
+export function createDocumentProcessingStore(
   db: Database,
   notifyWork?: NotifyDocumentRun,
   clock: Clock = systemClock,
-): ProcessingStore {
-  const delivery = runDelivery(db, clock);
+): DocumentArtifacts & DocumentAttemptStore {
   return {
     async attemptIds(workspaceId, documentId) {
       return (
@@ -64,89 +66,53 @@ export function createProcessingStore(
     async forgetResult(key) {
       await db.resultUpload.deleteMany({ where: { key } });
     },
-    async claim(runId, workspaceId, attemptToken, leaseUntil) {
+    async claim(workspaceId, runId, attemptToken, leaseUntil) {
       return db.$transaction(async (tx) => {
         const run = await claimRun(tx, {
           id: runId,
           workspaceId,
           attemptToken,
           leaseUntil,
-          kinds: [documentPolicy.name],
-          maxAttempts: documentPolicy.maxRunAttempts,
+          kinds: [documentOcrPolicy.name],
+          maxAttempts: documentOcrPolicy.maxRunAttempts,
         });
         if (!run?.document || !run.documentId) return null;
         await notifyWork?.(tx, workspaceId, run.documentId);
         return {
-          runId,
-          workspaceId,
-          documentId: run.documentId,
-          sourceKey: run.document.sourceKey,
           attemptToken,
-          correlationId: run.correlationId,
+          snapshot: {
+            id: runId,
+            workspaceId,
+            documentId: run.documentId,
+            sourceKey: run.document.sourceKey,
+            correlationId: run.correlationId,
+          },
         };
       });
     },
-    async complete(claim, resultKey, processorVersion) {
-      return db.$transaction(async (tx) => {
+    async finish(transaction, { snapshot: run, attemptToken }, outcome) {
+      const tx = transactionHandle<
+        RunConnection & Pick<Database, 'resultUpload'>
+      >(transaction);
+      if (outcome.status === 'succeeded') {
         const documents = await tx.$queryRaw<
           { id: string }[]
-        >`SELECT id FROM "SourceDocument" WHERE id=${claim.documentId} AND "workspaceId"=${claim.workspaceId} AND "deletedAt" IS NULL FOR UPDATE`;
+        >`SELECT id FROM "SourceDocument" WHERE id=${run.documentId} AND "workspaceId"=${run.workspaceId} AND "deletedAt" IS NULL FOR UPDATE`;
         if (documents.length !== 1) return false;
-        const result = await tx.run.updateMany({
-          where: {
-            ...activeAttempt(
-              claim.workspaceId,
-              claim.runId,
-              claim.attemptToken,
-              clock.now(),
-            ),
-            kind: documentPolicy.name,
-          },
-          data: {
-            status: 'succeeded',
-            resultKey,
-            processorVersion,
-            attemptToken: null,
-            leaseUntil: null,
-          },
-        });
-        if (result.count === 1) {
-          await tx.resultUpload.deleteMany({ where: { key: resultKey } });
-          await notifyWork?.(tx, claim.workspaceId, claim.documentId);
-        }
-        return result.count === 1;
+      }
+      const accepted = await finishRun(tx, {
+        workspaceId: run.workspaceId,
+        id: run.id,
+        attemptToken,
+        kinds: [documentOcrPolicy.name],
+        now: clock.now(),
+        outcome,
       });
+      if (!accepted) return false;
+      if (outcome.status === 'succeeded')
+        await tx.resultUpload.deleteMany({ where: { key: outcome.resultKey } });
+      await notifyWork?.(tx, run.workspaceId, run.documentId);
+      return true;
     },
-    async fail(claim, errorCode) {
-      await db.$transaction(async (tx) => {
-        const result = await tx.run.updateMany({
-          where: {
-            ...activeAttempt(
-              claim.workspaceId,
-              claim.runId,
-              claim.attemptToken,
-              clock.now(),
-            ),
-            kind: documentPolicy.name,
-          },
-          data: {
-            status: 'failed',
-            errorCode,
-            attemptToken: null,
-            leaseUntil: null,
-          },
-        });
-        if (result.count === 1)
-          await notifyWork?.(tx, claim.workspaceId, claim.documentId);
-      });
-    },
-    reserveDelivery: (token, leaseUntil) =>
-      delivery.reserve(token, clock.now(), leaseUntil),
-    delivered: delivery.delivered,
-    releaseDelivery: delivery.release,
-    reconcile: () =>
-      db.$transaction((tx) =>
-        recoverRuns(tx, [documentPolicy], clock.now(), notifyWork),
-      ),
   };
 }

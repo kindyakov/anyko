@@ -13,7 +13,11 @@ import type {
   SourceStorage,
 } from '../../../packages/backend/src/modules/documents';
 import { createSourceCleanup } from '../../../packages/backend/src/modules/documents/infrastructure/source-cleanup';
-import { createProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/store';
+import { documentOcrPolicy } from '../../../packages/backend/src/modules/processing';
+import {
+  recoverRuns,
+  runDelivery,
+} from '../../../packages/backend/src/modules/processing/infrastructure/run-engine';
 import { brandDocumentId } from '../../../packages/backend/src/platform/ids';
 import { createBackend } from '../../../packages/backend/src/runtime';
 import { memberScope } from '../../../packages/backend/tests/support/scope';
@@ -24,7 +28,10 @@ import {
 } from './support/composition';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
+if (
+  !databaseUrl ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+)
   throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
 const redisUrl = process.env.TEST_REDIS_URL;
 if (!redisUrl) throw new Error('TEST_REDIS_URL required');
@@ -336,38 +343,6 @@ test('outbox survives before worker start; real queue publishes result and retry
   }
 }, 15000);
 
-test('a failed work notification rolls back the OCR claim and attempt', async () => {
-  const own = await workspace();
-  const doc = await upload(own);
-  const run = await db.run.findFirstOrThrow({
-    where: { workspaceId: own, documentId: doc.id },
-  });
-  const store = createProcessingStore(db, () =>
-    Promise.reject(new Error('WORK_EVENT_FAILED')),
-  );
-  await expectRejected(
-    store.claim(
-      run.id,
-      own,
-      'event-failure-attempt',
-      new Date(Date.now() + 60000),
-    ),
-  );
-  const saved = await db.run.findUniqueOrThrow({
-    where: { id: run.id },
-  });
-  expect(saved.status).toBe('queued');
-  expect(saved.attempts).toBe(0);
-  expect(
-    await db.runAttempt.count({
-      where: { workspaceId: own, documentId: doc.id },
-    }),
-  ).toBe(0);
-  await db.runOutbox.deleteMany({
-    where: { workspaceId: own, runId: run.id },
-  });
-});
-
 test('recovery notifies the work when an expired final OCR attempt fails', async () => {
   const own = await workspace();
   const doc = await upload(own);
@@ -384,11 +359,17 @@ test('recovery notifies the work when an expired final OCR attempt fails', async
     },
   });
   const notifications: string[] = [];
-  const store = createProcessingStore(db, (_tx, workspaceId, documentId) => {
-    notifications.push(`${workspaceId}:${documentId}`);
-    return Promise.resolve();
-  });
-  await store.reconcile();
+  await db.$transaction((tx) =>
+    recoverRuns(
+      tx,
+      [documentOcrPolicy],
+      new Date(),
+      (_tx, workspaceId, documentId) => {
+        notifications.push(`${workspaceId}:${documentId}`);
+        return Promise.resolve();
+      },
+    ),
+  );
   const saved = await db.run.findUniqueOrThrow({
     where: { id: run.id },
   });
@@ -400,68 +381,16 @@ test('recovery notifies the work when an expired final OCR attempt fails', async
   });
 });
 
-test('expired attempt cannot publish after a new claim; database rejects impossible state', async () => {
-  const own = await workspace();
-  const doc = await upload(own);
-  const run = await db.run.findFirstOrThrow({
-    where: { workspaceId: own, documentId: doc.id },
-  });
-  const store = createProcessingStore(db);
-  const old = await store.claim(
-    run.id,
-    own,
-    'old-attempt',
-    new Date(Date.now() - 1000),
-  );
-  if (!old) throw new Error('claim missing');
-  await store.reconcile();
-  const current = await store.claim(
-    run.id,
-    own,
-    'new-attempt',
-    new Date(Date.now() + 60000),
-  );
-  if (!current) throw new Error('claim missing');
-  await store.stageResult('results/new-fixture', own);
-  expect(
-    await store.complete(old, 'results/stale-fixture', 'test-parser'),
-  ).toBe(false);
-  expect(
-    await store.complete(current, 'results/new-fixture', 'test-parser'),
-  ).toBe(true);
-  expect(
-    await store.complete(current, 'results/duplicate-fixture', 'test-parser'),
-  ).toBe(false);
-  expect(
-    await db.runAttempt.count({
-      where: { workspaceId: own, documentId: doc.id },
-    }),
-  ).toBe(2);
-  await expectRejected(
-    Promise.resolve(
-      db.run.update({
-        where: { id: run.id },
-        data: { status: 'unrecognised' },
-      }),
-    ),
-  );
-  const saved = await db.run.findUniqueOrThrow({
-    where: { id: run.id },
-  });
-  expect(saved.resultKey).toBe('results/new-fixture');
-});
-
 test('a lost Redis job is republished from the aged queued database intent', async () => {
   const own = await workspace();
   const doc = await upload(own);
   const run = await db.run.findFirstOrThrow({
     where: { workspaceId: own, documentId: doc.id },
   });
-  const store = createProcessingStore(db);
-  const item = await store.reserveDelivery(
-    crypto.randomUUID(),
-    new Date(Date.now() + 30000),
-  );
+  const delivery = runDelivery(db);
+  const item = await delivery.reserve();
+  const reconcile = () =>
+    db.$transaction((tx) => recoverRuns(tx, [documentOcrPolicy], new Date()));
   if (!item || item.runId !== run.id)
     throw new Error('Expected owned outbox reservation');
   const queueName = `document-lost-${crypto.randomUUID()}`;
@@ -474,11 +403,11 @@ test('a lost Redis job is republished from the aged queued database intent', asy
       { version: 1, workspaceId: own, runId: run.id },
       { jobId: `${item.id}-lost` },
     );
-    await store.delivered(item.id, item.token);
+    await delivery.delivered(item.id, item.token);
     await queue.remove(job.id ?? 'missing');
     expect(await queue.getJob(job.id ?? 'missing')).toBeUndefined();
     // A fresh delivery has a grace period and must not immediately duplicate.
-    await store.reconcile();
+    await reconcile();
     expect(
       (await db.runOutbox.findUniqueOrThrow({ where: { id: item.id } }))
         .deliveredAt,
@@ -487,7 +416,7 @@ test('a lost Redis job is republished from the aged queued database intent', asy
       where: { id: item.id },
       data: { deliveredAt: new Date(Date.now() - 31000) },
     });
-    await store.reconcile();
+    await reconcile();
     expect(
       (await db.runOutbox.findUniqueOrThrow({ where: { id: item.id } }))
         .deliveredAt,
