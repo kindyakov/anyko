@@ -5,12 +5,7 @@ import { PostgresStore } from '@mastra/pg';
 import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
-import { httpErrorSchema } from '@anyko/contracts/common';
-import {
-  createDatabase,
-  createDatabasePool,
-  createResourceLocks,
-} from '@anyko/database';
+import { createDatabase, createDatabasePool } from '@anyko/database';
 import { LlmError } from '@anyko/llm';
 import { createLogger } from '@anyko/logger';
 import { startJobWorker } from '@anyko/worker/queues';
