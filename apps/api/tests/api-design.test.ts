@@ -37,16 +37,12 @@ const globals = new Map([
   ['GET /document-packages', 'Один каталог шаблонов для всех рабочих областей'],
 ]);
 
-const legacy = {
-  lists: {
-    listDocumentPackages: {
-      address: 'GET /document-packages',
-      reason:
-        'Возвращает весь ограниченный каталог доступных шаблонов в packages',
-      action: 'Решить на review, закрепить ли непагинированный каталог',
-    },
-  },
-} as const;
+const boundedDirectories = new Map([
+  [
+    'GET /document-packages',
+    'Ограниченный каталог пакетов шаблонов целиком нужен форме создания работы',
+  ],
+]);
 
 const declaredOverlaps = [
   {
@@ -347,30 +343,33 @@ function listViolation(entry: Entry) {
 
 test('list responses use shared pagination schemas and matching query fields', () => {
   for (const entry of entries) {
-    const exception = Object.entries(legacy.lists).find(
-      ([name]) => name === entry.name,
-    )?.[1];
-    if (!hasListItems(entry) && exception?.address === address(entry.endpoint))
-      continue;
+    if (boundedDirectories.has(address(entry.endpoint))) continue;
     const violation = listViolation(entry);
     if (violation) throw new Error(`${label(entry)}: ${violation}`);
   }
 });
 
-test('legacy API exceptions still cover violations at their declared addresses', () => {
-  for (const [name, exception] of Object.entries(legacy.lists)) {
-    const list = entries.find(
-      (entry) =>
-        entry.name === name && address(entry.endpoint) === exception.address,
+test('bounded directories are listed and returned in full', () => {
+  for (const [directory, reason] of boundedDirectories) {
+    const entry = entries.find(
+      ({ endpoint }) => address(endpoint) === directory,
     );
+    if (!entry)
+      throw new Error(
+        `${directory}: удалите отсутствующий справочник из boundedDirectories`,
+      );
+    const { endpoint } = entry;
     expect(
-      list !== undefined &&
-        !hasListItems(list) &&
-        listViolation(list) !== undefined,
-      `${name} (${exception.address}): удалите устаревшую запись из legacy.lists`,
+      endpoint.method === 'GET' &&
+        endpoint.query === undefined &&
+        endpoint.response.kind === 'json' &&
+        listResponseMode(endpoint.response.schema) === undefined,
+      `${directory}: справочник отдаётся целиком, для пагинации удалите его из boundedDirectories`,
     ).toBe(true);
+    expect(reason.trim()).not.toBe('');
   }
 });
+
 test('summaries describe each operation in one Russian line', () => {
   for (const entry of entries)
     expect(
