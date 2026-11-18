@@ -59,6 +59,7 @@ test('loads the work from its API v1 address in the workspace and subscribes to 
   expect(server.exchanges.map((item) => item.url)).toEqual([workAddress]);
   expect(sources[0]?.url).toBe(`${workAddress}/events?after=0`);
   expect(result.current.loadError).toBe('');
+  expect(result.current.canRetry).toBe(true);
 });
 
 test('a changed event refetches the work, so the screen shows what the server now holds', async () => {
@@ -141,6 +142,25 @@ test('a missing work reports not found and opens no stream', async () => {
   expect(result.current.view).toBeUndefined();
   expect(sources).toHaveLength(0);
   expect(client.getQueryData(sessionKeys.all)).toEqual(session);
+});
+
+test('a malformed work ID is not found without a request or event stream, even on retry', async () => {
+  const sources = installEventSource();
+  const server = serveWork(json(200, workView));
+  const { result } = renderHook(
+    () => useWorkView({ workspaceId, workId: 'abc' }),
+    {
+      wrapper: wrapperFor(createQueryClient()),
+    },
+  );
+  expect(result.current.loadError).toBe('Работа не найдена.');
+  expect(result.current.view).toBeUndefined();
+  expect(result.current.canRetry).toBe(false);
+  await act(async () => {
+    await result.current.refetch();
+  });
+  expect(server.exchanges).toHaveLength(0);
+  expect(sources).toHaveLength(0);
 });
 
 test('a failed request other than not found reports a retryable load error', async () => {

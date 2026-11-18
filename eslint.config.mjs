@@ -150,13 +150,6 @@ export default [
       ],
     },
   },
-  {
-    // Known oversized components: this list only shrinks; split them in a follow-up.
-    files: [
-      'apps/web/src/features/document-recognition/ui/document-workspace.tsx',
-    ],
-    rules: { 'max-lines': 'off' },
-  },
   // packages/ui: React-правила без Next; браузерное хранилище запрещено так же, как в features.
   ...frontendLibrary.map((config) => ({
     ...config,

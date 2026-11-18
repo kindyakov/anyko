@@ -1,5 +1,7 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery } from '@tanstack/react-query';
+
+import { getWork } from '@anyko/contracts/works';
 
 import { ApiError, isUnauthorized } from '@/lib/api/errors';
 
@@ -14,12 +16,18 @@ export function useWorkView({
   workspaceId: string;
   workId: string;
 }) {
-  const query = useQuery(workQueryOptions(workspaceId, workId));
-  const view = query.data;
+  const validId = getWork.params.shape.workId.safeParse(workId).success;
+  const options = workQueryOptions(workspaceId, workId);
+  const query = useQuery({
+    ...options,
+    queryFn: validId ? (options.queryFn ?? skipToken) : skipToken,
+  });
+  const view = validId ? query.data : undefined;
   const live = useWorkEvents(workspaceId, workId, view?.cursor);
   return {
     view,
-    loadError: loadErrorText(query.error),
+    loadError: validId ? loadErrorText(query.error) : 'Работа не найдена.',
+    canRetry: validId,
     live,
     refetch: query.refetch,
   };

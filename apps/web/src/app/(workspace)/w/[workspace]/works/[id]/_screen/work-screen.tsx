@@ -56,7 +56,7 @@ type LiveState = ReturnType<typeof useWorkView>['live'];
 // экран показывает загрузку или ошибку.
 export function WorkScreen({ workId }: { workId: string }) {
   const workspaceId = useWorkspaceId();
-  const { view, loadError, live, refetch } = useWorkView({
+  const { view, loadError, live, refetch, canRetry } = useWorkView({
     workspaceId,
     workId,
   });
@@ -72,14 +72,16 @@ export function WorkScreen({ workId }: { workId: string }) {
           >
             Все работы
           </Link>
-          <Button
-            onClick={() => {
-              void refetch();
-            }}
-          >
-            <RotateCw size={16} />
-            Повторить
-          </Button>
+          {canRetry && (
+            <Button
+              onClick={() => {
+                void refetch();
+              }}
+            >
+              <RotateCw size={16} />
+              Повторить
+            </Button>
+          )}
         </div>
       </section>
     ) : (
