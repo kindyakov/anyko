@@ -70,7 +70,11 @@ export function createDocumentCommands(db: Connection) {
       >`SELECT id FROM "SourceDocument" WHERE id=${documentId} AND "workspaceId"=${workspaceId} AND "deletedAt" IS NULL FOR UPDATE`;
       return rows.length === 1;
     },
-    async markDeleted(workspaceId: string, documentId: string) {
+    async markDeleted(
+      workspaceId: string,
+      documentId: string,
+      threadIds: string[],
+    ) {
       const document = await db.sourceDocument.findFirstOrThrow({
         where: { workspaceId, id: documentId },
       });
@@ -80,6 +84,7 @@ export function createDocumentCommands(db: Connection) {
           id: documentId,
           workspaceId,
           requestKey: document.requestKey,
+          threadIds,
         },
         update: {},
       });
@@ -118,7 +123,7 @@ export function createDocumentCommands(db: Connection) {
       });
       await db.documentDeletion.updateMany({
         where: { workspaceId, id: documentId },
-        data: { completedAt: new Date() },
+        data: { completedAt: new Date(), threadIds: [] },
       });
     },
   };

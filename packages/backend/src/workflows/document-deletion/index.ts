@@ -7,7 +7,12 @@ import {
 } from '../../modules/documents';
 export function createDocumentDeletionWorkflow(options: {
   pending: () => Promise<
-    { id: string; workspaceId: string; requestKey: string }[]
+    {
+      id: string;
+      workspaceId: string;
+      requestKey: string;
+      threadIds: string[];
+    }[]
   >;
   keys: (
     workspaceId: string,
@@ -17,6 +22,7 @@ export function createDocumentDeletionWorkflow(options: {
   resultKeys: (workspaceId: string, documentId: string) => Promise<string[]>;
   attemptIds: (workspaceId: string, documentId: string) => Promise<string[]>;
   eraseAttempt: (id: string) => Promise<void>;
+  eraseThread: (id: string) => Promise<void>;
   assertNoWriters: (
     workspaceId: string,
     documentId: string,
@@ -26,6 +32,7 @@ export function createDocumentDeletionWorkflow(options: {
     workspaceId: string,
     documentId: string,
     keys: string[],
+    threadIds: string[],
   ) => Promise<void>;
   locks: ResourceLocks;
   storage: SourceStorage;
@@ -51,6 +58,10 @@ export function createDocumentDeletionWorkflow(options: {
                   document.id,
                   document.requestKey,
                 );
+                for (const thread of document.threadIds) {
+                  signal.throwIfAborted();
+                  await options.eraseThread(thread);
+                }
                 const keys = [
                   ...new Set([
                     ...(await options.keys(
@@ -71,7 +82,12 @@ export function createDocumentDeletionWorkflow(options: {
                     throw new Error('DOCUMENT_ERASURE_UNCONFIRMED');
                 }
                 signal.throwIfAborted();
-                await options.finish(document.workspaceId, document.id, keys);
+                await options.finish(
+                  document.workspaceId,
+                  document.id,
+                  keys,
+                  document.threadIds,
+                );
               },
             ),
         );

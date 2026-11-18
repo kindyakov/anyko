@@ -12,6 +12,7 @@ import {
 import { createFactsModule } from '../../modules/facts/module';
 import { createSourceWorkProcessing } from '../../modules/processing/infrastructure/catalog-sources';
 import { createProcessingCommands } from '../../modules/processing/infrastructure/commands';
+import { createWorkProcessingStore } from '../../modules/processing/infrastructure/work-store';
 import { createCatalogWorkLinks } from '../../modules/works/infrastructure/catalog-sources';
 import { createWorkStore } from '../../modules/works/infrastructure/store';
 import { uuidV7 } from '../../platform/ids';
@@ -75,6 +76,7 @@ export function requestCatalogDeletion(
   const links = createCatalogWorkLinks(tx);
   const processing = createSourceWorkProcessing(tx);
   const commands = createProcessingCommands(tx);
+  const { threads } = createWorkProcessingStore(tx);
   const sessions = createAgentSessionStore(tx, uuidV7);
   const ports: Parameters<typeof deleteCatalogDocument>[0] = {
     ...impactPorts(tx),
@@ -98,8 +100,9 @@ export function requestCatalogDeletion(
     }).internal,
     works: createWorkStore(tx),
     eraseSession: (workspaceId, workId) => sessions.erase(workspaceId, workId),
-    markDeleted: (workspaceId, documentId) =>
-      documents.markDeleted(workspaceId, documentId),
+    threads,
+    markDeleted: (workspaceId, documentId, threadIds) =>
+      documents.markDeleted(workspaceId, documentId, threadIds),
     cancelDocument: (workspaceId, documentId) =>
       commands.cancelDocument(workspaceId, documentId),
     redactResponses: (workspaceId: string, documentId: string) =>

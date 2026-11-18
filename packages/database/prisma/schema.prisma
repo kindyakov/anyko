@@ -298,6 +298,7 @@ model DocumentDeletion {
  workspaceId String
  workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
  requestKey String
+ threadIds String[] @default([])
  completedAt DateTime?
  createdAt DateTime @default(now())
  @@unique([workspaceId,requestKey])

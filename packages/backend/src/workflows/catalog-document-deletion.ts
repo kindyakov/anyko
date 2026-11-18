@@ -42,7 +42,12 @@ interface DeletionPorts extends ImpactPorts {
   facts: Pick<FactsPorts['internal'], 'refreshEvidence'>;
   works: Pick<WorkStore, 'touch' | 'event' | 'lockRevision'>;
   eraseSession(workspaceId: string, workId: string): Promise<void>;
-  markDeleted(workspaceId: string, documentId: string): Promise<boolean>;
+  threads(workspaceId: string, workId: string): Promise<string[]>;
+  markDeleted(
+    workspaceId: string,
+    documentId: string,
+    threadIds: string[],
+  ): Promise<boolean>;
   cancelDocument(workspaceId: string, documentId: string): Promise<void>;
   redactResponses(workspaceId: string, documentId: string): Promise<unknown>;
   recordDeletion(
@@ -103,6 +108,7 @@ export async function deleteCatalogDocument(
   // OCR claims and completions take the Run lock before notifying linked works.
   await ports.cancelDocument(workspaceId, documentId);
   const workIds = works.map(({ id }) => id);
+  const threadIds: string[] = [];
   if (workIds.length) {
     for (const { id, revision } of works)
       await ports.works.lockRevision(workspaceId, id, revision);
@@ -115,6 +121,7 @@ export async function deleteCatalogDocument(
         (entry) => (entry.documentId === documentId ? null : entry),
       );
       await ports.eraseSession(workspaceId, id);
+      threadIds.push(...(await ports.threads(workspaceId, id)));
       await finishSourceChange(
         ports.works,
         workspaceId,
@@ -128,7 +135,7 @@ export async function deleteCatalogDocument(
       );
     }
   }
-  await ports.markDeleted(workspaceId, documentId);
+  await ports.markDeleted(workspaceId, documentId, threadIds);
   await ports.redactResponses(workspaceId, documentId);
   await ports.recordDeletion(workspaceId, documentId, actorId);
   return true;

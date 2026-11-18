@@ -234,7 +234,9 @@ test('separate images and all document data are physically erased; unknown/activ
     resultKeys: processing.resultKeys,
     attemptIds: processing.attemptIds,
     eraseAttempt,
-    finish: (scope, id, keys) => finishDocumentDeletion(db, scope, id, keys),
+    eraseThread: () => Promise.resolve(),
+    finish: (scope, id, keys, threadIds) =>
+      finishDocumentDeletion(db, scope, id, keys, threadIds),
     locks,
     storage,
     logger,
@@ -312,6 +314,38 @@ test('separate images and all document data are physically erased; unknown/activ
       ),
       'NOT_FOUND',
     );
+    const removedWorkId = crypto.randomUUID();
+    const deletedWorkId = crypto.randomUUID();
+    for (const [workId, deleted] of [
+      [removedWorkId, false],
+      [deletedWorkId, true],
+    ] as const) {
+      await db.work.create({
+        data: {
+          id: workId,
+          workspaceId,
+          packageVersion: 'technical-document-v1',
+          title: 'Historical link',
+          createdBy: input.actorId,
+          deletedAt: deleted ? new Date() : null,
+          documents: {
+            create: {
+              documentId: document.id,
+              ocrRevision: 1,
+              removed: !deleted,
+            },
+          },
+        },
+      });
+    }
+    expect(
+      (
+        await recognition.queries.deletionImpact(
+          memberScope(workspaceId),
+          brandDocumentId(document.id),
+        )
+      ).works,
+    ).toEqual([]);
     await recognition.commands.remove(
       memberScope(workspaceId),
       brandDocumentId(document.id),
@@ -339,10 +373,62 @@ test('separate images and all document data are physically erased; unknown/activ
       ).status,
     ).toBe('deleting');
     failures.storage = false;
+    await db.workFacts.create({
+      data: {
+        workspaceId,
+        workId: removedWorkId,
+        payload: { synthetic: true },
+      },
+    });
+    await cleanup();
+    expect(
+      await db.workDocument.count({
+        where: { workspaceId, workId: removedWorkId },
+      }),
+    ).toBe(1);
+    const maintenance = createBackend(testConfig, {
+      logger,
+      role: 'worker',
+      dependencies: { storage },
+    });
+    try {
+      const job = maintenance.jobs.registry.definitions.find(
+        (entry) =>
+          entry.kind === 'scheduled' && entry.name === 'work.maintenance',
+      );
+      if (!job || job.kind !== 'scheduled')
+        throw new Error('Missing work maintenance');
+      const signal = new AbortController().signal;
+      await job.execute(
+        {
+          logger,
+          clock: maintenance.jobs.clock,
+          signal,
+          correlationId: crypto.randomUUID(),
+        },
+        {},
+        signal,
+      );
+    } finally {
+      await maintenance.stop();
+    }
+    expect(
+      await db.workFacts.findUnique({ where: { workId: removedWorkId } }),
+    ).toBeNull();
     await cleanup();
     expect(files.size).toBe(0);
     expect(erased.size).toBeGreaterThan(0);
     expect(await db.sourceDocument.count({ where: { workspaceId } })).toBe(0);
+    expect(
+      await db.workDocument.count({
+        where: { workspaceId, documentId: document.id },
+      }),
+    ).toBe(0);
+    expect(
+      await db.work.count({
+        where: { workspaceId, id: { in: [removedWorkId, deletedWorkId] } },
+      }),
+    ).toBe(2);
     expect(await db.run.count({ where: { workspaceId } })).toBe(0);
     expect(await db.documentArtifact.count({ where: { workspaceId } })).toBe(0);
     expect(await db.runAttempt.count({ where: { workspaceId } })).toBe(0);
@@ -481,6 +567,7 @@ test('separate images and all document data are physically erased; unknown/activ
     await db.documentDeletion.deleteMany({ where: { workspaceId } });
     await db.resultUpload.deleteMany({ where: { workspaceId } });
     await db.sourceUpload.deleteMany({ where: { workspaceId } });
+    await db.work.deleteMany({ where: { workspaceId } });
     await db.run.deleteMany({ where: { workspaceId } });
     await db.sourceDocument.deleteMany({ where: { workspaceId } });
     await db.auditEvent.deleteMany({ where: { workspaceId } });

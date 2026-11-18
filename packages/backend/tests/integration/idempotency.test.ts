@@ -92,6 +92,12 @@ test('backfill recovers resource references for legacy create replies and redact
       migrations,
     ),
   ).text();
+  const catalogBackfill = await Bun.file(
+    new URL(
+      '202611180036_idempotency_catalog_sources/migration.sql',
+      migrations,
+    ),
+  ).text();
   const client = await pool.connect();
   const schema = `"idempotency_backfill_${crypto.randomUUID().replaceAll('-', '')}"`;
   const workspaceId = crypto.randomUUID();
@@ -104,7 +110,10 @@ test('backfill recovers resource references for legacy create replies and redact
       key: 'work',
       command: 'POST /workspaces/:workspaceId/works',
       status: 201,
-      body: { work: { id: workId } },
+      body: {
+        work: { id: workId },
+        documents: [{ id: documentId }, { id: recognitionId }],
+      },
       reference: ['work', workId],
     },
     {
@@ -159,6 +168,7 @@ test('backfill recovers resource references for legacy create replies and redact
       );
     }
     await client.query(backfill);
+    await client.query(catalogBackfill);
     const { rows } = await client.query<{
       key: string;
       state: string;
@@ -166,8 +176,9 @@ test('backfill recovers resource references for legacy create replies and redact
       body: unknown;
       resourceKind: string | null;
       resourceId: string | null;
+      resourceDocumentIds: string[];
     }>(
-      'SELECT key, state, status, body::jsonb AS body, "resourceKind", "resourceId" FROM "IdempotencyKey"',
+      'SELECT key, state, status, body::jsonb AS body, "resourceKind", "resourceId", "resourceDocumentIds" FROM "IdempotencyKey"',
     );
     expect(rows).toHaveLength(fixtures.length);
     for (const { key, reference, status, body } of fixtures) {
@@ -178,6 +189,7 @@ test('backfill recovers resource references for legacy create replies and redact
         body: status === 404 ? null : body,
         resourceKind: reference[0],
         resourceId: reference[1],
+        resourceDocumentIds: key === 'work' ? [documentId, recognitionId] : [],
       });
     }
   } finally {

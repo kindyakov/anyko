@@ -784,33 +784,48 @@ test('global source deletion confirms live links, refuses running works, and kee
     'recognitions.use',
     'works.read',
   ]);
-  const { intake, views, review, generation } = apiBackend.workHttp;
+  const { views, review, generation } = apiBackend.workHttp;
   const catalog = apiBackend.documentHttp.documents;
   const documentId = brandDocumentId((await upload(input)).id);
   await until(input, (state) => state.documents[0]?.status === 'succeeded');
   const original = await catalog.queries.deletionImpact(scope, documentId);
-  const other = await intake.createWork(scope, {
-    title: 'Новая связь',
-    packageVersion: 'technical-document-v1',
-    documentIds: [documentId],
-  });
-  const cache = apiBackend.workHttp.idempotency;
-  const ref = {
-    workspaceId: input.workspaceId,
-    command: 'POST /workspaces/:workspaceId/works',
-    key: crypto.randomUUID(),
-    fingerprint: 'catalog-source-deletion',
-  };
-  const creation = await views.get(scope, other);
-  const response = () =>
-    Promise.resolve({
-      response: { status: 201, body: JSON.stringify(creation) },
-      resource: { kind: 'work' as const, id: other, documentIds: [documentId] },
-    });
-  expect(await cache.run(ref, response)).toMatchObject({
-    kind: 'response',
-    response: { status: 201 },
-  });
+  const app = fixtureApp(input.workspaceId);
+  const key = crypto.randomUUID();
+  const createAttachedWork = () =>
+    app.handle(
+      new Request(
+        `http://localhost/api/v1/workspaces/${input.workspaceId}/works`,
+        {
+          method: 'POST',
+          headers: {
+            origin: apiBackend.workHttp.origin,
+            'content-type': 'application/json',
+            'idempotency-key': key,
+          },
+          body: JSON.stringify({
+            title: 'Новая связь',
+            packageVersion: 'technical-document-v1',
+            documentIds: [documentId],
+          }),
+        },
+      ),
+    );
+  const creation = await createAttachedWork();
+  expect(creation.status).toBe(201);
+  const created = z
+    .object({
+      work: z.object({ id: z.uuid() }),
+      documents: z.array(z.object({ id: z.uuid() })),
+    })
+    .parse(await creation.json());
+  const other = brandWorkId(created.work.id);
+  expect(created.documents).toEqual([{ id: documentId }]);
+  expect(
+    await db.idempotencyKey.findFirst({
+      where: { workspaceId: input.workspaceId, key },
+      select: { resourceId: true, resourceDocumentIds: true },
+    }),
+  ).toEqual({ resourceId: other, resourceDocumentIds: [documentId] });
   await rejects(
     catalog.commands.remove(scope, documentId, original.token),
     'REVISION_CONFLICT',
@@ -875,16 +890,23 @@ test('global source deletion confirms live links, refuses running works, and kee
   const history = generated.generations[0];
   const file = history?.files[0];
   if (!history || !file) throw new Error('Expected generated history');
+  const affectedThreadIds = await workProcessing.threads(
+    input.workspaceId,
+    input.workId,
+  );
+  expect(affectedThreadIds.some((id) => threads.has(id))).toBe(true);
+  const otherThread = crypto.randomUUID();
+  await workProcessing.thread(input.workspaceId, other, otherThread);
+  threads.add(otherThread);
   await catalog.commands.remove(scope, documentId, impact.token);
   await rejects(catalog.queries.get(scope, documentId), 'NOT_FOUND');
   await rejects(catalog.queries.source(scope, documentId), 'NOT_FOUND');
   await rejects(catalog.queries.result(scope, documentId), 'NOT_FOUND');
   await rejects(views.source(scope, other, documentId), 'NOT_FOUND');
   await rejects(views.result(scope, other, documentId), 'NOT_FOUND');
-  expect(await cache.run(ref, response)).toMatchObject({
-    kind: 'resource_unavailable',
-    replayed: true,
-  });
+  const replay = await createAttachedWork();
+  expect(replay.status).toBe(404);
+  expect(await replay.json()).toMatchObject({ error: { code: 'NOT_FOUND' } });
   expect((await views.get(scope, other)).documents).toEqual([]);
   const changed = await views.get(scope, input.workId);
   expect(changed.documents).toEqual([]);
@@ -899,6 +921,13 @@ test('global source deletion confirms live links, refuses running works, and kee
     if (Date.now() > deadline) throw new Error('Deletion did not finish');
     await Bun.sleep(30);
   }
+  expect(await workProcessing.threads(input.workspaceId, input.workId)).toEqual(
+    [],
+  );
+  expect(await workProcessing.threads(input.workspaceId, other)).toEqual([]);
+  expect(
+    [...affectedThreadIds, otherThread].some((id) => threads.has(id)),
+  ).toBe(false);
   const output = await generation.downloadResult(scope, {
     workId: brandWorkId(input.workId),
     generationId: brandGenerationId(history.id),
@@ -1394,34 +1423,42 @@ test('numbered search filters the whole workspace and counts only matching revis
   expect(literal.items.map(({ title }) => title)).toEqual(['Дело Анны 100%']);
 });
 
+function fixtureApp(workspaceId: string) {
+  const { workHttp, documentHttp } = apiBackend;
+  const access = {
+    ...workHttp.access,
+    session: () =>
+      Promise.resolve({
+        user: {
+          id: 'fixture',
+          name: 'Fixture',
+          email: 'fixture@example.test',
+        },
+        memberships: [
+          {
+            workspace: { id: workspaceId, name: 'Workspace' },
+            rights: [...rightCatalog],
+          },
+        ],
+      }),
+  };
+  return createApp({
+    environment: 'test',
+    logger,
+    workHttp: { ...workHttp, access },
+    documentHttp: { ...documentHttp, access },
+  });
+}
+
 test.each(['work document', 'standalone recognition'])(
   'replaying an upload after deletion of the %s returns NOT_FOUND',
   async (kind) => {
     const { workspaceId, workId } = await create();
-    const { workHttp, documentHttp } = apiBackend;
-    const access = {
-      ...workHttp.access,
-      session: () =>
-        Promise.resolve({
-          user: {
-            id: 'fixture',
-            name: 'Fixture',
-            email: 'fixture@example.test',
-          },
-          memberships: [
-            {
-              workspace: { id: workspaceId, name: 'Workspace' },
-              rights: [...rightCatalog],
-            },
-          ],
-        }),
-    };
-    const app = createApp({
-      environment: 'test',
-      logger,
-      workHttp: { ...workHttp, access },
-      documentHttp: { ...documentHttp, access },
-    }).listen({ hostname: '127.0.0.1', port: 0 });
+    const { workHttp } = apiBackend;
+    const app = fixtureApp(workspaceId).listen({
+      hostname: '127.0.0.1',
+      port: 0,
+    });
     try {
       const port = app.server?.port;
       if (port === undefined) throw new Error('NO_HTTP_LISTENER');
@@ -1483,6 +1520,27 @@ test.each(['work document', 'standalone recognition'])(
     }
   },
 );
+
+test('deleting a work with no source deletion requests reaches completion', async () => {
+  const { workspaceId, workId } = await create();
+  const scope = memberScope(workspaceId);
+  const deletion = apiBackend.workHttp.deletion;
+  expect(await deletion.request(scope, workId, crypto.randomUUID())).toEqual({
+    status: 'deleting',
+  });
+  const deadline = Date.now() + 15000;
+  while ((await deletion.status(scope, workId)).status !== 'deleted') {
+    if (Date.now() > deadline) throw new Error('Work deletion did not finish');
+    await Bun.sleep(30);
+  }
+  expect(
+    await db.workDeletion.findFirst({
+      where: { workspaceId, id: workId },
+      select: { documentIds: true },
+    }),
+  ).toEqual({ documentIds: [] });
+  expect(await db.work.findUnique({ where: { id: workId } })).toBeNull();
+});
 
 test('owner deletion fences a running writer, purges the work, and retains its source', async () => {
   const input = await create();

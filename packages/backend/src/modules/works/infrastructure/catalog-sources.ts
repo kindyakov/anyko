@@ -34,5 +34,19 @@ export function createCatalogWorkLinks(db: Pick<Database, 'workDocument'>) {
         },
       });
     },
+    async purgeDeletedWorkLinks(workspaceId: string, documentId: string) {
+      await db.workDocument.deleteMany({
+        where: { workspaceId, documentId, work: { deletedAt: { not: null } } },
+      });
+    },
+    async assertNoLiveLinks(workspaceId: string, documentId: string) {
+      // A removed link is the work cleanup marker until its derived data is erased.
+      if (
+        await db.workDocument.count({
+          where: { workspaceId, documentId, work: { deletedAt: null } },
+        })
+      )
+        throw new Error('WORK_SOURCE_CLEANUP_PENDING');
+    },
   };
 }

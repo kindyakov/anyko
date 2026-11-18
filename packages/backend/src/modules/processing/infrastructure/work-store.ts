@@ -20,6 +20,17 @@ import {
 } from './run-engine';
 
 type Connection = RunConnection & Pick<Database, 'runStep' | 'workAgentThread'>;
+export async function eraseWorkAgentThreads(
+  db: Pick<Database, 'workAgentThread'>,
+  workspaceId: string,
+  threadIds: string[],
+) {
+  if (threadIds.length)
+    await db.workAgentThread.deleteMany({
+      where: { workspaceId, id: { in: threadIds } },
+    });
+}
+
 const workKinds = ['work.analysis', 'work.generation'];
 const workKind = (kind: string) =>
   z.enum(['analysis', 'generation']).parse(kind.slice('work.'.length));

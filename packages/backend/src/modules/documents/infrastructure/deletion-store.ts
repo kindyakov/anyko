@@ -30,7 +30,12 @@ export function createDeletionStore(db: Database) {
         where: { completedAt: null },
         orderBy: { createdAt: 'asc' },
         take: 20,
-        select: { id: true, workspaceId: true, requestKey: true },
+        select: {
+          id: true,
+          workspaceId: true,
+          requestKey: true,
+          threadIds: true,
+        },
       }),
     async keys(workspaceId: string, documentId: string, requestKey: string) {
       const rows = await db.documentArtifact.findMany({

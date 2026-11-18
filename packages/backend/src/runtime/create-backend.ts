@@ -404,8 +404,9 @@ export function createBackend(
     resultKeys: processing.resultKeys,
     attemptIds: processing.attemptIds,
     eraseAttempt: parser.eraseAttempt.bind(parser),
-    finish: (workspaceId, documentId, keys) =>
-      finishDocumentDeletion(db, workspaceId, documentId, keys),
+    eraseThread: work.agents.model.eraseThread,
+    finish: (workspaceId, documentId, keys, threadIds) =>
+      finishDocumentDeletion(db, workspaceId, documentId, keys, threadIds),
     locks,
     storage,
     logger,

@@ -4,6 +4,8 @@ import type { DocumentStore } from '../../modules/documents';
 import { createDocumentCommands } from '../../modules/documents/infrastructure/commands';
 import { createDocumentReadModel } from '../../modules/documents/infrastructure/read-model';
 import { createProcessingCommands } from '../../modules/processing/infrastructure/commands';
+import { eraseWorkAgentThreads } from '../../modules/processing/infrastructure/work-store';
+import { createCatalogWorkLinks } from '../../modules/works/infrastructure/catalog-sources';
 
 import {
   readCatalogDeletionImpact,
@@ -85,8 +87,14 @@ export async function finishDocumentDeletion(
   workspaceId: string,
   documentId: string,
   keys: string[],
+  threadIds: string[],
 ) {
   await db.$transaction(async (tx) => {
+    const links = createCatalogWorkLinks(tx);
+    await links.assertNoLiveLinks(workspaceId, documentId);
+    // Links of deleted works still refer to both the source and its OCR revision.
+    await links.purgeDeletedWorkLinks(workspaceId, documentId);
+    await eraseWorkAgentThreads(tx, workspaceId, threadIds);
     await createProcessingCommands(tx).eraseDocument(
       workspaceId,
       documentId,
