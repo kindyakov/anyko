@@ -240,9 +240,9 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1795018574.4705524,
-    "seen": 1795018702.0823307,
-    "ast_hash": "310c46685db72e864128981b8dd3f2af",
+    "mtime": 1795022152.5445106,
+    "seen": 1795022325.1852827,
+    "ast_hash": "42ac76e668e70abab865257d8daefa02",
     "semantic_hash": ""
   },
   "packages/eslint-config/base.js": {
@@ -708,9 +708,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/index.ts": {
-    "mtime": 1795018182.739655,
-    "seen": 1795018702.0825636,
-    "ast_hash": "d0b23ebdfd0ff85a320896def416e449",
+    "mtime": 1795022152.5740857,
+    "seen": 1795022325.207789,
+    "ast_hash": "5400b07a68aae00b85f16b27f2681cfd",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/infrastructure/commands.ts": {
@@ -750,15 +750,15 @@
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050001_document_vertical/migration.sql": {
-    "mtime": 1793847770.9274359,
-    "seen": 1794860632.3110855,
-    "ast_hash": "",
+    "mtime": 1795018182.6056015,
+    "seen": 1795022636.8871071,
+    "ast_hash": "ca7a2dc7ced4f834abb9b4ce62f37a4b",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050002_document_constraints/migration.sql": {
-    "mtime": 1793847812.3472278,
-    "seen": 1794860632.3110871,
-    "ast_hash": "",
+    "mtime": 1795018182.6066027,
+    "seen": 1795022636.8871093,
+    "ast_hash": "38ee51b8489b7fb7abe16073857a308c",
     "semantic_hash": ""
   },
   "packages/database/src/index.ts": {
@@ -876,9 +876,9 @@
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050003_document_deletion/migration.sql": {
-    "mtime": 1793877936.5507777,
-    "seen": 1794860632.311088,
-    "ast_hash": "",
+    "mtime": 1795018182.6076016,
+    "seen": 1795022636.8871114,
+    "ast_hash": "03e77be0624e01139f3763ad66500524",
     "semantic_hash": ""
   },
   "apps/api/src/bootstrap/config.ts": {
@@ -972,21 +972,21 @@
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050004_document_artifacts/migration.sql": {
-    "mtime": 1793880869.5274906,
-    "seen": 1794860632.3110898,
-    "ast_hash": "",
+    "mtime": 1795018182.6076016,
+    "seen": 1795022636.8871138,
+    "ast_hash": "9e1b8fae5e4ace79fcc6901fd9aef945",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050005_document_io/migration.sql": {
-    "mtime": 1793882184.5851521,
-    "seen": 1794860632.311091,
-    "ast_hash": "",
+    "mtime": 1795018182.6086018,
+    "seen": 1795022636.8871162,
+    "ast_hash": "9f014c0676618ab0a501856121ba4e01",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050006_uncertain_writes/migration.sql": {
-    "mtime": 1793882394.6302488,
-    "seen": 1794860632.3110924,
-    "ast_hash": "",
+    "mtime": 1795018182.6096025,
+    "seen": 1795022636.8871186,
+    "ast_hash": "7a72861457b9c9f4d17499e92b7e192f",
     "semantic_hash": ""
   },
   "packages/database/src/resource-locks.ts": {
@@ -1110,15 +1110,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/work-ports.ts": {
-    "mtime": 1795018182.7375982,
-    "seen": 1795018702.0825598,
-    "ast_hash": "482a89d4f398ffeb27c1e7da2540ef10",
+    "mtime": 1795022567.6526918,
+    "seen": 1795022636.886763,
+    "ast_hash": "13cb070e95fe492528dbeb9e68968f17",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/infrastructure/work-store.ts": {
-    "mtime": 1795018182.7431755,
-    "seen": 1795018702.0825763,
-    "ast_hash": "252619593c2fb239b7227c96d0743dbf",
+    "mtime": 1795022152.5595484,
+    "seen": 1795022325.2087698,
+    "ast_hash": "ab56e8a2c7a628e1770d87f0c035b0c0",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/index.ts": {
@@ -1146,15 +1146,15 @@
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050007_work_pipeline/migration.sql": {
-    "mtime": 1793901641.7629728,
-    "seen": 1794860632.3110943,
-    "ast_hash": "",
+    "mtime": 1795018182.6106102,
+    "seen": 1795022636.8871207,
+    "ast_hash": "8db9ba95a1e1316afbc8ff3a72d6c884",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050008_work_constraints/migration.sql": {
-    "mtime": 1793902734.9371088,
-    "seen": 1794860632.3110957,
-    "ast_hash": "",
+    "mtime": 1795018182.6116168,
+    "seen": 1795022636.8871224,
+    "ast_hash": "b92d030777f25246fd15be3e7aacc19b",
     "semantic_hash": ""
   },
   "packages/llm/package.json": {
@@ -1224,21 +1224,21 @@
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050009_document_packages/migration.sql": {
-    "mtime": 1793910229.192512,
-    "seen": 1794860632.3110976,
-    "ast_hash": "",
+    "mtime": 1795018182.6126208,
+    "seen": 1795022636.8871248,
+    "ast_hash": "08caf7a679625257b3c825375d960eca",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050010_bankruptcy_package_v2/migration.sql": {
-    "mtime": 1793910555.6253724,
-    "seen": 1794860632.3110988,
-    "ast_hash": "",
+    "mtime": 1795018182.613621,
+    "seen": 1795022636.8871267,
+    "ast_hash": "efb11a1fb43c2ecb8e46ddd431058aa0",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050011_bankruptcy_package_v3/migration.sql": {
-    "mtime": 1793912314.7211897,
-    "seen": 1794860632.3111002,
-    "ast_hash": "",
+    "mtime": 1795018182.613621,
+    "seen": 1795022636.887129,
+    "ast_hash": "b8175fa9aa30e92c8f5e0676a416427d",
     "semantic_hash": ""
   },
   "docs/adr/0006-document-packages.md": {
@@ -1290,9 +1290,9 @@
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611060012_work_agent_sessions/migration.sql": {
-    "mtime": 1793922895.5845368,
-    "seen": 1794860632.311102,
-    "ast_hash": "",
+    "mtime": 1795018182.6146214,
+    "seen": 1795022636.887132,
+    "ast_hash": "e7b092b99b09b9a78b65ba6b3fe03bee",
     "semantic_hash": ""
   },
   "docs/adr/0007-persistent-work-agent-session.md": {
@@ -1584,9 +1584,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/runtime/create-backend.ts": {
-    "mtime": 1795018182.778294,
-    "seen": 1795018702.0826714,
-    "ast_hash": "1d7c536450a80594f5161755c517b106",
+    "mtime": 1795022152.5640664,
+    "seen": 1795022325.2174454,
+    "ast_hash": "bbcd39a84fd2ac8f891f9dc812e32a20",
     "semantic_hash": ""
   },
   "packages/backend/tests/integration/composition.test.ts": {
@@ -2454,15 +2454,15 @@
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611170013_idempotency_keys/migration.sql": {
-    "mtime": 1794890029.483693,
-    "seen": 1794910455.5625541,
-    "ast_hash": "",
+    "mtime": 1795018182.615621,
+    "seen": 1795022636.8871338,
+    "ast_hash": "ff0859344a3df6e165cd28f429c3860d",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611170014_audit_events/migration.sql": {
-    "mtime": 1794909661.8578646,
-    "seen": 1794910455.5625558,
-    "ast_hash": "",
+    "mtime": 1795018182.616622,
+    "seen": 1795022636.8871365,
+    "ast_hash": "367208bcc6207537a2d8a6890cf9164d",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/audit/module.ts": {
@@ -2520,27 +2520,27 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/is-active.ts": {
-    "mtime": 1795018182.7329185,
-    "seen": 1795018702.082545,
-    "ast_hash": "0f7eb1600bf09fd2251aded90ffa8f0d",
+    "mtime": 1795022152.5989816,
+    "seen": 1795022325.2066536,
+    "ast_hash": "f669d322921e15286fc9e7ac812a8f18",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/list-runs.ts": {
-    "mtime": 1795018182.7349174,
-    "seen": 1795018702.0825517,
-    "ast_hash": "e5778cad278c6ebde3dcb2d6d7734d63",
+    "mtime": 1795022152.5989816,
+    "seen": 1795022325.2070513,
+    "ast_hash": "59216332d169a493a3c7bf64e1a7d567",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/start-run.ts": {
-    "mtime": 1795018182.736919,
-    "seen": 1795018702.0825577,
-    "ast_hash": "58eea225c943ee4859eb4a8cf782b0dd",
+    "mtime": 1795022152.5872622,
+    "seen": 1795022325.2075422,
+    "ast_hash": "06be60231c4043fadf8871e5e08edde6",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/module.ts": {
-    "mtime": 1795018182.744176,
-    "seen": 1795018702.0825784,
-    "ast_hash": "de0e52a24d273260f64b7c7ea92ee934",
+    "mtime": 1795022152.5989816,
+    "seen": 1795022325.208773,
+    "ast_hash": "9226f00ece994991eb6e1e91ac455d4d",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/works/application/attach-document.ts": {
@@ -2682,9 +2682,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-review/index.ts": {
-    "mtime": 1795018574.495421,
-    "seen": 1795018702.0827496,
-    "ast_hash": "de8bd3fc818990dc4edab7e05764c346",
+    "mtime": 1795019071.2948022,
+    "seen": 1795022325.224815,
+    "ast_hash": "3d192f2111a10a993bfd4aa6545ee5ee",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-view/get-image.ts": {
@@ -2988,15 +2988,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/continue-session.ts": {
-    "mtime": 1795018574.4833755,
-    "seen": 1795018702.0826993,
-    "ast_hash": "1a511216baeabecfb6db758a629918fc",
+    "mtime": 1795022152.5585487,
+    "seen": 1795022325.2201562,
+    "ast_hash": "5a49623c14063c16d96bcde78ac6dfa0",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/index.ts": {
-    "mtime": 1795018182.5596948,
-    "seen": 1795018702.0827017,
-    "ast_hash": "eb898e8924e6d4141d152935caece803",
+    "mtime": 1795022152.5585487,
+    "seen": 1795022325.22016,
+    "ast_hash": "0025ebda6ad01b8557f3c2f61f642504",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/model-call.ts": {
@@ -3012,21 +3012,21 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-execution/index.ts": {
-    "mtime": 1795018182.563445,
-    "seen": 1795018702.0827124,
-    "ast_hash": "31ddc6c8143b4d2803f3772370e19cb4",
+    "mtime": 1795022152.5660663,
+    "seen": 1795022325.2210279,
+    "ast_hash": "5f94929d474bcd490cf285b60f917df2",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-execution/run-state.ts": {
-    "mtime": 1795018182.563445,
-    "seen": 1795018702.0827146,
-    "ast_hash": "3f9b2fec524db8355301aa7fc8d5481a",
+    "mtime": 1795022395.20997,
+    "seen": 1795022438.4508212,
+    "ast_hash": "e0c311c5ce42855bf43f746dba37dd29",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-generation/run-generation.ts": {
-    "mtime": 1795018574.486376,
-    "seen": 1795018702.0827231,
-    "ast_hash": "42deaef42c7edb62230d3993c46e6264",
+    "mtime": 1795022152.5792468,
+    "seen": 1795022325.221683,
+    "ast_hash": "67b94d732b8b2c38507a1ba3fbf05070",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-maintenance/index.ts": {
@@ -3594,15 +3594,15 @@
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611170015_connection_revocation/migration.sql": {
-    "mtime": 1794944607.833735,
-    "seen": 1794945413.9142585,
-    "ast_hash": "",
+    "mtime": 1795018182.616622,
+    "seen": 1795022636.8871386,
+    "ast_hash": "891f53493adcf24282f83d04d8655c3f",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611170016_generation_connection_revision/migration.sql": {
-    "mtime": 1794945143.3663874,
-    "seen": 1794945413.9142597,
-    "ast_hash": "",
+    "mtime": 1795018182.6176207,
+    "seen": 1795022636.8871405,
+    "ast_hash": "e40e3c8c71d36736422ccf7b616b8ec1",
     "semantic_hash": ""
   },
   "tests/integration/worker/document-deletion.test.ts": {
@@ -3618,9 +3618,9 @@
     "semantic_hash": ""
   },
   "tests/integration/worker/job-host.test.ts": {
-    "mtime": 1795018182.7258756,
-    "seen": 1795018702.0831745,
-    "ast_hash": "bc4edcedf7bd45a18624e78e50043390",
+    "mtime": 1795022152.5595484,
+    "seen": 1795022325.2644885,
+    "ast_hash": "bc2550e4974b97272b0773ccc122a8a1",
     "semantic_hash": ""
   },
   "tests/integration/worker/support/composition.ts": {
@@ -3630,9 +3630,9 @@
     "semantic_hash": ""
   },
   "tests/integration/worker/works.test.ts": {
-    "mtime": 1795018574.5130458,
-    "seen": 1795018702.0831785,
-    "ast_hash": "f3130998a7ca701533b3038351e6306b",
+    "mtime": 1795022152.571571,
+    "seen": 1795022325.2647135,
+    "ast_hash": "f170e54564796ac9719be32fd9ebba3d",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/io.ts": {
@@ -3660,9 +3660,9 @@
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611170017_unified_processing/migration.sql": {
-    "mtime": 1794946574.0272608,
-    "seen": 1794947315.740561,
-    "ast_hash": "",
+    "mtime": 1795018182.6186223,
+    "seen": 1795022636.8871427,
+    "ast_hash": "f3866820c5b6680006ec4ba3bf1957a7",
     "semantic_hash": ""
   },
   "apps/web/src/app/(workspace)/w/[workspace]/works/[id]/_screen/work-screen.test.tsx": {
@@ -3960,9 +3960,9 @@
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611180018_work_deletion_and_listing/migration.sql": {
-    "mtime": 1794955509.230222,
-    "seen": 1794955643.8793914,
-    "ast_hash": "",
+    "mtime": 1795018182.6196218,
+    "seen": 1795022636.8871448,
+    "ast_hash": "41ec29e3b864a033b5aff9cf2aa48649",
     "semantic_hash": ""
   },
   "apps/web/src/features/works/ui/list/work-deletion-dialog.tsx": {
@@ -4599,6 +4599,24 @@
     "mtime": 1795018639.9015317,
     "seen": 1795018702.0826855,
     "ast_hash": "3b2047a06a718fa315a2d17e9285c5b6",
+    "semantic_hash": ""
+  },
+  "packages/backend/src/modules/processing/application/work-attempt.ts": {
+    "mtime": 1795022152.5630612,
+    "seen": 1795022325.207547,
+    "ast_hash": "ce92067e63eec1b92acaaff5b492bd48",
+    "semantic_hash": ""
+  },
+  "packages/backend/src/runtime/works/processing.ts": {
+    "mtime": 1795022152.5802486,
+    "seen": 1795022325.218563,
+    "ast_hash": "53aeffb7d4a288eb22205d201f0722b7",
+    "semantic_hash": ""
+  },
+  "packages/backend/tests/integration/work-attempt.test.ts": {
+    "mtime": 1795022152.5495605,
+    "seen": 1795022325.2279897,
+    "ast_hash": "5a354cd5fe55d4669e9933e688023e92",
     "semantic_hash": ""
   }
 }
