@@ -1,4 +1,7 @@
-import { automaticValue } from '../../../profiles/bfl/automatic-value';
+import {
+  automaticValue,
+  valueWithRemainingEvidence,
+} from '../../../profiles/bfl/automatic-value';
 import {
   emptyFieldValues,
   fieldDefinitions,
@@ -72,12 +75,17 @@ export function findFactDiscrepancies(current: WorkFacts) {
     .map(({ key }) => key);
 }
 
-export function markSelectedCandidates({ values, candidates }: WorkFacts) {
+export function markSelectedCandidates({
+  values,
+  candidates,
+  needsReview,
+}: WorkFacts) {
   return candidates.map((candidate) => {
     const { field, value } = candidate;
     const saved = reconcile(field, [values[field] ?? null]);
     const selected =
       saved !== null &&
+      !needsReview?.includes(field) &&
       (includesFactValue(field, saved, value) ||
         // Автозаполнение может опустить ячейку. Оно не скрывает сохранённое противоречие.
         (reconcile(field, [saved, value]) !== null &&
@@ -145,19 +153,28 @@ function supportedParts(
   const proposals = candidates
     .filter((candidate) => candidate.field === field)
     .map((candidate) => {
-      if (!reviewed) return automaticValue(candidate);
-      if (!reduced?.has(candidate)) return candidate.value;
-      // A person can accept an image-backed value. Test the remaining quotes if part of its proof was lost.
-      return automaticValue({
-        ...candidate,
-        evidence: candidate.evidence.map((entry) => ({
-          ...entry,
-          imagePath: null,
-        })),
-      });
+      if (reduced?.has(candidate))
+        return valueWithRemainingEvidence(
+          reviewed
+            ? {
+                ...candidate,
+                evidence: candidate.evidence.map((entry) => ({
+                  ...entry,
+                  imagePath: null,
+                })),
+              }
+            : candidate,
+        );
+      return reviewed ? candidate.value : automaticValue(candidate);
     });
   if (!Array.isArray(saved))
     return new Set(proposals.includes(saved) ? ['value'] : []);
+  if (!saved.length)
+    return new Set(
+      proposals.some((value) => Array.isArray(value) && !value.length)
+        ? ['absence']
+        : [],
+    );
   const rows = proposals.flatMap((value) =>
     Array.isArray(value) ? value : [],
   );

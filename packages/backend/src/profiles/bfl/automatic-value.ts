@@ -115,6 +115,24 @@ function proofLines(evidence: Candidate['evidence']) {
 
 /** Automatic values need numeric evidence. Keep the original proposal for human review. */
 export function automaticValue(candidate: Candidate): FieldValue {
+  return supportedValue(candidate, false);
+}
+
+/** After evidence loss, keep only values identifiable in the remaining quotes. */
+export function valueWithRemainingEvidence(candidate: Candidate): FieldValue {
+  return supportedValue(candidate, true);
+}
+
+function mentions(line: string, value: string) {
+  const normalize = (text: string) =>
+    text.normalize('NFKC').toLocaleLowerCase('ru').replace(/\s+/g, ' ').trim();
+  return normalize(line).includes(normalize(value));
+}
+
+function supportedValue(
+  candidate: Candidate,
+  requireText: boolean,
+): FieldValue {
   const { field, value } = candidate;
   if (typeof value === 'string') {
     if (field === 'inn' || field === 'snils') {
@@ -132,7 +150,9 @@ export function automaticValue(candidate: Candidate): FieldValue {
       ? attestedDate
       : field === 'debtTotal'
         ? attestedAmount
-        : null;
+        : requireText
+          ? (text: string, line: string) => mentions(line, text)
+          : null;
     return matches &&
       !proofLines(candidate.evidence).some((quote) => matches(value, quote))
       ? null
@@ -141,16 +161,18 @@ export function automaticValue(candidate: Candidate): FieldValue {
   if (!Array.isArray(value)) return value;
   const identity = fieldIdentity(field);
   const lines = proofLines(candidate.evidence);
-  return value.map((row) => {
-    const matching = identity.length
+  const rows = value.flatMap((row) => {
+    const markers = identity.map((column) => row[column]?.trim());
+    const matching = markers.length
       ? lines.filter((line) =>
-          identity.every((column) => {
-            const marker = row[column]?.trim().toLocaleLowerCase('ru');
-            return marker && line.toLocaleLowerCase('ru').includes(marker);
-          }),
+          markers.every((marker) =>
+            marker ? mentions(line, marker) : requireText,
+          ),
         )
-      : [];
-    return Object.fromEntries(
+      : requireText
+        ? lines
+        : [];
+    const supported = Object.fromEntries(
       Object.entries(row).map(([column, cell]) => {
         if (cell === null) return [column, cell];
         if (moneyColumns.has(column))
@@ -168,8 +190,18 @@ export function automaticValue(candidate: Candidate): FieldValue {
               : null,
           ];
         }
-        return [column, cell];
+        return [
+          column,
+          requireText && !matching.some((line) => mentions(line, cell))
+            ? null
+            : cell,
+        ];
       }),
     );
+    return requireText &&
+      Object.values(supported).every((cell) => cell === null)
+      ? []
+      : [supported];
   });
+  return requireText && value.length && !rows.length ? null : rows;
 }

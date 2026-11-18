@@ -129,6 +129,90 @@ test('a confirmed table row without a complete identity still loses review suppo
   expect(next.confirmed).not.toContain('realEstate');
   expect(next.needsReview).toEqual(['realEstate']);
 });
+
+test('confirmation of an empty table requires its evidence of absence', () => {
+  const absence: WorkFacts['candidates'][number] = {
+    field: 'realEstate',
+    value: [],
+    evidence: [
+      {
+        documentId: crypto.randomUUID(),
+        imagePath: null,
+        quote: 'Недвижимости нет',
+      },
+    ],
+  };
+  const initial = confirmFacts(mergeCandidates(emptyFacts(), [absence], false));
+
+  const refreshed = refreshFactEvidence(initial, () => null);
+
+  expect(refreshed.values.realEstate).toEqual([]);
+  expect(refreshed.confirmed).not.toContain('realEstate');
+  expect(refreshed.needsReview).toEqual(['realEstate']);
+});
+
+test('a surviving apartment quote does not attest a garage in the same candidate', () => {
+  const apartment = { description: 'Квартира', address: 'ул. Садовая, 2' };
+  const garage = { description: 'Гараж', address: 'ул. Полевая, 5' };
+  const evidence = (quote: string): FactEvidence => ({
+    documentId: crypto.randomUUID(),
+    imagePath: null,
+    quote,
+  });
+  const apartmentProof = evidence('Квартира | ул. Садовая, 2');
+  const garageProof = evidence('Гараж | ул. Полевая, 5');
+  const initial = confirmFacts(
+    mergeCandidates(
+      emptyFacts(),
+      [
+        {
+          field: 'realEstate',
+          value: [apartment, garage],
+          evidence: [apartmentProof, garageProof],
+        },
+      ],
+      false,
+    ),
+  );
+
+  const refreshed = refreshFactEvidence(initial, (entry) =>
+    entry.documentId === garageProof.documentId ? null : entry,
+  );
+
+  expect(refreshed.values.realEstate).toEqual([apartment, garage]);
+  expect(refreshed.confirmed).not.toContain('realEstate');
+  expect(refreshed.needsReview).toEqual(['realEstate']);
+  expect(
+    markSelectedCandidates(refreshed).map(({ selected }) => selected),
+  ).toEqual([false]);
+});
+
+test('other quotes do not replace the evidence for a confirmed text value', () => {
+  const name = candidate('Анна');
+  const address = {
+    documentId: crypto.randomUUID(),
+    imagePath: null,
+    quote: 'ул. Садовая, 2',
+  };
+  const initial = confirmFacts(
+    mergeCandidates(
+      emptyFacts(),
+      [{ ...name, evidence: [...name.evidence, address] }],
+      false,
+    ),
+  );
+
+  const refreshed = refreshFactEvidence(initial, (entry) =>
+    entry.documentId === address.documentId ? entry : null,
+  );
+
+  expect(refreshed.values.personName).toBe('Анна');
+  expect(refreshed.needsReview).toEqual(['personName']);
+  expect(
+    markSelectedCandidates(refreshed).map(({ selected }) => selected),
+  ).toEqual([false]);
+});
+
 test('contradictory sources remain visible and do not silently choose a value', () => {
   const result = mergeCandidates(
     emptyFacts(),
