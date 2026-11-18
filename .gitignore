@@ -6,6 +6,7 @@ playwright-report/
 test-results/
 /packages/database/generated/
 **/.logs/
+debug.log
 .env
 .env.*
 !.env.example
