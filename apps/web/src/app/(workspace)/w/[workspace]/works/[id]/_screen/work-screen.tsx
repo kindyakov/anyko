@@ -291,9 +291,13 @@ function WorkBody({
             </Notice>
           )}
         {view.cleanupPending && (
-          <Notice tone="progress" role="status" title="Удаляем данные файла">
-            Удаляем исходник и всё, что из него извлечено. Работа временно
-            доступна только для просмотра.
+          <Notice
+            tone="progress"
+            role="status"
+            title="Обновляем источники работы"
+          >
+            Очищаем сведения и готовые документы этой работы. Исходный файл
+            сохраняется в каталоге.
           </Notice>
         )}
         <Hero

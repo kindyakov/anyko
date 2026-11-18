@@ -235,7 +235,12 @@ export function DocumentList({
                 setViewing({
                   id: document.id,
                   filename: document.filename,
-                  owner: { kind: 'recognition' },
+                  owner: {
+                    kind: 'recognition',
+                    ...(document.readyRevision != null && {
+                      revision: document.readyRevision,
+                    }),
+                  },
                 });
               }}
               onRetry={() => {

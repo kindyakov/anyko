@@ -27,11 +27,6 @@ export interface WorkDependencies {
   documents: DocumentsModule;
   locks: ResourceLocks;
   io: ProcessingIo;
-  assertNoDocumentWriters(
-    workspaceId: string,
-    documentId: string,
-    requestKey: string,
-  ): Promise<void>;
   storage: SourceStorage;
   logger: Logger;
 }

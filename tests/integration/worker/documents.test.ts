@@ -392,6 +392,7 @@ test('outbox survives before worker start; real queue publishes result and retry
     ).toEqual({
       markdown: '# extracted fixture',
       processorVersion: 'test-parser-1',
+      revision: 2,
       images: [],
     });
     expect(

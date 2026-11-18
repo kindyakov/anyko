@@ -468,9 +468,19 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
     input.workspaceId,
     input.workId,
   );
-  await runtime.deps.documents.commands.remove(
+  await rejects(
+    runtime.deps.documents.commands.remove(
+      memberScope(input.workspaceId),
+      brandDocumentId(doc.id),
+    ),
+    'DOCUMENT_IN_USE',
+  );
+  await apiBackend.workHttp.intake.removeDocument(
     memberScope(input.workspaceId),
-    brandDocumentId(doc.id),
+    {
+      workId: brandWorkId(input.workId),
+      documentId: brandDocumentId(doc.id),
+    },
   );
   const hidden = await apiBackend.workHttp.views.get(
     memberScope(input.workspaceId),
@@ -494,7 +504,207 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
   ).toBe(false);
 });
 
-test('a package generates three individually scoped DOCX files from one snapshot and source deletion erases the whole set', async () => {
+test('a shared source pins the latest ready OCR in each work and survives unlinking', async () => {
+  const input = await create();
+  const foreign = await create();
+  const scope = memberScope(input.workspaceId);
+  const foreignDoc = await upload(foreign);
+  await until(foreign, (view) => view.documents[0]?.status === 'succeeded');
+  await until(foreign, (view) => view.documents[0]?.status === 'succeeded');
+  const intake = apiBackend.workHttp.intake;
+  const documents = apiBackend.documentHttp.documents;
+  const destination = await intake.createWork(scope, {
+    packageVersion: 'technical-document-v1',
+    title: 'Другая работа',
+  });
+  const target = { ...input, workId: destination };
+  const ocr = pauseStep();
+  const image = new Uint8Array([1, 2, 3, 4]);
+  parseFixture = async () => {
+    await ocr.wait();
+    return {
+      markdown: 'Имя: Анна. Номер: 42.',
+      processorVersion: 'fixture',
+      images: [
+        { path: 'images/page.png', contentType: 'image/png', bytes: image },
+      ],
+    };
+  };
+  let documentId: ReturnType<typeof brandDocumentId>;
+  try {
+    documentId = brandDocumentId((await upload(input)).id);
+    await ocr.entered();
+    const catalog = await documents.queries.list(scope, { limit: 20 });
+    expect(
+      catalog.items.find(({ id }) => id === documentId)?.readyRevision,
+    ).toBeNull();
+    await rejects(
+      intake.attachDocuments(scope, {
+        workId: destination,
+        documentIds: [documentId],
+      }),
+      'NOT_READY',
+    );
+  } finally {
+    ocr.release();
+    parseFixture = undefined;
+  }
+  await until(input, (view) => view.documents[0]?.status === 'succeeded');
+  const waiting = pauseStep();
+  parseFixture = async () => {
+    await waiting.wait();
+    return {
+      markdown: 'Новая версия распознавания.',
+      processorVersion: 'fixture',
+      images: [],
+    };
+  };
+  try {
+    await documents.commands.retry(scope, documentId, crypto.randomUUID());
+    await waiting.entered();
+    const [ready] = (await documents.queries.list(scope, { limit: 20 })).items;
+    expect(ready).toMatchObject({
+      id: documentId,
+      status: 'running',
+      readyRevision: 1,
+    });
+    await rejects(
+      intake.attachDocuments(scope, {
+        workId: destination,
+        documentIds: [documentId, foreignDoc.id],
+      }),
+      'NOT_READY',
+    );
+    expect(
+      (await apiBackend.workHttp.views.get(scope, destination)).documents,
+    ).toEqual([]);
+    await intake.attachDocuments(scope, {
+      workId: destination,
+      documentIds: [documentId],
+    });
+    const linked = await apiBackend.workHttp.views.get(scope, destination);
+    expect(linked.documents[0]).toMatchObject({
+      id: documentId,
+      status: 'succeeded',
+      processingRevision: 1,
+    });
+    expect(linked.runs).toEqual([]);
+    await intake.attachDocuments(scope, {
+      workId: destination,
+      documentIds: [documentId],
+    });
+    expect(
+      (await apiBackend.workHttp.views.get(scope, destination)).work.revision,
+    ).toBe(linked.work.revision);
+  } finally {
+    waiting.release();
+    parseFixture = undefined;
+  }
+  const deadline = Date.now() + 10000;
+  while (
+    (await documents.queries.get(scope, documentId)).status !== 'succeeded'
+  ) {
+    if (Date.now() > deadline) throw new Error('RETRY_NOT_READY');
+    await Bun.sleep(30);
+  }
+  expect((await documents.queries.result(scope, documentId)).markdown).toBe(
+    'Новая версия распознавания.',
+  );
+  for (const workId of [input.workId, destination]) {
+    expect(
+      (await apiBackend.workHttp.views.result(scope, workId, documentId))
+        .markdown,
+    ).toBe('Имя: Анна. Номер: 42.');
+    expect(
+      (await apiBackend.workHttp.views.image(scope, workId, documentId, 0))
+        .bytes,
+    ).toEqual(image);
+  }
+  let analyzedText = '';
+  extractFixture = (args) => {
+    analyzedText = args.document.text;
+    return Promise.resolve({
+      candidates: [],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+  };
+  try {
+    await analyze(target);
+    expect((await until(target, terminal)).runs[0]?.status).toBe('succeeded');
+    expect(analyzedText).toBe('Имя: Анна. Номер: 42.');
+  } finally {
+    extractFixture = undefined;
+  }
+  await rejects(
+    documents.commands.remove(scope, documentId),
+    'DOCUMENT_IN_USE',
+  );
+  await intake.removeDocument(scope, { workId: input.workId, documentId });
+  await until(input, (view) => !view.cleanupPending && !view.documents.length);
+  expect(
+    (await apiBackend.workHttp.views.result(scope, destination, documentId))
+      .markdown,
+  ).toBe('Имя: Анна. Номер: 42.');
+  expect(
+    (await documents.queries.get(scope, documentId)).processingRevision,
+  ).toBe(2);
+}, 35000);
+
+test('work upload responses cannot be replayed after unlinking while the catalog file remains', async () => {
+  const input = await create();
+  const scope = memberScope(input.workspaceId);
+  const intake = apiBackend.workHttp.intake;
+  const other = await intake.createWork(scope, {
+    title: 'Вторая работа',
+    packageVersion: 'technical-document-v1',
+  });
+  const uploadInput = {
+    workId: input.workId,
+    requestKey: crypto.randomUUID(),
+    filename: 'тот же файл.pdf',
+    correlationId: crypto.randomUUID(),
+    bytes: new TextEncoder().encode('%PDF-1.7\n synthetic'),
+  };
+  const source = await intake.uploadDocument(scope, uploadInput);
+  const independent = await intake.uploadDocument(scope, {
+    ...uploadInput,
+    workId: other,
+  });
+  expect(independent.id).not.toBe(source.id);
+  const documents = apiBackend.documentHttp.documents;
+  const cache = apiBackend.workHttp.idempotency;
+  const ref = {
+    workspaceId: input.workspaceId,
+    command: 'POST /workspaces/:workspaceId/works/:workId/documents',
+    key: uploadInput.requestKey,
+    fingerprint: 'synthetic',
+  };
+  const response = () =>
+    Promise.resolve({ status: 202, body: { document: source } });
+  expect((await cache.run(ref, response)).status).toBe(202);
+  await intake.removeDocument(scope, {
+    workId: input.workId,
+    documentId: brandDocumentId(source.id),
+  });
+  expect(await cache.run(ref, response)).toMatchObject({
+    status: 404,
+    replayed: true,
+  });
+  const late = { ...ref, key: crypto.randomUUID() };
+  await cache.run(late, response);
+  expect(await cache.run(late, response)).toMatchObject({
+    status: 404,
+    replayed: true,
+  });
+  expect(
+    (await documents.queries.get(scope, brandDocumentId(source.id))).id,
+  ).toBe(source.id);
+  expect(
+    (await apiBackend.workHttp.views.get(scope, other)).documents[0]?.id,
+  ).toBe(independent.id);
+});
+
+test('a package generates three individually scoped DOCX files from one snapshot and unlinking erases the whole set', async () => {
   const legacy = await create();
   const createdId = await apiBackend.workHttp.intake.createWork(
     memberScope(legacy.workspaceId, 'fixture'),
@@ -919,7 +1129,7 @@ test('numbered search filters the whole workspace and counts only matching revis
   expect(literal.items.map(({ title }) => title)).toEqual(['Дело Анны 100%']);
 });
 
-test('owner deletion fences a running writer then physically purges the work and its files', async () => {
+test('owner deletion fences a running writer, purges the work, and retains its source', async () => {
   const input = await create();
   const source = await upload(input);
   const scope = memberScope(input.workspaceId, 'fixture');
@@ -1057,15 +1267,22 @@ test('owner deletion fences a running writer then physically purges the work and
     await db.run.count({
       where: {
         workspaceId: input.workspaceId,
-        OR: [{ workId: input.workId }, { documentId: source.id }],
+        workId: input.workId,
       },
     }),
   ).toBe(0);
   expect(
-    await db.sourceDocument.findUnique({ where: { id: source.id } }),
-  ).toBeNull();
+    await db.sourceDocument.count({
+      where: { id: source.id, deletedAt: null },
+    }),
+  ).toBe(1);
+  expect(
+    await db.run.count({
+      where: { documentId: source.id, status: 'succeeded' },
+    }),
+  ).toBe(1);
   expect(ownedThreads.some(({ id }) => threads.has(id))).toBe(false);
-  expect(files.has(sourceKey)).toBe(false);
+  expect(files.has(sourceKey)).toBe(true);
   expect(files.has(generationKey)).toBe(false);
   expect(
     await apiBackend.documentHttp.documents.queries.get(

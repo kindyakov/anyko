@@ -25,7 +25,9 @@ const unused = () => Promise.reject(new Error('UNUSED'));
 const unusedWorkInternal: WorksPorts['internal'] = {
   get: unused,
   documents: unused,
-  workForDocument: unused,
+  worksForDocument: unused,
+  pinPending: unused,
+  removeSource: unused,
   dirty: unused,
   touch: unused,
   event: unused,
@@ -53,7 +55,7 @@ function ports(calls: string[]): {
       internal: unusedWorkInternal,
       commands: {
         create: unused,
-        attachDocument: unused,
+        attachDocuments: unused,
         bumpRevision: (_scope, input) => {
           calls.push(`revision:${input.confirmed ? 'confirmed' : 'draft'}`);
           return Promise.resolve();

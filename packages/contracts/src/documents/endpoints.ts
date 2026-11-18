@@ -22,6 +22,9 @@ import {
 // Распознавание вне работы (термин глоссария). Неизвестный или не-UUID идентификатор даёт NOT_FOUND.
 const documentParams = workspaceParams.extend({ documentId: z.uuid() });
 const recognitionsPath = '/workspaces/:workspaceId/recognitions';
+const resultRevisionQuery = z.object({
+  revision: z.coerce.number<string | number>().int().positive().optional(),
+});
 const formatList = z
   .string()
   .max(sourceFormatSchema.options.join(',').length)
@@ -92,6 +95,7 @@ export const getDocumentResult = endpoint({
   method: 'GET',
   path: '/workspaces/:workspaceId/recognitions/:documentId/result',
   params: documentParams,
+  query: resultRevisionQuery,
   response: json(documentResultSchema),
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'NOT_READY'],
@@ -114,6 +118,7 @@ export const getDocumentImage = endpoint({
   method: 'GET',
   path: '/workspaces/:workspaceId/recognitions/:documentId/images/:index',
   params: documentParams.extend({ index: z.string() }),
+  query: resultRevisionQuery,
   response: fileDownload(),
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND'],
@@ -138,7 +143,7 @@ export const deleteDocument = endpoint({
   params: documentParams,
   response: json(deletingStatusSchema),
   status: 202,
-  errors: ['FORBIDDEN', 'NOT_FOUND'],
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'DOCUMENT_IN_USE'],
   invalid: 'NOT_FOUND',
   // Повтор после принятого удаления даёт NOT_FOUND, состояние остаётся тем же.
   idempotency: 'natural',

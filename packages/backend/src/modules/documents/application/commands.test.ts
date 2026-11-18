@@ -32,7 +32,7 @@ function store(overrides: Partial<DocumentStore>): DocumentStore {
     list: unused,
     pendingDeletions: unused,
     get: unused,
-    resultKey: unused,
+    readyResult: unused,
     remove: unused,
     deletion: unused,
     image: unused,

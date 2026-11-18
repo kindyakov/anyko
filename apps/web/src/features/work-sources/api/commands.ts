@@ -1,9 +1,16 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type Dispatch, type SetStateAction } from 'react';
 
-import { removeWorkDocument, uploadWorkDocument } from '@anyko/contracts/works';
+import {
+  attachWorkDocuments,
+  removeWorkDocument,
+  uploadWorkDocument,
+} from '@anyko/contracts/works';
 
-import { useRetryDocument } from '@/features/document-recognition';
+import {
+  invalidateDocumentCatalog,
+  useRetryDocument,
+} from '@/features/document-recognition';
 import { invalidateWork } from '@/features/works';
 import { callApi, newIdempotencyKey } from '@/lib/api/call';
 import { isUnauthorized } from '@/lib/api/errors';
@@ -33,6 +40,22 @@ export function useUploadWorkDocument(workspaceId: string, workId: string) {
         body: { file },
         idempotencyKey,
         timeoutMs: 60000,
+      }),
+    onSuccess: () =>
+      Promise.all([
+        invalidateWork(client, workspaceId, workId),
+        invalidateDocumentCatalog(client, workspaceId),
+      ]),
+  });
+}
+
+export function useAttachWorkDocuments(workspaceId: string, workId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (documentIds: string[]) =>
+      callApi(attachWorkDocuments, {
+        params: { workspaceId, workId },
+        body: { documentIds },
       }),
     onSuccess: () => invalidateWork(client, workspaceId, workId),
   });

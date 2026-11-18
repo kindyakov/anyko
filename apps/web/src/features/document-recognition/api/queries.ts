@@ -96,7 +96,7 @@ export function recognitionStatusQueryOptions(
 
 // Владелец документа задаёт адреса: документ работы читается через работу, документ распознавания — напрямую.
 export type DocumentOwner =
-  { kind: 'work'; workId: string } | { kind: 'recognition' };
+  { kind: 'work'; workId: string } | { kind: 'recognition'; revision?: number };
 
 export function documentResultQueryOptions(
   workspaceId: string,
@@ -104,12 +104,14 @@ export function documentResultQueryOptions(
   owner: DocumentOwner,
 ) {
   const workId = owner.kind === 'work' ? owner.workId : undefined;
+  const revision = owner.kind === 'recognition' ? owner.revision : undefined;
   return queryOptions({
-    queryKey: documentKeys.result(workspaceId, documentId, workId),
+    queryKey: documentKeys.result(workspaceId, documentId, workId, revision),
     queryFn: ({ signal }) =>
       workId === undefined
         ? callApi(getDocumentResult, {
             params: { workspaceId, documentId },
+            query: { revision },
             signal,
           })
         : callApi(getWorkDocumentResult, {

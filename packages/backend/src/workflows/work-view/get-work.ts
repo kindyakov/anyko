@@ -36,6 +36,7 @@ export const getWork =
               await deps.documents.internal.queries.get({
                 workspaceId: scope.workspaceId,
                 documentId: row.id,
+                revision: row.ocrRevision,
               }),
             );
           } catch (error) {

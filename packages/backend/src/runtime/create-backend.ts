@@ -32,6 +32,10 @@ import type {
 import { createArtifactRegistry } from '../modules/documents/infrastructure/artifact-store';
 import { createDeletionStore } from '../modules/documents/infrastructure/deletion-store';
 import { createMineruParser } from '../modules/documents/infrastructure/mineru';
+import {
+  createReadyResults,
+  lockDocumentRevisions,
+} from '../modules/documents/infrastructure/ready-results';
 import { createS3Storage } from '../modules/documents/infrastructure/s3-storage';
 import { createSourceCleanup } from '../modules/documents/infrastructure/source-cleanup';
 import { createDocumentsModule } from '../modules/documents/module';
@@ -77,7 +81,7 @@ import { createWorksModule } from '../modules/works/module';
 import { systemClock } from '../platform/clock';
 import { uuidV7 } from '../platform/ids';
 import type { JobRuntime } from '../platform/jobs';
-import { openTransaction } from '../platform/transactions';
+import { openTransaction, transactionHandle } from '../platform/transactions';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
 import type { WorkDependencies } from '../workflows/work-dependencies';
@@ -103,13 +107,13 @@ import {
 import {
   createDocumentUnitOfWork,
   finishDocumentDeletion,
-  requestDocumentDeletion,
 } from './documents/unit-of-work';
 import { createJobRegistry } from './jobs';
 import { createUnitOfWork } from './transactions';
 import {
   createResourceAwareIdempotencyStore,
   redactDeletedWorkResponses,
+  redactWorkUploadResponses,
 } from './works/idempotency';
 
 /**
@@ -277,8 +281,6 @@ export function createBackend(
     documents,
     locks,
     io,
-    assertNoDocumentWriters: (workspaceId, documentId, requestKey) =>
-      documentDeletions.assertNoWriters(workspaceId, documentId, requestKey),
     storage,
     logger,
   };
@@ -349,7 +351,11 @@ export function createBackend(
       workHttp: {
         works,
         views: createWorkView(workflows),
-        intake: createWorkIntake(workflows),
+        intake: createWorkIntake({
+          ...workflows,
+          lockDocumentRevisions,
+          redactWorkUploadResponses,
+        }),
         deletion: createWorkDeletionApi({
           works,
           processing: processingFacade,
@@ -357,7 +363,6 @@ export function createBackend(
           uow,
           clock: systemClock,
           audit,
-          removeDocument: requestDocumentDeletion,
           redactResponses: redactDeletedWorkResponses,
         }),
         review: createWorkReview(workflows),
@@ -384,10 +389,21 @@ export function createBackend(
     handle: object,
     workspaceId: string,
     documentId: string,
+    readyRevision?: number,
   ) => {
-    const work = works.in(openTransaction(handle)).internal;
-    const workId = await work.workForDocument(workspaceId, documentId);
-    if (workId) await work.event(workspaceId, workId, 'documents.changed');
+    const tx = openTransaction(handle);
+    const work = works.in(tx).internal;
+    const targets = await work.worksForDocument(workspaceId, documentId);
+    if (!targets.length) return;
+    if (
+      readyRevision !== undefined &&
+      (await createReadyResults(
+        transactionHandle<Pick<Database, '$queryRaw'>>(tx),
+      )(workspaceId, documentId, readyRevision))
+    )
+      await work.pinPending(workspaceId, documentId, readyRevision);
+    for (const workId of targets)
+      await work.event(workspaceId, workId, 'documents.changed');
   };
   const processing = createProcessingService(
     createProcessingStore(db, notifyWork),

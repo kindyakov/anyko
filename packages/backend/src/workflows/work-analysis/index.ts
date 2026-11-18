@@ -42,31 +42,54 @@ export function createWorkAnalysis(deps: WorkDependencies) {
     signal: AbortSignal,
   ) => {
     await step(run, { stage: 'parsing', documentId, status: 'running' });
-    let doc = await deps.documents.internal.queries.get({
-      workspaceId: run.workspaceId,
-      documentId,
-    });
-    if (doc.status === 'failed')
-      doc = await deps.documents.internal.commands.retry({
-        workspaceId: run.workspaceId,
+    const { workspaceId, workId } = run;
+    const load = async () => {
+      const source = (
+        await deps.works.internal.documents(workspaceId, workId)
+      ).find((row) => row.id === documentId && !row.deleted);
+      if (!source) throw new DocumentError('NOT_FOUND');
+      const revision = source.ocrRevision;
+      const doc = await deps.documents.internal.queries.get({
+        workspaceId,
         documentId,
-        actorId: 'work-pipeline',
-        correlationId: run.correlationId,
+        revision,
       });
-    while (doc.status === 'queued' || doc.status === 'running') {
+      return { revision, status: doc.status };
+    };
+    let source = await load();
+    if (source.status === 'failed' && source.revision === null) {
+      try {
+        await deps.documents.internal.commands.retry({
+          workspaceId,
+          documentId,
+          actorId: 'work-pipeline',
+          correlationId: run.correlationId,
+        });
+      } catch (error) {
+        if (
+          !(error instanceof DocumentError) ||
+          error.code !== 'RETRY_CONFLICT'
+        )
+          throw error;
+      }
+      source = await load();
+    }
+    while (source.status === 'queued' || source.status === 'running') {
       signal.throwIfAborted();
       await current(run);
       await delay(signal);
-      doc = await deps.documents.internal.queries.get({
-        workspaceId: run.workspaceId,
-        documentId,
-      });
+      source = await load();
     }
-    if (doc.status !== 'succeeded') throw new Error('PARSING_FAILED');
+    // Completion may commit between reading the link and the latest status.
+    if (source.status === 'succeeded' && source.revision === null)
+      source = await load();
+    if (source.status !== 'succeeded' || source.revision === null)
+      throw new Error('PARSING_FAILED');
     await step(run, { stage: 'parsing', documentId, status: 'succeeded' });
     return deps.documents.internal.queries.analysis({
-      workspaceId: run.workspaceId,
+      workspaceId,
       documentId,
+      revision: source.revision,
     });
   };
   return async (

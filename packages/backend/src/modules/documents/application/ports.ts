@@ -15,6 +15,7 @@ export interface DocumentView {
   createdAt: string;
   errorCode: string | null;
   processingRevision?: number;
+  readyRevision?: number | null;
 }
 export interface DocumentResult {
   markdown: string;
@@ -121,8 +122,16 @@ export interface DocumentStore {
       status: 'deleting' | 'needs-recovery';
     }[]
   >;
-  get(workspaceId: string, documentId: string): Promise<DocumentView | null>;
-  resultKey(workspaceId: string, documentId: string): Promise<string | null>;
+  get(
+    workspaceId: string,
+    documentId: string,
+    revision?: number | null,
+  ): Promise<DocumentView | null>;
+  readyResult(
+    workspaceId: string,
+    documentId: string,
+    revision?: number | null,
+  ): Promise<{ resultKey: string; revision: number } | null>;
   // Инициатор нужен журналу: удаление и событие записываются в одной транзакции.
   remove(
     workspaceId: string,
@@ -137,6 +146,7 @@ export interface DocumentStore {
     workspaceId: string,
     documentId: string,
     index: number,
+    revision?: number | null,
   ): Promise<{
     key: string;
     contentType: string;
@@ -149,6 +159,7 @@ export interface DocumentStore {
     documentId: string,
     actorId: string,
     correlationId: string,
+    replaceSucceeded?: boolean,
   ): Promise<DocumentView | null>;
 }
 

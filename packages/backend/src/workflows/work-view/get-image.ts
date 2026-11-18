@@ -17,10 +17,16 @@ export const getImage =
   ) => {
     scope.require('works.read');
     await requireWork(deps.works.queries, scope, workId);
-    await requireAttachedDocument(deps.works, scope, workId, documentId);
+    const source = await requireAttachedDocument(
+      deps.works,
+      scope,
+      workId,
+      documentId,
+    );
     return deps.documents.internal.queries.image({
       workspaceId: scope.workspaceId,
       documentId,
+      revision: source.ocrRevision,
       index,
     });
   };

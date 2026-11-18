@@ -1,4 +1,5 @@
 import { DocumentError } from '../errors';
+import type { InternalResultRef } from '../index';
 
 import type { DocumentDeps } from './ports';
 import { documentResultSchema } from './result-schema';
@@ -7,14 +8,19 @@ import { documentResultSchema } from './result-schema';
 // Помощник не выполняет право: его вызывают команды-запросы, которые уже проверили доступ.
 export const readArtifact =
   (deps: Pick<DocumentDeps, 'store' | 'storage'>) =>
-  async (input: { workspaceId: string; documentId: string }) => {
+  async (input: InternalResultRef) => {
     const found = await deps.store.get(input.workspaceId, input.documentId);
     if (!found) throw new DocumentError('NOT_FOUND');
-    const key = await deps.store.resultKey(input.workspaceId, input.documentId);
-    if (!key) throw new DocumentError('NOT_READY');
-    const bytes = await deps.storage.get(key);
+    const ready = await deps.store.readyResult(
+      input.workspaceId,
+      input.documentId,
+      input.revision,
+    );
+    if (!ready) throw new DocumentError('NOT_READY');
+    const bytes = await deps.storage.get(ready.resultKey);
     if (bytes.length > 5 * 1024 * 1024) throw new Error('INVALID_ARTIFACT');
-    return documentResultSchema.parse(
+    const result = documentResultSchema.parse(
       JSON.parse(new TextDecoder().decode(bytes)) as unknown,
     );
+    return { result, revision: ready.revision };
   };

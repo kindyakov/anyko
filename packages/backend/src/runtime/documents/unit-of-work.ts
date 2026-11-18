@@ -1,15 +1,15 @@
 import type { Database } from '@anyko/database';
 
 import { record } from '../../modules/audit';
-import type { DocumentStore } from '../../modules/documents';
+import { DocumentError, type DocumentStore } from '../../modules/documents';
 import { createDocumentCommands } from '../../modules/documents/infrastructure/commands';
 import { createDocumentReadModel } from '../../modules/documents/infrastructure/read-model';
 import { createProcessingCommands } from '../../modules/processing/infrastructure/commands';
-import { transactionHandle, type Tx } from '../../platform/transactions';
 
 type DeletionTransaction = Parameters<typeof createDocumentCommands>[0] &
   Parameters<typeof createProcessingCommands>[0] &
-  Parameters<typeof record>[0];
+  Parameters<typeof record>[0] &
+  Pick<Database, 'workDocument'>;
 
 async function removeDocument(
   tx: DeletionTransaction,
@@ -20,6 +20,8 @@ async function removeDocument(
   const commands = createDocumentCommands(tx);
   const exists = await commands.lock(workspaceId, documentId);
   if (!exists) return commands.isDeleted(workspaceId, documentId);
+  if (await tx.workDocument.count({ where: { workspaceId, documentId } }))
+    throw new DocumentError('DOCUMENT_IN_USE');
   await commands.markDeleted(workspaceId, documentId);
   await createProcessingCommands(tx).cancelDocument(workspaceId, documentId);
   await record(tx, {
@@ -29,20 +31,6 @@ async function removeDocument(
     target: { kind: 'document', id: documentId },
   });
   return true;
-}
-
-export function requestDocumentDeletion(
-  tx: Tx,
-  workspaceId: string,
-  documentId: string,
-  actorId: string,
-) {
-  return removeDocument(
-    transactionHandle<DeletionTransaction>(tx),
-    workspaceId,
-    documentId,
-    actorId,
-  );
 }
 
 /** Binds module-owned commands to the same short database transaction. */
@@ -81,7 +69,13 @@ export function createDocumentUnitOfWork(db: Database): DocumentStore {
       if (!found) throw new Error('REGISTERED_DOCUMENT_MISSING');
       return found;
     },
-    async retry(workspaceId, documentId, actorId, correlationId) {
+    async retry(
+      workspaceId,
+      documentId,
+      actorId,
+      correlationId,
+      replaceSucceeded,
+    ) {
       const retried = await db.$transaction(async (tx) => {
         const exists = await createDocumentCommands(tx).lock(
           workspaceId,
@@ -94,7 +88,7 @@ export function createDocumentUnitOfWork(db: Database): DocumentStore {
         );
         return createProcessingCommands(tx).retry(
           { workspaceId, documentId, actorId, correlationId },
-          document?.errorCode === 'OCR_RETRY_REQUIRED',
+          replaceSucceeded || document?.errorCode === 'OCR_RETRY_REQUIRED',
         );
       });
       return retried ? reads.get(workspaceId, documentId) : null;

@@ -118,14 +118,16 @@ export function DocumentRow({
           labels[document.status]}
       </StatusPill>
       <div className="flex flex-wrap gap-2">
-        {document.status === 'failed' && (
+        {(document.status === 'failed' || document.status === 'succeeded') && (
           <DocumentRetryButton
             loading={retrying}
             disabled={disabled}
             onRetry={onRetry}
           />
         )}
-        {(document.status === 'succeeded' || requiresRetry) && (
+        {(document.status === 'succeeded' ||
+          document.readyRevision != null ||
+          requiresRetry) && (
           <Button variant="secondary" size="sm" onClick={onOpen}>
             <Eye size={15} />
             Открыть

@@ -59,21 +59,23 @@ export function documentRoutes(
       await documents.queries.get(scope, brandDocumentId(params.documentId)),
     ),
   }));
-  route(app, getDocumentResult, async ({ scope, params, link }) => {
+  route(app, getDocumentResult, async ({ scope, params, query, link }) => {
     const result = await documents.queries.result(
       scope,
       brandDocumentId(params.documentId),
+      query.revision,
     );
     return {
       markdown: result.markdown,
       processorVersion: result.processorVersion,
       images: result.images.map((image) => ({
         path: image.path,
-        url: link(getDocumentImage, {
-          workspaceId: scope.workspaceId,
-          documentId: params.documentId,
-          index: String(image.index),
-        }),
+        url:
+          link(getDocumentImage, {
+            workspaceId: scope.workspaceId,
+            documentId: params.documentId,
+            index: String(image.index),
+          }) + `?revision=${String(result.revision)}`,
       })),
     };
   });
@@ -87,11 +89,12 @@ export function documentRoutes(
       headers: sourceFileHeaders(source),
     };
   });
-  route(app, getDocumentImage, async ({ scope, params }) => {
+  route(app, getDocumentImage, async ({ scope, params, query }) => {
     const image = await documents.queries.image(
       scope,
       brandDocumentId(params.documentId),
       imageIndex(params.index),
+      query.revision,
     );
     return {
       bytes: image.bytes,

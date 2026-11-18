@@ -59,6 +59,7 @@ test('the result of a work document answers 200 with image links through the wor
     return Promise.resolve({
       markdown: '# Результат',
       processorVersion: 'fixture',
+      revision: 1,
       images: [{ path: 'images/a.png', index: 0 }],
     });
   });

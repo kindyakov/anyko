@@ -138,6 +138,26 @@ export const uploadWorkDocument = endpoint({
   idempotency: 'key',
 });
 
+export const attachWorkDocuments = endpoint({
+  summary: 'Добавляет выбранные исходные документы из каталога в работу',
+  method: 'POST',
+  path: '/workspaces/:workspaceId/works/:workId/attach',
+  params: workParams,
+  body: json(z.strictObject({ documentIds: z.array(z.uuid()).min(1).max(20) })),
+  response: json(z.object({ status: z.literal('attached') })),
+  status: 200,
+  errors: [
+    'FORBIDDEN',
+    'NOT_FOUND',
+    'INVALID_WORK_INPUT',
+    'NOT_READY',
+    'WORK_BUSY',
+    'CLEANUP_PENDING',
+  ],
+  invalid: 'INVALID_WORK_INPUT',
+  idempotency: 'natural',
+});
+
 // Исходный документ работы: документ должен принадлежать этой работе, иначе NOT_FOUND.
 export const getWorkDocumentSource = endpoint({
   summary: 'Скачивает исходный документ работы',
@@ -202,7 +222,7 @@ export const analyzeWork = endpoint({
 });
 
 export const removeWorkDocument = endpoint({
-  summary: 'Принимает запрос на удаление исходного документа из работы',
+  summary: 'Убирает связь исходного документа с работой',
   method: 'DELETE',
   path: '/workspaces/:workspaceId/works/:workId/documents/:documentId',
   params: workDocumentParams,

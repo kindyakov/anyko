@@ -92,7 +92,7 @@ export function createProcessingStore(
           { id: string }[]
         >`SELECT id FROM "SourceDocument" WHERE id=${claim.documentId} AND "workspaceId"=${claim.workspaceId} AND "deletedAt" IS NULL FOR UPDATE`;
         if (documents.length !== 1) return false;
-        const result = await tx.run.updateMany({
+        const result = await tx.run.updateManyAndReturn({
           where: {
             ...activeAttempt(
               claim.workspaceId,
@@ -109,12 +109,19 @@ export function createProcessingStore(
             attemptToken: null,
             leaseUntil: null,
           },
+          select: { revision: true },
         });
-        if (result.count === 1) {
+        const [completed] = result;
+        if (completed) {
           await tx.resultUpload.deleteMany({ where: { key: resultKey } });
-          await notifyWork?.(tx, claim.workspaceId, claim.documentId);
+          await notifyWork?.(
+            tx,
+            claim.workspaceId,
+            claim.documentId,
+            completed.revision ?? undefined,
+          );
         }
-        return result.count === 1;
+        return completed !== undefined;
       });
     },
     async fail(claim, errorCode) {

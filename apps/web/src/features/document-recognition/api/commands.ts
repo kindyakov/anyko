@@ -23,7 +23,10 @@ const deletionPollMs = 500;
 const deletionDeadlineMs = 120_000;
 const concurrentDocuments = 4;
 
-function refreshList(client: QueryClient, workspaceId: string) {
+export function invalidateDocumentCatalog(
+  client: QueryClient,
+  workspaceId: string,
+) {
   return client.invalidateQueries({ queryKey: documentKeys.list(workspaceId) });
 }
 
@@ -52,7 +55,7 @@ export function useUploadDocument(
       }),
     onSuccess: ({ document }) => {
       track(document);
-      return refreshList(client, workspaceId);
+      return invalidateDocumentCatalog(client, workspaceId);
     },
   });
 }
@@ -65,7 +68,10 @@ export function useRetryDocument(
   return useMutation({
     mutationFn: (documentId: string) => requestRetry(workspaceId, documentId),
     onSuccess: () =>
-      Promise.all([refreshList(client, workspaceId), refreshWork?.()]),
+      Promise.all([
+        invalidateDocumentCatalog(client, workspaceId),
+        refreshWork?.(),
+      ]),
   });
 }
 
@@ -134,7 +140,7 @@ export function useRecognitionAction(
       );
       if (!requested.succeeded.length) return requested;
       // Сначала отправляем все удаления. Список показывает принятые операции, пока мы ждём их завершения.
-      await refreshList(client, workspaceId);
+      await invalidateDocumentCatalog(client, workspaceId);
       const deadline = Date.now() + deletionDeadlineMs;
       const completed = await runForDocuments(
         requested.succeeded,
@@ -146,7 +152,7 @@ export function useRecognitionAction(
         failed: [...requested.failed, ...completed.failed],
       };
     },
-    onSettled: () => refreshList(client, workspaceId),
+    onSettled: () => invalidateDocumentCatalog(client, workspaceId),
   });
 }
 

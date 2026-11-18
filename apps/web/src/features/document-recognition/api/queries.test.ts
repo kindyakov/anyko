@@ -29,6 +29,31 @@ test('a work document result is read through its work, a recognition result dire
   ]);
 });
 
+test('opening a newly ready recognition revision reads it even when the old result is cached', async () => {
+  const exchanges = serveApi(({ url }) =>
+    json(200, {
+      ...result,
+      markdown: url.endsWith('revision=1')
+        ? 'Первый результат'
+        : 'Второй результат',
+    }),
+  );
+  const client = createQueryClient();
+  const open = (revision: number) =>
+    client.query(
+      documentResultQueryOptions(workspaceId, 'doc-1', {
+        kind: 'recognition',
+        revision,
+      }),
+    );
+  expect((await open(1)).markdown).toBe('Первый результат');
+  expect((await open(2)).markdown).toBe('Второй результат');
+  expect(exchanges.map(({ url }) => url)).toEqual([
+    `/api/v1/workspaces/${workspaceId}/recognitions/doc-1/result?revision=1`,
+    `/api/v1/workspaces/${workspaceId}/recognitions/doc-1/result?revision=2`,
+  ]);
+});
+
 test('the original is read as a file through its owning resource', async () => {
   const exchanges = serveApi(() => new Response('DOCX fixture'));
   const client = createQueryClient();

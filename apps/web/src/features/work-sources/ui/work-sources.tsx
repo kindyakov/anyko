@@ -1,5 +1,5 @@
 'use client';
-import { Check, Eye, Sparkles, Trash2, X } from 'lucide-react';
+import { Check, Eye, FolderOpen, Sparkles, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 
 import { type WorkView } from '@anyko/contracts/works';
@@ -22,8 +22,11 @@ import {
   recognitionRetryCode,
 } from '@/features/document-recognition';
 import type { WorkStage } from '@/features/works';
+import { useWorkspaceId } from '@/lib/api/workspace';
 
 import type { Upload } from '../api/commands';
+
+import { DocumentPicker } from './document-picker';
 
 type Document = WorkView['documents'][number];
 
@@ -61,6 +64,8 @@ export function WorkSources({
   retryingId: string | undefined;
   onAnalyze: () => void;
 }) {
+  const workspaceId = useWorkspaceId();
+  const [picking, setPicking] = useState(false);
   const [deleting, setDeleting] = useState<Document>();
   const [removing, setRemoving] = useState(false);
   const uploading = uploads.some((item) => item.state === 'uploading');
@@ -120,6 +125,16 @@ export function WorkSources({
               {view.documents.length} из 20
             </span>
           </h2>
+          <Button
+            variant="secondary"
+            disabled={locked || busy || full}
+            onClick={() => {
+              setPicking(true);
+            }}
+          >
+            <FolderOpen size={16} aria-hidden />
+            Добавить из каталога
+          </Button>
         </div>
         {!view.documents.length ? (
           <p className="glass text-muted rounded-2xl border border-dashed border-white/10 px-6 py-8 text-center text-sm">
@@ -179,8 +194,8 @@ export function WorkSources({
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={`Удалить ${doc.filename}`}
-                      title="Удалить"
+                      aria-label={`Убрать ${doc.filename} из работы`}
+                      title="Убрать из работы"
                       disabled={busy || locked}
                       onClick={() => {
                         setDeleting(doc);
@@ -195,6 +210,16 @@ export function WorkSources({
           </ul>
         )}
       </section>
+      {picking && (
+        <DocumentPicker
+          workspaceId={workspaceId}
+          workId={view.work.id}
+          attached={view.documents}
+          onClose={() => {
+            setPicking(false);
+          }}
+        />
+      )}
       {view.documents.length > 0 && (
         <section className="glass flex flex-col gap-5 rounded-3xl border border-white/[0.08] bg-[radial-gradient(120%_160%_at_0%_0%,#2a0a1288,transparent_60%)] p-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -228,8 +253,8 @@ export function WorkSources({
       )}
       <Confirm
         open={!!deleting}
-        title={`Удалить «${deleting?.filename ?? ''}»?`}
-        confirmLabel="Удалить файл"
+        title={`Убрать «${deleting?.filename ?? ''}» из работы?`}
+        confirmLabel="Убрать из работы"
         pending={removing}
         onConfirm={() => {
           if (!deleting) return;
@@ -243,9 +268,8 @@ export function WorkSources({
           setDeleting(undefined);
         }}
       >
-        Файл и всё, что из него извлечено, будут удалены. Сформированные
-        документы этой работы тоже очистятся — их можно будет сформировать
-        заново.
+        Файл и распознавание сохранятся в каталоге и других работах. Сведения и
+        сформированные документы этой работы очистятся.
       </Confirm>
     </div>
   );

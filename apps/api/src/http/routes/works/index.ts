@@ -16,6 +16,7 @@ import type {
 import type { WorksModule } from '@anyko/backend/works';
 import {
   analyzeWork,
+  attachWorkDocuments,
   confirmWork,
   createWork,
   deleteWork,
@@ -117,6 +118,13 @@ export function worksRoutes(
       brandDocumentId(params.documentId),
     );
     return { bytes: source.bytes, headers: sourceFileHeaders(source) };
+  });
+  route(app, attachWorkDocuments, async ({ scope, params, body }) => {
+    await intake.attachDocuments(scope, {
+      workId: brandWorkId(params.workId),
+      documentIds: body.documentIds,
+    });
+    return { status: 'attached' as const };
   });
   route(app, getWorkDocumentResult, async ({ scope, params, link }) => {
     const result = await views.result(

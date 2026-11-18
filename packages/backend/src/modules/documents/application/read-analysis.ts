@@ -1,4 +1,4 @@
-import type { DocumentAnalysis } from '../index';
+import type { DocumentAnalysis, InternalResultRef } from '../index';
 
 import { checksum } from './checksum';
 import type { DocumentDeps } from './ports';
@@ -8,11 +8,8 @@ import { readArtifact } from './read-artifact';
 // Вызывает только процесс исполнения (worker), право проверено при постановке запуска.
 export const readAnalysis = (deps: Pick<DocumentDeps, 'store' | 'storage'>) => {
   const artifact = readArtifact(deps);
-  return async (input: {
-    workspaceId: string;
-    documentId: string;
-  }): Promise<DocumentAnalysis> => {
-    const result = await artifact(input);
+  return async (input: InternalResultRef): Promise<DocumentAnalysis> => {
+    const { result } = await artifact(input);
     const images = [];
     for (const image of result.images) {
       const bytes = await deps.storage.get(image.key);

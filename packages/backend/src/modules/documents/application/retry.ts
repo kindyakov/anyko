@@ -6,17 +6,21 @@ import type { DocumentDeps, DocumentView } from './ports';
 
 // Повтор распознавания неуспешного документа: новая попытка ставится в очередь, старая не возвращается.
 export const retryDocument = (deps: Pick<DocumentDeps, 'store'>) => {
-  const internal = async (input: {
-    workspaceId: string;
-    documentId: string;
-    actorId: string;
-    correlationId: string;
-  }): Promise<DocumentView> => {
+  const internal = async (
+    input: {
+      workspaceId: string;
+      documentId: string;
+      actorId: string;
+      correlationId: string;
+    },
+    replaceSucceeded = false,
+  ): Promise<DocumentView> => {
     const result = await deps.store.retry(
       input.workspaceId,
       input.documentId,
       input.actorId,
       input.correlationId,
+      replaceSucceeded,
     );
     if (!result) throw new DocumentError('RETRY_CONFLICT');
     return result;
@@ -29,12 +33,15 @@ export const retryDocument = (deps: Pick<DocumentDeps, 'store'>) => {
       correlationId: string,
     ) => {
       scope.require('recognitions.use');
-      return internal({
-        workspaceId: scope.workspaceId,
-        documentId,
-        actorId: scope.userId,
-        correlationId,
-      });
+      return internal(
+        {
+          workspaceId: scope.workspaceId,
+          documentId,
+          actorId: scope.userId,
+          correlationId,
+        },
+        true,
+      );
     },
   };
 };

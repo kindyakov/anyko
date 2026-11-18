@@ -21,12 +21,6 @@ export function createWorkDeletionApi(deps: {
     workId: string,
     documentIds: string[],
   ): Promise<void>;
-  removeDocument(
-    tx: Tx,
-    workspaceId: string,
-    documentId: string,
-    actorId: string,
-  ): Promise<boolean>;
 }) {
   return {
     async request(
@@ -52,17 +46,14 @@ export function createWorkDeletionApi(deps: {
           await work.internal.requestDeletion(
             workspaceId,
             workId,
-            documents.map(({ id }) => id),
+            [],
             deps.clock.now(),
           );
-          for (const { id } of documents)
-            if (!(await deps.removeDocument(tx, workspaceId, id, scope.userId)))
-              throw new Error('WORK_SOURCE_MISSING');
           await deps.redactResponses(
             tx,
             workspaceId,
             workId,
-            documents.map(({ id }) => id),
+            documents.filter(({ uploaded }) => uploaded).map(({ id }) => id),
           );
           await deps.audit.in(tx).commands.record({
             workspaceId,

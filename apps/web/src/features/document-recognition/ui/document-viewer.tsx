@@ -62,6 +62,7 @@ function documentLinks(workspaceId: string, document: ViewedDocument) {
         }),
     };
   }
+  const revision = document.owner.revision;
   return {
     source: endpointUrl(getDocumentSource, {
       params: { workspaceId, documentId },
@@ -69,6 +70,7 @@ function documentLinks(workspaceId: string, document: ViewedDocument) {
     image: (index: number) =>
       endpointUrl(getDocumentImage, {
         params: { workspaceId, documentId, index: String(index) },
+        query: { revision },
       }),
   };
 }

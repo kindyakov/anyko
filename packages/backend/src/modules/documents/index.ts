@@ -45,6 +45,7 @@ export interface DocumentSourceFile {
 export interface DocumentResultView {
   markdown: string;
   processorVersion: string;
+  revision: number;
   images: { path: string; index: number }[];
 }
 
@@ -79,6 +80,9 @@ export interface InternalDocumentRef {
   workspaceId: string;
   documentId: string;
 }
+export interface InternalResultRef extends InternalDocumentRef {
+  revision?: number | null;
+}
 
 // Распознавание вне работы: каждая команда и запрос проверяют recognitions.use (ADR 0009).
 export interface DocumentsCommands {
@@ -101,6 +105,7 @@ export interface DocumentsQueries {
   result(
     scope: WorkspaceScope,
     documentId: DocumentId,
+    revision?: number,
   ): Promise<DocumentResultView>;
   source(
     scope: WorkspaceScope,
@@ -110,6 +115,7 @@ export interface DocumentsQueries {
     scope: WorkspaceScope,
     documentId: DocumentId,
     index: number,
+    revision?: number,
   ): Promise<DocumentImage>;
   deletion(
     scope: WorkspaceScope,
@@ -126,13 +132,11 @@ export interface DocumentsInternal {
     ): Promise<DocumentView>;
   };
   readonly queries: {
-    get(input: InternalDocumentRef): Promise<DocumentView>;
-    result(input: InternalDocumentRef): Promise<DocumentResultView>;
+    get(input: InternalResultRef): Promise<DocumentView>;
+    result(input: InternalResultRef): Promise<DocumentResultView>;
     source(input: InternalDocumentRef): Promise<DocumentSourceFile>;
-    image(
-      input: InternalDocumentRef & { index: number },
-    ): Promise<DocumentImage>;
-    analysis(input: InternalDocumentRef): Promise<DocumentAnalysis>;
+    image(input: InternalResultRef & { index: number }): Promise<DocumentImage>;
+    analysis(input: InternalResultRef): Promise<DocumentAnalysis>;
   };
 }
 

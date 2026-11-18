@@ -1,6 +1,6 @@
 import type { Tx } from '../../platform/transactions';
 
-import { attachDocument } from './application/attach-document';
+import { attachDocuments } from './application/attach-document';
 import { bumpRevision } from './application/bump-revision';
 import { createWork } from './application/create-work';
 import { findWork } from './application/find-work';
@@ -30,7 +30,7 @@ export function createWorksModule(deps: WorksDeps): WorksModule {
         newId: deps.newId,
         knownPackage: deps.knownPackage,
       }),
-      attachDocument: attachDocument({ store }),
+      attachDocuments: attachDocuments({ store }),
       bumpRevision: bumpRevision({ store }),
       recordEvent: recordEvent({ store }),
     },

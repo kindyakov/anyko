@@ -1,11 +1,12 @@
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import { WorkError, type WorksModule } from '../../modules/works';
-import { brandDocumentId, type WorkId } from '../../platform/ids';
+import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
 import { requireCleanSources, requireWork, workLockKey } from '../work-guards';
 
-const sourceLimit = 20;
+import { workSourceLimit } from './attach-documents';
+import type { WorkIntakeDeps } from './deps';
 
 // Загрузка исходника в работу. Файл и хранилище пишутся до транзакции; привязка к работе — в транзакции.
 export const uploadDocument =
@@ -14,6 +15,7 @@ export const uploadDocument =
     works: WorksModule;
     documents: DocumentsModule;
     locks: ResourceLocks;
+    lockDocumentRevisions: WorkIntakeDeps['lockDocumentRevisions'];
   }) =>
   async (
     scope: WorkspaceScope,
@@ -35,22 +37,39 @@ export const uploadDocument =
           scope,
           input.workId,
         );
-        if (sources.length >= sourceLimit)
+        if (sources.length >= workSourceLimit)
           throw new WorkError('INVALID_WORK_INPUT');
+        // New storage keys are scoped to the work. The separator is forbidden in HTTP headers.
+        const legacy = sources.some(
+          (source) => source.uploaded && source.requestKey === input.requestKey,
+        );
+        const requestKey = legacy
+          ? input.requestKey
+          : `work\u001f${input.workId}\u001f${input.requestKey}`;
         const document = await deps.documents.internal.commands.upload({
           workspaceId: scope.workspaceId,
           actorId: scope.userId,
           filename: input.filename,
           bytes: input.bytes,
           correlationId: input.correlationId,
-          requestKey: input.requestKey,
+          requestKey,
         });
-        await deps.uow.run((tx) =>
-          deps.works.in(tx).commands.attachDocument(scope, {
+        await deps.uow.run(async (tx) => {
+          const documents = await deps.lockDocumentRevisions(
+            tx,
+            scope.workspaceId,
+            [document.id],
+            true,
+          );
+          if (!documents.length) throw new WorkError('NOT_FOUND');
+          await deps.works.in(tx).commands.attachDocuments(scope, {
             workId: input.workId,
-            documentId: brandDocumentId(document.id),
-          }),
-        );
+            documents: documents.map((source) => ({
+              ...source,
+              uploaded: true,
+            })),
+          });
+        });
         return document;
       },
     );

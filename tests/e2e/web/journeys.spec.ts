@@ -236,6 +236,63 @@ test('recognition reports a failed file and allows retry', async ({ page }) => {
   await expect(row).toBeVisible();
 });
 
+test('the catalog picker attaches sources selected on different pages', async ({
+  page,
+}) => {
+  await page.goto('/sign-in');
+  await signIn(page, 'OWNER');
+  await page.getByRole('button', { name: 'Новая работа' }).click();
+  const creation = page.getByRole('dialog', { name: 'Новая работа' });
+  await creation.getByLabel('Название работы').fill('E2E подбор из каталога');
+  await creation.getByRole('button', { name: 'Создать и открыть' }).click();
+  const open = page.getByRole('button', { name: 'Добавить из каталога' });
+  await open.click();
+  const picker = page.getByRole('dialog', { name: 'Добавить из каталога' });
+  const filtered = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname.endsWith('/recognitions') &&
+      url.searchParams.get('q') === 'каталог E2E'
+    );
+  });
+  await picker
+    .getByRole('searchbox', { name: 'Поиск файлов по имени' })
+    .fill('каталог E2E');
+  expect((await filtered).status()).toBe(200);
+  await picker
+    .getByRole('checkbox', { name: 'Выбрать Каталог E2E 50.pdf' })
+    .click();
+  await picker.getByRole('button', { name: 'Далее' }).click();
+  await expect(picker.getByText('Страница 2')).toBeVisible();
+  await picker
+    .getByRole('checkbox', { name: 'Выбрать Каталог E2E 00.pdf' })
+    .click();
+  await picker.getByRole('button', { name: 'Форматы' }).click();
+  await page.getByRole('checkbox', { name: 'PNG' }).check();
+  await expect(
+    picker.getByText('Файлы по этим фильтрам не найдены.'),
+  ).toBeVisible();
+  await page.getByRole('checkbox', { name: 'PDF', exact: true }).check();
+  await expect(
+    picker.getByRole('checkbox', { name: 'Выбрать Каталог E2E 50.pdf' }),
+  ).toBeChecked();
+  await page.keyboard.press('Escape');
+  await expect(picker.getByText('Выбрано: 2 из 20')).toBeVisible();
+  await picker.getByRole('button', { name: 'Добавить файлы' }).click();
+  await expect(picker).toBeHidden();
+  const sources = page.getByRole('region', { name: /Файлы работы/ });
+  await expect(sources.getByText('Каталог E2E 50.pdf')).toBeVisible();
+  await expect(sources.getByText('Каталог E2E 00.pdf')).toBeVisible();
+  await open.click();
+  await picker
+    .getByRole('searchbox', { name: 'Поиск файлов по имени' })
+    .fill('Каталог E2E 00');
+  await expect(picker.getByText('Уже в работе')).toBeVisible();
+  await expect(
+    picker.getByRole('checkbox', { name: 'Выбрать Каталог E2E 00.pdf' }),
+  ).toBeDisabled();
+});
+
 test('owner switches areas without seeing the other area works; a member cannot open a foreign area', async ({
   page,
 }) => {

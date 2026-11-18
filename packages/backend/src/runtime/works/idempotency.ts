@@ -9,7 +9,10 @@ import {
   idempotencyStoreFor,
   redactResourceResponses,
 } from '../../modules/idempotency/infrastructure/store';
-import { lockLiveWorkForResponse } from '../../modules/works/infrastructure/deletion-store';
+import {
+  lockLiveWorkForResponse,
+  lockLiveWorkUploadForResponse,
+} from '../../modules/works/infrastructure/deletion-store';
 import { uuidV7 } from '../../platform/ids';
 import { type Tx, type UnitOfWork } from '../../platform/transactions';
 
@@ -21,6 +24,14 @@ const unavailable = () => ({
   status: 404,
   body: { error: { code: 'NOT_FOUND', requestId: uuidV7() } },
 });
+const workUploadCommand =
+  'POST /workspaces/:workspaceId/works/:workId/documents';
+const workUploadResponses = (ids: string[]) =>
+  ids.map((id) => ({
+    path: ['document', 'id'],
+    id,
+    command: workUploadCommand,
+  }));
 
 export function createResourceAwareIdempotencyStore(
   db: Database,
@@ -37,11 +48,17 @@ export function createResourceAwareIdempotencyStore(
         const visible = resource.work
           ? await lockLiveWorkForResponse(tx, ref.workspaceId, resource.work.id)
           : resource.document &&
-            (await lockLiveDocumentForResponse(
-              tx,
-              ref.workspaceId,
-              resource.document.id,
-            ));
+            (ref.command === workUploadCommand
+              ? await lockLiveWorkUploadForResponse(
+                  tx,
+                  ref.workspaceId,
+                  resource.document.id,
+                )
+              : await lockLiveDocumentForResponse(
+                  tx,
+                  ref.workspaceId,
+                  resource.document.id,
+                ));
         return idempotencyStoreFor(tx).complete(
           ref,
           token,
@@ -62,10 +79,20 @@ export function redactDeletedWorkResponses(
   return redactResourceResponses(
     tx,
     workspaceId,
-    [
-      { path: ['work', 'id'], id: workId },
-      ...documentIds.map((id) => ({ path: ['document', 'id'], id })),
-    ],
+    [{ path: ['work', 'id'], id: workId }, ...workUploadResponses(documentIds)],
+    unavailable(),
+  );
+}
+
+export function redactWorkUploadResponses(
+  tx: Tx,
+  workspaceId: string,
+  documentIds: string[],
+) {
+  return redactResourceResponses(
+    tx,
+    workspaceId,
+    workUploadResponses(documentIds),
     unavailable(),
   );
 }

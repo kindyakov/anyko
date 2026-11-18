@@ -8,7 +8,7 @@ import { createWorkDeletionStore } from './deletion-store';
 
 type Connection = Pick<
   Database,
-  'work' | 'workDocument' | 'workEvent' | 'workDeletion'
+  'work' | 'workDocument' | 'workEvent' | 'workDeletion' | '$queryRaw'
 >;
 // Хранилище внутри транзакции действия: токен превращается в клиент транзакции драйвера.
 export function worksStoreFor(tx: Tx): WorkStore {
@@ -99,36 +99,77 @@ export function createWorkStore(
         },
       });
     },
-    async attach(workspaceId, workId, documentId) {
-      const row = await db.workDocument.upsert({
-        where: { documentId },
-        create: { workspaceId, workId, documentId },
-        update: {},
+    async attach(workspaceId, workId, documents) {
+      const { count } = await db.workDocument.createMany({
+        data: documents.map(({ id, revision, uploaded = false }) => ({
+          workspaceId,
+          workId,
+          documentId: id,
+          ocrRevision: revision,
+          uploaded,
+        })),
+        skipDuplicates: true,
       });
-      if (row.workspaceId !== workspaceId || row.workId !== workId)
-        throw new Error('DOCUMENT_ALREADY_ATTACHED');
+      return count;
     },
     async documents(workspaceId, workId) {
       return (
         await db.workDocument.findMany({
           where: { workspaceId, workId },
-          include: { document: true },
+          select: {
+            document: {
+              select: {
+                id: true,
+                filename: true,
+                deletedAt: true,
+                requestKey: true,
+              },
+            },
+            ocrRevision: true,
+            removed: true,
+            uploaded: true,
+          },
           orderBy: { documentId: 'asc' },
         })
-      ).map(({ document }) => ({
+      ).map(({ document, ocrRevision, removed, uploaded }) => ({
         id: document.id,
         filename: document.filename,
-        sourceKey: document.sourceKey,
+        deleted: removed || document.deletedAt !== null,
+        ocrRevision,
+        uploaded,
         requestKey: document.requestKey,
-        deleted: document.deletedAt !== null,
       }));
     },
-    async workForDocument(workspaceId, documentId) {
-      const row = await db.workDocument.findFirst({
-        where: { workspaceId, documentId },
-        select: { workId: true },
+    async worksForDocument(workspaceId, documentId) {
+      // Hold Work before touching links or events. Cleanup deletes Work and cascades to links.
+      const rows = await db.$queryRaw<{ workId: string }[]>`
+        SELECT work.id AS "workId"
+        FROM "WorkDocument" link
+        JOIN "Work" work ON work."workspaceId" = link."workspaceId" AND work.id = link."workId"
+        WHERE link."workspaceId" = ${workspaceId} AND link."documentId" = ${documentId}
+          AND NOT link.removed AND work."deletedAt" IS NULL
+        ORDER BY work.id FOR KEY SHARE OF work
+      `;
+      return rows.map(({ workId }) => workId);
+    },
+    async pinPending(workspaceId, documentId, revision) {
+      await db.workDocument.updateMany({
+        where: {
+          workspaceId,
+          documentId,
+          removed: false,
+          ocrRevision: null,
+          work: { deletedAt: null },
+        },
+        data: { ocrRevision: revision },
       });
-      return row?.workId ?? null;
+    },
+    async removeSource(workspaceId, workId, documentId) {
+      const result = await db.workDocument.updateMany({
+        where: { workspaceId, workId, documentId, removed: false },
+        data: { removed: true },
+      });
+      return result.count === 1;
     },
     async touch(workspaceId, id, input) {
       const row = await db.work.findFirstOrThrow({
@@ -170,7 +211,14 @@ export function createWorkStore(
         .findMany({
           where: {
             deletedAt: null,
-            documents: { some: { document: { deletedAt: { not: null } } } },
+            documents: {
+              some: {
+                OR: [
+                  { removed: true },
+                  { document: { deletedAt: { not: null } } },
+                ],
+              },
+            },
           },
           select: { workspaceId: true, id: true },
           take: 20,
@@ -181,7 +229,11 @@ export function createWorkStore(
     },
     async detachDeleted(workspaceId, workId) {
       await db.workDocument.deleteMany({
-        where: { workspaceId, workId, document: { deletedAt: { not: null } } },
+        where: {
+          workspaceId,
+          workId,
+          OR: [{ removed: true }, { document: { deletedAt: { not: null } } }],
+        },
       });
     },
   };

@@ -97,7 +97,7 @@ model SourceDocument {
  deletedAt DateTime?
  purgedAt DateTime?
  runs Run[]
- workDocument WorkDocument?
+ workDocuments WorkDocument[]
  @@unique([workspaceId,id])
  @@unique([workspaceId,requestKey])
  @@index([workspaceId,createdAt])
@@ -145,13 +145,18 @@ model WorkDeletion {
  @@index([workspaceId,completedAt])
 }
 model WorkDocument {
- documentId String @id
+ documentId String
  workspaceId String
  workId String
+ ocrRevision Int?
+ removed Boolean @default(false)
+ uploaded Boolean @default(false)
  work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
  document SourceDocument @relation(fields:[workspaceId,documentId],references:[workspaceId,id],onDelete:Restrict)
+ ocrRun Run? @relation(fields:[workspaceId,documentId,ocrRevision],references:[workspaceId,documentId,revision],onDelete:Restrict)
+ @@id([workId,documentId])
  @@index([workspaceId,workId])
- @@unique([workspaceId,documentId])
+ @@index([workspaceId,documentId])
 }
 model WorkFacts {
  workId String @id
@@ -391,6 +396,7 @@ model Run {
  steps RunStep[]
  attemptHistory RunAttempt[]
  outbox RunOutbox?
+ pinnedSources WorkDocument[]
  @@unique([workspaceId,id])
  @@unique([workspaceId,documentId,revision])
  @@index([workspaceId,documentId,createdAt])

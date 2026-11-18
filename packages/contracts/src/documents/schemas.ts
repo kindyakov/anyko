@@ -22,6 +22,7 @@ export const documentSchema = z.object({
   errorCode: z.string().nullable().optional(),
   errorMessage: z.string().optional(),
   processingRevision: z.number().int().positive().optional(),
+  readyRevision: z.number().int().positive().nullable().optional(),
 });
 export const documentResponseSchema = z.object({ document: documentSchema });
 export const documentsResponseSchema = cursorResponseSchema(documentSchema, {

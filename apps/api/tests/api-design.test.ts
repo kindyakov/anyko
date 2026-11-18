@@ -31,7 +31,7 @@ const singletons = new Set([
   'deletion',
   'llm',
 ]);
-const actions = new Set(['analyze', 'confirm', 'generate', 'retry']);
+const actions = new Set(['analyze', 'attach', 'confirm', 'generate', 'retry']);
 const globals = new Map([
   ['GET /session', 'Сессия перечисляет области до выбора текущей области'],
   ['GET /document-packages', 'Один каталог шаблонов для всех рабочих областей'],
@@ -206,7 +206,7 @@ test('operation names are unique and use verbResource camelCase', () => {
       entry.name,
       `${label(entry)}: назовите экспорт глаголом и ресурсом в camelCase`,
     ).toMatch(
-      /^(?:get|list|create|upload|download|stream|save|revoke|delete|remove|retry|analyze|edit|confirm|generate)[A-Z][a-zA-Z0-9]*$/,
+      /^(?:get|list|create|upload|download|stream|save|revoke|delete|remove|retry|analyze|attach|edit|confirm|generate)[A-Z][a-zA-Z0-9]*$/,
     );
     const previous = seen.get(entry.name);
     if (previous)

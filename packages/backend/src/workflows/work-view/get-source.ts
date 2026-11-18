@@ -24,6 +24,9 @@ export async function requireAttachedDocument(
   documentId: DocumentId,
 ) {
   const { documents } = await works.queries.sources(scope, workId);
-  if (!documents.some((doc) => doc.id === documentId && !doc.deleted))
-    throw new WorkError('NOT_FOUND');
+  const attached = documents.find(
+    (doc) => doc.id === documentId && !doc.deleted,
+  );
+  if (!attached) throw new WorkError('NOT_FOUND');
+  return attached;
 }

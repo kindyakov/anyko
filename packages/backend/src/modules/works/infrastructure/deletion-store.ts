@@ -17,6 +17,22 @@ export async function lockLiveWorkForResponse(
   return rows.length === 1;
 }
 
+export async function lockLiveWorkUploadForResponse(
+  tx: Tx,
+  workspaceId: string,
+  documentId: string,
+) {
+  const db = transactionHandle<Pick<Database, '$queryRaw'>>(tx);
+  const rows = await db.$queryRaw<{ id: string }[]>`
+    SELECT work.id FROM "WorkDocument" link
+    JOIN "Work" work ON work."workspaceId" = link."workspaceId" AND work.id = link."workId"
+    WHERE link."workspaceId" = ${workspaceId} AND link."documentId" = ${documentId}
+      AND link.uploaded AND NOT link.removed AND work."deletedAt" IS NULL
+    FOR SHARE OF work, link
+  `;
+  return rows.length > 0;
+}
+
 export function createWorkDeletionStore(
   db: Pick<Database, 'work' | 'workDeletion'>,
 ): WorkDeletionStore {

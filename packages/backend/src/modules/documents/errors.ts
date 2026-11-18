@@ -5,6 +5,7 @@ export const DocumentErrors = defineErrors({
   INVALID_DOCUMENT: 'invalid',
   UNSUPPORTED_DOCUMENT_FORMAT: 'invalid',
   NOT_READY: 'precondition',
+  DOCUMENT_IN_USE: 'conflict',
   RETRY_CONFLICT: 'conflict',
   IDEMPOTENCY_CONFLICT: 'conflict',
 });

@@ -12,6 +12,7 @@ export type NotifyDocumentRun = (
   tx: object,
   workspaceId: string,
   documentId: string,
+  readyRevision?: number,
 ) => Promise<void>;
 export const documentPolicy = {
   name: 'document.ocr',

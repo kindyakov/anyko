@@ -22,8 +22,6 @@ export function createWorkCleanup(
     deletingWork: boolean,
   ) {
     await deps.io.assertIdle(workspaceId, workId);
-    for (const doc of await deps.works.internal.documents(workspaceId, workId))
-      await deps.assertNoDocumentWriters(workspaceId, doc.id, doc.requestKey);
     for (const key of await deps.generation.internal.keys(
       workspaceId,
       workId,

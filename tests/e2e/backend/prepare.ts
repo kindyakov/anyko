@@ -101,6 +101,36 @@ try {
     userId: member.user.id,
     role: 'member',
   });
+  const catalog = Array.from({ length: 51 }, (_, index) => ({
+    id: crypto.randomUUID(),
+    filename: `Каталог E2E ${String(index).padStart(2, '0')}.pdf`,
+    createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, index)),
+  }));
+  await db.sourceDocument.createMany({
+    data: catalog.map((doc) => ({
+      ...doc,
+      workspaceId: 'e2e-north',
+      sourceKey: `sources/e2e-north/${doc.id}.pdf`,
+      sourceChecksum: 'synthetic',
+      requestKey: doc.id,
+      size: 1,
+      createdBy: owner.user.id,
+    })),
+  });
+  await db.run.createMany({
+    data: catalog.map(({ id }) => ({
+      id: crypto.randomUUID(),
+      workspaceId: 'e2e-north',
+      documentId: id,
+      kind: 'document.ocr',
+      status: 'succeeded',
+      revision: 1,
+      processorVersion: 'e2e-fixture',
+      resultKey: `fixtures/catalog/${id}.json`,
+      initiatedBy: owner.user.id,
+      correlationId: crypto.randomUUID(),
+    })),
+  });
   console.info('E2E database and isolated queues prepared');
 } finally {
   redis.disconnect();

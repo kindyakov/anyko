@@ -55,7 +55,9 @@ export function stubHttpOptions(): {
     internal: {
       get: unused,
       documents: unused,
-      workForDocument: unused,
+      worksForDocument: unused,
+      pinPending: unused,
+      removeSource: unused,
       dirty: unused,
       touch: unused,
       event: unused,
@@ -69,7 +71,7 @@ export function stubHttpOptions(): {
     },
     commands: {
       create: unused,
-      attachDocument: unused,
+      attachDocuments: unused,
       bumpRevision: unused,
       recordEvent: unused,
     },
@@ -92,6 +94,7 @@ export function stubHttpOptions(): {
   const intake: WorkIntake = {
     createWork: unused,
     uploadDocument: unused,
+    attachDocuments: unused,
     removeDocument: unused,
     analyzeWork: unused,
   };

@@ -42,7 +42,10 @@ export function defineErrors<const M extends Record<string, ErrorKind>>(
 ) {
   type Code = keyof M & string;
   class Failure extends AppError<Code> {
-    constructor(code: Code, options?: ErrorOptions) {
+    constructor(
+      code: Code,
+      options?: ErrorOptions & { fields?: FieldError[] },
+    ) {
       const kind = map[code];
       // Коды проверяет тип; проверка здесь защищает вызовы без типов (JS, данные из журнала).
       if (kind === undefined) throw new Error(`Undeclared error code: ${code}`);

@@ -1,18 +1,21 @@
-import type { WorkStore } from '..';
-import type { DocumentId, WorkId } from '../../../platform/ids';
+import type { WorkSourceAttachment, WorkStore } from '..';
+import type { WorkId } from '../../../platform/ids';
 import type { WorkspaceScope } from '../../../platform/scope/workspace-scope';
 
 // Привязка загруженного документа к работе. Повтор привязки того же документа ничего не меняет.
-export const attachDocument =
+export const attachDocuments =
   (deps: { store: WorkStore }) =>
   async (
     scope: WorkspaceScope,
-    input: { workId: WorkId; documentId: DocumentId },
+    input: { workId: WorkId; documents: readonly WorkSourceAttachment[] },
   ) => {
     scope.require('documents.upload');
-    const linked = await deps.store.documents(scope.workspaceId, input.workId);
-    if (linked.some((row) => row.id === input.documentId)) return;
-    await deps.store.attach(scope.workspaceId, input.workId, input.documentId);
+    const added = await deps.store.attach(
+      scope.workspaceId,
+      input.workId,
+      input.documents,
+    );
+    if (!added) return;
     await deps.store.touch(scope.workspaceId, input.workId, {
       inputChanged: true,
     });

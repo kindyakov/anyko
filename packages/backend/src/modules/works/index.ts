@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { defineErrors } from '../../platform/errors';
-import type { DocumentId, WorkId } from '../../platform/ids';
+import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
 
@@ -41,9 +41,16 @@ export type WorkEventKind =
 export interface WorkSourceRow {
   id: string;
   filename: string;
-  sourceKey: string;
-  requestKey: string;
   deleted: boolean;
+  ocrRevision: number | null;
+  uploaded: boolean;
+  requestKey: string;
+}
+
+export interface WorkSourceAttachment {
+  id: string;
+  revision: number | null;
+  uploaded?: boolean;
 }
 
 export interface WorkDeletion {
@@ -82,13 +89,20 @@ export interface WorkStore extends WorkDeletionStore {
   attach(
     workspaceId: string,
     workId: string,
-    documentId: string,
-  ): Promise<void>;
+    documents: readonly WorkSourceAttachment[],
+  ): Promise<number>;
   documents(workspaceId: string, workId: string): Promise<WorkSourceRow[]>;
-  workForDocument(
+  worksForDocument(workspaceId: string, documentId: string): Promise<string[]>;
+  pinPending(
     workspaceId: string,
     documentId: string,
-  ): Promise<string | null>;
+    revision: number,
+  ): Promise<void>;
+  removeSource(
+    workspaceId: string,
+    workId: string,
+    documentId: string,
+  ): Promise<boolean>;
   touch(
     workspaceId: string,
     workId: string,
@@ -137,9 +151,9 @@ export interface WorksCommands {
     scope: WorkspaceScope,
     input: { title: string; packageVersion: string },
   ): Promise<WorkId>;
-  attachDocument(
+  attachDocuments(
     scope: WorkspaceScope,
-    input: { workId: WorkId; documentId: DocumentId },
+    input: { workId: WorkId; documents: readonly WorkSourceAttachment[] },
   ): Promise<void>;
   bumpRevision(
     scope: WorkspaceScope,
@@ -173,7 +187,9 @@ export interface WorksPorts {
     WorkStore,
     | 'get'
     | 'documents'
-    | 'workForDocument'
+    | 'worksForDocument'
+    | 'pinPending'
+    | 'removeSource'
     | 'dirty'
     | 'touch'
     | 'event'
