@@ -17,4 +17,11 @@ async function relay(
     config.APP_ORIGIN,
   );
 }
-export { relay as GET, relay as HEAD, relay as POST, relay as DELETE };
+export {
+  relay as GET,
+  relay as HEAD,
+  relay as POST,
+  relay as PATCH,
+  relay as PUT,
+  relay as DELETE,
+};

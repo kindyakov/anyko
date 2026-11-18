@@ -1,7 +1,22 @@
 import { expect, mock, test } from 'bun:test';
 
+import type { HttpMethod } from '@anyko/contracts/common';
+
 // The framework's server-only marker is supplied by Next in production.
 await mock.module('server-only', () => ({}));
+
+test('the Next proxy exports every HTTP method from the API contracts', async () => {
+  const route = await import('../../app/api/[...path]/route');
+  const required = {
+    GET: true,
+    POST: true,
+    PATCH: true,
+    PUT: true,
+    DELETE: true,
+  } satisfies Record<HttpMethod, true>;
+  for (const method of Object.keys(required))
+    expect(route).toHaveProperty(method, expect.any(Function));
+});
 
 test('actual Next DELETE handler relays an authenticated deletion request', async () => {
   const previousOrigin = process.env.API_ORIGIN;
