@@ -636,9 +636,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/documents/application/ports.ts": {
-    "mtime": 1795024980.6345425,
-    "seen": 1795025598.3897295,
-    "ast_hash": "7b73cf903a574d8a43c7fca7ddeebb4f",
+    "mtime": 1795030922.3552492,
+    "seen": 1795031487.6396213,
+    "ast_hash": "0e20337dc0c80203bc54351497b5f4f1",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/documents/application/result-schema.ts": {
@@ -984,9 +984,9 @@
     "semantic_hash": ""
   },
   "packages/database/src/resource-locks.ts": {
-    "mtime": 1795024980.7855637,
-    "seen": 1795025598.3900611,
-    "ast_hash": "41c34d6fb2b62820f23eba5b581102b0",
+    "mtime": 1795030922.3612628,
+    "seen": 1795031487.6402082,
+    "ast_hash": "62e1d11d769d23b26786da61134c59ba",
     "semantic_hash": ""
   },
   "scripts/migrate-document-artifacts.ts": {
@@ -1122,15 +1122,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/works/index.ts": {
-    "mtime": 1795025374.1275587,
-    "seen": 1795025598.3898604,
-    "ast_hash": "1373b996d7599809543c0c9bf94bb95b",
+    "mtime": 1795030922.353248,
+    "seen": 1795031487.6398394,
+    "ast_hash": "a12f9668dd136b055441821ffce5c0a8",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/works/infrastructure/store.ts": {
-    "mtime": 1795025006.828763,
-    "seen": 1795025598.3898647,
-    "ast_hash": "898574287645be12b36325ade6d04af9",
+    "mtime": 1795030922.3522422,
+    "seen": 1795031487.6398442,
+    "ast_hash": "638d53056ee47ffb958f9d4d5507642d",
     "semantic_hash": ""
   },
   "packages/backend/src/runtime/works/provision.ts": {
@@ -1710,9 +1710,9 @@
     "semantic_hash": ""
   },
   "apps/api/tests/support/stub-http.ts": {
-    "mtime": 1795025374.1582434,
-    "seen": 1795025598.3892422,
-    "ast_hash": "cb8560e207a443f970d06612829f7c26",
+    "mtime": 1795030824.6848953,
+    "seen": 1795031487.6389916,
+    "ast_hash": "6253dd1c3cb85aa3f8c60d0a003e6284",
     "semantic_hash": ""
   },
   "apps/web/src/features/works/api/keys.ts": {
@@ -2532,9 +2532,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/works/application/create-work.test.ts": {
-    "mtime": 1795025006.8303325,
-    "seen": 1795025598.389842,
-    "ast_hash": "412eb778f73cb588841901441447cd40",
+    "mtime": 1795030821.8781397,
+    "seen": 1795031487.639819,
+    "ast_hash": "87e91e48bd9f4e51c42b81c6feabbe9e",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/works/application/create-work.ts": {
@@ -2580,15 +2580,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/platform/transactions/index.ts": {
-    "mtime": 1795024980.7042487,
-    "seen": 1795025598.3899014,
-    "ast_hash": "76765894585cdf48850508d8b91b99ec",
+    "mtime": 1795030922.3662677,
+    "seen": 1795031487.639889,
+    "ast_hash": "b615b62ff4f3942db5952d8158600911",
     "semantic_hash": ""
   },
   "packages/backend/src/runtime/transactions.ts": {
-    "mtime": 1795024980.7102497,
-    "seen": 1795025598.389914,
-    "ast_hash": "ad69c88c89bc2cbb47f13be3ed676751",
+    "mtime": 1795030922.3632681,
+    "seen": 1795031487.63991,
+    "ast_hash": "a0994579400274dd15abc1fda1f0e0ee",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/index.ts": {
@@ -2616,9 +2616,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-guards.ts": {
-    "mtime": 1795025374.1924338,
-    "seen": 1795025598.3899486,
-    "ast_hash": "3dae4ff7f820d2f5e6fcbc7323d58584",
+    "mtime": 1795030831.726002,
+    "seen": 1795031487.6399653,
+    "ast_hash": "0391dffed3c1cca32ce2a11719b38d1b",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-intake/analyze-work.ts": {
@@ -2694,9 +2694,9 @@
     "semantic_hash": ""
   },
   "packages/backend/tests/integration/unit-of-work.test.ts": {
-    "mtime": 1795025374.0928257,
-    "seen": 1795025598.3899832,
-    "ast_hash": "45bb68c712257e3121081815eaad8dc9",
+    "mtime": 1795030922.3522422,
+    "seen": 1795031487.6400256,
+    "ast_hash": "3f763ea2d5bd393c207ac52efd560387",
     "semantic_hash": ""
   },
   "apps/api/tests/work-document-result.test.ts": {
@@ -2964,9 +2964,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/continue-session.ts": {
-    "mtime": 1795025374.1125443,
-    "seen": 1795025598.389929,
-    "ast_hash": "e0903d0782198f63632be2cf9da10689",
+    "mtime": 1795030922.3522422,
+    "seen": 1795031487.639936,
+    "ast_hash": "d7941a8cbed2386e44a16515ef252a7d",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/index.ts": {
@@ -3000,9 +3000,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-generation/run-generation.ts": {
-    "mtime": 1795025374.1414998,
-    "seen": 1795025598.3899457,
-    "ast_hash": "67b94d732b8b2c38507a1ba3fbf05070",
+    "mtime": 1795030922.3542473,
+    "seen": 1795031487.6399605,
+    "ast_hash": "0917d9ac08f72052706aabcd94279827",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-maintenance/index.ts": {
@@ -4638,9 +4638,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/work-attempt.ts": {
-    "mtime": 1795026577.175058,
-    "seen": 1795026986.690668,
-    "ast_hash": "f70d2ff9143dc40636f20f0db1018624",
+    "mtime": 1795030812.938833,
+    "seen": 1795031487.6397796,
+    "ast_hash": "abce54d15956812b95fae49ce9980ac0",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/works/application/has-active-document.ts": {
@@ -4662,9 +4662,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/change-work.ts": {
-    "mtime": 1795025374.1713226,
-    "seen": 1795025598.3899195,
-    "ast_hash": "899082002393f5482c81a503c4e2a0a6",
+    "mtime": 1795030922.3612628,
+    "seen": 1795031487.639919,
+    "ast_hash": "60cdaf9a73a9d6e00792396859eda451",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/document-ocr/jobs.test.ts": {
@@ -4710,9 +4710,9 @@
     "semantic_hash": ""
   },
   "packages/backend/tests/integration/run-attempt.test.ts": {
-    "mtime": 1795026577.1542616,
-    "seen": 1795026986.6909394,
-    "ast_hash": "4e27ae05d0c4b2869e9054ec0cd5d897",
+    "mtime": 1795030922.3522422,
+    "seen": 1795031487.6400218,
+    "ast_hash": "cb24ea68ebfe33c791607ae8390dc906",
     "semantic_hash": ""
   },
   "apps/web/src/features/connections/api/mutations.test.tsx": {
