@@ -1,11 +1,15 @@
 import type { ConnectionsModule } from '../../modules/connections';
 import type { ResourceLocks } from '../../modules/documents';
 import type { ProcessingModule } from '../../modules/processing';
-import { WorkError, type WorksModule } from '../../modules/works';
+import type { WorksModule } from '../../modules/works';
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
 import { changeWork } from '../change-work';
+import {
+  requireAnalysisInputs,
+  workCommandPolicy,
+} from '../work-command-guards';
 
 // Запуск анализа: снимок модели и ревизии входа ставится в очередь в одной транзакции с событием.
 export const analyzeWork =
@@ -20,17 +24,21 @@ export const analyzeWork =
     scope: WorkspaceScope,
     input: { workId: WorkId; correlationId: string },
   ) => {
-    scope.require('works.edit');
+    scope.require(workCommandPolicy.analyze.right);
     await changeWork(
       deps,
       scope,
-      { workId: input.workId, requireIdle: true, event: 'processing.queued' },
+      {
+        workId: input.workId,
+        command: 'analyze',
+        event: 'processing.queued',
+      },
       async ({ work, documents }) => {
-        if (!documents.length) throw new WorkError('INVALID_WORK_INPUT');
-        const settings = await deps.connections.internal.configuration(
+        const settings = await requireAnalysisInputs(
+          deps.connections,
           scope.workspaceId,
+          documents,
         );
-        if (!settings) throw new WorkError('LLM_NOT_CONFIGURED');
         return (tx) =>
           deps.processing.in(tx).commands.start(scope, {
             workId: input.workId,

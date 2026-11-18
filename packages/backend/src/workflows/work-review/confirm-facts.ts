@@ -6,6 +6,7 @@ import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
 import { changeWork } from '../change-work';
+import { workCommandPolicy } from '../work-command-guards';
 
 // Подтверждение сведений по ожидаемой ревизии, когда у работы нет активного запуска.
 export const confirmFacts =
@@ -20,14 +21,14 @@ export const confirmFacts =
     scope: WorkspaceScope,
     input: { workId: WorkId; revision: number },
   ) => {
-    scope.require('works.edit');
+    scope.require(workCommandPolicy.confirm.right);
     await changeWork(
       deps,
       scope,
       {
         workId: input.workId,
         expectedRevision: input.revision,
-        requireIdle: true,
+        command: 'confirm',
         advance: 'confirmed',
         event: 'facts.confirmed',
       },

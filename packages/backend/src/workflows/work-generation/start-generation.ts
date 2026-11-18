@@ -10,6 +10,7 @@ import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
 import { changeWork } from '../change-work';
+import { workCommandPolicy } from '../work-command-guards';
 
 // Старт генерации: снимок сведений, результат, запуск и журнал в одной транзакции. Исполнение — в worker.
 export const startGeneration =
@@ -27,14 +28,14 @@ export const startGeneration =
     scope: WorkspaceScope,
     input: { workId: WorkId; revision: number; correlationId: string },
   ) => {
-    scope.require('works.generate');
+    scope.require(workCommandPolicy.generate.right);
     await changeWork(
       deps,
       scope,
       {
         workId: input.workId,
         expectedRevision: input.revision,
-        requireIdle: true,
+        command: 'generate',
         event: 'generation.queued',
       },
       ({ work, documents }) =>

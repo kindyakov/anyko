@@ -1,4 +1,5 @@
 import type { AgentsModule } from '../../modules/agents';
+import type { ConnectionsModule } from '../../modules/connections';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import {
   emptyFacts,
@@ -13,6 +14,8 @@ import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import { requireWork, workLockKey } from '../work-guards';
 
+import { workAvailability } from './work-availability';
+
 // Представление работы: сборка из модулей под блокировкой работы. Курсор читается первым: параллельные
 // изменения придут повторно, но не пропадут. Пока исходники не готовы, сведения и запуски скрыты.
 export const getWork =
@@ -20,6 +23,7 @@ export const getWork =
     works: WorksModule;
     facts: FactsModule;
     processing: ProcessingModule;
+    connections: ConnectionsModule;
     generation: GenerationModule;
     documents: DocumentsModule;
     agents: AgentsModule;
@@ -30,8 +34,9 @@ export const getWork =
     return deps.locks.run(workLockKey(scope.workspaceId, workId), async () => {
       const cursor = await deps.works.queries.cursor(scope, workId);
       const work = await requireWork(deps.works.queries, scope, workId);
-      const { documents: rows, cleanupPending } =
-        await deps.works.queries.sources(scope, workId);
+      const sources = await deps.works.queries.sources(scope, workId);
+      const { documents: rows, cleanupPending } = sources;
+      const availability = await workAvailability(deps, scope, workId, sources);
       const documents = [];
       for (const row of rows)
         if (!row.deleted) {
@@ -67,6 +72,7 @@ export const getWork =
           : await deps.generation.queries.list(scope, workId),
         cursor,
         cleanupPending,
+        availability,
       };
     });
   };

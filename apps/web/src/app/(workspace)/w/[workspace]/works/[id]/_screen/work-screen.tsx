@@ -18,29 +18,17 @@ import {
   useFactsForm,
   WorkReview,
 } from '@/features/fact-review';
-import { useGenerateWork, WorkResults } from '@/features/work-generation';
+import { WorkResults } from '@/features/work-generation';
 import { WorkPipeline } from '@/features/work-processing';
+import { WorkSources } from '@/features/work-sources';
 import {
-  type Upload,
-  uploadWorkFiles,
-  useDeleteWorkDocument,
-  useRetryWorkDocument,
-  useUploadWorkDocument,
-  WorkSources,
-} from '@/features/work-sources';
-import {
-  describeWorkCommandError,
-  errorText,
   type StepKey,
   stepOf,
-  useAnalyzeWork,
-  useConfirmWork,
+  useWorkCommands,
   useWorkView,
   type WorkStage,
   workStage,
 } from '@/features/works';
-import { isUnauthorized } from '@/lib/api/errors';
-import { useIdempotencyKey } from '@/lib/api/idempotency';
 import { useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 import { UnsavedNavigation } from '@/lib/unsaved-navigation';
@@ -98,7 +86,13 @@ export function WorkScreen({ workId }: { workId: string }) {
       </div>
     );
   return (
-    <WorkBody workId={workId} view={view} live={live} loadError={loadError} />
+    <WorkBody
+      key={workId}
+      workId={workId}
+      view={view}
+      live={live}
+      loadError={loadError}
+    />
   );
 }
 
@@ -114,21 +108,11 @@ function WorkBody({
   loadError: string;
 }) {
   const workspaceId = useWorkspaceId();
-  const [error, setError] = useState('');
   const [step, setStep] = useState<StepKey>();
-  const [uploads, setUploads] = useState<Upload[]>([]);
   const [viewing, setViewing] = useState<ViewedDocument>();
   const previousStage = useRef<WorkStage['kind']>(undefined);
-  const analysis = useAnalyzeWork(workspaceId, workId);
-  const confirmation = useConfirmWork(workspaceId, workId);
   const facts = useFactsForm(view);
-  const generation = useGenerateWork(workspaceId, workId);
-  const uploadDocument = useUploadWorkDocument(workspaceId, workId);
-  const deletion = useDeleteWorkDocument(workspaceId, workId);
-  const retry = useRetryWorkDocument(workspaceId, workId);
-  // Ключ каждой команды живёт на всё действие: повтор после неизвестного исхода передаёт тот же ключ.
-  const analysisKey = useIdempotencyKey();
-  const generationKey = useIdempotencyKey();
+  const commands = useWorkCommands(workspaceId, view, facts.saving);
   const stage = workStage(view);
   // Open the step that matches the work's situation, and follow it when
   // background processing moves the work forward.
@@ -139,90 +123,20 @@ function WorkBody({
     else if (before === 'processing' && stage.kind === 'review')
       setStep((current) => (current === 'extraction' ? 'review' : current));
   }, [stage]);
-  const uploading = uploads.some((item) => item.state === 'uploading');
-  const commandPending =
-    analysis.isPending ||
-    confirmation.isPending ||
-    facts.saving ||
-    generation.isPending ||
-    retry.isPending ||
-    deletion.isPending;
-  // Сессия истекла: ошибка не показывается, оболочка перенаправит на вход.
-  function fail(failure: unknown) {
-    if (isUnauthorized(failure)) return;
-    setError(describeWorkCommandError(failure));
-  }
-  async function upload(files: File[]) {
-    setError('');
-    const accepted = await uploadWorkFiles(
-      files,
-      (file, idempotencyKey) =>
-        uploadDocument.mutateAsync({ file, idempotencyKey }),
-      setUploads,
-    );
-    setTimeout(() => {
-      setUploads((items) => items.filter((item) => item.state !== 'done'));
-    }, 2500);
-    return accepted;
-  }
-  async function deleteDocument(document: Document) {
-    // Удаление исходника сбрасывает несохранённые правки, как и раньше.
-    facts.discard();
-    setError('');
-    try {
-      await deletion.mutateAsync(document.id);
-    } catch (failure) {
-      fail(failure);
-    }
-  }
-  function retryDocument(documentId: string) {
-    setError('');
-    retry.mutate(documentId, { onError: fail });
-  }
-  const locked =
-    view.cleanupPending ||
-    stage.kind === 'processing' ||
-    stage.kind === 'generating';
-  const busy = commandPending || uploading || view.cleanupPending;
   const analyze = () => {
-    setError('');
-    analysis.mutate(
-      { idempotencyKey: analysisKey.take() },
-      {
-        onSuccess: () => {
-          analysisKey.settle();
-          setStep('extraction');
-        },
-        onError: (failure) => {
-          analysisKey.settle(failure);
-          fail(failure);
-        },
-      },
-    );
+    commands.analyze(() => {
+      setStep('extraction');
+    });
   };
   const generate = () => {
-    setError('');
-    generation.mutate(
-      {
-        revision: view.work.revision,
-        idempotencyKey: generationKey.take(),
-      },
-      {
-        onSuccess: () => {
-          generationKey.settle();
-          setStep('documents');
-        },
-        onError: (failure) => {
-          generationKey.settle(failure);
-          fail(failure);
-        },
-      },
-    );
+    commands.generate(() => {
+      setStep('documents');
+    });
   };
-  const confirm = () => {
-    setError('');
-    confirmation.mutate({ revision: view.work.revision }, { onError: fail });
-  };
+  async function deleteDocument(document: Document) {
+    facts.discard();
+    await commands.remove(document.id);
+  }
   const openDocument = (document: Document, page?: number) => {
     setViewing({
       id: document.id,
@@ -275,32 +189,31 @@ function WorkBody({
         </div>
       </div>
       <div className="grid grid-cols-1 gap-4">
-        {(error || loadError) && (
+        {(commands.error || loadError) && (
           <Notice tone="danger" role="alert">
-            {error || loadError}
+            {commands.error || loadError}
           </Notice>
         )}
-        {stage.kind === 'review' &&
-          current !== 'extraction' &&
-          (stage.run.errorCode === 'CONNECTION_REVOKED' ||
-            stage.run.steps.some(
-              (item) => item.errorCode === 'CONNECTION_REVOKED',
-            )) && (
-            <Notice tone="warning" role="status">
-              {errorText('CONNECTION_REVOKED')}
-            </Notice>
-          )}
+        {commands.reasons.length > 0 && (
+          <Notice tone="warning" role="status">
+            <ul>
+              {commands.reasons.map((reason) => (
+                <li key={reason}>{reason}</li>
+              ))}
+            </ul>
+          </Notice>
+        )}
         {view.cleanupPending && (
           <Notice tone="progress" role="status" title="Удаляем данные файла">
-            Удаляем исходник и всё, что из него извлечено. Работа временно
-            доступна только для просмотра.
+            Удаляем исходник и всё, что из него извлечено.
           </Notice>
         )}
         <Hero
           stage={stage}
           step={current}
-          busy={busy}
-          locked={locked}
+          busy={commands.pending}
+          analyzeDisabled={commands.disabled.analyze}
+          generateDisabled={commands.disabled.generate}
           onStep={setStep}
           onAnalyze={analyze}
           onGenerate={generate}
@@ -329,22 +242,24 @@ function WorkBody({
             <WorkSources
               view={view}
               stage={stage}
-              locked={locked}
-              busy={busy}
-              uploads={uploads}
-              onUpload={upload}
+              disabled={commands.disabled}
+              busy={commands.pending}
+              uploads={commands.uploads}
+              onUpload={commands.upload}
               onOpen={openDocument}
               onAnalyze={analyze}
               onDelete={deleteDocument}
-              onRetry={retryDocument}
-              retryingId={retry.isPending ? retry.variables : undefined}
+              onRetry={commands.retry}
+              removing={commands.removing}
+              retryDisabled={commands.retryDisabled}
+              retryingId={commands.retryingId}
             />
           </Tabs.Panel>
           <Tabs.Panel value="extraction" className="animate-rise outline-none">
             <WorkPipeline
               view={view}
-              locked={locked}
-              busy={busy}
+              analyzeDisabled={commands.disabled.analyze}
+              busy={commands.pending}
               onOpen={openDocument}
               onAnalyze={analyze}
             />
@@ -353,7 +268,8 @@ function WorkBody({
             <WorkReview
               view={view}
               facts={facts}
-              busy={busy}
+              busy={commands.savingBlocked}
+              analyzeDisabled={commands.disabled.analyze}
               onOpen={openDocument}
               onExtract={analyze}
             />
@@ -361,20 +277,21 @@ function WorkBody({
           <Tabs.Panel value="documents" className="animate-rise outline-none">
             <WorkResults
               view={view}
-              locked={locked}
-              busy={busy}
+              confirmDisabled={commands.disabled.confirm}
+              generateDisabled={commands.disabled.generate}
+              busy={commands.pending}
               hasDraft={facts.hasEdits}
               onReview={() => {
                 setStep('review');
               }}
-              onConfirm={confirm}
+              onConfirm={commands.confirm}
               onGenerate={generate}
             />
           </Tabs.Panel>
         </div>
       </Tabs.Root>
       <UnsavedNavigation dirty={facts.hasEdits} />
-      <UnsavedFactsBar facts={facts} busy={busy} />
+      <UnsavedFactsBar facts={facts} busy={commands.savingBlocked} />
       <DocumentViewer
         document={viewing}
         requiresRetry={
@@ -382,8 +299,8 @@ function WorkBody({
           view.documents.find((item) => item.id === viewing.id)?.errorCode ===
             recognitionRetryCode
         }
-        retryDisabled={busy || locked}
-        onRetry={retryDocument}
+        retryDisabled={commands.retryDisabled}
+        onRetry={commands.retry}
         onClose={() => {
           setViewing(undefined);
         }}

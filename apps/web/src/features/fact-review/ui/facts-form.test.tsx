@@ -1,3 +1,4 @@
+import { availableWorkCommands } from '../../../../test/fixtures';
 import '../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
@@ -110,6 +111,7 @@ function viewWith(
       candidates: [],
     },
     cleanupPending: options.cleanupPending ?? false,
+    availability: availableWorkCommands,
   };
 }
 
@@ -171,6 +173,7 @@ function FactsEditor({ view }: { view: WorkView }) {
         facts={facts}
         busy={busy}
         onOpen={() => undefined}
+        analyzeDisabled={false}
         onExtract={() => undefined}
       />
       <UnsavedFactsBar facts={facts} busy={busy} />

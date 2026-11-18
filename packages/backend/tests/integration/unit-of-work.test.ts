@@ -210,7 +210,7 @@ test.each([
           {
             workId: id,
             expectedRevision: stale ? revision - 1 : revision,
-            requireIdle: true,
+            command: 'confirm',
             advance: 'draft',
             event: 'facts.changed',
           },
@@ -240,7 +240,7 @@ test('two concurrent changes of the same revision save one effect, one revision 
       {
         workId: id,
         expectedRevision: revision,
-        requireIdle: false,
+        command: 'edit',
         advance: 'draft',
         event: 'facts.changed',
       },

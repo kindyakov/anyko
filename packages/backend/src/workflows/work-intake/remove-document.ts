@@ -1,7 +1,12 @@
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
-import { WorkError, type WorksModule } from '../../modules/works';
+import type { WorksModule } from '../../modules/works';
 import type { DocumentId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
+import {
+  requireRemovalSource,
+  workCommandPolicy,
+  workCommandSources,
+} from '../work-command-guards';
 import { requireWork, workLockKey } from '../work-guards';
 
 // Удаление исходника работы: сначала доступ и принадлежность, затем удаление и событие.
@@ -15,17 +20,16 @@ export const removeDocument =
     scope: WorkspaceScope,
     input: { workId: WorkId; documentId: DocumentId },
   ) => {
-    scope.require('documents.delete');
+    scope.require(workCommandPolicy.remove.right);
     return deps.locks.run(
       workLockKey(scope.workspaceId, input.workId),
       async () => {
         await requireWork(deps.works.queries, scope, input.workId);
-        const { documents } = await deps.works.queries.sources(
-          scope,
-          input.workId,
+        const documents = workCommandSources(
+          'remove',
+          await deps.works.queries.sources(scope, input.workId),
         );
-        if (!documents.some((doc) => doc.id === input.documentId))
-          throw new WorkError('NOT_FOUND');
+        requireRemovalSource(documents, input.documentId);
         await deps.documents.internal.commands.remove({
           workspaceId: scope.workspaceId,
           documentId: input.documentId,

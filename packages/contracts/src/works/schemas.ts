@@ -100,6 +100,32 @@ export const generationSchema = z.object({
   files: z.array(generationFileSchema),
   createdAt: z.iso.datetime(),
 });
+const workCommandBlockReasonSchema = z.enum([
+  'WORK_BUSY',
+  'CLEANUP_PENDING',
+  'NO_DOCUMENTS',
+  'SOURCE_LIMIT_REACHED',
+  'CONNECTION_REVOKED',
+  'LLM_NOT_CONFIGURED',
+  'FORBIDDEN',
+]);
+export type WorkCommandBlockReason = z.infer<
+  typeof workCommandBlockReasonSchema
+>;
+const workCommandAvailabilitySchema = z.discriminatedUnion('available', [
+  z.object({ available: z.literal(true) }),
+  z.object({
+    available: z.literal(false),
+    reason: workCommandBlockReasonSchema,
+  }),
+]);
+const workAvailabilitySchema = z.object({
+  analyze: workCommandAvailabilitySchema,
+  generate: workCommandAvailabilitySchema,
+  confirm: workCommandAvailabilitySchema,
+  upload: workCommandAvailabilitySchema,
+  remove: workCommandAvailabilitySchema,
+});
 export const workResponseSchema = z.object({
   work: workSummarySchema,
   session: agentSessionSchema.nullable().optional(),
@@ -110,10 +136,12 @@ export const workResponseSchema = z.object({
   generations: z.array(generationSchema),
   cursor: z.string().regex(/^\d+$/),
   cleanupPending: z.boolean(),
+  availability: workAvailabilitySchema,
 });
 export type WorkView = z.infer<typeof workResponseSchema>;
 // Повтор создания может вернуть сохранённый до появления списка ответ.
 export const createdWorkResponseSchema = workResponseSchema.extend({
+  availability: workAvailabilitySchema.optional(),
   facts: factsSchema.extend({
     discrepancyFields: factsSchema.shape.discrepancyFields.default([]),
   }),

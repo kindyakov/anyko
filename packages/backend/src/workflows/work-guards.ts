@@ -1,6 +1,7 @@
 import {
   WorkError,
   type WorkSourceRow,
+  type WorkSources,
   type WorksPorts,
   type WorkSummary,
 } from '../modules/works';
@@ -21,13 +22,15 @@ export async function requireWork(
   return work;
 }
 
-// Исходники готовы к изменению: нет удалённых и нет незавершённых записей.
 export async function requireCleanSources(
   works: WorksPorts['queries'],
   scope: WorkspaceScope,
   workId: WorkId,
 ): Promise<WorkSourceRow[]> {
-  const state = await works.sources(scope, workId);
+  return cleanWorkSources(await works.sources(scope, workId));
+}
+
+export function cleanWorkSources(state: WorkSources): WorkSourceRow[] {
   if (state.cleanupPending) throw new WorkError('CLEANUP_PENDING');
   return state.documents;
 }

@@ -8,6 +8,7 @@ import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
 import { fieldValuesSchema } from '../../profiles/bfl/fields';
 import { changeWork } from '../change-work';
+import { workCommandPolicy } from '../work-command-guards';
 
 // Правка значений юристом по ожидаемой ревизии: сведения и ревизия работы меняются одной транзакцией.
 export const editValues =
@@ -22,7 +23,7 @@ export const editValues =
     scope: WorkspaceScope,
     input: { workId: WorkId; revision: number; values: unknown },
   ) => {
-    scope.require('works.edit');
+    scope.require(workCommandPolicy.edit.right);
     const parsed = fieldValuesSchema.safeParse(input.values);
     if (!parsed.success)
       throw new AppError('INVALID_WORK_INPUT', 'invalid', {
@@ -34,7 +35,7 @@ export const editValues =
       {
         workId: input.workId,
         expectedRevision: input.revision,
-        requireIdle: false,
+        command: 'edit',
         advance: 'draft',
         event: 'facts.changed',
       },

@@ -93,8 +93,7 @@ export const getWorkDeletion = endpoint({
 });
 
 export const getWork = endpoint({
-  summary:
-    'Возвращает данные работы, включая расхождения в сохранённых сведениях',
+  summary: 'Возвращает работу, расхождения в сведениях и доступность команд',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId',
   params: workParams,
@@ -194,6 +193,7 @@ export const analyzeWork = endpoint({
     'CLEANUP_PENDING',
     'INVALID_WORK_INPUT',
     'LLM_NOT_CONFIGURED',
+    'CONNECTION_REVOKED',
     'WORK_BUSY',
     'INVALID_IDEMPOTENCY_KEY',
     'IDEMPOTENCY_CONFLICT',

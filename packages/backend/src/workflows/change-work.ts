@@ -11,7 +11,12 @@ import type { WorkId } from '../platform/ids';
 import type { WorkspaceScope } from '../platform/scope/workspace-scope';
 import type { Tx, UnitOfWork } from '../platform/transactions';
 
-import { requireCleanSources, requireWork, workLockKey } from './work-guards';
+import {
+  requireIdleWork,
+  workCommandPolicy,
+  workCommandSources,
+} from './work-command-guards';
+import { requireWork, workLockKey } from './work-guards';
 
 interface ChangeWorkDeps {
   locks: ResourceLocks;
@@ -31,7 +36,7 @@ export async function changeWork(
   input: {
     workId: WorkId;
     expectedRevision?: number;
-    requireIdle: boolean;
+    command: 'analyze' | 'generate' | 'confirm' | 'edit';
     advance?: 'draft' | 'confirmed';
     event: WorkEventKind;
   },
@@ -43,20 +48,16 @@ export async function changeWork(
   const { workId, expectedRevision, advance, event } = input;
   await deps.locks.run(workLockKey(workspaceId, workId), async () => {
     const work = await requireWork(deps.works.queries, scope, workId);
-    const documents = await requireCleanSources(
-      deps.works.queries,
-      scope,
-      workId,
+    const documents = workCommandSources(
+      input.command,
+      await deps.works.queries.sources(scope, workId),
     );
     if (expectedRevision !== undefined && work.revision !== expectedRevision)
       throw new WorkError('REVISION_CONFLICT');
     // У анализа входные данные и подключение проверяются до занятости работы.
     const apply = await prepare({ work, documents });
-    if (
-      input.requireIdle &&
-      (await deps.processing.queries.isActive(scope, workId))
-    )
-      throw new WorkError('WORK_BUSY');
+    if (workCommandPolicy[input.command].idle)
+      requireIdleWork(await deps.processing.queries.isActive(scope, workId));
     await deps.uow.run(async (tx) => {
       await apply(tx);
       const works = deps.works.in(tx).internal;

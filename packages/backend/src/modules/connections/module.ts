@@ -25,7 +25,8 @@ export function createConnectionsModule(deps: {
     },
     queries: { current: currentConnection({ store }) },
     internal: {
-      configuration: (workspaceId) => store.current(workspaceId),
+      configuration: (workspaceId, rejectRevoked) =>
+        store.current(workspaceId, rejectRevoked),
       connection: (workspaceId, revision) =>
         store.connection(workspaceId, revision),
     },
