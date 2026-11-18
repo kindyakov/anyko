@@ -19,8 +19,11 @@ export interface FactsStore {
   erase(workspaceId: string, workId: string): Promise<void>;
 }
 
-// Фасад сведений. Правка и подтверждение меняют только сведения; ревизию работы меняет сценарий
-// (workflows/work-review), потому что ревизия принадлежит works. Права works.edit проверяет команда.
+export interface AnalysisFactsRef {
+  workspaceId: string;
+  workId: string;
+}
+
 export interface AcceptRunCandidatesInput extends AnalysisFactsRef {
   fields: readonly FieldKey[];
   confirmed: boolean;
@@ -44,15 +47,13 @@ interface FactsCommands {
   ): Promise<void>;
   confirm(scope: WorkspaceScope, input: { workId: WorkId }): Promise<void>;
 }
-export interface AnalysisFactsRef {
-  workspaceId: string;
-  workId: string;
-}
 // Запросы внутренние: право или действующий запуск проверяет вызывающий сценарий.
 interface FactsQueries {
   forAnalysis(input: AnalysisFactsRef): Promise<WorkFacts>;
   get(scope: WorkspaceScope, workId: WorkId): Promise<WorkFacts>;
 }
+// Фасад сведений. Правка и подтверждение меняют только сведения; ревизию работы меняет сценарий
+// (workflows/work-review), потому что ревизия принадлежит works. Права works.edit проверяет команда.
 export interface FactsPorts {
   readonly commands: FactsCommands;
   readonly queries: FactsQueries;

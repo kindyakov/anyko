@@ -7,7 +7,7 @@ import { combineCandidates } from '../domain/candidates';
 import { findFactDiscrepancies, mergeCandidates } from '../domain/values';
 // Вызывается внутри транзакции после ограждения попытки запуска сценарием.
 export const acceptRunCandidates =
-  (store: Pick<FactsStore, 'get' | 'save'>) =>
+  ({ store }: { store: Pick<FactsStore, 'get' | 'save'> }) =>
   async ({
     workspaceId,
     workId,

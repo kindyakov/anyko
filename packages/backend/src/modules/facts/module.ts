@@ -20,7 +20,7 @@ export function createFactsModule(deps: FactsDeps): FactsModule {
       erase: (workspaceId, workId) => store.erase(workspaceId, workId),
     },
     commands: {
-      acceptRunCandidates: acceptRunCandidates(store),
+      acceptRunCandidates: acceptRunCandidates({ store }),
       edit: editValues({ store }),
       confirm: confirmValues({ store }),
     },

@@ -48,18 +48,25 @@ export function findFactDiscrepancies(current: WorkFacts) {
     .filter(({ key }) => {
       const candidates = current.candidates.filter((c) => c.field === key);
       if (!candidates.length) return false;
-      if (reconcileCandidates(key, candidates) === null) return true;
+      const original = reconcileCandidates(key, candidates);
+      if (original === null) return true;
 
       const manual = current.manual.includes(key);
       if (!manual && !current.confirmed.includes(key)) return false;
       const saved = current.values[key] ?? null;
       if (manual && saved === null) return true;
 
-      const proposed = reconcileCandidates(key, candidates, automaticValue);
-      return (
-        comparableFactValue(proposed) !==
-        comparableFactValue(reconcile(key, [saved]))
-      );
+      const comparableSaved = comparableFactValue(reconcile(key, [saved]));
+      if (
+        comparableFactValue(original) === comparableSaved ||
+        candidates.some(
+          ({ value }) =>
+            comparableFactValue(reconcile(key, [value])) === comparableSaved,
+        )
+      )
+        return false;
+      const automatic = reconcileCandidates(key, candidates, automaticValue);
+      return comparableFactValue(automatic) !== comparableSaved;
     })
     .map(({ key }) => key);
 }
@@ -71,7 +78,9 @@ export function markSelectedCandidates({ values, candidates }: WorkFacts) {
     const selected =
       saved !== null &&
       (includesFactValue(field, saved, value) ||
-        includesFactValue(field, saved, automaticValue(candidate)));
+        // Автозаполнение может опустить ячейку. Оно не скрывает сохранённое противоречие.
+        (reconcile(field, [saved, value]) !== null &&
+          includesFactValue(field, saved, automaticValue(candidate))));
     return { ...candidate, selected };
   });
 }
