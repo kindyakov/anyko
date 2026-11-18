@@ -17,6 +17,7 @@ import { routes } from '@/lib/routes';
 
 import { useAttachWorkDocuments } from '../../api/mutations';
 import { workQueryOptions, worksQueryOptions } from '../../api/queries';
+import { workCommandReasons } from '../../model/command-errors';
 
 import { CreateWorkDialog } from './create-work-dialog';
 
@@ -52,6 +53,7 @@ export function AddRecognitionsToWork({
     enabled: canRead && !!workId && !creating,
   });
   const attach = useAttachWorkDocuments(workspaceId);
+  const attachment = work.data?.availability.attach;
   const attached = new Set(work.data?.documents.map(({ id }) => id));
   const newCount = [...selected.keys()].filter(
     (id) => !attached.has(id),
@@ -63,6 +65,8 @@ export function AddRecognitionsToWork({
   const totalPages = Math.ceil((list.data?.total ?? 0) / 6);
 
   function submit() {
+    if (!attachment?.available || !selected.size || tooMany || attach.isPending)
+      return;
     const documentIds = [...selected.keys()];
     setFailure('');
     attach.mutate(
@@ -217,6 +221,11 @@ export function AddRecognitionsToWork({
             выбор или выберите другую работу.
           </Notice>
         )}
+        {attachment?.available === false && (
+          <Notice tone="warning">
+            {workCommandReasons[attachment.reason]}
+          </Notice>
+        )}
         {failure && (
           <Notice tone="danger" role="alert" title="Не удалось добавить файлы">
             {failure}
@@ -236,7 +245,7 @@ export function AddRecognitionsToWork({
           )}
           {canRead && (
             <Button
-              disabled={!work.data || !selected.size || tooMany}
+              disabled={!attachment?.available || !selected.size || tooMany}
               loading={attach.isPending}
               onClick={submit}
             >

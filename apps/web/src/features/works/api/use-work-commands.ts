@@ -24,6 +24,7 @@ import {
   uploadWorkFiles,
   useDeleteWorkDocument,
   useRetryWorkDocument,
+  useUpdatingWorkRecognition,
   useUploadWorkDocument,
 } from './source-commands';
 
@@ -53,6 +54,7 @@ export function useWorkCommands(
   const attach = useAttachWorkDocuments(workspaceId);
   const deletion = useDeleteWorkDocument(workspaceId, workId);
   const retry = useRetryWorkDocument(workspaceId, workId);
+  const updatingRecognition = useUpdatingWorkRecognition(workspaceId, workId);
 
   const uploading = uploads.some((item) => item.state === 'uploading');
   const pending =
@@ -60,6 +62,7 @@ export function useWorkCommands(
     confirmation.isPending ||
     savingFacts ||
     generation.isPending ||
+    updatingRecognition ||
     retry.isPending ||
     deletion.isPending ||
     attach.isPending;

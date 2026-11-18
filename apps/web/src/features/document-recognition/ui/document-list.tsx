@@ -27,6 +27,7 @@ export function DocumentList({
   search,
   children,
   AddToWork,
+  onDeletionAccepted,
 }: {
   workspaceId: string;
   documents: DocumentSummary[];
@@ -36,6 +37,7 @@ export function DocumentList({
   track: (document: DocumentSummary) => void;
   search: ReactNode;
   children: ReactNode;
+  onDeletionAccepted?: (() => Promise<void>) | undefined;
   AddToWork?:
     | ComponentType<{
         selected: ReadonlyMap<string, string>;
@@ -43,7 +45,7 @@ export function DocumentList({
       }>
     | undefined;
 }) {
-  const mutation = useRecognitionAction(workspaceId, track);
+  const mutation = useRecognitionAction(workspaceId, track, onDeletionAccepted);
   const [selection, setSelection] = useState<Map<string, DocumentSummary>>(
     () => new Map(),
   );

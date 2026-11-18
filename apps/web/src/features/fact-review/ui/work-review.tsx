@@ -56,7 +56,8 @@ export function WorkReview({
         <Notice tone="warning" role="status" title="Нужна повторная проверка">
           <p>
             Значения сохранены. Проверьте сведения, для которых больше нет
-            доказательств в источниках работы.
+            доказательств в источниках работы. Повторное извлечение не обновит
+            эти поля до подтверждения.
           </p>
           <ul className="mt-2 flex flex-wrap gap-2">
             {view.package.fields

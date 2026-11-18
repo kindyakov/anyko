@@ -1,6 +1,6 @@
 import type { WorkCommandBlockReason } from '@anyko/contracts/works';
 
-import { describeApiError, sharedCodeTexts } from '@/lib/api/errors';
+import { ApiError, describeApiError, sharedCodeTexts } from '@/lib/api/errors';
 
 export const connectionRevokedText =
   'Подключение модели отозвано. Владелец области может настроить новое в настройках подключения.';
@@ -23,13 +23,26 @@ const workCommandTexts = {
   codes: {
     ...sharedCodeTexts,
     ...workCommandReasons,
-    NOT_READY: workCommandReasons.FACTS_NEED_REVIEW,
     REVISION_CONFLICT:
-      'Работа изменилась, пока вы действовали. Сведения обновлены — проверьте их и повторите действие.',
+      'Работа изменилась. Проверьте актуальное состояние и повторите действие.',
   },
   fallback: 'Операция не выполнена. Повторите попытку.',
 };
 
-export function describeWorkCommandError(error: unknown): string {
+export function describeWorkCommandError(
+  error: unknown,
+  notReady?: string,
+): string {
+  if (error instanceof ApiError && error.code === 'NOT_READY') {
+    if (error.fields?.some(({ path }) => path[0] === 'documentIds'))
+      return 'Выбранный исходный файл больше недоступен. Обновите список и проверьте выбор.';
+    return (
+      notReady ??
+      'Работа пока не готова к этому действию. Проверьте её состояние.'
+    );
+  }
   return describeApiError(error, workCommandTexts);
 }
+
+export const workRevisionConflictText =
+  workCommandTexts.codes.REVISION_CONFLICT;

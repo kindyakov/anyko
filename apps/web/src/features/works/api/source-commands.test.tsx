@@ -1,19 +1,21 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { type ReactNode, useState } from 'react';
 
 import { createQueryClient } from '@/lib/api/query-client';
 
 import { json, serveApi } from '../../../../test/api';
-import { workId, workspaceId } from '../../../../test/fixtures';
+import { workId, workspaceId, workView } from '../../../../test/fixtures';
 
 import {
   type Upload,
   uploadWorkFiles,
+  useUpdateWorkDocumentRecognition,
   useUploadWorkDocument,
 } from './source-commands';
+import { useWorkCommands } from './use-work-commands';
 
 function wrapperFor(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
@@ -90,4 +92,42 @@ test('each file of an upload gets its own idempotency key, and a refused file do
   expect(first?.reason).toContain('scheme.spl7: Поддерживаются PDF');
   expect(first?.reason).toContain('Код обращения: r1.');
   expect(second?.state).toBe('done');
+});
+
+test('an OCR revision request blocks other work commands and refreshes a conflicting work view', async () => {
+  const client = createQueryClient();
+  const workKey = ['works', workspaceId, 'detail', workId];
+  client.setQueryData(workKey, workView);
+  const response = Promise.withResolvers<Response>();
+  const fetchMock = spyOn(globalThis, 'fetch').mockImplementation(
+    () => response.promise,
+  );
+  const { result } = renderHook(
+    () => ({
+      revision: useUpdateWorkDocumentRecognition(workspaceId, workId),
+      commands: useWorkCommands(workspaceId, workView, false),
+    }),
+    { wrapper: wrapperFor(client) },
+  );
+
+  try {
+    act(() => {
+      result.current.revision.mutate({
+        documentId: crypto.randomUUID(),
+        ocrRevision: 2,
+      });
+    });
+    await waitFor(() => expect(result.current.revision.isPending).toBe(true));
+    expect(result.current.commands.pending).toBe(true);
+    expect(result.current.commands.disabled.analyze).toBe(true);
+    expect(result.current.commands.editingBlocked).toBe(true);
+  } finally {
+    response.resolve(
+      json(409, { error: { code: 'REVISION_CONFLICT', requestId: 'fixture' } }),
+    );
+    await waitFor(() => expect(result.current.revision.isError).toBe(true));
+    fetchMock.mockRestore();
+  }
+  expect(result.current.commands.pending).toBe(false);
+  expect(client.getQueryState(workKey)?.isInvalidated).toBe(true);
 });

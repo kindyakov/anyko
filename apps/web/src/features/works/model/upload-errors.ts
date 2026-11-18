@@ -1,8 +1,13 @@
 import { ApiError, describeApiError, sharedCodeTexts } from '@/lib/api/errors';
 
+import { workCommandReasons, workRevisionConflictText } from './command-errors';
+
 const uploadTexts = {
   codes: {
     ...sharedCodeTexts,
+    WORK_BUSY: workCommandReasons.WORK_BUSY,
+    CLEANUP_PENDING: workCommandReasons.CLEANUP_PENDING,
+    REVISION_CONFLICT: workRevisionConflictText,
     UNSUPPORTED_DOCUMENT_FORMAT:
       'Поддерживаются PDF, DOCX, JPEG, PNG, WebP, TIFF, AVIF и HEIF/HEIC.',
     INVALID_DOCUMENT:

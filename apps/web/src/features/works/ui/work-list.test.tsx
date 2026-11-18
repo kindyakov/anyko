@@ -1,4 +1,9 @@
-import { availableWorkCommands } from '../../../../test/fixtures';
+import {
+  availableWorkCommands,
+  session,
+  workspaceId,
+  workView,
+} from '../../../../test/fixtures';
 import '../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
@@ -17,6 +22,7 @@ import { serveApi } from '../../../../test/api';
 import { expectFocused } from '../../../../test/focus';
 import { navigation } from '../../../../test/next-navigation';
 
+import { AddRecognitionsToWork } from './list/add-recognitions-to-work';
 import { WorkList } from './work-list';
 
 const originalFetch = globalThis.fetch;
@@ -57,6 +63,51 @@ const packages = [
     documents: [template],
   },
 ];
+
+test('the catalog attachment dialog disables a work whose server availability blocks attachment', async () => {
+  const client = createQueryClient();
+  client.setQueryData(sessionKeys.all, session);
+  navigation.params = { workspace: workspaceId };
+  const requests = serveApi(({ url }) =>
+    url === `${worksAddress}/${workView.work.id}`
+      ? json(200, {
+          ...workView,
+          availability: {
+            ...workView.availability,
+            attach: { available: false, reason: 'WORK_BUSY' },
+          },
+        })
+      : json(200, {
+          items: [workView.work],
+          page: 1,
+          total: 1,
+          pageSize: 6,
+          deletions: [],
+        }),
+  );
+  render(
+    <QueryClientProvider client={client}>
+      <AddRecognitionsToWork
+        selected={new Map([[createdId, 'scan.pdf']])}
+        onClose={() => {}}
+      />
+    </QueryClientProvider>,
+  );
+  const user = userEvent.setup();
+  await user.click(
+    await screen.findByRole('button', { name: /Работа клиента/ }),
+  );
+  await screen.findByRole('button', { name: 'Выбрать другую' });
+  expect(
+    await screen.findByText('Дождитесь завершения обработки работы.'),
+  ).toBeTruthy();
+  const submit = screen.getByRole<HTMLButtonElement>('button', {
+    name: 'Добавить файлы',
+  });
+  expect(submit.disabled).toBe(true);
+  await user.click(submit);
+  expect(requests.some(({ method }) => method === 'POST')).toBe(false);
+});
 const existingWork = {
   id: workId,
   title: 'Иванов',

@@ -1,10 +1,17 @@
 'use client';
+import { useQueryClient } from '@tanstack/react-query';
+
 import { DocumentWorkspace } from '@/features/document-recognition';
-import { AddRecognitionsToWork } from '@/features/works';
-import { useMembership } from '@/lib/api/workspace';
+import {
+  AddRecognitionsToWork,
+  invalidateWorkspaceWorks,
+} from '@/features/works';
+import { useMembership, useWorkspaceId } from '@/lib/api/workspace';
 
 export default function RecognitionPage() {
   const { rights } = useMembership();
+  const workspaceId = useWorkspaceId();
+  const client = useQueryClient();
   const canAttach =
     rights.includes('documents.upload') &&
     rights.includes('recognitions.use') &&
@@ -12,6 +19,7 @@ export default function RecognitionPage() {
   return (
     <DocumentWorkspace
       AddToWork={canAttach ? AddRecognitionsToWork : undefined}
+      onDeletionAccepted={() => invalidateWorkspaceWorks(client, workspaceId)}
     />
   );
 }

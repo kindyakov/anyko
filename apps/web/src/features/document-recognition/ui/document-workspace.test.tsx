@@ -32,12 +32,12 @@ function doc(id: string, filename: string, status: Status) {
 
 const recognitionsAddress = `/api/v1/workspaces/${workspaceId}/recognitions`;
 
-function renderWorkspace() {
+function renderWorkspace(onDeletionAccepted?: () => Promise<void>) {
   navigation.params = { workspace: workspaceId };
   return render(
     <QueryClientProvider client={createQueryClient()}>
       <ToastProvider>
-        <DocumentWorkspace />
+        <DocumentWorkspace onDeletionAccepted={onDeletionAccepted} />
       </ToastProvider>
     </QueryClientProvider>,
   );
@@ -481,7 +481,11 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
     });
   });
   const user = userEvent.setup();
-  renderWorkspace();
+  let refreshes = 0;
+  renderWorkspace(() => {
+    refreshes++;
+    return Promise.resolve();
+  });
 
   await user.click(
     await screen.findByRole('checkbox', { name: 'Выбрать first.pdf' }),
@@ -496,6 +500,7 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
     );
   await user.click(dialog().getByRole('button', { name: 'Отмена' }));
   expect(exchanges.some(({ method }) => method === 'DELETE')).toBe(false);
+  expect(refreshes).toBe(0);
   expect(screen.getByText('Выбрано: 2')).toBeTruthy();
 
   await user.click(screen.getByRole('button', { name: 'Удалить выбранные' }));
@@ -509,6 +514,7 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
 
   const notices = within(screen.getByRole('region', { name: 'Уведомления' }));
   expect(await notices.findByText('Удалено: 2 из 2')).toBeTruthy();
+  expect(refreshes).toBe(1);
   expect(
     exchanges.filter(({ method }) => method === 'DELETE').map(({ url }) => url),
   ).toEqual(

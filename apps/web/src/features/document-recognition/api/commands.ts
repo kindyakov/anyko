@@ -111,6 +111,7 @@ async function runForDocuments(
 export function useRecognitionAction(
   workspaceId: string,
   track: (document: DocumentSummary) => void,
+  onDeletionAccepted?: () => Promise<void>,
 ) {
   const client = useQueryClient();
   const screen = useRef<AbortController | null>(null);
@@ -142,7 +143,10 @@ export function useRecognitionAction(
       );
       if (!requested.succeeded.length) return requested;
       // Сначала отправляем все удаления. Список показывает принятые операции, пока мы ждём их завершения.
-      await invalidateDocumentCatalog(client, workspaceId);
+      await Promise.all([
+        invalidateDocumentCatalog(client, workspaceId),
+        onDeletionAccepted?.(),
+      ]);
       const deadline = Date.now() + deletionDeadlineMs;
       const completed = await runForDocuments(
         requested.succeeded,

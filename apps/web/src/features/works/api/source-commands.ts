@@ -1,4 +1,8 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  useIsMutating,
+  useMutation,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { type Dispatch, type SetStateAction } from 'react';
 
 import {
@@ -47,6 +51,7 @@ export function useUploadWorkDocument(workspaceId: string, workId: string) {
         invalidateWork(client, workspaceId, workId),
         invalidateDocumentCatalog(client, workspaceId),
       ]),
+    onError: () => invalidateWork(client, workspaceId, workId),
   });
 }
 
@@ -67,6 +72,7 @@ export function useUpdateWorkDocumentRecognition(
 ) {
   const client = useQueryClient();
   return useMutation({
+    mutationKey: recognitionRevisionKey(workspaceId, workId),
     mutationFn: ({
       documentId,
       ocrRevision,
@@ -78,8 +84,24 @@ export function useUpdateWorkDocumentRecognition(
         params: { workspaceId, workId, documentId },
         body: { ocrRevision },
       }),
-    onSuccess: () => invalidateWork(client, workspaceId, workId),
+    onSettled: () => invalidateWork(client, workspaceId, workId),
   });
+}
+
+function recognitionRevisionKey(workspaceId: string, workId: string) {
+  return ['works', workspaceId, workId, 'update-recognition'] as const;
+}
+
+export function useUpdatingWorkRecognition(
+  workspaceId: string,
+  workId: string,
+) {
+  return (
+    useIsMutating({
+      mutationKey: recognitionRevisionKey(workspaceId, workId),
+      exact: true,
+    }) > 0
+  );
 }
 
 export function useRetryWorkDocument(workspaceId: string, workId: string) {

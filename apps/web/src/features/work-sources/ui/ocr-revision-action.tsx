@@ -3,8 +3,10 @@ import { useState } from 'react';
 
 import { Button, Modal, Notice } from '@anyko/ui';
 
-import { useUpdateWorkDocumentRecognition } from '@/features/works';
-import { describeApiError, sharedCodeTexts } from '@/lib/api/errors';
+import {
+  describeWorkCommandError,
+  useUpdateWorkDocumentRecognition,
+} from '@/features/works';
 import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 
 export function OcrRevisionAction({
@@ -63,17 +65,10 @@ export function OcrRevisionAction({
           {update.error && (
             <div className="mt-4">
               <Notice tone="danger" role="alert">
-                {describeApiError(update.error, {
-                  codes: {
-                    ...sharedCodeTexts,
-                    WORK_BUSY:
-                      'Дождитесь завершения обработки работы и повторите.',
-                    NOT_READY:
-                      'Результат этой версии недоступен. Обновите работу и попробуйте снова.',
-                  },
-                  fallback:
-                    'Не удалось обновить распознавание. Попробуйте снова.',
-                })}
+                {describeWorkCommandError(
+                  update.error,
+                  'Результат этой версии недоступен. Обновите работу и попробуйте снова.',
+                )}
               </Notice>
             </div>
           )}

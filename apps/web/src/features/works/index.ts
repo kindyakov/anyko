@@ -17,6 +17,7 @@ export {
   workStage,
 } from '@/features/works/model/journey';
 export { useWorkCommands } from '@/features/works/api/use-work-commands';
+export { describeWorkCommandError } from '@/features/works/model/command-errors';
 export {
   type Upload,
   useUpdateWorkDocumentRecognition,

@@ -23,15 +23,22 @@ import { useRecognitionFailureToasts } from './use-recognition-failure-toasts';
 const accept =
   '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,.avif,.heif,.heic,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff,image/avif,image/heif,image/heic';
 const emptyDocuments: DocumentSummary[] = [];
-type WorkAction = Pick<ComponentProps<typeof DocumentList>, 'AddToWork'>;
+type WorkAction = Pick<
+  ComponentProps<typeof DocumentList>,
+  'AddToWork' | 'onDeletionAccepted'
+>;
 
-export function DocumentWorkspace({ AddToWork }: WorkAction) {
+export function DocumentWorkspace({
+  AddToWork,
+  onDeletionAccepted,
+}: WorkAction) {
   const workspaceId = useWorkspaceId();
   return (
     <WorkspaceDocuments
       key={workspaceId}
       workspaceId={workspaceId}
       AddToWork={AddToWork}
+      onDeletionAccepted={onDeletionAccepted}
     />
   );
 }
@@ -39,6 +46,7 @@ export function DocumentWorkspace({ AddToWork }: WorkAction) {
 function WorkspaceDocuments({
   workspaceId,
   AddToWork,
+  onDeletionAccepted,
 }: WorkAction & { workspaceId: string }) {
   const [filters, setFilters] = useState<DocumentFilters>({
     q: '',
@@ -199,6 +207,7 @@ function WorkspaceDocuments({
         </section>
       )}
       <DocumentList
+        onDeletionAccepted={onDeletionAccepted}
         workspaceId={workspaceId}
         documents={documents}
         observed={observed}
