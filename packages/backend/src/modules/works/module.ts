@@ -4,6 +4,7 @@ import { attachDocument } from './application/attach-document';
 import { bumpRevision } from './application/bump-revision';
 import { createWork } from './application/create-work';
 import { findWork } from './application/find-work';
+import { hasActiveDocument } from './application/has-active-document';
 import { listEvents } from './application/list-events';
 import { listWorks } from './application/list-works';
 import { readCursor } from './application/read-cursor';
@@ -38,6 +39,7 @@ export function createWorksModule(deps: WorksDeps): WorksModule {
       list: listWorks({ store }),
       find: findWork({ store }),
       sources: readSources({ store, io: deps.io }),
+      hasActiveDocument: hasActiveDocument({ store }),
       cursor: readCursor({ store }),
       events: listEvents({ store }),
     },

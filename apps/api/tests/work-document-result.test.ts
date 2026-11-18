@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import type { DocumentsModule } from '@anyko/backend/documents';
 import type { WorkViews } from '@anyko/backend/workflows';
 import { WorkError } from '@anyko/backend/works';
 import { createLogger } from '@anyko/logger';
@@ -14,8 +15,12 @@ const documentId = crypto.randomUUID();
 const resultPath = `/api/v1/workspaces/local/works/${workId}/documents/${documentId}/result`;
 
 // Сценарий подменён: тест проверяет адрес, область, форму ответа и коды, а не распознавание.
-function appWith(result: WorkViews['result']) {
+function appWith(
+  result: WorkViews['result'],
+  recognitionResult?: DocumentsModule['queries']['result'],
+) {
   const options = stubHttpOptions();
+  const documents = options.documentHttp.documents;
   return createApp({
     logger: createLogger({
       service: 'api',
@@ -24,7 +29,16 @@ function appWith(result: WorkViews['result']) {
       level: 'fatal',
     }),
     environment: 'test',
-    documentHttp: { ...options.documentHttp, access: memberAccess },
+    documentHttp: {
+      ...options.documentHttp,
+      access: memberAccess,
+      documents: recognitionResult
+        ? {
+            ...documents,
+            queries: { ...documents.queries, result: recognitionResult },
+          }
+        : documents,
+    },
     workHttp: {
       ...options.workHttp,
       access: memberAccess,
@@ -79,6 +93,30 @@ test('the result of a work document answers 200 with image links through the wor
     });
   });
   expect(calls).toEqual([{ workspaceId: 'local', workId, documentId }]);
+});
+
+test('a standalone recognition result links to the corresponding recognition images', async () => {
+  const app = appWith(
+    () => Promise.reject(new Error('UNEXPECTED_WORK_DOCUMENT_READ')),
+    () =>
+      Promise.resolve({
+        markdown: '# Распознавание',
+        processorVersion: 'fixture',
+        images: [{ path: 'images/b.png', index: 2 }],
+      }),
+  );
+  const recognitionPath = `/api/v1/workspaces/local/recognitions/${documentId}`;
+  await withServer(app, async (base) => {
+    const response = await fetch(`${base}${recognitionPath}/result`, {
+      headers: { cookie: 'session=ok' },
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      markdown: '# Распознавание',
+      processorVersion: 'fixture',
+      images: [{ path: 'images/b.png', url: `${recognitionPath}/images/2` }],
+    });
+  });
 });
 
 test('a document that is not attached to the work answers 404 NOT_FOUND', async () => {

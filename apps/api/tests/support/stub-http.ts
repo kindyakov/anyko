@@ -77,6 +77,7 @@ export function stubHttpOptions(): {
       list: unused,
       find: unused,
       sources: unused,
+      hasActiveDocument: unused,
       cursor: unused,
       events: unused,
     },

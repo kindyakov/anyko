@@ -36,8 +36,13 @@ import { memberScope } from '../../../packages/backend/tests/support/scope';
 import { integrationConfig } from './support/composition';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
-  throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
+if (
+  !databaseUrl ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+)
+  throw new Error(
+    'Dedicated anyko_test or anyko_test_<worktree> TEST_DATABASE_URL required',
+  );
 const redisUrl = process.env.TEST_REDIS_URL;
 if (!redisUrl) throw new Error('TEST_REDIS_URL required');
 const testRedisUrl: string = redisUrl;
@@ -382,25 +387,13 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
   const view = await until(input, terminal);
   expect(view.runs[0]?.status).toBe('succeeded');
   expect(view.facts.values.personName).toBe('Анна');
-  // Результат исходного документа работы: тот же текст, что у распознавания; документ другой работы — NOT_FOUND.
+  // Результат исходного документа работы содержит распознанный текст.
   const documentResult = await apiBackend.workHttp.views.result(
     memberScope(input.workspaceId),
     brandWorkId(input.workId),
     brandDocumentId(doc.id),
   );
   expect(documentResult.markdown).toBe('Имя: Анна. Номер: 42.');
-  const otherWorkId = await apiBackend.workHttp.intake.createWork(
-    memberScope(input.workspaceId, 'fixture'),
-    { packageVersion: 'technical-document-v1', title: 'Другая работа' },
-  );
-  await rejects(
-    apiBackend.workHttp.views.result(
-      memberScope(input.workspaceId),
-      brandWorkId(otherWorkId),
-      brandDocumentId(doc.id),
-    ),
-    'NOT_FOUND',
-  );
   const count = extractionCount;
   await analyze(input);
   await until(input, terminal);
@@ -1086,6 +1079,85 @@ test('owner deletion fences a running writer then physically purges the work and
 const fixtureImage = Uint8Array.fromBase64(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=',
 );
+
+test('work document source, recognition result and image share the same access matrix', async () => {
+  const { workspaceId, workId } = await create();
+  const scope = memberScope(workspaceId, 'fixture', ['works.read']);
+  const otherWorkId = await apiBackend.workHttp.intake.createWork(
+    memberScope(workspaceId, 'fixture'),
+    { packageVersion: 'technical-document-v1', title: 'Другая работа' },
+  );
+  imageFixture = [
+    {
+      path: 'images/fixture.png',
+      contentType: 'image/png',
+      bytes: fixtureImage,
+    },
+  ];
+  try {
+    const doc = await upload({ workspaceId, workId });
+    const documentId = brandDocumentId(doc.id);
+    await until({ workspaceId, workId }, (view) =>
+      view.documents.some(
+        (document) =>
+          document.id === documentId && document.status === 'succeeded',
+      ),
+    );
+    const { views } = apiBackend.workHttp;
+    const reads = [
+      {
+        read: views.source,
+        value: { filename: 'fixture.pdf', contentType: 'application/pdf' },
+      },
+      {
+        read: views.result,
+        value: {
+          markdown: 'Имя: Анна. Номер: 42.',
+          images: [{ path: 'images/fixture.png', index: 0 }],
+        },
+      },
+      {
+        read: (
+          requestScope: typeof scope,
+          work: typeof workId,
+          doc: typeof documentId,
+        ) => views.image(requestScope, work, doc, 0),
+        value: { contentType: 'image/png', bytes: fixtureImage },
+      },
+    ];
+    for (const { read, value } of reads)
+      expect(await read(scope, workId, documentId)).toMatchObject(value);
+
+    const cases = [
+      { scope, workId: otherWorkId, code: 'NOT_FOUND' },
+      { scope: memberScope(crypto.randomUUID()), workId, code: 'NOT_FOUND' },
+      {
+        scope: memberScope(workspaceId, 'fixture', ['recognitions.use']),
+        workId,
+        code: 'FORBIDDEN',
+      },
+    ];
+    for (const entry of cases)
+      for (const { read } of reads)
+        await rejects(read(entry.scope, entry.workId, documentId), entry.code);
+
+    const deletedAt = new Date();
+    await db.work.update({ where: { id: workId }, data: { deletedAt } });
+    for (const { read } of reads)
+      await rejects(read(scope, workId, documentId), 'NOT_FOUND');
+    await db.work.update({ where: { id: workId }, data: { deletedAt: null } });
+
+    await db.sourceDocument.update({
+      where: { id: documentId },
+      data: { deletedAt },
+    });
+    for (const { read } of reads)
+      await rejects(read(scope, workId, documentId), 'NOT_FOUND');
+  } finally {
+    imageFixture = [];
+  }
+}, 45000);
+
 function holdFirstVisual() {
   const release = Promise.withResolvers<undefined>();
   const started = Promise.withResolvers<undefined>();
