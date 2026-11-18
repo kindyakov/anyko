@@ -1,7 +1,9 @@
 import type { Tx } from '../../platform/transactions';
 
+import { acceptRunCandidates } from './application/accept-run-candidates';
 import { confirmValues } from './application/confirm-facts';
 import { editValues } from './application/edit-values';
+import { readAnalysisFacts } from './application/read-analysis-facts';
 import { readFacts } from './application/read-facts';
 
 import type { FactsModule, FactsPorts, FactsStore } from './index';
@@ -14,12 +16,18 @@ export interface FactsDeps {
 
 export function createFactsModule(deps: FactsDeps): FactsModule {
   const bind = (store: FactsStore): FactsPorts => ({
-    internal: store,
+    internal: {
+      erase: (workspaceId, workId) => store.erase(workspaceId, workId),
+    },
     commands: {
+      acceptRunCandidates: acceptRunCandidates(store),
       edit: editValues({ store }),
       confirm: confirmValues({ store }),
     },
-    queries: { get: readFacts({ store }) },
+    queries: {
+      get: readFacts({ store }),
+      forAnalysis: readAnalysisFacts(store),
+    },
   });
   return {
     ...bind(deps.store),

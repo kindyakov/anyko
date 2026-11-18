@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { candidateSchema } from '../../../profiles/bfl/candidate';
-import type { AgentSession, AgentSessionContext, WorkFacts } from '../schemas';
+import type { AgentSession, AgentSessionContext } from '../schemas';
 
 export const reconciliationSchema = z
   .object({
@@ -24,46 +24,4 @@ export interface AgentSessionStore {
     output: Reconciliation;
   }): Promise<void>;
   erase(workspaceId: string, workId: string): Promise<void>;
-}
-
-/** Preserve every document proposal: context suggestions cannot erase a conflict. */
-export function combineCandidates(
-  ...groups: WorkFacts['candidates'][]
-): WorkFacts['candidates'] {
-  const unique = new Map<string, WorkFacts['candidates'][number]>();
-  for (const candidate of groups.flat()) {
-    const content = {
-      field: candidate.field,
-      value: candidate.value,
-      evidence: candidate.evidence,
-    };
-    const key = JSON.stringify(content);
-    if (!unique.has(key)) unique.set(key, candidate);
-  }
-  return z
-    .array(candidateSchema)
-    .max(500)
-    .parse([...unique.values()]);
-}
-
-/** Optional context additions must not roll back valid document extraction. */
-export function selectSessionCandidates(
-  raw: WorkFacts['candidates'],
-  previous: WorkFacts['candidates'],
-  proposed: WorkFacts['candidates'],
-) {
-  let base = combineCandidates(raw);
-  try {
-    base = combineCandidates(base, previous);
-  } catch {
-    return { candidates: base, contextAccepted: false };
-  }
-  try {
-    return {
-      candidates: combineCandidates(base, proposed),
-      contextAccepted: true,
-    };
-  } catch {
-    return { candidates: base, contextAccepted: false };
-  }
 }

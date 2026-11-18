@@ -38,8 +38,6 @@ const unusedWorkInternal: WorksPorts['internal'] = {
   finishDeletion: unused,
 };
 const unusedFactsInternal: FactsModule['internal'] = {
-  get: unused,
-  save: unused,
   erase: unused,
 };
 
@@ -79,6 +77,7 @@ function ports(calls: string[]): {
           return Promise.resolve();
         },
         confirm: unused,
+        acceptRunCandidates: unused,
       },
     },
   };
@@ -89,11 +88,11 @@ function scenario(calls: string[]) {
   const worksModule: WorksModule = { ...built.works, in: () => built.works };
   const factsModule: FactsModule = {
     commands: built.facts.commands,
-    queries: { get: unused },
+    queries: { get: unused, forAnalysis: unused },
     internal: unusedFactsInternal,
     in: () => ({
       commands: built.facts.commands,
-      queries: { get: unused },
+      queries: { get: unused, forAnalysis: unused },
       internal: unusedFactsInternal,
     }),
   };

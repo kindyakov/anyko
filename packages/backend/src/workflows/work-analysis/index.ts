@@ -1,7 +1,7 @@
 import { LlmError } from '@anyko/llm';
 
-import type { WorkFacts } from '../../modules/agents';
 import { DocumentError } from '../../modules/documents';
+import type { WorkFacts } from '../../modules/facts';
 import { stepOutputSchema, type WorkRunRecord } from '../../modules/processing';
 import { requirePackage } from '../../modules/templates';
 import { isAppError } from '../../platform/errors';

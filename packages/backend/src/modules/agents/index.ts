@@ -68,11 +68,6 @@ export interface DocumentAgents {
   stop(): Promise<void>;
 }
 
-export {
-  combineCandidates,
-  selectSessionCandidates,
-} from './application/session';
-
 // Фасад агентов: сессия работы (контекст и согласование кандидатов) для процессов. Внешние вызовы
 // модели (DocumentAgents выше) идут через порт вне UnitOfWork и не входят в фасад транзакции.
 export interface AgentsPorts {

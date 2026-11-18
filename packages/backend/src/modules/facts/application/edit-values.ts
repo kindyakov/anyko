@@ -1,6 +1,7 @@
-import { editFacts, type FactsStore, type FieldValues } from '..';
+import type { FactsStore, FieldValues } from '..';
 import type { WorkId } from '../../../platform/ids';
 import type { WorkspaceScope } from '../../../platform/scope/workspace-scope';
+import { editFacts } from '../domain/values';
 
 // Ручная правка значений: поля, изменённые юристом, помечаются как ручные (правила в editFacts).
 export const editValues =

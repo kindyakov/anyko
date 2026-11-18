@@ -1,12 +1,9 @@
 import {
   type AgentSessionContext,
-  combineCandidates,
   type FieldDefinition,
-  selectSessionCandidates,
-  type WorkFacts,
 } from '../../modules/agents';
 import type { DocumentAnalysis } from '../../modules/documents';
-import { findFactDiscrepancies, mergeCandidates } from '../../modules/facts';
+import { candidatesForContext, type WorkFacts } from '../../modules/facts';
 import type { WorkRunRecord } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
@@ -45,10 +42,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
         `work:${run.workspaceId}:${run.workId}`,
         async () => {
           const work = await input.current();
-          const facts = await deps.facts.internal.get(
-            run.workspaceId,
-            run.workId,
-          );
+          const facts = await deps.facts.queries.forAnalysis(run);
           const session = await deps.agents.internal.ensure(
             run.workspaceId,
             run.workId,
@@ -62,17 +56,11 @@ export function createWorkContinuation(deps: WorkDependencies) {
           return { work, facts, session, threadId };
         },
       );
-      const candidates = combineCandidates(
+      const candidates = candidatesForContext(
         input.candidates,
-        snapshot.facts.candidates.filter(
-          (c) =>
-            c.origin !== 'context' &&
-            c.evidence.every((e) => run.documentIds.includes(e.documentId)) &&
-            c.evidence.some(
-              (e) =>
-                !input.sources.some((source) => source.id === e.documentId),
-            ),
-        ),
+        snapshot.facts.candidates,
+        run.documentIds,
+        input.sources.map(({ id }) => id),
       );
       let output:
         Awaited<ReturnType<typeof deps.agents.model.reconcile>> | undefined;
@@ -156,30 +144,20 @@ export function createWorkContinuation(deps: WorkDependencies) {
             work.revision === snapshot.work.revision ? output : undefined;
           await deps.uow.run(async (tx) => {
             const processing = deps.processing.in(tx).internal;
-            const facts = deps.facts.in(tx).internal;
+            const facts = deps.facts.in(tx).commands;
             const works = deps.works.in(tx).internal;
             const sessions = deps.agents.in(tx).internal;
             // This CAS takes a row lock until commit; a reconciler cannot replace the attempt mid-acceptance.
             await processing.fence(run);
-            const existing = await facts.get(run.workspaceId, run.workId);
-            const selection = selectSessionCandidates(
+            const acceptedFacts = await facts.acceptRunCandidates({
+              workspaceId: run.workspaceId,
+              workId: run.workId,
+              fields: input.fields.map(({ key }) => key),
+              confirmed: work.confirmedRevision === work.revision,
               candidates,
-              existing.candidates,
-              validOutput?.candidates ?? [],
-            );
-            if (!selection.contextAccepted) validOutput = undefined;
-            const next = mergeCandidates(
-              existing,
-              selection.candidates,
-              work.confirmedRevision === work.revision,
-            );
-            // A failed optional stage must not erase known values solely because its proposals exceed the budget.
-            if (!validOutput)
-              for (const field of input.fields) {
-                if (!selection.candidates.some((c) => c.field === field.key))
-                  next.values[field.key] = existing.values[field.key];
-              }
-            await facts.save(run.workspaceId, run.workId, next);
+              ...(validOutput && { contextCandidates: validOutput.candidates }),
+            });
+            if (!acceptedFacts.contextAccepted) validOutput = undefined;
             await works.touch(run.workspaceId, run.workId, {});
             if (validOutput && run.settingsRevision !== null) {
               const context: AgentSessionContext = {
@@ -193,13 +171,9 @@ export function createWorkContinuation(deps: WorkDependencies) {
                   id,
                   digest,
                 })),
-                missingFields: input.fields
-                  .filter((f) => next.values[f.key] === null)
-                  .map((f) => f.key),
+                missingFields: acceptedFacts.missingFields,
                 // Снимок сессии фиксирует расхождения на момент сохранения этой редакции.
-                conflictFields: findFactDiscrepancies(next).filter((key) =>
-                  input.fields.some((f) => f.key === key),
-                ),
+                conflictFields: acceptedFacts.discrepancyFields,
               };
               await sessions.accept({
                 workspaceId: run.workspaceId,
