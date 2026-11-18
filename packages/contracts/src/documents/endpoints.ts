@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import {
-  cursorQuerySchema,
+  cursorQuery,
   endpoint,
   fileDownload,
   json,
@@ -15,19 +15,38 @@ import {
   documentResponseSchema,
   documentResultSchema,
   documentsResponseSchema,
+  sourceFormatSchema,
   uploadFileSchema,
 } from './schemas';
 
 // Распознавание вне работы (термин глоссария). Неизвестный или не-UUID идентификатор даёт NOT_FOUND.
 const documentParams = workspaceParams.extend({ documentId: z.uuid() });
 const recognitionsPath = '/workspaces/:workspaceId/recognitions';
+const formatList = z
+  .string()
+  .max(sourceFormatSchema.options.join(',').length)
+  .describe(
+    `Comma-separated file formats: ${sourceFormatSchema.options.join(', ')}`,
+  )
+  .transform((value) => value.split(','))
+  .pipe(
+    z.array(sourceFormatSchema).min(1).max(sourceFormatSchema.options.length),
+  );
 
 export const listDocuments = endpoint({
   summary: 'Возвращает список распознаваний вне работы',
   method: 'GET',
   path: recognitionsPath,
   params: workspaceParams,
-  query: cursorQuerySchema,
+  query: cursorQuery({
+    q: z
+      .string()
+      .trim()
+      .max(200)
+      .regex(/^[^\0]*$/u)
+      .optional(),
+    formats: formatList.optional(),
+  }),
   response: json(documentsResponseSchema),
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_DOCUMENT'],
@@ -108,7 +127,7 @@ export const getDocumentDeletion = endpoint({
   params: documentParams,
   response: json(documentDeletionSchema),
   status: 200,
-  errors: ['FORBIDDEN', 'NOT_FOUND'],
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_DOCUMENT'],
   invalid: 'NOT_FOUND',
 });
 

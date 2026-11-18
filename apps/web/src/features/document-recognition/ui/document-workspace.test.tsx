@@ -95,6 +95,16 @@ test('a failed attempt displays the server reason and code once; historical fail
   await waitFor(() => {
     expect(notifications.getAllByText(description)).toHaveLength(2);
   });
+
+  const previousFailure = current;
+  current = { ...queued, status: 'running', processingRevision: 3 };
+  await user.click(refresh);
+  await screen.findByText('Распознаётся: 1');
+  current = { ...previousFailure, processingRevision: 3 };
+  await user.click(refresh);
+  await waitFor(() => {
+    expect(notifications.getAllByText(description)).toHaveLength(3);
+  });
 });
 
 test('the list polls while a document is being recognized and stops once none is left', async () => {
@@ -392,7 +402,9 @@ test('bulk retry runs only for selected failed files and reports partial success
   renderWorkspace();
 
   await user.click(
-    await screen.findByRole('checkbox', { name: 'Выбрать все файлы' }),
+    await screen.findByRole('checkbox', {
+      name: 'Выбрать все файлы на странице',
+    }),
   );
   expect(screen.getByText('Выбрано: 4')).toBeTruthy();
   await user.click(
@@ -400,7 +412,7 @@ test('bulk retry runs only for selected failed files and reports partial success
   );
   expect(
     screen
-      .getByRole('checkbox', { name: 'Выбрать все файлы' })
+      .getByRole('checkbox', { name: 'Выбрать все файлы на странице' })
       .getAttribute('aria-checked'),
   ).toBe('mixed');
   await user.click(
@@ -485,25 +497,108 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
   ).toBeNull();
 });
 
-test('shows more recognition results using the cursor returned by the first page', async () => {
-  const exchanges = serveApi(({ url }) =>
-    json(200, {
-      items:
-        url === recognitionsAddress
-          ? [doc('d1', 'first.pdf', 'succeeded')]
-          : [doc('d2', 'second.pdf', 'succeeded')],
-      nextCursor: url === recognitionsAddress ? 'page-two' : null,
+test('search and multiple formats reset the cursor while selections survive page and filter changes', async () => {
+  const exchanges = serveApi(({ url }) => {
+    const query = new URL(url, 'http://local.test').searchParams;
+    const next = query.get('after') === 'page-two';
+    const searched = query.has('q');
+    return json(200, {
+      items: searched
+        ? []
+        : next
+          ? [doc('d2', 'second.pdf', 'succeeded')]
+          : [doc('d1', 'first.pdf', 'succeeded')],
+      nextCursor: searched || next ? null : 'page-two',
       pendingDeletions: [],
-    }),
-  );
+    });
+  });
+  const user = userEvent.setup();
   renderWorkspace();
-  const more = await screen.findByRole('button', { name: 'Показать ещё' });
-  await userEvent.setup().click(more);
+  await user.click(
+    await screen.findByRole('checkbox', { name: 'Выбрать first.pdf' }),
+  );
+  await user.click(screen.getByRole('button', { name: 'Далее' }));
   expect(await screen.findByText('second.pdf')).toBeTruthy();
-  expect(screen.getByText('first.pdf')).toBeTruthy();
+  expect(screen.queryByText('first.pdf')).toBeNull();
+  expect(screen.getByText('Вне страницы: 1')).toBeTruthy();
   expect(exchanges.map(({ url }) => url)).toEqual([
     recognitionsAddress,
     recognitionsAddress + '?after=page-two',
   ]);
-  expect(screen.queryByRole('button', { name: 'Показать ещё' })).toBeNull();
+  await user.type(
+    screen.getByRole('searchbox', { name: 'Поиск файлов по имени' }),
+    'счёт',
+  );
+  await screen.findByText('Файлы по этим фильтрам не найдены.');
+  await user.click(screen.getByRole('button', { name: 'Форматы' }));
+  await user.click(screen.getByRole('checkbox', { name: 'PDF' }));
+  await user.click(screen.getByRole('checkbox', { name: 'HEIF / HEIC' }));
+  await waitFor(() => {
+    const request = new URL(exchanges.at(-1)?.url ?? '', 'http://local.test');
+    expect(Object.fromEntries(request.searchParams)).toEqual({
+      q: 'счёт',
+      formats: 'heif,pdf',
+    });
+  });
+  expect(screen.getByText('Выбрано: 1')).toBeTruthy();
+  await user.keyboard('{Escape}');
+  await user.click(screen.getByRole('button', { name: 'Сбросить фильтры' }));
+  expect(
+    await screen.findByRole('checkbox', {
+      name: 'Выбрать first.pdf',
+      checked: true,
+    }),
+  ).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: 'Далее' }));
+  await screen.findByText('second.pdf');
+  await user.click(screen.getByRole('button', { name: 'Назад' }));
+  expect(await screen.findByText('first.pdf')).toBeTruthy();
+});
+
+test('a running selection that fails on another page reports the error and can be retried', async () => {
+  const running = {
+    ...doc('running', 'first.pdf', 'running'),
+    processingRevision: 1,
+  };
+  const failed = {
+    ...running,
+    status: 'failed',
+    errorCode: 'OCR_FAILED',
+    errorMessage: 'Распознавание первого файла завершилось ошибкой.',
+  };
+  serveApi(({ url, method }) => {
+    if (method === 'POST' && url === `${recognitionsAddress}/running/retry`)
+      return json(202, {
+        document: { ...running, status: 'queued', processingRevision: 2 },
+      });
+    if (url === `${recognitionsAddress}/running`)
+      return json(200, { document: failed });
+    const first = url === recognitionsAddress;
+    return json(200, {
+      items: first ? [running] : [doc('second', 'second.pdf', 'succeeded')],
+      nextCursor: first ? 'page-two' : null,
+      pendingDeletions: [],
+    });
+  });
+  const user = userEvent.setup();
+  renderWorkspace();
+  await user.click(
+    await screen.findByRole('checkbox', { name: 'Выбрать first.pdf' }),
+  );
+  await user.click(screen.getByRole('button', { name: 'Далее' }));
+  await screen.findByText('second.pdf');
+  const notifications = within(
+    screen.getByRole('region', { name: 'Уведомления' }),
+  );
+  expect(
+    await notifications.findByText(
+      'first.pdf: Распознавание первого файла завершилось ошибкой. (OCR_FAILED)',
+    ),
+  ).toBeTruthy();
+  await user.click(
+    screen.getByRole('button', { name: 'Повторить распознавание (1)' }),
+  );
+  expect(
+    await notifications.findByText('Повторное распознавание запущено: 1 из 1'),
+  ).toBeTruthy();
 });

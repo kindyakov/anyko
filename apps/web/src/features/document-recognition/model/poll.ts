@@ -2,6 +2,10 @@ import type { DocumentSummary } from '@anyko/contracts/documents';
 
 export const recognitionPollMs = 2000;
 
+export function isRecognizing(document: Pick<DocumentSummary, 'status'>) {
+  return document.status === 'queued' || document.status === 'running';
+}
+
 type RecognitionSnapshot = {
   readonly items: readonly { readonly status: DocumentSummary['status'] }[];
   readonly pendingDeletions: readonly unknown[];
@@ -14,10 +18,6 @@ export function recognitionPollInterval(
 ): number | false {
   if (!snapshot) return false;
   const busy =
-    snapshot.pendingDeletions.length > 0 ||
-    snapshot.items.some(
-      (document) =>
-        document.status === 'queued' || document.status === 'running',
-    );
+    snapshot.pendingDeletions.length > 0 || snapshot.items.some(isRecognizing);
   return busy ? recognitionPollMs : false;
 }

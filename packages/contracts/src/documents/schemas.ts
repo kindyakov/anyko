@@ -2,6 +2,18 @@ import { z } from 'zod';
 
 import { cursorResponseSchema } from '../common';
 
+export const sourceFormatSchema = z.enum([
+  'pdf',
+  'docx',
+  'jpg',
+  'png',
+  'webp',
+  'tiff',
+  'avif',
+  'heif',
+]);
+export type SourceFormat = z.infer<typeof sourceFormatSchema>;
+
 export const documentSchema = z.object({
   id: z.string().min(1),
   filename: z.string(),

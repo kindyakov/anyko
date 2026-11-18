@@ -178,6 +178,74 @@ test('recognition cursor survives deletion of the previous page boundary with eq
   expect(second.nextCursor).toBeNull();
 });
 
+test('recognition searches the workspace before paging and filters by verified file formats', async () => {
+  const own = await workspace();
+  const other = await workspace();
+  const scope = memberScope(own);
+  const pdfId = crypto.randomUUID();
+  const heic = crypto.randomUUID();
+  const sameNamePng = crypto.randomUUID();
+  const foreign = crypto.randomUUID();
+  const deleted = crypto.randomUUID();
+  const createdAt = new Date('2026-01-01');
+  const namesAndFormats = [
+    [pdfId, own, 'СЧЁТ-AbCd_100%.pdf', 'pdf'],
+    [heic, own, 'счёт-abcd_100%.HEIC', 'heif'],
+    [sameNamePng, own, 'СЧЁТ-ABCD_100%.pdf', 'png'],
+    [foreign, other, 'СЧЁТ-ABCD_100%.pdf', 'pdf'],
+    [deleted, own, 'счёт-abcd_100%.pdf', 'pdf'],
+  ] as const;
+  await db.sourceDocument.createMany({
+    data: namesAndFormats.map(([id, workspaceId, filename, format]) => ({
+      id,
+      workspaceId,
+      filename,
+      sourceKey: `sources/${workspaceId}/${id}.${format}`,
+      sourceChecksum: 'synthetic',
+      requestKey: id,
+      size: 1,
+      createdBy: 'synthetic-actor',
+      createdAt,
+      deletedAt: id === deleted ? createdAt : null,
+    })),
+  });
+  await db.$executeRaw`
+    INSERT INTO "SourceDocument"
+      (id, "workspaceId", filename, "sourceKey", "sourceChecksum", "requestKey", size, "createdBy", "createdAt")
+    SELECT ${own} || '-' || n, ${own}, 'Счёт-ABCDx100Y-' || n || '.pdf',
+      ${own} || '/' || n || '.pdf', 'synthetic', n::text, 1, 'synthetic-actor', TIMESTAMP '2026-02-01'
+    FROM generate_series(1, 25000) n
+  `;
+  const unfiltered = await recognition.queries.list(scope, { limit: 50 });
+  expect(unfiltered.items).toHaveLength(50);
+  expect(unfiltered.items.some(({ id }) => id === pdfId || id === heic)).toBe(
+    false,
+  );
+  const filters = {
+    q: 'чЁт-aBCd_100%',
+    formats: ['pdf', 'heif'] as const,
+    limit: 1,
+  };
+  const first = await recognition.queries.list(scope, filters);
+  expect(first.items).toHaveLength(1);
+  if (!first.nextCursor) throw new Error('Expected another matching document');
+  const second = await recognition.queries.list(scope, {
+    ...filters,
+    after: first.nextCursor,
+  });
+  expect([...first.items, ...second.items].map(({ id }) => id)).toEqual(
+    [pdfId, heic].sort().reverse(),
+  );
+  expect(second.nextCursor).toBeNull();
+  const otherPage = await recognition.queries.list(memberScope(other), filters);
+  expect(otherPage.items.map(({ id }) => id)).toEqual([foreign]);
+  const pngPage = await recognition.queries.list(scope, {
+    ...filters,
+    formats: ['png'],
+  });
+  expect(pngPage.items.map(({ id }) => id)).toEqual([sameNamePng]);
+}, 15000);
+
 test('upload atomically persists metadata, run and outbox; foreign workspace cannot read it', async () => {
   const own = await workspace(),
     foreign = await workspace();

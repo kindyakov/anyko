@@ -71,7 +71,12 @@ export interface DocumentPosition {
   id: string;
 }
 
-export interface DocumentListInput {
+interface DocumentListFilters {
+  q?: string | undefined;
+  formats?: readonly SourceFormat[] | undefined;
+}
+
+export interface DocumentListInput extends DocumentListFilters {
   after?: string | undefined;
   limit: number;
 }
@@ -107,8 +112,7 @@ export interface DocumentStore {
   }): Promise<DocumentView>;
   list(
     workspaceId: string,
-    limit: number,
-    after?: DocumentPosition,
+    input: DocumentListFilters & { limit: number; after?: DocumentPosition },
   ): Promise<DocumentView[]>;
   pendingDeletions(workspaceId: string): Promise<
     {

@@ -92,6 +92,62 @@ test('invalid content and unsupported document formats produce actionable client
   }
 });
 
+test('recognition listing validates filters and forwards them with the cursor', async () => {
+  const { documentHttp } = stubHttpOptions();
+  const inputs: unknown[] = [];
+  const app = createApp({
+    environment: 'test',
+    documentHttp: {
+      ...documentHttp,
+      access: memberAccess,
+      documents: {
+        ...documentHttp.documents,
+        queries: {
+          ...documentHttp.documents.queries,
+          list(scope, input) {
+            inputs.push({ workspaceId: scope.workspaceId, ...input });
+            return Promise.resolve({ items: [], nextCursor: null });
+          },
+          pendingDeletions: () => Promise.resolve([]),
+        },
+      },
+    },
+  });
+  const request = (query: string) =>
+    app.handle(
+      new Request(
+        'http://localhost/api/v1/workspaces/local/recognitions?' + query,
+        {
+          headers: { cookie: 'session=ok' },
+        },
+      ),
+    );
+  const valid = new URLSearchParams({
+    q: '  Счёт_100%  ',
+    formats: 'pdf,heif',
+    after: 'cursor',
+    limit: '20',
+  });
+  expect((await request(valid.toString())).status).toBe(200);
+  expect(inputs).toEqual([
+    {
+      workspaceId: 'local',
+      q: 'Счёт_100%',
+      formats: ['pdf', 'heif'],
+      after: 'cursor',
+      limit: 20,
+    },
+  ]);
+  for (const query of ['formats=pdf,exe', 'formats=pdf,', 'q=%00']) {
+    const response = await request(query);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: { code: 'INVALID_DOCUMENT' },
+    });
+  }
+  expect(inputs).toHaveLength(1);
+});
+
 test('every error kind maps to one HTTP status and keeps the declared code', async () => {
   const kinds = [
     ['invalid', 400],

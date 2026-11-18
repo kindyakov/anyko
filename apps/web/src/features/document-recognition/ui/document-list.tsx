@@ -1,8 +1,7 @@
-import { RotateCw, Trash2 } from 'lucide-react';
-import { useId, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 
 import type { DocumentSummary } from '@anyko/contracts/documents';
-import { Button, Confirm, Skeleton, StatusPill, useToast } from '@anyko/ui';
+import { Confirm, Skeleton, StatusPill, useToast } from '@anyko/ui';
 
 import { isUnauthorized } from '@/lib/api/errors';
 
@@ -12,40 +11,67 @@ import {
   recognitionRetryCode,
 } from '../model/error-texts';
 
-import { DocumentRow, SelectionCheckbox } from './document-row';
+import { DocumentSelectionActions } from './catalog/document-selection-actions';
+import { DocumentRow } from './document-row';
 import { DocumentViewer, type ViewedDocument } from './document-viewer';
 
 export function DocumentList({
   workspaceId,
   documents,
+  observed,
   loading,
+  filtered,
   track,
+  search,
+  children,
 }: {
   workspaceId: string;
   documents: DocumentSummary[];
+  observed: DocumentSummary[];
   loading: boolean;
+  filtered: boolean;
   track: (document: DocumentSummary) => void;
+  search: ReactNode;
+  children: ReactNode;
 }) {
   const mutation = useRecognitionAction(workspaceId, track);
-  const selectAllId = useId();
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [selection, setSelection] = useState<Map<string, DocumentSummary>>(
+    () => new Map(),
+  );
+  const [previousObserved, setPreviousObserved] = useState(observed);
+  if (previousObserved !== observed) {
+    setPreviousObserved(observed);
+    setSelection((current) => {
+      const updated = new Map(current);
+      for (const document of observed) {
+        if (updated.has(document.id)) updated.set(document.id, document);
+      }
+      return updated;
+    });
+  }
   const [viewing, setViewing] = useState<ViewedDocument>();
   const [deleting, setDeleting] = useState<DocumentSummary[]>([]);
   const { add } = useToast();
-  const selected = documents.filter((document) => selectedIds.has(document.id));
+  const visibleDocuments = new Map(
+    documents.map((document) => [document.id, document]),
+  );
+  const selected = [...selection.values()];
+  const visibleSelected = documents.filter((document) =>
+    selection.has(document.id),
+  ).length;
   const retryable = selected.filter((document) => document.status === 'failed');
-  const allSelected =
-    selected.length > 0 && selected.length === documents.length;
   const pending = mutation.isPending ? mutation.variables : undefined;
   const processing = documents.filter(
     (document) => document.status === 'queued' || document.status === 'running',
   ).length;
 
-  function changeSelection(id: string, checked: boolean) {
-    setSelectedIds((previous) => {
-      const next = new Set(previous);
-      if (checked) next.add(id);
-      else next.delete(id);
+  function changeSelection(targets: DocumentSummary[], checked: boolean) {
+    setSelection((previous) => {
+      const next = new Map(previous);
+      for (const document of targets) {
+        if (checked) next.set(document.id, document);
+        else next.delete(document.id);
+      }
       return next;
     });
   }
@@ -66,8 +92,8 @@ export function DocumentList({
       { kind, documentIds, bulk },
       {
         onSuccess: ({ succeeded, failed }) => {
-          setSelectedIds((previous) => {
-            const next = new Set(previous);
+          setSelection((previous) => {
+            const next = new Map(previous);
             for (const id of succeeded) next.delete(id);
             return next;
           });
@@ -144,61 +170,28 @@ export function DocumentList({
           <StatusPill tone="progress">Распознаётся: {processing}</StatusPill>
         )}
       </div>
-      {documents.length > 0 && (
-        <div className="glass mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-white/10 px-4 py-2">
-          <label
-            htmlFor={selectAllId}
-            className="flex items-center gap-2 text-sm"
-          >
-            <SelectionCheckbox
-              id={selectAllId}
-              label="Выбрать все файлы"
-              checked={allSelected}
-              indeterminate={selected.length > 0 && !allSelected}
-              disabled={!!pending}
-              onCheckedChange={(checked) => {
-                setSelectedIds(
-                  new Set(checked ? documents.map(({ id }) => id) : []),
-                );
-              }}
-            />
-            Все файлы
-          </label>
-          {selected.length > 0 && (
-            <>
-              <span className="text-muted text-sm" role="status">
-                Выбрано: {selected.length}
-              </span>
-              <div className="flex flex-wrap gap-2 sm:ml-auto">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  disabled={!!pending || retryable.length === 0}
-                  loading={pending?.kind === 'retry' && pending.bulk}
-                  onClick={() => {
-                    run('retry', retryable, true);
-                  }}
-                >
-                  <RotateCw size={15} />
-                  Повторить распознавание
-                  {retryable.length > 0 ? ` (${String(retryable.length)})` : ''}
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  disabled={!!pending}
-                  onClick={() => {
-                    setDeleting(selected);
-                  }}
-                >
-                  <Trash2 size={15} />
-                  Удалить выбранные
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      {search}
+      <DocumentSelectionActions
+        disabled={!!pending}
+        retrying={pending?.kind === 'retry' && pending.bulk}
+        retryable={retryable.length}
+        pageCount={documents.length}
+        selectedCount={selected.length}
+        selectedOnPage={visibleSelected}
+        onSelectPage={(checked) => {
+          changeSelection(documents, checked);
+        }}
+        onClear={() => {
+          setSelection(new Map());
+        }}
+        onRetry={() => {
+          run('retry', retryable, true);
+        }}
+        onDelete={() => {
+          setDeleting(selected);
+        }}
+      />
+      {children}
       {loading ? (
         <ul className="grid gap-3" aria-busy aria-label="Файлы загружаются">
           {[0, 1, 2].map((item) => (
@@ -217,7 +210,9 @@ export function DocumentList({
         </ul>
       ) : documents.length === 0 ? (
         <p className="glass text-muted rounded-2xl border border-dashed border-white/10 px-6 py-10 text-center text-sm">
-          Здесь появятся загруженные файлы и результаты распознавания.
+          {filtered
+            ? 'Файлы по этим фильтрам не найдены.'
+            : 'Здесь появятся загруженные файлы и результаты распознавания.'}
         </p>
       ) : (
         <ul className="grid gap-3" aria-label="Загруженные файлы">
@@ -226,7 +221,7 @@ export function DocumentList({
               key={document.id}
               document={document}
               index={index}
-              checked={selectedIds.has(document.id)}
+              checked={selection.has(document.id)}
               disabled={!!pending}
               retrying={
                 pending?.kind === 'retry' &&
@@ -234,7 +229,7 @@ export function DocumentList({
                 pending.documentIds[0] === document.id
               }
               onCheckedChange={(checked) => {
-                changeSelection(document.id, checked);
+                changeSelection([document], checked);
               }}
               onOpen={() => {
                 setViewing({
@@ -286,6 +281,8 @@ export function DocumentList({
       >
         Оригиналы и результаты распознавания будут удалены без возможности
         восстановления.
+        {deleting.some((document) => !visibleDocuments.has(document.id)) &&
+          ' Выбор включает файлы за пределами текущей страницы.'}
       </Confirm>
     </section>
   );

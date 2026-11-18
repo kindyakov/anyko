@@ -216,6 +216,24 @@ test('recognition reports a failed file and allows retry', async ({ page }) => {
   await row.getByRole('button', { name: 'Повторить' }).click();
   expect((await retry).status()).toBe(202);
   await expect(row).toContainText('Не удалось распознать документ');
+  const search = page.getByRole('searchbox', { name: 'Поиск файлов по имени' });
+  await search.fill('unmatched-e2e-file');
+  await expect(
+    page.getByText('Файлы по этим фильтрам не найдены.'),
+  ).toBeVisible();
+  await search.fill('AiL.Pd');
+  await expect(row).toBeVisible();
+  await page.getByRole('button', { name: 'Форматы' }).click();
+  await page.getByRole('checkbox', { name: 'PNG' }).check();
+  await expect(
+    page.getByText('Файлы по этим фильтрам не найдены.'),
+  ).toBeVisible();
+  await page.getByRole('checkbox', { name: 'PDF', exact: true }).check();
+  await expect(row).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Сбросить фильтры' }).click();
+  await expect(search).toHaveValue('');
+  await expect(row).toBeVisible();
 });
 
 test('owner switches areas without seeing the other area works; a member cannot open a foreign area', async ({

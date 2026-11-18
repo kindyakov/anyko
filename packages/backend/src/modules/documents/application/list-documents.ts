@@ -25,13 +25,16 @@ function readPosition(cursor: string): DocumentPosition {
 // Маркер хранит ключ сортировки, поэтому продолжение доступно после удаления опорного документа.
 export const listDocuments =
   (deps: Pick<DocumentDeps, 'store'>) =>
-  async (scope: WorkspaceScope, { after, limit }: DocumentListInput) => {
+  async (
+    scope: WorkspaceScope,
+    { after, limit, ...filters }: DocumentListInput,
+  ) => {
     scope.require('recognitions.use');
-    const rows = await deps.store.list(
-      scope.workspaceId,
-      limit + 1,
-      after === undefined ? undefined : readPosition(after),
-    );
+    const rows = await deps.store.list(scope.workspaceId, {
+      ...filters,
+      limit: limit + 1,
+      ...(after === undefined ? {} : { after: readPosition(after) }),
+    });
     const items = rows.slice(0, limit);
     const last = items.at(-1);
     return {

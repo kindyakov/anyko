@@ -2,13 +2,30 @@ import { z } from 'zod';
 
 import type { Database } from '@anyko/database';
 
-import type { DocumentPosition, DocumentView } from '../application/ports';
+import type { DocumentStore, DocumentView } from '../application/ports';
 const statusSchema = z.enum(['queued', 'running', 'succeeded', 'failed']);
+type RunSummary = {
+  status: string;
+  errorCode: string | null;
+  revision: number | null;
+  processorVersion: string | null;
+};
+type SourceSummary = {
+  id: string;
+  filename: string;
+  sourceKey: string;
+  createdAt: Date;
+};
+
 /** Explicit document screen read model: source metadata + latest processing summary. */
 export function createDocumentReadModel(
   db: Pick<
     Database,
-    'sourceDocument' | 'documentDeletion' | 'processingIo' | 'documentArtifact'
+    | 'sourceDocument'
+    | 'documentDeletion'
+    | 'processingIo'
+    | 'documentArtifact'
+    | '$queryRaw'
   >,
 ) {
   const select = {
@@ -156,24 +173,47 @@ export function createDocumentReadModel(
         select: { key: true, contentType: true, size: true, checksum: true },
       });
     },
-    async list(workspaceId: string, limit: number, after?: DocumentPosition) {
-      return (
-        await db.sourceDocument.findMany({
-          where: {
-            workspaceId,
-            deletedAt: null,
-            ...(after && {
-              OR: [
-                { createdAt: { lt: after.createdAt } },
-                { createdAt: after.createdAt, id: { lt: after.id } },
-              ],
-            }),
-          },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          take: limit,
-          select,
-        })
-      ).map(view);
+    async list(
+      workspaceId: string,
+      { limit, after, q, formats }: Parameters<DocumentStore['list']>[1],
+    ) {
+      const namePattern = q ? `%${q.replace(/[\\%_]/g, '\\$&')}%` : null;
+      // Формат в ключе хранения нормализован после проверки байтов при загрузке.
+      const requestedFormats = formats?.length ? formats.join(',') : null;
+      const rows = await db.$queryRaw<
+        (SourceSummary &
+          Omit<RunSummary, 'status'> & { status: string | null })[]
+      >`
+        SELECT d.*, r.status, r."errorCode", r.revision, r."processorVersion"
+        FROM (
+          SELECT id, filename, "sourceKey", "createdAt"
+          FROM "SourceDocument"
+          WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
+            AND (${namePattern}::text IS NULL OR
+              casefold(filename COLLATE pg_catalog.pg_unicode_fast)
+                LIKE casefold(${namePattern}::text COLLATE pg_catalog.pg_unicode_fast))
+            AND (${requestedFormats}::text IS NULL OR
+              split_part("sourceKey", '.', -1) = ANY(string_to_array(${requestedFormats}::text, ',')))
+            AND (${after?.id ?? null}::text IS NULL OR
+              ("createdAt", id) < (${after?.createdAt ?? null}::timestamp, ${after?.id ?? null}::text))
+          ORDER BY "createdAt" DESC, id DESC
+          LIMIT ${limit}
+        ) d
+        LEFT JOIN LATERAL (
+          SELECT status, "errorCode", revision, "processorVersion"
+          FROM "Run"
+          WHERE "workspaceId" = ${workspaceId} AND "documentId" = d.id
+          ORDER BY revision DESC
+          LIMIT 1
+        ) r ON TRUE
+        ORDER BY d."createdAt" DESC, d.id DESC
+      `;
+      return rows.map((row) =>
+        view({
+          ...row,
+          runs: row.status === null ? [] : [{ ...row, status: row.status }],
+        }),
+      );
     },
     async get(workspaceId: string, documentId: string) {
       const row = await db.sourceDocument.findUnique({

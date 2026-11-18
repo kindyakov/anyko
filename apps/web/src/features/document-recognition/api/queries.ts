@@ -1,9 +1,11 @@
-import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
+import { queryOptions } from '@tanstack/react-query';
 
 import {
+  getDocument,
   getDocumentResult,
   getDocumentSource,
   listDocuments,
+  type SourceFormat,
 } from '@anyko/contracts/documents';
 import {
   getWorkDocumentResult,
@@ -11,26 +13,84 @@ import {
 } from '@anyko/contracts/works';
 
 import { callApi, callFileApi } from '@/lib/api/call';
+import { ApiError } from '@/lib/api/errors';
 
-import { recognitionPollInterval } from '../model/poll';
+import {
+  isRecognizing,
+  recognitionPollInterval,
+  recognitionPollMs,
+} from '../model/poll';
 
 import { documentKeys } from './keys';
 
-export function documentsQueryOptions(workspaceId: string) {
-  return infiniteQueryOptions({
-    queryKey: documentKeys.list(workspaceId),
-    initialPageParam: undefined as string | undefined,
-    queryFn: ({ signal, pageParam }) =>
+export type DocumentFilters = {
+  q: string;
+  formats: readonly SourceFormat[];
+};
+
+export function documentsQueryOptions(
+  workspaceId: string,
+  filters: DocumentFilters,
+  after?: string,
+) {
+  const query = {
+    q: filters.q || undefined,
+    formats: filters.formats.length
+      ? [...filters.formats].sort().join(',')
+      : undefined,
+    after,
+  };
+  return queryOptions({
+    queryKey: [...documentKeys.list(workspaceId), query],
+    queryFn: ({ signal }) =>
       callApi(listDocuments, {
         params: { workspaceId },
-        query: { after: pageParam },
+        query,
         signal,
       }),
-    getNextPageParam: (page) => page.nextCursor ?? undefined,
-    // При опросе обновляются загруженные страницы, включая состояние удалений.
     refetchInterval: (query) =>
-      query.state.data?.pages.map(recognitionPollInterval).find(Boolean) ??
-      false,
+      query.state.data ? recognitionPollInterval(query.state.data) : false,
+  });
+}
+
+export function recognitionStatusQueryOptions(
+  workspaceId: string,
+  documentId: string,
+  revision: number,
+) {
+  return queryOptions({
+    queryKey: [
+      ...documentKeys.all(workspaceId),
+      'status',
+      documentId,
+      revision,
+    ],
+    queryFn: async ({ signal }) => {
+      try {
+        return (
+          await callApi(getDocument, {
+            params: { workspaceId, documentId },
+            signal,
+          })
+        ).document;
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+    refetchInterval: ({ state: { data, error } }) => {
+      if (
+        error instanceof ApiError &&
+        (error.status === 401 || error.status === 403)
+      )
+        return false;
+      return data === null ||
+        (data &&
+          (data.processingRevision ?? 0) >= revision &&
+          !isRecognizing(data))
+        ? false
+        : recognitionPollMs;
+    },
   });
 }
 

@@ -1,8 +1,9 @@
 'use client';
-import { useInfiniteQuery } from '@tanstack/react-query';
-import { RefreshCw } from 'lucide-react';
-import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { useCallback, useState } from 'react';
 
+import type { DocumentSummary } from '@anyko/contracts/documents';
 import { Button, Notice, RelativeTime, useToast } from '@anyko/ui';
 import { DropZone } from '@anyko/ui/brand';
 
@@ -11,20 +12,46 @@ import { isUnauthorized } from '@/lib/api/errors';
 import { useWorkspaceId } from '@/lib/api/workspace';
 
 import { useUploadDocument } from '../api/commands';
-import { documentsQueryOptions } from '../api/queries';
+import { type DocumentFilters, documentsQueryOptions } from '../api/queries';
 import { describeDocumentError } from '../model/error-texts';
 
+import { DocumentSearch } from './catalog/document-search';
 import { DocumentList } from './document-list';
 import { useRecognitionFailureToasts } from './use-recognition-failure-toasts';
 
 const accept =
   '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,.avif,.heif,.heic,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff,image/avif,image/heif,image/heic';
+const emptyDocuments: DocumentSummary[] = [];
 export function DocumentWorkspace() {
   const workspaceId = useWorkspaceId();
-  const list = useInfiniteQuery(documentsQueryOptions(workspaceId));
-  const documents = list.data?.pages.flatMap((page) => page.items) ?? [];
-  const deletions = list.data?.pages[0]?.pendingDeletions ?? [];
-  const track = useRecognitionFailureToasts(documents);
+  return <WorkspaceDocuments key={workspaceId} workspaceId={workspaceId} />;
+}
+
+function WorkspaceDocuments({ workspaceId }: { workspaceId: string }) {
+  const [filters, setFilters] = useState<DocumentFilters>({
+    q: '',
+    formats: [],
+  });
+  const [cursors, setCursors] = useState<string[]>([]);
+  const filtered = !!filters.q || filters.formats.length > 0;
+  const list = useQuery(
+    documentsQueryOptions(workspaceId, filters, cursors.at(-1)),
+  );
+  const documents = list.data?.items ?? emptyDocuments;
+  const deletions = list.data?.pendingDeletions ?? [];
+  const nextCursor = list.data?.nextCursor;
+  const { track, trackPending, observed } = useRecognitionFailureToasts(
+    workspaceId,
+    documents,
+  );
+  const changeFilters = useCallback(
+    (next: DocumentFilters) => {
+      trackPending(documents);
+      setFilters(next);
+      setCursors([]);
+    },
+    [documents, trackPending],
+  );
   const uploadMutation = useUploadDocument(workspaceId, track);
   const { add } = useToast();
   const [refreshing, setRefreshing] = useState(false);
@@ -144,25 +171,46 @@ export function DocumentWorkspace() {
         </section>
       )}
       <DocumentList
-        key={workspaceId}
         workspaceId={workspaceId}
         documents={documents}
+        observed={observed}
         loading={list.isPending}
+        filtered={filtered}
         track={track}
-      />
-      {list.hasNextPage && (
-        <Button
-          className="mt-4"
-          variant="secondary"
-          loading={list.isFetchingNextPage}
-          disabled={list.isFetching}
-          onClick={() => {
-            void list.fetchNextPage();
-          }}
-        >
-          Показать ещё
-        </Button>
-      )}
+        search={<DocumentSearch filters={filters} onChange={changeFilters} />}
+      >
+        {(cursors.length > 0 || !!nextCursor) && (
+          <nav
+            aria-label="Страницы файлов"
+            className="mb-3 flex flex-wrap items-center gap-3"
+          >
+            <Button
+              variant="secondary"
+              disabled={cursors.length === 0}
+              onClick={() => {
+                trackPending(documents);
+                setCursors((previous) => previous.slice(0, -1));
+              }}
+            >
+              <ChevronLeft size={16} aria-hidden /> Назад
+            </Button>
+            <span className="text-muted text-sm" aria-live="polite">
+              Страница {cursors.length + 1}
+            </span>
+            <Button
+              variant="secondary"
+              disabled={!nextCursor}
+              onClick={() => {
+                if (!nextCursor) return;
+                trackPending(documents);
+                setCursors([...cursors, nextCursor]);
+              }}
+            >
+              Далее <ChevronRight size={16} aria-hidden />
+            </Button>
+          </nav>
+        )}
+      </DocumentList>
     </>
   );
 }
