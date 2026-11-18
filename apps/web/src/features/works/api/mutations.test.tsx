@@ -44,39 +44,50 @@ function renderCommands(client: QueryClient) {
   );
 }
 
-test('analyze sends its idempotency key, repeats the same key after a network error, and a new click gets a new key', async () => {
-  let posts = 0;
-  const exchanges = serveApi((exchange) => {
-    if (exchange.method === 'GET') return json(200, workView);
-    posts++;
-    return posts === 1 ? networkError : json(202, { status: 'queued' });
-  });
-  const { result } = renderCommands(createQueryClient());
-  await waitFor(() => {
-    expect(result.current.view.data).toBeDefined();
-  });
+test.each([
+  ['NETWORK_ERROR', networkError],
+  [
+    'IDEMPOTENCY_IN_PROGRESS',
+    json(409, {
+      error: { code: 'IDEMPOTENCY_IN_PROGRESS', requestId: 'request-1' },
+    }),
+  ],
+] as const)(
+  'analyze reuses its key after %s and starts a new action after success',
+  async (code, interrupted) => {
+    let posts = 0;
+    const exchanges = serveApi((exchange) => {
+      if (exchange.method === 'GET') return json(200, workView);
+      posts++;
+      return posts === 1 ? interrupted : json(202, { status: 'queued' });
+    });
+    const { result } = renderCommands(createQueryClient());
+    await waitFor(() => {
+      expect(result.current.view.data).toBeDefined();
+    });
 
-  let failure: unknown;
-  await result.current.analyze.mutateAsync().catch((error: unknown) => {
-    failure = error;
-  });
-  expect(failure).toMatchObject({ code: 'NETWORK_ERROR' });
-  await result.current.analyze.mutateAsync();
-  await result.current.analyze.mutateAsync();
+    let failure: unknown;
+    await result.current.analyze.mutateAsync().catch((error: unknown) => {
+      failure = error;
+    });
+    expect(failure).toMatchObject({ code });
+    await result.current.analyze.mutateAsync();
+    await result.current.analyze.mutateAsync();
 
-  const analyzed = exchanges.filter((item) => item.method === 'POST');
-  expect(analyzed.map((item) => item.url)).toEqual([
-    `${workAddress}/analyze`,
-    `${workAddress}/analyze`,
-    `${workAddress}/analyze`,
-  ]);
-  expect(analyzed[0]?.idempotencyKey).toMatch(uuid);
-  expect(analyzed[1]?.idempotencyKey).toBe(analyzed[0]?.idempotencyKey);
-  expect(analyzed[2]?.idempotencyKey).toMatch(uuid);
-  expect(analyzed[2]?.idempotencyKey).not.toBe(analyzed[0]?.idempotencyKey);
-  // Две успешные команды обновили вид работы: одна загрузка при открытии и по одной после каждой.
-  expect(exchanges.filter((item) => item.method === 'GET')).toHaveLength(3);
-});
+    const analyzed = exchanges.filter((item) => item.method === 'POST');
+    expect(analyzed.map((item) => item.url)).toEqual([
+      `${workAddress}/analyze`,
+      `${workAddress}/analyze`,
+      `${workAddress}/analyze`,
+    ]);
+    expect(analyzed[0]?.idempotencyKey).toMatch(uuid);
+    expect(analyzed[1]?.idempotencyKey).toBe(analyzed[0]?.idempotencyKey);
+    expect(analyzed[2]?.idempotencyKey).toMatch(uuid);
+    expect(analyzed[2]?.idempotencyKey).not.toBe(analyzed[0]?.idempotencyKey);
+    // Две успешные команды обновили вид работы: одна загрузка при открытии и по одной после каждой.
+    expect(exchanges.filter((item) => item.method === 'GET')).toHaveLength(3);
+  },
+);
 
 test('confirm sends the revision it was given and no idempotency key, then refreshes the work', async () => {
   const exchanges = serveApi((exchange) =>

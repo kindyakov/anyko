@@ -83,8 +83,7 @@ export function useWorkCommands(
     disabled,
     pending,
     uploads,
-    savingBlocked: busy || view.cleanupPending,
-    retryDisabled: busy || view.cleanupPending,
+    editingBlocked: busy || view.cleanupPending,
     removing: deletion.isPending,
     retryingId: retry.isPending ? retry.variables : undefined,
     analyze: (onSuccess: () => void) => {

@@ -39,6 +39,8 @@ test('an unknown outcome keeps the key for the repeated action', () => {
     new ApiError('REQUEST_TIMEOUT', undefined, undefined),
     new ApiError('REQUEST_ABORTED', undefined, undefined),
     new ApiError('HTTP_ERROR', undefined, undefined),
+    new ApiError('HTTP_ERROR', 502, undefined),
+    new ApiError('INVALID_RESPONSE', 202, 'r1'),
   ]) {
     const action = createIdempotencyKey();
     const first = action.take();

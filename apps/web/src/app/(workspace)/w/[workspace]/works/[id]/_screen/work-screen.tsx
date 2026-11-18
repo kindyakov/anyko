@@ -251,7 +251,7 @@ function WorkBody({
               onDelete={deleteDocument}
               onRetry={commands.retry}
               removing={commands.removing}
-              retryDisabled={commands.retryDisabled}
+              retryDisabled={commands.editingBlocked}
               retryingId={commands.retryingId}
             />
           </Tabs.Panel>
@@ -268,7 +268,7 @@ function WorkBody({
             <WorkReview
               view={view}
               facts={facts}
-              busy={commands.savingBlocked}
+              busy={commands.editingBlocked}
               analyzeDisabled={commands.disabled.analyze}
               onOpen={openDocument}
               onExtract={analyze}
@@ -291,7 +291,7 @@ function WorkBody({
         </div>
       </Tabs.Root>
       <UnsavedNavigation dirty={facts.hasEdits} />
-      <UnsavedFactsBar facts={facts} busy={commands.savingBlocked} />
+      <UnsavedFactsBar facts={facts} busy={commands.editingBlocked} />
       <DocumentViewer
         document={viewing}
         requiresRetry={
@@ -299,7 +299,7 @@ function WorkBody({
           view.documents.find((item) => item.id === viewing.id)?.errorCode ===
             recognitionRetryCode
         }
-        retryDisabled={commands.retryDisabled}
+        retryDisabled={commands.editingBlocked}
         onRetry={commands.retry}
         onClose={() => {
           setViewing(undefined);

@@ -10,11 +10,14 @@ export type IdempotencyKey = {
   settle(error?: unknown): void;
 };
 
-// Коды, при которых запрос мог дойти до сервера, а ответа мы не получили.
-const unknownOutcomeCodes = new Set([
+// Эти ответы не подтверждают завершение команды.
+const unsettledOutcomeCodes = new Set([
   'NETWORK_ERROR',
   'REQUEST_TIMEOUT',
   'REQUEST_ABORTED',
+  'HTTP_ERROR',
+  'INVALID_RESPONSE',
+  'IDEMPOTENCY_IN_PROGRESS',
 ]);
 
 export function createIdempotencyKey(): IdempotencyKey {
@@ -25,9 +28,7 @@ export function createIdempotencyKey(): IdempotencyKey {
       return current;
     },
     settle(error?: unknown) {
-      // Ответ сервера с кодом статуса определяет исход, включая отказ повтора (IDEMPOTENCY_CONFLICT).
-      // Без статуса или при сетевом обрыве исход неизвестен: ключ сохраняется для повтора.
-      if (isUnknownOutcome(error)) return;
+      if (isUnsettledOutcome(error)) return;
       current = undefined;
     },
   };
@@ -53,7 +54,7 @@ export async function withIdempotencyKey<T>(
   }
 }
 
-function isUnknownOutcome(error: unknown): boolean {
+function isUnsettledOutcome(error: unknown): boolean {
   if (!(error instanceof ApiError)) return false;
-  return error.status === undefined || unknownOutcomeCodes.has(error.code);
+  return error.status === undefined || unsettledOutcomeCodes.has(error.code);
 }

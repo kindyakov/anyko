@@ -1,4 +1,5 @@
 export { invalidateWork, useSaveFacts } from '@/features/works/api/mutations';
+export { invalidateWorkspaceWorks } from '@/features/works/api/queries';
 export { useWorkView } from '@/features/works/api/use-work-view';
 export {
   errorText,
