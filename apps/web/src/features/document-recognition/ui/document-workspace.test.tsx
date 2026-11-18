@@ -176,11 +176,13 @@ test('a deletion that is still pending stops polling when the screen leaves the 
 
 test('an old result asks for new recognition and a 409 keeps the preview usable', async () => {
   let document = {
-    ...doc('old', 'scan.docx', 'failed'),
+    ...doc('old', 'scan.pdf', 'failed'),
     errorCode: 'OCR_RETRY_REQUIRED',
   };
   const address = `${recognitionsAddress}/old`;
   const exchanges = serveApi(({ method, url }) => {
+    if (url === `${address}/source`)
+      return json(404, { error: { code: 'NOT_FOUND', requestId: 'source' } });
     if (url === `${address}/result`)
       return json(409, { error: { code: 'NOT_READY', requestId: 'ocr' } });
     if (method === 'POST' && url === `${address}/retry`) {
@@ -204,7 +206,7 @@ test('an old result asks for new recognition and a 409 keeps the preview usable'
   await user.click(row.getByRole('button', { name: 'Открыть' }));
 
   const preview = within(
-    await screen.findByRole('dialog', { name: 'scan.docx' }),
+    await screen.findByRole('dialog', { name: 'scan.pdf' }),
   );
   expect(
     await preview.findByText('Документ нужно распознать заново'),
@@ -212,18 +214,61 @@ test('an old result asks for new recognition and a 409 keeps the preview usable'
   expect(
     preview.getByRole('link', { name: 'Оригинал в новой вкладке' }),
   ).toBeTruthy();
+  expect(
+    preview
+      .getByRole('switch', { name: 'Синхронная прокрутка' })
+      .getAttribute('aria-disabled'),
+  ).toBe('true');
   expect(screen.queryByRole('alert')).toBeNull();
   await user.click(preview.getByRole('button', { name: 'Повторить' }));
 
   expect(await screen.findByText('В очереди')).toBeTruthy();
-  expect(exchanges.slice(0, 4).map(({ method, url }) => [method, url])).toEqual(
-    [
-      ['GET', recognitionsAddress],
-      ['GET', `${address}/result`],
-      ['POST', `${address}/retry`],
-      ['GET', recognitionsAddress],
-    ],
+  expect(
+    exchanges
+      .filter(({ url }) => url !== `${address}/source`)
+      .slice(0, 4)
+      .map(({ method, url }) => [method, url]),
+  ).toEqual([
+    ['GET', recognitionsAddress],
+    ['GET', `${address}/result`],
+    ['POST', `${address}/retry`],
+    ['GET', recognitionsAddress],
+  ]);
+});
+
+test('a DOCX source error keeps the extracted text and the original download available', async () => {
+  const address = `${recognitionsAddress}/word`;
+  const exchanges = serveApi(({ url }) => {
+    if (url === `${address}/source`)
+      return json(404, { error: { code: 'NOT_FOUND', requestId: 'source' } });
+    if (url === `${address}/result`)
+      return json(200, {
+        markdown: 'Извлечённый текст',
+        processorVersion: 'fixture',
+      });
+    return json(200, {
+      items: [doc('word', 'sample.docx', 'succeeded')],
+      nextCursor: null,
+      pendingDeletions: [],
+    });
+  });
+  const user = userEvent.setup();
+  renderWorkspace();
+  await user.click(await screen.findByRole('button', { name: 'Открыть' }));
+  const preview = within(
+    await screen.findByRole('dialog', { name: 'sample.docx' }),
   );
+
+  expect(await preview.findByText('Не удалось показать DOCX')).toBeTruthy();
+  expect(await preview.findByText('Извлечённый текст')).toBeTruthy();
+  expect(
+    preview
+      .getByRole('link', { name: 'Скачать оригинал' })
+      .getAttribute('href'),
+  ).toBe(`${address}/source`);
+  expect(
+    exchanges.filter(({ url }) => url === `${address}/source`),
+  ).toHaveLength(1);
 });
 
 test('bulk retry runs only for selected failed files and reports partial success', async () => {

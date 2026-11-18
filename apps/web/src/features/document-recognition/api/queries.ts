@@ -1,9 +1,16 @@
 import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 
-import { getDocumentResult, listDocuments } from '@anyko/contracts/documents';
-import { getWorkDocumentResult } from '@anyko/contracts/works';
+import {
+  getDocumentResult,
+  getDocumentSource,
+  listDocuments,
+} from '@anyko/contracts/documents';
+import {
+  getWorkDocumentResult,
+  getWorkDocumentSource,
+} from '@anyko/contracts/works';
 
-import { callApi } from '@/lib/api/call';
+import { callApi, callFileApi } from '@/lib/api/call';
 
 import { recognitionPollInterval } from '../model/poll';
 
@@ -46,6 +53,29 @@ export function documentResultQueryOptions(
             signal,
           })
         : callApi(getWorkDocumentResult, {
+            params: { workspaceId, workId, documentId },
+            signal,
+          }),
+  });
+}
+
+export function documentSourceQueryOptions(
+  workspaceId: string,
+  documentId: string,
+  owner: DocumentOwner,
+) {
+  const workId = owner.kind === 'work' ? owner.workId : undefined;
+  return queryOptions({
+    queryKey: documentKeys.source(workspaceId, documentId, workId),
+    gcTime: 0,
+    retry: false,
+    queryFn: ({ signal }) =>
+      workId === undefined
+        ? callFileApi(getDocumentSource, {
+            params: { workspaceId, documentId },
+            signal,
+          })
+        : callFileApi(getWorkDocumentSource, {
             params: { workspaceId, workId, documentId },
             signal,
           }),

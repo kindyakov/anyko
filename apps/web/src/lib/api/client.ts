@@ -9,21 +9,23 @@ export type HttpFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-// Путь без `/api`: префикс добавляет эта функция, версия (`/v1`) входит в путь вызывающего.
-// Тип результата выводится из схемы ответа; ответ, не прошедший схему, отвергается.
-export async function requestApi<S extends z.ZodType>(
+type RequestOptions = {
+  method?: HttpMethod;
+  body?: BodyInit;
+  headers?: HeadersInit;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  query?: Record<string, string>;
+  fetch?: HttpFetch;
+};
+
+// Путь без `/api`: префикс добавляет транспорт, версия (`/v1`) входит в путь вызывающего.
+async function request<T>(
   path: string,
-  schema: S,
-  options: {
-    method?: HttpMethod;
-    body?: BodyInit;
-    headers?: HeadersInit;
-    signal?: AbortSignal;
-    timeoutMs?: number;
-    query?: Record<string, string>;
-    fetch?: HttpFetch;
-  } = {},
-): Promise<z.output<S>> {
+  options: RequestOptions,
+  accept: string,
+  read: (response: Response, requestId: string | undefined) => Promise<T>,
+): Promise<T> {
   if (
     !/^\/[a-zA-Z0-9/_-]*$/.test(path) ||
     path.includes('//') ||
@@ -48,7 +50,7 @@ export async function requestApi<S extends z.ZodType>(
   let requestId: string | undefined;
   try {
     const headers = new Headers(options.headers);
-    headers.set('accept', 'application/json');
+    headers.set('accept', accept);
     const query = new URLSearchParams(options.query).toString();
     const response = await (options.fetch ?? fetch)(
       `/api${path}${query ? `?${query}` : ''}`,
@@ -64,8 +66,8 @@ export async function requestApi<S extends z.ZodType>(
     );
     status = response.status;
     requestId = response.headers.get('x-request-id') ?? undefined;
-    const body: unknown = await response.json();
     if (!response.ok) {
+      const body: unknown = await response.json();
       const parsed = httpErrorSchema.safeParse(body);
       throw new ApiError(
         parsed.success ? parsed.data.error.code : 'HTTP_ERROR',
@@ -74,10 +76,7 @@ export async function requestApi<S extends z.ZodType>(
         parsed.success ? parsed.data.error.fields : undefined,
       );
     }
-    const parsed = schema.safeParse(body);
-    if (!parsed.success)
-      throw new ApiError('INVALID_RESPONSE', status, requestId);
-    return parsed.data;
+    return await read(response, requestId);
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw new ApiError(
@@ -95,4 +94,27 @@ export async function requestApi<S extends z.ZodType>(
     clearTimeout(timer);
     options.signal?.removeEventListener('abort', abort);
   }
+}
+
+export function requestApi<S extends z.ZodType>(
+  path: string,
+  schema: S,
+  options: RequestOptions = {},
+): Promise<z.output<S>> {
+  return request(
+    path,
+    options,
+    'application/json',
+    async (response, requestId) => {
+      const body: unknown = await response.json();
+      const parsed = schema.safeParse(body);
+      if (!parsed.success)
+        throw new ApiError('INVALID_RESPONSE', response.status, requestId);
+      return parsed.data;
+    },
+  );
+}
+
+export function requestApiFile(path: string, options: RequestOptions) {
+  return request(path, options, '*/*', (response) => response.blob());
 }

@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { Check, Copy, ExternalLink, FileWarning, RotateCw } from 'lucide-react';
-import { useState } from 'react';
+import { Check, Copy, ExternalLink, RotateCw } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 import {
   getDocumentImage,
@@ -23,6 +23,7 @@ import {
 import {
   type DocumentOwner,
   documentResultQueryOptions,
+  documentSourceQueryOptions,
 } from '@/features/document-recognition/api/queries';
 import { ResultPreview } from '@/features/document-recognition/ui/result-preview';
 import { endpointUrl } from '@/lib/api/call';
@@ -31,6 +32,9 @@ import { useWorkspaceId } from '@/lib/api/workspace';
 
 import { recognitionRetryText } from '../model/error-texts';
 
+import { documentKind, DocumentOriginal } from './document-original';
+import { type ScrollSource, synchronizeScrolling } from './preview/scroll-sync';
+import { ScrollSyncSwitch } from './preview/scroll-sync-switch';
 import { DocumentRetryButton } from './retry-button';
 
 type Mode = 'split' | 'text' | 'source' | 'markdown';
@@ -40,17 +44,8 @@ export type ViewedDocument = {
   id: string;
   filename: string;
   owner: DocumentOwner;
+  page?: number;
 };
-
-function documentKind(filename: string) {
-  const extension = /\.([a-z0-9]+)$/i.exec(filename)?.[1]?.toLowerCase();
-  if (extension === 'pdf') return 'pdf';
-  if (extension === 'docx') return 'docx';
-  if (extension === 'tif' || extension === 'tiff') return 'tiff';
-  if (extension && ['jpg', 'jpeg', 'png', 'webp'].includes(extension))
-    return 'image';
-  return 'other';
-}
 
 // Адреса исходника и изображений зависят от владельца документа, как и адрес результата.
 function documentLinks(workspaceId: string, document: ViewedDocument) {
@@ -95,46 +90,6 @@ function PaperSkeleton() {
   );
 }
 
-function Original({ filename, source }: { filename: string; source: string }) {
-  const kind = documentKind(filename);
-  if (kind === 'image')
-    return (
-      <div className="grid min-h-full place-items-center p-4">
-        <img
-          src={source}
-          alt={`Оригинал: ${filename}`}
-          className="animate-fade max-h-full max-w-full rounded-lg object-contain shadow-[0_20px_60px_-20px_#000]"
-        />
-      </div>
-    );
-  if (kind === 'pdf')
-    return (
-      <iframe
-        src={source}
-        title={`Оригинал: ${filename}`}
-        className="animate-fade size-full min-h-[60dvh] rounded-xl bg-white"
-      />
-    );
-  return (
-    <div className="grid min-h-full place-items-center p-6 text-center">
-      <div className="max-w-sm">
-        <span className="mx-auto grid size-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.03] text-zinc-400">
-          <FileWarning size={24} />
-        </span>
-        <p className="mt-4 font-medium">
-          {kind === 'docx'
-            ? 'Браузер не показывает DOCX'
-            : 'Браузер не показывает этот формат'}
-        </p>
-        <p className="text-muted mt-2 text-sm leading-6">
-          Откройте оригинал в отдельной вкладке или сверяйтесь с распознанным
-          текстом.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 export function DocumentViewer({
   document,
   requiresRetry,
@@ -150,7 +105,19 @@ export function DocumentViewer({
 }) {
   const [mode, setMode] = useState<Mode>('split');
   const [copied, setCopied] = useState(false);
+  const [syncEnabled, setSyncEnabled] = useState(true);
+  const [scrollSource, setScrollSource] = useState<ScrollSource | null>(null);
+  const [recognizedPane, setRecognizedPane] = useState<HTMLElement | null>(
+    null,
+  );
   const workspaceId = useWorkspaceId();
+  const kind = document && documentKind(document.filename);
+  const downloadOriginal = kind === 'docx';
+  const canSync = mode === 'split' && (kind === 'docx' || kind === 'pdf');
+  const source = document
+    ? documentLinks(workspaceId, document).source +
+      (document.page ? '#page=' + String(document.page) : '')
+    : '';
   const result = useQuery({
     ...documentResultQueryOptions(
       workspaceId,
@@ -160,6 +127,24 @@ export function DocumentViewer({
     enabled: !!document,
     staleTime: 5 * 60_000,
   });
+  const recognized = result.data;
+  useEffect(() => {
+    if (
+      !canSync ||
+      !syncEnabled ||
+      !scrollSource ||
+      !recognized ||
+      !recognizedPane
+    )
+      return;
+    const content = recognizedPane.firstElementChild;
+    if (!(content instanceof HTMLElement)) return;
+    return synchronizeScrolling(scrollSource, {
+      viewport: recognizedPane,
+      content,
+    });
+  }, [canSync, syncEnabled, scrollSource, recognized, recognizedPane]);
+
   // Текст строится для того документа, который открыт; без документа запрос не выполняется.
   const text = (viewed: ViewedDocument) =>
     result.isPending ? (
@@ -240,7 +225,14 @@ export function DocumentViewer({
                 { value: 'markdown', label: 'Markdown' },
               ]}
             />
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {canSync && (
+                <ScrollSyncSwitch
+                  checked={syncEnabled}
+                  onCheckedChange={setSyncEnabled}
+                  disabled={!scrollSource || !recognized}
+                />
+              )}
               {mode === 'markdown' && result.data && (
                 <Button
                   variant="secondary"
@@ -262,33 +254,46 @@ export function DocumentViewer({
               )}
               <a
                 className={buttonStyles({ variant: 'secondary', size: 'sm' })}
-                href={documentLinks(workspaceId, document).source}
-                target="_blank"
+                href={source}
+                target={downloadOriginal ? undefined : '_blank'}
+                download={downloadOriginal || undefined}
                 rel="noreferrer"
               >
                 <ExternalLink size={15} />
-                Оригинал в новой вкладке
+                {downloadOriginal
+                  ? 'Скачать оригинал'
+                  : 'Оригинал в новой вкладке'}
               </a>
             </div>
           </div>
           <div
-            className={`grid min-h-0 flex-1 gap-4 ${mode === 'split' ? 'lg:grid-cols-2' : ''}`}
+            className={`grid min-h-0 flex-1 gap-4 ${mode === 'split' ? 'grid-rows-2 lg:grid-cols-2 lg:grid-rows-1' : ''}`}
           >
             {(mode === 'split' || mode === 'source') && (
               <section
                 aria-label="Оригинал"
-                className="min-h-[50dvh] overflow-auto rounded-2xl border border-white/[0.07] bg-[#050507] lg:min-h-0"
+                className="min-h-0 min-w-0 overflow-auto overscroll-contain rounded-2xl border border-white/[0.07] bg-[#050507]"
               >
-                <Original
+                <DocumentOriginal
+                  key={source}
                   filename={document.filename}
-                  source={documentLinks(workspaceId, document).source}
+                  source={source}
+                  page={document.page ?? 1}
+                  split={mode === 'split'}
+                  onScrollSource={setScrollSource}
+                  sourceQuery={documentSourceQueryOptions(
+                    workspaceId,
+                    document.id,
+                    document.owner,
+                  )}
                 />
               </section>
             )}
             {mode !== 'source' && (
               <section
+                ref={setRecognizedPane}
                 aria-label="Распознанный текст"
-                className="min-h-0 overflow-auto rounded-2xl bg-[#1b1b20] p-3 sm:p-6"
+                className="min-h-0 min-w-0 overflow-auto overscroll-contain rounded-2xl bg-[#1b1b20] p-3 sm:p-6"
               >
                 {text(document)}
               </section>

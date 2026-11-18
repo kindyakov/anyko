@@ -6,4 +6,6 @@ export const documentKeys = {
   // Результат документа работы и распознавания читается разными адресами: владелец входит в ключ.
   result: (workspaceId: string, id: string, workId?: string) =>
     [...documentKeys.all(workspaceId), 'result', id, workId ?? null] as const,
+  source: (workspaceId: string, id: string, workId?: string) =>
+    [...documentKeys.all(workspaceId), 'source', id, workId ?? null] as const,
 };

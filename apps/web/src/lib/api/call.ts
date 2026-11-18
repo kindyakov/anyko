@@ -7,13 +7,17 @@ import {
   type MultipartPart,
 } from '@anyko/contracts/common';
 
-import { requestApi } from '@/lib/api/client';
+import { requestApi, requestApiFile } from '@/lib/api/client';
 
 // Версия входит в путь endpoint-описания; префикс `/api` добавляет транспорт (requestApi).
 const versionPath = '/v1';
 
-// callApi разбирает только JSON-ответ. Файлы и события берут адрес через endpointUrl.
+// callApi разбирает JSON. endpointUrl строит адрес для ссылок и событий.
 type JsonEndpoint = Endpoint & { readonly response: JsonPart };
+type FileEndpoint = Endpoint & {
+  readonly method: 'GET';
+  readonly response: { readonly kind: 'file' };
+};
 
 // Входы выводятся из схем описания: z.input для того, что вызывающий передаёт.
 type ParamsField<E> = E extends { readonly params: infer P extends z.ZodType }
@@ -194,6 +198,23 @@ export function callApi(
   const options: LooseOptions = args[0] ?? {};
   // Ошибки входа (параметры, тело, ключ) попадают в отказ промиса, а не в исключение при вызове.
   return Promise.resolve().then(() => performJson(endpoint, options));
+}
+
+export async function callFileApi<E extends FileEndpoint>(
+  endpoint: E,
+  ...args: CallArgs<E>
+): Promise<Blob> {
+  const options: LooseOptions = args[0] ?? {};
+  return requestApiFile(
+    `${versionPath}${fillPath(endpoint.path, options.params)}`,
+    {
+      query: queryPairs(options.query),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.timeoutMs === undefined
+        ? {}
+        : { timeoutMs: options.timeoutMs }),
+    },
+  );
 }
 
 // Адрес для ссылки на скачивание и EventSource: тот же путь, что у callApi, без вызова.

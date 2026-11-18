@@ -30,6 +30,6 @@ export function proxy(request: NextRequest) {
 // Статика, API-прокси и сама страница входа не проходят через проверку.
 export const config = {
   matcher: [
-    '/((?!api/|api$|_next/|brand/|sign-in$|sign-in/|favicon\\.ico$|.*\\.svg$|.*\\.png$|.*\\.ico$|.*\\.ttf$|.*\\.txt$).*)',
+    '/((?!api/|api$|_next/|brand/|pdf-assets/|sign-in$|sign-in/|favicon\\.ico$|.*\\.svg$|.*\\.png$|.*\\.ico$|.*\\.ttf$|.*\\.txt$).*)',
   ],
 };
