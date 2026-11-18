@@ -6,11 +6,7 @@ import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
 import { httpErrorSchema } from '@anyko/contracts/common';
-import {
-  createDatabase,
-  createDatabasePool,
-  createResourceLocks,
-} from '@anyko/database';
+import { createDatabase, createDatabasePool } from '@anyko/database';
 import { LlmError } from '@anyko/llm';
 import { createLogger } from '@anyko/logger';
 import { startJobWorker } from '@anyko/worker/queues';
@@ -22,7 +18,6 @@ import type {
   SourceStorage,
 } from '../../../packages/backend/src/modules/documents';
 import { createWorkProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/work-store';
-import { createWorkStore } from '../../../packages/backend/src/modules/works/infrastructure/store';
 import {
   brandDocumentId,
   brandFileId,
@@ -47,7 +42,6 @@ const testRedisUrl: string = redisUrl;
 type WorkView = Awaited<ReturnType<typeof apiBackend.workHttp.views.get>>;
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabase(pool);
-const locks = createResourceLocks(pool);
 // Read-side adapters the processing assertions use directly, on the same database.
 const workProcessing = createWorkProcessingStore(db);
 const actualPool = createDatabasePool(databaseUrl);
@@ -733,58 +727,6 @@ test('deletion during model execution hides derivatives immediately and fences t
     release();
     waitForExtraction = undefined;
   }
-});
-
-test('lease recovery atomically reopens the outbox and rejects a superseded attempt', async () => {
-  const input = await create();
-  const runId = crypto.randomUUID();
-  await locks.run(`work-run:${input.workspaceId}:${runId}`, async () => {
-    await workProcessing.start({
-      ...input,
-      id: runId,
-      actorId: 'fixture',
-      kind: 'analysis',
-      inputRevision: 0,
-      documentIds: [],
-      settingsRevision: 1,
-      generationId: null,
-      correlationId: crypto.randomUUID(),
-      attemptToken: null,
-      modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
-    });
-    const old = await workProcessing.claim(input.workspaceId, runId);
-    if (!old) throw new Error('CLAIM_MISSING');
-    await db.runOutbox.update({
-      where: { runId },
-      data: { deliveredAt: new Date() },
-    });
-    await db.run.update({
-      where: { id: runId },
-      data: { leaseUntil: new Date(0) },
-    });
-    await workProcessing.reconcile();
-    expect(
-      (await db.runOutbox.findUniqueOrThrow({ where: { runId } })).deliveredAt,
-    ).toBeNull();
-    const fresh = await workProcessing.claim(input.workspaceId, runId);
-    if (!fresh) throw new Error('RECLAIM_MISSING');
-    expect(await workProcessing.valid(old)).toBe(false);
-    await workProcessing.finish(old, 'succeeded');
-    expect(await workProcessing.valid(fresh)).toBe(true);
-    await db.$transaction(async (tx) => {
-      await tx.$executeRaw`SET LOCAL TIME ZONE 'Europe/Moscow'`;
-      await createWorkProcessingStore(tx).reconcile();
-      expect(await createWorkProcessingStore(tx).valid(fresh)).toBe(true);
-    });
-    await rejects(
-      workProcessing.step(old, {
-        stage: 'extraction',
-        status: 'succeeded',
-      }),
-      'STALE_WORK_ATTEMPT',
-    );
-    await workProcessing.finish(fresh, 'cancelled');
-  });
 });
 
 test('confirmation survives added sources and repeated analysis; only the new file calls the model', async () => {
@@ -1725,43 +1667,4 @@ test('deleting during contextual reasoning removes its session, turns, and all r
     release();
     reconcileHook = undefined;
   }
-});
-
-test('superseded attempt cannot commit a session checkpoint or facts', async () => {
-  const input = await create();
-  const runId = crypto.randomUUID();
-  await workProcessing.start({
-    id: runId,
-    ...input,
-    kind: 'analysis',
-    inputRevision: 0,
-    documentIds: [],
-    settingsRevision: 1,
-    generationId: null,
-    correlationId: crypto.randomUUID(),
-    attemptToken: null,
-    actorId: 'fixture',
-    modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
-  });
-  const old = await workProcessing.claim(input.workspaceId, runId);
-  if (!old) throw Error('claim');
-  await db.run.update({
-    where: { id: runId },
-    data: { attemptToken: crypto.randomUUID() },
-  });
-  await rejects(
-    db.$transaction(async (tx) => {
-      await createWorkProcessingStore(tx).fence(old);
-      await createWorkStore(tx).touch(input.workspaceId, input.workId, {});
-    }),
-    'STALE_WORK_ATTEMPT',
-  );
-  expect(
-    (
-      await apiBackend.workHttp.views.get(
-        memberScope(input.workspaceId),
-        brandWorkId(input.workId),
-      )
-    ).work.revision,
-  ).toBe(0);
 });

@@ -1,6 +1,6 @@
 import { checksum } from '../../modules/documents';
 import { generateDocument } from '../../modules/generation';
-import type { WorkRunRecord } from '../../modules/processing';
+import type { WorkAttempt } from '../../modules/processing';
 import {
   requirePackage,
   templateBytes,
@@ -16,10 +16,9 @@ const DOCX =
 // Исполнение генерации: файлы по шаблонам из снимка запуска, публикация и итог. Внешние записи — вне
 // UnitOfWork; публикация файла и итог запуска — отдельные транзакции.
 export function createWorkGenerationRun(deps: WorkDependencies) {
-  const state = createRunState(deps);
-  const current = (run: WorkRunRecord) => state.current(run);
-  const step: typeof state.step = (run, input) => state.step(run, input);
-  return async (run: WorkRunRecord, signal: AbortSignal) => {
+  return async (attempt: WorkAttempt, signal: AbortSignal) => {
+    const { run } = attempt;
+    const { current, step } = createRunState(deps, attempt);
     if (!run.generationId) throw new Error('GENERATION_MISSING');
     const record = await deps.generation.internal.get(
       run.workspaceId,
@@ -30,10 +29,10 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
     const pack = requirePackage(record.packageVersion);
     const data = templateData(record.values);
     let completed = 0;
-    await step(run, { stage: 'generation', status: 'running' });
+    await step({ stage: 'generation', status: 'running' });
     for (const file of record.files) {
       signal.throwIfAborted();
-      await current(run);
+      await current();
       const template = pack.documents.find(
         (entry) => entry.version === file.templateVersion,
       );
@@ -49,8 +48,7 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       try {
         bytes = generateDocument(source, data);
       } catch {
-        await deps.uow.run(async (tx) => {
-          await deps.processing.in(tx).internal.fence(run);
+        await attempt.write(async (tx) => {
           await deps.generation
             .in(tx)
             .internal.failFile(run.workspaceId, record.id, file.id);
@@ -71,9 +69,8 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       await deps.locks.run(
         workLockKey(run.workspaceId, run.workId),
         async () => {
-          await current(run);
-          await deps.uow.run(async (tx) => {
-            await deps.processing.in(tx).internal.fence(run);
+          await current();
+          await attempt.write(async (tx) => {
             await deps.generation.in(tx).internal.publish({
               workspaceId: run.workspaceId,
               workId: run.workId,
@@ -101,17 +98,15 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
           ? 'partial'
           : 'failed';
     await deps.locks.run(workLockKey(run.workspaceId, run.workId), async () => {
-      await current(run);
-      await deps.uow.run(async (tx) => {
+      await current();
+      await attempt.write(async (tx, attemptWrite) => {
         const generation = deps.generation.in(tx).internal;
-        const processing = deps.processing.in(tx).internal;
         await generation.finish(run.workspaceId, record.id, status);
-        await processing.step(run, {
+        await attemptWrite.step({
           stage: 'generation',
           status: status === 'succeeded' ? 'succeeded' : 'failed',
         });
-        if (!(await processing.finish(run, status)))
-          throw new Error('STALE_WORK_ATTEMPT');
+        await attemptWrite.finish({ status });
         await deps.works
           .in(tx)
           .internal.event(run.workspaceId, run.workId, 'generation.ready');

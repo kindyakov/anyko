@@ -62,11 +62,6 @@ import {
   runDelivery,
 } from '../modules/processing/infrastructure/run-engine';
 import { createProcessingStore } from '../modules/processing/infrastructure/store';
-import {
-  createWorkProcessingStore,
-  workProcessingStoreFor,
-} from '../modules/processing/infrastructure/work-store';
-import { createProcessingModule } from '../modules/processing/module';
 import { hasPackage } from '../modules/templates';
 import type { WorksModule } from '../modules/works';
 import {
@@ -111,6 +106,7 @@ import {
   createResourceAwareIdempotencyStore,
   redactDeletedWorkResponses,
 } from './works/idempotency';
+import { createWorkProcessing } from './works/processing';
 
 /**
  * Test seams: each one replaces an external client. Production passes nothing, so the
@@ -240,11 +236,7 @@ export function createBackend(
     storeFor: generationStoreFor,
     newId: uuidV7,
   });
-  const processingFacade = createProcessingModule({
-    store: createWorkProcessingStore(db),
-    storeFor: workProcessingStoreFor,
-    newId: uuidV7,
-  });
+  const processingFacade = createWorkProcessing(db, uow);
 
   let agentsDelegate: DocumentAgents | undefined = dependencies.agents;
   const agents = () => (agentsDelegate ??= createDocumentAgents({ pool }));

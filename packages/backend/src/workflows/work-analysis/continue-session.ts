@@ -7,7 +7,7 @@ import {
 } from '../../modules/agents';
 import type { DocumentAnalysis } from '../../modules/documents';
 import { findFactDiscrepancies, mergeCandidates } from '../../modules/facts';
-import type { WorkRunRecord } from '../../modules/processing';
+import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
@@ -28,7 +28,8 @@ export interface ContinuationSource {
 /** One entry point for continuing a logical work session; transport never owns its context. */
 export function createWorkContinuation(deps: WorkDependencies) {
   return async (input: {
-    run: WorkRunRecord;
+    attempt: WorkAttempt;
+    settingsRevision: number | null;
     readConnection(): ReturnType<
       WorkDependencies['connections']['internal']['connection']
     >;
@@ -40,7 +41,8 @@ export function createWorkContinuation(deps: WorkDependencies) {
     signal: AbortSignal;
     current(): Promise<WorkSummary>;
   }) => {
-    const { run } = input;
+    const { attempt: workAttempt, settingsRevision } = input;
+    const { run } = workAttempt;
     for (let attempt = 0; attempt < 2; attempt++) {
       const snapshot = await deps.locks.run(
         workLockKey(run.workspaceId, run.workId),
@@ -79,7 +81,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
         Awaited<ReturnType<typeof deps.agents.model.reconcile>> | undefined;
       try {
         if (!input.sources.length) throw new Error('NO_READABLE_SOURCES');
-        await deps.processing.internal.step(run, {
+        await workAttempt.step({
           stage: 'reconciliation',
           status: 'running',
         });
@@ -155,13 +157,10 @@ export function createWorkContinuation(deps: WorkDependencies) {
             return false;
           let validOutput =
             work.revision === snapshot.work.revision ? output : undefined;
-          await deps.uow.run(async (tx) => {
-            const processing = deps.processing.in(tx).internal;
+          await workAttempt.write(async (tx, attemptWrite) => {
             const facts = deps.facts.in(tx).internal;
             const works = deps.works.in(tx).internal;
             const sessions = deps.agents.in(tx).internal;
-            // This CAS takes a row lock until commit; a reconciler cannot replace the attempt mid-acceptance.
-            await processing.fence(run);
             const existing = await facts.get(run.workspaceId, run.workId);
             const selection = selectSessionCandidates(
               candidates,
@@ -182,13 +181,13 @@ export function createWorkContinuation(deps: WorkDependencies) {
               }
             await facts.save(run.workspaceId, run.workId, next);
             await works.touch(run.workspaceId, run.workId, {});
-            if (validOutput && run.settingsRevision !== null) {
+            if (validOutput && settingsRevision !== null) {
               const context: AgentSessionContext = {
                 version: 1,
                 promptVersion: 'work-context-v1',
                 workRevision: work.revision + 1,
                 inputRevision: work.inputRevision,
-                settingsRevision: run.settingsRevision,
+                settingsRevision,
                 summary: validOutput.summary,
                 documents: input.sources.map(({ id, digest }) => ({
                   id,
@@ -216,7 +215,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
                 },
               });
             }
-            await processing.step(run, {
+            await attemptWrite.step({
               stage: 'reconciliation',
               status: validOutput ? 'succeeded' : 'failed',
               ...(!validOutput
@@ -228,15 +227,14 @@ export function createWorkContinuation(deps: WorkDependencies) {
                   }
                 : { usage: validOutput.usage }),
             });
-            const finished = await processing.finish(
-              run,
-              input.completed === 0
-                ? 'failed'
-                : input.failures || !validOutput
-                  ? 'partial'
-                  : 'succeeded',
-            );
-            if (!finished) throw new Error('STALE_WORK_ATTEMPT');
+            await attemptWrite.finish({
+              status:
+                input.completed === 0
+                  ? 'failed'
+                  : input.failures || !validOutput
+                    ? 'partial'
+                    : 'succeeded',
+            });
             await works.event(run.workspaceId, run.workId, 'facts.changed');
           });
           return true;

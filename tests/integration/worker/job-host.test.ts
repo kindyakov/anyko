@@ -19,7 +19,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
 const redisUrl = process.env.TEST_REDIS_URL;
 if (
   !databaseUrl ||
-  new URL(databaseUrl).pathname !== '/anyko_test' ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname) ||
   !redisUrl
 )
   throw new Error('Dedicated anyko_test and TEST_REDIS_URL required');
@@ -345,7 +345,9 @@ test.each(runKinds)(
         return () => ocr.complete(acquired, key, 'fixture');
       }
       const acquired = await work.claim(workspaceId, data.runId);
-      return acquired ? () => work.finish(acquired, 'succeeded') : null;
+      return acquired
+        ? () => work.finish(acquired, { status: 'succeeded' })
+        : null;
     };
     const stale = await claim();
     if (!stale) throw new Error('FIRST_CLAIM_MISSING');
