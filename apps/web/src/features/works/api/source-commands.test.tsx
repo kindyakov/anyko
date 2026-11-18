@@ -115,7 +115,9 @@ test('an OCR revision request blocks other work commands and refreshes a conflic
         ocrRevision: 2,
       });
     });
-    await waitFor(() => expect(result.current.revision.isPending).toBe(true));
+    await waitFor(() => {
+      expect(result.current.revision.isPending).toBe(true);
+    });
     expect(result.current.commands.pending).toBe(true);
     expect(result.current.commands.disabled.analyze).toBe(true);
     expect(result.current.commands.editingBlocked).toBe(true);
@@ -123,7 +125,9 @@ test('an OCR revision request blocks other work commands and refreshes a conflic
     response.resolve(
       json(409, { error: { code: 'REVISION_CONFLICT', requestId: 'fixture' } }),
     );
-    await waitFor(() => expect(result.current.revision.isError).toBe(true));
+    await waitFor(() => {
+      expect(result.current.revision.isError).toBe(true);
+    });
   }
   expect(result.current.commands.pending).toBe(false);
   expect(client.getQueryState(workKey)?.isInvalidated).toBe(true);

@@ -83,7 +83,7 @@ test('catalog deletion and claiming a replacement OCR run share the same lock or
   const runId = crypto.randomUUID();
   const where = { workspaceId };
   const notifyEntered = Promise.withResolvers<number>();
-  const releaseNotify = Promise.withResolvers<void>();
+  const releaseNotify = Promise.withResolvers<undefined>();
   let completed: Promise<PromiseSettledResult<unknown>[]> | undefined;
   try {
     await db.anykoWorkspace.create({
@@ -176,7 +176,7 @@ test('catalog deletion and claiming a replacement OCR run share the same lock or
         throw new Error('Deletion did not wait for the OCR transaction');
       await Bun.sleep(15);
     }
-    releaseNotify.resolve();
+    releaseNotify.resolve(undefined);
     const [claimed, deleted] = await completed;
     expect(claimed).toMatchObject({
       status: 'fulfilled',
@@ -190,7 +190,7 @@ test('catalog deletion and claiming a replacement OCR run share the same lock or
       }),
     ).toEqual({ errorCode: 'DOCUMENT_DELETED' });
   } finally {
-    releaseNotify.resolve();
+    releaseNotify.resolve(undefined);
     await completed;
     await db.workEvent.deleteMany({ where });
     await db.work.deleteMany({ where });
