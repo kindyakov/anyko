@@ -45,7 +45,10 @@ export interface ProcessingPorts {
   readonly internal: WorkMaintenance;
 }
 export interface ProcessingModule extends ProcessingPorts {
-  claimAttempt(workspaceId: string, runId: string): Promise<WorkAttempt | null>;
+  claimAttempt: (
+    workspaceId: string,
+    runId: string,
+  ) => Promise<WorkAttempt | null>;
   in(tx: Tx): ProcessingPorts;
 }
 

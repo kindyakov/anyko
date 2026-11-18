@@ -106,12 +106,12 @@ export interface WorkProcessingStore {
       modelSnapshot: { vision: string; extraction: string };
     },
   ): Promise<void>;
-  claim(
+  claim: (
     workspaceId: string,
     runId: string,
     attemptToken: string,
     leaseUntil: Date,
-  ): Promise<ClaimedWorkRun | null>;
+  ) => Promise<ClaimedWorkRun | null>;
   active(workspaceId: string, workId: string): Promise<boolean>;
   valid(run: ClaimedWorkRun): Promise<boolean>;
   fence(run: ClaimedWorkRun): Promise<void>;
