@@ -57,11 +57,11 @@ test.each(['save', 'revoke'] as const)(
         ),
       },
     );
-    await waitFor(() =>
+    await waitFor(() => {
       expect(result.current.view?.availability.analyze.available).toBe(
         initialAvailability,
-      ),
-    );
+      );
+    });
     if (action === 'save') {
       await result.current.save.mutateAsync({
         baseURL: 'https://models.example.test/v1',
@@ -71,10 +71,10 @@ test.each(['save', 'revoke'] as const)(
     } else {
       await result.current.revoke.mutateAsync();
     }
-    await waitFor(() =>
+    await waitFor(() => {
       expect(result.current.view?.availability.analyze.available).toBe(
         !initialAvailability,
-      ),
-    );
+      );
+    });
   },
 );

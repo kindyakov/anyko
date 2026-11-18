@@ -35,7 +35,7 @@ test.each(['queue', 'lock'] as const)(
     const scope = await setup();
     const queueAbort = new AbortController();
     const lockAbort = new AbortController();
-    const started = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<true>();
     const job = documentOcrJob({
       processing: { documentId: () => Promise.resolve(documentId) },
       locks: {
@@ -46,20 +46,32 @@ test.each(['queue', 'lock'] as const)(
       },
       recognize(_input, signal) {
         return new Promise<void>((_resolve, reject) => {
-          signal.addEventListener('abort', () => reject(signal.reason), {
-            once: true,
-          });
-          started.resolve();
+          signal.addEventListener(
+            'abort',
+            () => {
+              const failure: unknown = signal.reason;
+              reject(
+                failure instanceof Error ? failure : new Error('OCR_ABORTED'),
+              );
+            },
+            { once: true },
+          );
+          started.resolve(true);
         });
       },
       timeoutMs: 1000,
     });
 
-    const result = job.execute(scope, envelope.payload, queueAbort.signal);
+    const outcome = job
+      .execute(scope, envelope.payload, queueAbort.signal)
+      .then(
+        () => undefined,
+        (failure: unknown) => failure,
+      );
     await started.promise;
     const reason = new Error('execution interrupted');
     (cancelledBy === 'queue' ? queueAbort : lockAbort).abort(reason);
-    await expect(result).rejects.toBe(reason);
+    expect(await outcome).toBe(reason);
   },
 );
 
