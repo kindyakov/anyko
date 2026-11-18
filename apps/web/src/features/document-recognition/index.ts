@@ -1,7 +1,7 @@
 export { invalidateDocumentCatalog, useRetryDocument } from './api/commands';
-export { documentsQueryOptions, type DocumentFilters } from './api/queries';
-export { DocumentSearch } from './ui/catalog/document-search';
-export { SelectionCheckbox } from './ui/document-row';
+export { CatalogSelection } from './ui/catalog/catalog-selection';
+export { SelectedCatalogFiles } from './ui/catalog/selected-catalog-files';
+export { unavailableCatalogFiles } from './model/catalog-selection';
 export {
   recognitionFailureText,
   recognitionRetryCode,

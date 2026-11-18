@@ -3,9 +3,11 @@ import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import { requireIdle, requireWork, workLockKey } from '../work-guards';
 
+import {
+  requireCatalogSelection,
+  resolveCatalogSelection,
+} from './catalog-selection';
 import type { WorkIntakeDeps } from './deps';
-
-export const workSourceLimit = 20;
 
 export const attachDocuments =
   (
@@ -18,8 +20,7 @@ export const attachDocuments =
     scope: WorkspaceScope,
     { workId, documentIds }: { workId: WorkId; documentIds: string[] },
   ) => {
-    scope.require('documents.upload');
-    scope.require('recognitions.use');
+    requireCatalogSelection(scope);
     const { workspaceId } = scope;
     await deps.locks.run(workLockKey(workspaceId, workId), () =>
       deps.uow.run(async (tx) => {
@@ -31,33 +32,16 @@ export const attachDocuments =
             .filter(({ deleted }) => !deleted)
             .map(({ id }) => id),
         );
-        const requested = [
-          ...new Set(documentIds.filter((id) => !existing.has(id))),
-        ];
-        if (!requested.length) return;
+        if (documentIds.every((id) => existing.has(id))) return;
         if (previous.cleanupPending) throw new WorkError('CLEANUP_PENDING');
-        if (existing.size + requested.length > workSourceLimit)
-          throw new WorkError('INVALID_WORK_INPUT');
         await requireIdle(deps.processing.in(tx).queries, scope, workId);
-        const selected = await deps.lockDocumentRevisions(
+        const selected = await resolveCatalogSelection(
+          deps,
           tx,
           workspaceId,
-          requested,
+          documentIds,
+          existing,
         );
-        const ready = new Set(
-          selected.filter((doc) => doc.revision !== null).map(({ id }) => id),
-        );
-        const fields = documentIds.flatMap((id, index) =>
-          existing.has(id) || ready.has(id)
-            ? []
-            : [
-                {
-                  path: ['documentIds', index],
-                  code: 'invalid_value' as const,
-                },
-              ],
-        );
-        if (fields.length) throw new WorkError('NOT_READY', { fields });
         await work.commands.attachDocuments(scope, {
           workId,
           documents: selected,

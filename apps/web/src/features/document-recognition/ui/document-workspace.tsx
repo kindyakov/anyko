@@ -1,7 +1,7 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
-import { useCallback, useState } from 'react';
+import { type ComponentProps, useCallback, useState } from 'react';
 
 import type { DocumentSummary } from '@anyko/contracts/documents';
 import { Button, Notice, RelativeTime, useToast } from '@anyko/ui';
@@ -22,12 +22,23 @@ import { useRecognitionFailureToasts } from './use-recognition-failure-toasts';
 const accept =
   '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,.avif,.heif,.heic,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff,image/avif,image/heif,image/heic';
 const emptyDocuments: DocumentSummary[] = [];
-export function DocumentWorkspace() {
+type WorkAction = Pick<ComponentProps<typeof DocumentList>, 'AddToWork'>;
+
+export function DocumentWorkspace({ AddToWork }: WorkAction) {
   const workspaceId = useWorkspaceId();
-  return <WorkspaceDocuments key={workspaceId} workspaceId={workspaceId} />;
+  return (
+    <WorkspaceDocuments
+      key={workspaceId}
+      workspaceId={workspaceId}
+      AddToWork={AddToWork}
+    />
+  );
 }
 
-function WorkspaceDocuments({ workspaceId }: { workspaceId: string }) {
+function WorkspaceDocuments({
+  workspaceId,
+  AddToWork,
+}: WorkAction & { workspaceId: string }) {
   const [filters, setFilters] = useState<DocumentFilters>({
     q: '',
     formats: [],
@@ -177,6 +188,7 @@ function WorkspaceDocuments({ workspaceId }: { workspaceId: string }) {
         loading={list.isPending}
         filtered={filtered}
         track={track}
+        AddToWork={AddToWork}
         search={<DocumentSearch filters={filters} onChange={changeFilters} />}
       >
         {(cursors.length > 0 || !!nextCursor) && (

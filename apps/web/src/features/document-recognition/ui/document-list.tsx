@@ -1,7 +1,7 @@
-import { type ReactNode, useState } from 'react';
+import { type ComponentType, type ReactNode, useState } from 'react';
 
 import type { DocumentSummary } from '@anyko/contracts/documents';
-import { Confirm, Skeleton, StatusPill, useToast } from '@anyko/ui';
+import { Skeleton, StatusPill, useToast } from '@anyko/ui';
 
 import { isUnauthorized } from '@/lib/api/errors';
 
@@ -11,6 +11,7 @@ import {
   recognitionRetryCode,
 } from '../model/error-texts';
 
+import { ConfirmDocumentDeletion } from './catalog/confirm-document-deletion';
 import { DocumentSelectionActions } from './catalog/document-selection-actions';
 import { DocumentRow } from './document-row';
 import { DocumentViewer, type ViewedDocument } from './document-viewer';
@@ -24,6 +25,7 @@ export function DocumentList({
   track,
   search,
   children,
+  AddToWork,
 }: {
   workspaceId: string;
   documents: DocumentSummary[];
@@ -33,6 +35,12 @@ export function DocumentList({
   track: (document: DocumentSummary) => void;
   search: ReactNode;
   children: ReactNode;
+  AddToWork?:
+    | ComponentType<{
+        selected: ReadonlyMap<string, string>;
+        onClose: () => void;
+      }>
+    | undefined;
 }) {
   const mutation = useRecognitionAction(workspaceId, track);
   const [selection, setSelection] = useState<Map<string, DocumentSummary>>(
@@ -50,16 +58,17 @@ export function DocumentList({
     });
   }
   const [viewing, setViewing] = useState<ViewedDocument>();
+  const [workSelection, setWorkSelection] =
+    useState<ReadonlyMap<string, string>>();
   const [deleting, setDeleting] = useState<DocumentSummary[]>([]);
   const { add } = useToast();
-  const visibleDocuments = new Map(
-    documents.map((document) => [document.id, document]),
-  );
+  const visibleIds = new Set(documents.map(({ id }) => id));
   const selected = [...selection.values()];
   const visibleSelected = documents.filter((document) =>
     selection.has(document.id),
   ).length;
   const retryable = selected.filter((document) => document.status === 'failed');
+  const ready = selected.filter((document) => document.readyRevision != null);
   const pending = mutation.isPending ? mutation.variables : undefined;
   const processing = documents.filter(
     (document) => document.status === 'queued' || document.status === 'running',
@@ -178,6 +187,16 @@ export function DocumentList({
         pageCount={documents.length}
         selectedCount={selected.length}
         selectedOnPage={visibleSelected}
+        addToWork={
+          AddToWork && {
+            count: ready.length,
+            open: () => {
+              setWorkSelection(
+                new Map(ready.map(({ id, filename }) => [id, filename])),
+              );
+            },
+          }
+        }
         onSelectPage={(checked) => {
           changeSelection(documents, checked);
         }}
@@ -192,6 +211,14 @@ export function DocumentList({
         }}
       />
       {children}
+      {AddToWork && workSelection && (
+        <AddToWork
+          selected={workSelection}
+          onClose={() => {
+            setWorkSelection(undefined);
+          }}
+        />
+      )}
       {loading ? (
         <ul className="grid gap-3" aria-busy aria-label="Файлы загружаются">
           {[0, 1, 2].map((item) => (
@@ -266,16 +293,9 @@ export function DocumentList({
           setViewing(undefined);
         }}
       />
-      <Confirm
-        open={deleting.length > 0}
-        title={
-          deleting.length > 1
-            ? `Удалить выбранные файлы (${String(deleting.length)})?`
-            : `Удалить «${deleting[0]?.filename ?? ''}»?`
-        }
-        confirmLabel={
-          deleting.length > 1 ? 'Удалить файлы' : 'Удалить документ'
-        }
+      <ConfirmDocumentDeletion
+        deleting={deleting}
+        visible={visibleIds}
         pending={pending?.kind === 'delete'}
         onConfirm={() => {
           run('delete', deleting, deleting.length > 1);
@@ -283,12 +303,7 @@ export function DocumentList({
         onCancel={() => {
           setDeleting([]);
         }}
-      >
-        Оригиналы и результаты распознавания будут удалены без возможности
-        восстановления.
-        {deleting.some((document) => !visibleDocuments.has(document.id)) &&
-          ' Выбор включает файлы за пределами текущей страницы.'}
-      </Confirm>
+      />
     </section>
   );
 }

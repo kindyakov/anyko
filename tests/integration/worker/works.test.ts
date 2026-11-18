@@ -650,6 +650,45 @@ test('a shared source pins the latest ready OCR in each work and survives unlink
   ).toBe(2);
 }, 35000);
 
+test('work creation rolls back a stale catalog selection and pins ready sources on retry', async () => {
+  const input = await create();
+  const scope = memberScope(input.workspaceId);
+  const source = await upload(input);
+  await until(input, (view) => view.documents[0]?.status === 'succeeded');
+  const where = { workspaceId: input.workspaceId };
+  const before = await db.work.count({ where });
+  const sessions = await db.workAgentSession.count({ where });
+  const intake = apiBackend.workHttp.intake;
+  const options = {
+    title: 'Работа из каталога',
+    packageVersion: 'technical-document-v1',
+  };
+
+  await rejects(
+    intake.createWork(scope, {
+      ...options,
+      documentIds: [source.id, crypto.randomUUID()],
+    }),
+    'NOT_READY',
+  );
+  expect(await db.work.count({ where })).toBe(before);
+  expect(await db.workAgentSession.count({ where })).toBe(sessions);
+
+  const workId = await intake.createWork(scope, {
+    ...options,
+    documentIds: [source.id],
+  });
+  const view = await until(
+    { ...input, workId },
+    (current) => current.documents.length === 1,
+  );
+  expect(view.documents[0]).toMatchObject({
+    id: source.id,
+    processingRevision: 1,
+  });
+  expect(view.runs).toEqual([]);
+});
+
 test('work upload responses cannot be replayed after unlinking while the catalog file remains', async () => {
   const input = await create();
   const scope = memberScope(input.workspaceId);

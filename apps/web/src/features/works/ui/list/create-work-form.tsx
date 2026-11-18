@@ -1,13 +1,21 @@
 'use client';
+import { useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, FolderKanban } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import type { RefObject } from 'react';
+import { type RefObject, useState } from 'react';
 import { z } from 'zod';
 
 import type { DocumentPackage } from '@anyko/contracts/catalog';
-import { Button } from '@anyko/ui';
+import { workSourceLimit } from '@anyko/contracts/works';
+import { Button, Notice } from '@anyko/ui';
 import { FormErrorNotice, FormRoot, useAppForm } from '@anyko/ui/form';
 
+import {
+  CatalogSelection,
+  invalidateDocumentCatalog,
+  SelectedCatalogFiles,
+  unavailableCatalogFiles,
+} from '@/features/document-recognition';
 import { useCreateWork } from '@/features/works/api/mutations';
 import { sharedCodeTexts } from '@/lib/api/errors';
 import { applyServerErrors } from '@/lib/api/form-errors';
@@ -36,29 +44,63 @@ export function CreateWorkForm({
   packages,
   titleRef,
   onCancel,
+  allowCatalog,
+  initialSelection,
 }: {
   create: ReturnType<typeof useCreateWork>;
   packages: readonly DocumentPackage[];
   titleRef: RefObject<HTMLInputElement | null>;
   onCancel: () => void;
+  allowCatalog: boolean;
+  initialSelection?: ReadonlyMap<string, string> | undefined;
 }) {
   const router = useRouter();
   const workspaceId = useWorkspaceId();
+  const client = useQueryClient();
+  const [selected, setSelected] = useState(() => new Map(initialSelection));
+  const [picking, setPicking] = useState(false);
+  const [selectionError, setSelectionError] = useState('');
+  const [requiresReplacement, setRequiresReplacement] = useState(false);
   // Повтор отправки после неизвестного исхода (сетевая ошибка) передаёт тот же ключ.
   const idempotency = useIdempotencyKey();
   const form = useAppForm({
     defaultValues: { title: '', packageVersion: packages[0]?.version ?? '' },
     onSubmit: async ({ value, formApi }) => {
+      if (
+        selected.size > workSourceLimit ||
+        ((initialSelection || requiresReplacement) && !selected.size)
+      ) {
+        setSelectionError(
+          `Выберите от 1 до ${String(workSourceLimit)} файлов.`,
+        );
+        return;
+      }
+      const documentIds = [...selected.keys()];
+      setSelectionError('');
       try {
         const result = await create.mutateAsync({
           ...value,
+          documentIds,
           idempotencyKey: idempotency.take(),
         });
         idempotency.settle();
+        onCancel();
         router.push(routes.work(workspaceId, result.work.id));
       } catch (error) {
         idempotency.settle(error);
-        applyServerErrors(formApi, error, createWorkTexts);
+        const unavailable = unavailableCatalogFiles(
+          error,
+          documentIds,
+          selected,
+        );
+        if (unavailable) {
+          setSelected(unavailable.remaining);
+          setRequiresReplacement(true);
+          setSelectionError(unavailable.message);
+          void invalidateDocumentCatalog(client, workspaceId);
+        } else {
+          applyServerErrors(formApi, error, createWorkTexts);
+        }
       }
     },
   });
@@ -103,6 +145,57 @@ export function CreateWorkForm({
           />
         )}
       </form.AppField>
+      {allowCatalog && (
+        <section className="grid gap-3" aria-label="Файлы из каталога">
+          <Button
+            type="button"
+            variant="secondary"
+            aria-expanded={picking}
+            disabled={create.isPending}
+            onClick={() => {
+              setPicking(!picking);
+            }}
+          >
+            {picking ? 'Скрыть каталог' : 'Выбрать файлы из каталога'}
+          </Button>
+          {picking && (
+            <CatalogSelection
+              workspaceId={workspaceId}
+              selected={selected}
+              setSelected={setSelected}
+              disabled={create.isPending}
+            />
+          )}
+          <SelectedCatalogFiles
+            selected={selected}
+            disabled={create.isPending}
+            onRemove={(id) => {
+              setSelected((previous) => {
+                const next = new Map(previous);
+                next.delete(id);
+                return next;
+              });
+            }}
+          />
+          {selectionError && (
+            <Notice tone="danger" role="alert">
+              {selectionError}
+            </Notice>
+          )}
+          {requiresReplacement && !initialSelection && !selected.size && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => {
+                setRequiresReplacement(false);
+                setSelectionError('');
+              }}
+            >
+              Продолжить без файлов
+            </Button>
+          )}
+        </section>
+      )}
       <div className="rounded-2xl border border-white/[0.06] bg-black/30 p-4">
         <p className="text-muted mb-3 flex items-center gap-2 text-xs">
           <FolderKanban size={14} />

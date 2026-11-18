@@ -5,7 +5,7 @@ import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
 import { requireCleanSources, requireWork, workLockKey } from '../work-guards';
 
-import { workSourceLimit } from './attach-documents';
+import { workSourceLimit } from './catalog-selection';
 import type { WorkIntakeDeps } from './deps';
 
 // Загрузка исходника в работу. Файл и хранилище пишутся до транзакции; привязка к работе — в транзакции.

@@ -23,6 +23,7 @@ import {
   queuedStatusSchema,
   revisionSchema,
   workDeletionResponseSchema,
+  workDocumentSelectionSchema,
   workListStatusSchema,
   workPageSizeSchema,
   workResponseSchema,
@@ -49,7 +50,7 @@ export const listWorks = endpoint({
 });
 
 export const createWork = endpoint({
-  summary: 'Создаёт работу по выбранному шаблону',
+  summary: 'Создаёт работу по шаблону и добавляет выбранные источники',
   method: 'POST',
   path: '/workspaces/:workspaceId/works',
   params: workspaceParams,
@@ -60,6 +61,7 @@ export const createWork = endpoint({
     'FORBIDDEN',
     'NOT_FOUND',
     'INVALID_WORK_INPUT',
+    'NOT_READY',
     'INVALID_IDEMPOTENCY_KEY',
     'IDEMPOTENCY_CONFLICT',
     'IDEMPOTENCY_IN_PROGRESS',
@@ -143,7 +145,7 @@ export const attachWorkDocuments = endpoint({
   method: 'POST',
   path: '/workspaces/:workspaceId/works/:workId/attach',
   params: workParams,
-  body: json(z.strictObject({ documentIds: z.array(z.uuid()).min(1).max(20) })),
+  body: json(z.strictObject({ documentIds: workDocumentSelectionSchema })),
   response: json(z.object({ status: z.literal('attached') })),
   status: 200,
   errors: [

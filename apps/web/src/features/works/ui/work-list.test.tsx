@@ -92,7 +92,10 @@ function json(status: number, body: unknown) {
 }
 
 // Сеть подменяется на уровне fetch: список и шаблоны — постоянные, ответ на создание задаётся тестом.
-function serveWorkList(creation: { status: number; body: unknown }) {
+function serveWorkList(
+  creation: { status: number; body: unknown },
+  catalogFile?: string,
+) {
   const requests: { method: string; url: string; body: unknown }[] = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url =
@@ -109,6 +112,22 @@ function serveWorkList(creation: { status: number; body: unknown }) {
       return Promise.resolve(json(creation.status, creation.body));
     if (url === documentPackagesAddress)
       return Promise.resolve(json(200, { packages }));
+    if (catalogFile && url === '/api/v1/workspaces/workspace-1/recognitions')
+      return Promise.resolve(
+        json(200, {
+          items: [
+            {
+              id: catalogFile,
+              filename: 'устарел.pdf',
+              createdAt: existingWork.createdAt,
+              status: 'succeeded',
+              readyRevision: 1,
+            },
+          ],
+          nextCursor: null,
+          pendingDeletions: [],
+        }),
+      );
     if (url === worksFirstPage)
       return Promise.resolve(
         json(200, {
@@ -208,6 +227,64 @@ test('the title field gets focus when the create dialog opens', async () => {
   const title = await screen.findByLabelText('Название работы');
   await waitFor(() => {
     expectFocused(title);
+  });
+});
+
+test('a stale catalog selection does not silently turn the next submit into empty work creation', async () => {
+  const catalogFile = '33333333-3333-4333-8333-333333333333';
+  const requests = serveWorkList(
+    {
+      status: 409,
+      body: {
+        error: {
+          code: 'NOT_READY',
+          requestId: 'r1',
+          fields: [{ path: ['documentIds', 0], code: 'invalid_value' }],
+        },
+      },
+    },
+    catalogFile,
+  );
+  renderWorkList([
+    'works.read',
+    'works.create',
+    'recognitions.use',
+    'documents.upload',
+  ]);
+  const user = await openCreateDialog();
+  await user.type(
+    await screen.findByLabelText('Название работы'),
+    'Из каталога',
+  );
+  await user.click(
+    screen.getByRole('button', { name: 'Выбрать файлы из каталога' }),
+  );
+  await user.click(
+    await screen.findByRole('checkbox', { name: 'Выбрать устарел.pdf' }),
+  );
+  const submit = screen.getByRole('button', { name: 'Создать и открыть' });
+  await user.click(submit);
+  await screen.findByText('Файлы стали недоступны: устарел.pdf.');
+  await user.click(submit);
+  await screen.findByText('Выберите от 1 до 20 файлов.');
+  expect(
+    requests.filter(({ method }) => method === 'POST').map(({ body }) => body),
+  ).toEqual([
+    {
+      title: 'Из каталога',
+      packageVersion: '2026.1',
+      documentIds: [catalogFile],
+    },
+  ]);
+  await user.click(
+    screen.getByRole('button', { name: 'Продолжить без файлов' }),
+  );
+  await user.click(submit);
+  expect(
+    requests.filter(({ method }) => method === 'POST').at(-1)?.body,
+  ).toEqual({
+    title: 'Из каталога',
+    packageVersion: '2026.1',
   });
 });
 

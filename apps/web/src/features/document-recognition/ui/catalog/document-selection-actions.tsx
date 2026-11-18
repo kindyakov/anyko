@@ -1,4 +1,4 @@
-import { RotateCw, Trash2 } from 'lucide-react';
+import { FolderPlus, RotateCw, Trash2 } from 'lucide-react';
 import { useId } from 'react';
 
 import { Button } from '@anyko/ui';
@@ -15,6 +15,7 @@ export function DocumentSelectionActions({
   onSelectPage,
   onClear,
   onRetry,
+  addToWork,
   onDelete,
 }: {
   disabled: boolean;
@@ -26,6 +27,7 @@ export function DocumentSelectionActions({
   onSelectPage: (checked: boolean) => void;
   onClear: () => void;
   onRetry: () => void;
+  addToWork?: { count: number; open: () => void } | undefined;
   onDelete: () => void;
 }) {
   const selectAllId = useId();
@@ -59,6 +61,16 @@ export function DocumentSelectionActions({
             </span>
           )}
           <div className="flex flex-wrap gap-2 sm:ml-auto">
+            {addToWork && (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={disabled || !addToWork.count}
+                onClick={addToWork.open}
+              >
+                <FolderPlus size={15} aria-hidden /> Добавить в работу
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"

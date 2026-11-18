@@ -1,6 +1,7 @@
 export {
   invalidateWork,
   useAnalyzeWork,
+  useAttachWorkDocuments,
   useConfirmWork,
   useSaveFacts,
 } from '@/features/works/api/mutations';
@@ -19,3 +20,4 @@ export {
 } from '@/features/works/model/journey';
 export { describeWorkCommandError } from '@/features/works/model/command-errors';
 export { WorkList } from '@/features/works/ui/work-list';
+export { AddRecognitionsToWork } from './ui/list/add-recognitions-to-work';

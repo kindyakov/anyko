@@ -124,10 +124,16 @@ export const worksResponseSchema = pageResponseSchema(workSummarySchema, {
   deletions: z.array(z.object({ id: z.uuid(), status: workDeletionStatus })),
 });
 export type WorkPage = z.infer<typeof worksResponseSchema>;
+export const workSourceLimit = 20;
+export const workDocumentSelectionSchema = z
+  .array(z.uuid())
+  .min(1)
+  .max(workSourceLimit);
 export const createWorkSchema = z
   .object({
     packageVersion: z.string().max(100),
     title: z.string().trim().min(1).max(200),
+    documentIds: workDocumentSelectionSchema.optional(),
   })
   .strict();
 export const editWorkSchema = z

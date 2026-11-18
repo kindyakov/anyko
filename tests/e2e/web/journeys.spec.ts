@@ -293,6 +293,64 @@ test('the catalog picker attaches sources selected on different pages', async ({
   ).toBeDisabled();
 });
 
+test('ready catalog files can be used when creating and extending a work', async ({
+  page,
+}) => {
+  await page.goto('/sign-in');
+  await signIn(page, 'OWNER');
+  const title = 'E2E работа из готового распознавания';
+  await page.getByRole('button', { name: 'Новая работа' }).click();
+  const creation = page.getByRole('dialog', { name: 'Новая работа' });
+  await creation.getByLabel('Название работы').fill(title);
+  await creation
+    .getByRole('button', { name: 'Выбрать файлы из каталога' })
+    .click();
+  await creation
+    .getByRole('searchbox', { name: 'Поиск файлов по имени' })
+    .fill('Каталог E2E 30');
+  await creation
+    .getByRole('checkbox', { name: 'Выбрать Каталог E2E 30.pdf' })
+    .click();
+  await creation.getByRole('button', { name: 'Создать и открыть' }).click();
+  const sources = page.getByRole('region', { name: /Файлы работы/ });
+  await expect(sources.getByText('Каталог E2E 30.pdf')).toBeVisible();
+  await page.getByRole('link', { name: /Распознавание/ }).click();
+  await page
+    .getByRole('searchbox', { name: 'Поиск файлов по имени' })
+    .fill('Каталог E2E 3');
+  await page
+    .getByRole('checkbox', { name: 'Выбрать Каталог E2E 30.pdf' })
+    .click();
+  await page
+    .getByRole('checkbox', { name: 'Выбрать Каталог E2E 31.pdf' })
+    .click();
+  await page.getByRole('button', { name: 'Добавить в работу' }).click();
+  const picker = page.getByRole('dialog', { name: 'Добавить в работу' });
+  await picker.getByRole('searchbox', { name: 'Поиск работы' }).fill(title);
+  await picker.getByRole('button', { name: title }).click();
+  await expect(picker.getByText('Уже в работе')).toBeVisible();
+  await picker.getByRole('button', { name: 'Добавить файлы' }).click();
+  await expect(sources.getByText('Каталог E2E 30.pdf')).toBeVisible();
+  await expect(sources.getByText('Каталог E2E 31.pdf')).toBeVisible();
+  await page.getByRole('link', { name: /Распознавание/ }).click();
+  await page
+    .getByRole('searchbox', { name: 'Поиск файлов по имени' })
+    .fill('Каталог E2E 32');
+  await page
+    .getByRole('checkbox', { name: 'Выбрать Каталог E2E 32.pdf' })
+    .click();
+  await page.getByRole('button', { name: 'Добавить в работу' }).click();
+  await picker.getByRole('button', { name: 'Создать новую работу' }).click();
+  await expect(
+    creation
+      .getByRole('list', { name: 'Выбранные файлы' })
+      .getByText('Каталог E2E 32.pdf'),
+  ).toBeVisible();
+  await creation.getByLabel('Название работы').fill('E2E из распознавания');
+  await creation.getByRole('button', { name: 'Создать и открыть' }).click();
+  await expect(sources.getByText('Каталог E2E 32.pdf')).toBeVisible();
+});
+
 test('owner switches areas without seeing the other area works; a member cannot open a foreign area', async ({
   page,
 }) => {

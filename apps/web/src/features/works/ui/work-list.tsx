@@ -2,13 +2,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { Plus, RotateCw, Search } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import type { WorkPage } from '@anyko/contracts/works';
-import { Button, Modal, Notice, Skeleton } from '@anyko/ui';
+import { Button, Notice, Skeleton } from '@anyko/ui';
 import { EventHorizon } from '@anyko/ui/brand';
 
-import { useCreateWork } from '@/features/works/api/mutations';
 import {
   documentPackagesQueryOptions,
   worksQueryOptions,
@@ -18,7 +17,7 @@ import {
   workListHref,
   type WorkListParams,
 } from '@/features/works/model/work-list';
-import { CreateWorkForm } from '@/features/works/ui/list/create-work-form';
+import { CreateWorkDialog } from '@/features/works/ui/list/create-work-dialog';
 import { Journey } from '@/features/works/ui/list/journey';
 import { WorkCard } from '@/features/works/ui/list/work-card';
 import { WorkDeletionDialog } from '@/features/works/ui/list/work-deletion-dialog';
@@ -27,7 +26,6 @@ import { WorkPagination } from '@/features/works/ui/list/work-pagination';
 import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 
 export function WorkList() {
-  const titleRef = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<WorkPage['items'][number]>();
   const router = useRouter();
@@ -42,7 +40,6 @@ export function WorkList() {
     refetchOnMount: 'always',
   });
   const catalog = useQuery(documentPackagesQueryOptions(workspaceId));
-  const create = useCreateWork(workspaceId);
   const works = list.data?.items ?? [];
   const pagination = list.data;
   const pendingPage = list.isPending || list.isPlaceholderData;
@@ -69,7 +66,6 @@ export function WorkList() {
       change({ page: pagination.page }, 'replace');
   }, [pagination, page, change, list.isPlaceholderData]);
   const openCreate = () => {
-    create.reset();
     setCreating(true);
   };
   function navigatePage(next: number, size = pageSize) {
@@ -243,54 +239,13 @@ export function WorkList() {
           }}
         />
       )}
-      <Modal
-        open={creating}
-        onOpenChange={setCreating}
-        dismissible={!create.isPending}
-        initialFocus={titleRef}
-        title="Новая работа"
-        description="Назовите работу и выберите комплект документов, который нужно подготовить."
-      >
-        {catalog.isPending ? (
-          <div className="grid gap-4" aria-busy>
-            <Skeleton className="h-11 w-full rounded-xl" />
-            <Skeleton className="h-20 w-full rounded-2xl" />
-            <Skeleton className="h-20 w-full rounded-2xl" />
-          </div>
-        ) : catalog.isError ? (
-          <Notice
-            tone="danger"
-            role="alert"
-            title="Не удалось загрузить шаблоны"
-            action={
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={catalog.isFetching}
-                onClick={() => {
-                  void catalog.refetch();
-                }}
-              >
-                Повторить
-              </Button>
-            }
-          />
-        ) : !packages.length ? (
-          <Notice tone="neutral">
-            Доступных комплектов пока нет. Обратитесь к владельцу рабочей
-            области.
-          </Notice>
-        ) : (
-          <CreateWorkForm
-            create={create}
-            packages={packages}
-            titleRef={titleRef}
-            onCancel={() => {
-              setCreating(false);
-            }}
-          />
-        )}
-      </Modal>
+      {creating && (
+        <CreateWorkDialog
+          onClose={() => {
+            setCreating(false);
+          }}
+        />
+      )}
     </>
   );
 }

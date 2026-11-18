@@ -1,11 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type Dispatch, type SetStateAction } from 'react';
 
-import {
-  attachWorkDocuments,
-  removeWorkDocument,
-  uploadWorkDocument,
-} from '@anyko/contracts/works';
+import { removeWorkDocument, uploadWorkDocument } from '@anyko/contracts/works';
 
 import {
   invalidateDocumentCatalog,
@@ -46,18 +42,6 @@ export function useUploadWorkDocument(workspaceId: string, workId: string) {
         invalidateWork(client, workspaceId, workId),
         invalidateDocumentCatalog(client, workspaceId),
       ]),
-  });
-}
-
-export function useAttachWorkDocuments(workspaceId: string, workId: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (documentIds: string[]) =>
-      callApi(attachWorkDocuments, {
-        params: { workspaceId, workId },
-        body: { documentIds },
-      }),
-    onSuccess: () => invalidateWork(client, workspaceId, workId),
   });
 }
 

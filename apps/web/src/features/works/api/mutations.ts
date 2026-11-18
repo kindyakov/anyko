@@ -7,6 +7,7 @@ import {
 import type { FieldValues } from '@anyko/contracts/catalog';
 import {
   analyzeWork,
+  attachWorkDocuments,
   confirmWork,
   createWork,
   deleteWork,
@@ -20,7 +21,11 @@ import { workKeys } from './keys';
 // Тело сохранения сведений: значения формы и ревизия работы, на которой начаты правки.
 type FactsDraft = { values: FieldValues; revision: number };
 
-export type CreateWorkInput = { title: string; packageVersion: string };
+type CreateWorkInput = {
+  title: string;
+  packageVersion: string;
+  documentIds?: string[];
+};
 
 // Команда меняет работу и её строку в списке: после успеха обе части кэша становятся устаревшими.
 export async function invalidateWork(
@@ -43,15 +48,38 @@ export function useCreateWork(workspaceId: string) {
     mutationFn: ({
       title,
       packageVersion,
+      documentIds,
       idempotencyKey,
     }: CreateWorkInput & { idempotencyKey: string }) =>
       callApi(createWork, {
         params: { workspaceId },
-        body: { title, packageVersion },
+        body: {
+          title,
+          packageVersion,
+          ...(documentIds?.length && { documentIds }),
+        },
         idempotencyKey,
       }),
     onSuccess: () =>
       client.invalidateQueries({ queryKey: workKeys.list(workspaceId) }),
+  });
+}
+
+export function useAttachWorkDocuments(workspaceId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      workId,
+      documentIds,
+    }: {
+      workId: string;
+      documentIds: string[];
+    }) =>
+      callApi(attachWorkDocuments, {
+        params: { workspaceId, workId },
+        body: { documentIds },
+      }),
+    onSuccess: (_, { workId }) => invalidateWork(client, workspaceId, workId),
   });
 }
 
