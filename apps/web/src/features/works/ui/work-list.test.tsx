@@ -76,6 +76,7 @@ const createdWorkView = {
     values: {},
     manual: [],
     confirmed: [],
+    discrepancyFields: [],
     candidates: [],
   },
   runs: [],

@@ -173,3 +173,123 @@ test('an analysis command rejected because the connection was revoked shows guid
     url: `${workAddress}/analyze`,
   });
 });
+
+test('review shows the saved discrepancy list through an unsaved edit and refreshes it after saving', async () => {
+  const view: WorkView = {
+    ...workView,
+    package: {
+      ...workView.package,
+      fields: [
+        {
+          key: 'firstName',
+          label: 'Имя',
+          multiline: false,
+          kind: 'text',
+          limits: {},
+          columns: [],
+        },
+        {
+          key: 'lastName',
+          label: 'Фамилия',
+          multiline: false,
+          kind: 'text',
+          limits: {},
+          columns: [],
+        },
+      ],
+    },
+    documents: [source],
+    runs: [
+      {
+        id: 'dd1617a1-3bf9-4f68-8b37-bcf42947ad26',
+        kind: 'analysis',
+        status: 'succeeded',
+        errorCode: null,
+        createdAt: source.createdAt,
+        steps: [],
+      },
+    ],
+    session: {
+      id: '62210c15-ee45-43f1-bc02-95be7dd3c023',
+      revision: 1,
+      updatedAt: source.createdAt,
+      context: {
+        version: 1,
+        workRevision: 1,
+        inputRevision: 1,
+        settingsRevision: 1,
+        promptVersion: 'work-context-v1',
+        summary: 'Сводка по документам',
+        documents: [],
+        missingFields: [],
+        conflictFields: ['lastName'],
+      },
+    },
+    facts: {
+      ...workView.facts,
+      values: { firstName: 'Мария', lastName: 'Петрова' },
+      manual: ['firstName'],
+      candidates: [
+        {
+          field: 'firstName',
+          value: 'Анна',
+          evidence: [{ documentId: source.id, imagePath: null, quote: 'Анна' }],
+        },
+        {
+          field: 'lastName',
+          value: 'Петрова',
+          evidence: [
+            { documentId: source.id, imagePath: null, quote: 'Петрова' },
+          ],
+        },
+      ],
+      discrepancyFields: ['firstName'],
+    },
+  };
+  let saved = view;
+  const requests = serveApi(({ method }) => {
+    if (method === 'PATCH')
+      saved = {
+        ...view,
+        work: { ...view.work, revision: 2 },
+        facts: {
+          ...view.facts,
+          values: { ...view.facts.values, firstName: 'Анна' },
+          discrepancyFields: [],
+        },
+      };
+    return json(200, saved);
+  });
+  const user = userEvent.setup();
+  renderWork();
+
+  expect(
+    await screen.findByText('Проверьте сведения и разрешите расхождения'),
+  ).toBeTruthy();
+  expect(screen.getByText(/^Найдено полей: 2, расхождений: 1\./)).toBeTruthy();
+  expect(screen.getByText('Требуют проверки')).toBeTruthy();
+  const review = within(
+    screen.getByRole('region', { name: 'Найденные сведения' }),
+  );
+  await user.click(review.getByRole('button', { name: 'Расхождения · 1' }));
+  expect(review.getByRole('heading', { name: 'Имя' })).toBeTruthy();
+  expect(review.queryByRole('heading', { name: 'Фамилия' })).toBeNull();
+  await user.click(review.getByRole('button', { name: 'Применить' }));
+  expect(review.getByRole('button', { name: 'Расхождения · 1' })).toBeTruthy();
+  expect(review.getByText('Расхождение')).toBeTruthy();
+
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+  expect(
+    await review.findByRole('button', { name: 'Расхождения · 0' }),
+  ).toBeTruthy();
+  expect(
+    review.getByText('В сохранённых сведениях нет расхождений.'),
+  ).toBeTruthy();
+  expect(screen.getByText('Проверьте найденные сведения')).toBeTruthy();
+  expect(requests.find(({ method }) => method === 'PATCH')?.body).toMatchObject(
+    {
+      revision: 1,
+      values: { firstName: 'Анна', lastName: 'Петрова' },
+    },
+  );
+});

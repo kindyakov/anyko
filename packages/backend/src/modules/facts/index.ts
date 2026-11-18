@@ -48,23 +48,28 @@ export function mergeCandidates(
   return factsSchema.parse({ ...current, values, candidates });
 }
 
-/** Use the same field/row reconciliation rules for status as for values. */
-export function findFactConflicts(current: WorkFacts) {
+/** Расхождения определяются по сохранённым сведениям и сведённым кандидатам. */
+export function findFactDiscrepancies(current: WorkFacts) {
   return fieldDefinitions
     .filter(({ key }) => {
       const proposals = current.candidates
         .filter((c) => c.field === key)
         .map((c) => c.value);
       if (!proposals.length) return false;
-      const protectedValue = current.values[key];
-      if (
-        (current.manual.includes(key) || current.confirmed.includes(key)) &&
-        protectedValue !== null
-      )
-        proposals.push(protectedValue);
-      return reconcile(key, proposals) === null;
+      const proposed = reconcile(key, proposals);
+      if (proposed === null) return true;
+      if (!current.manual.includes(key) && !current.confirmed.includes(key))
+        return false;
+      const saved = reconcile(key, [current.values[key] ?? null]);
+      return comparableFactValue(proposed) !== comparableFactValue(saved);
     })
     .map(({ key }) => key);
+}
+
+function comparableFactValue(value: FieldValue): string {
+  return Array.isArray(value)
+    ? JSON.stringify(value.map((row) => stable([row])).sort())
+    : stable(value);
 }
 
 export function editFacts(current: WorkFacts, values: FieldValues): WorkFacts {

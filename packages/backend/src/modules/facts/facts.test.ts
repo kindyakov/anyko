@@ -3,9 +3,10 @@ import { expect, test } from 'bun:test';
 import type { WorkFacts } from './schemas';
 
 import {
+  confirmFacts,
   editFacts,
   emptyFacts,
-  findFactConflicts,
+  findFactDiscrepancies,
   mergeCandidates,
 } from './index';
 
@@ -27,19 +28,23 @@ test('contradictory sources remain visible and do not silently choose a value', 
     'Анна',
     'Ирина',
   ]);
+  expect(findFactDiscrepancies(result)).toEqual(['personName']);
 });
 test('manual values survive new extraction, including an intentionally cleared field', () => {
   const initial = mergeCandidates(emptyFacts(), [candidate('Анна')], false);
   const manual = editFacts(initial, { ...initial.values, personName: null });
-  expect(
-    mergeCandidates(manual, [candidate('Ирина')], false).values.personName,
-  ).toBeNull();
+  const result = mergeCandidates(manual, [candidate('Ирина')], false);
+  expect(result.values.personName).toBeNull();
+  expect(findFactDiscrepancies(result)).toEqual(['personName']);
 });
 test('confirmed values survive conflicting extraction while new candidates remain reviewable', () => {
   const initial = mergeCandidates(emptyFacts(), [candidate('Анна')], false);
-  const result = mergeCandidates(initial, [candidate('Ирина')], true);
+  const confirmed = confirmFacts(initial);
+  expect(findFactDiscrepancies(confirmed)).toEqual([]);
+  const result = mergeCandidates(confirmed, [candidate('Ирина')], true);
   expect(result.values.personName).toBe('Анна');
   expect(result.candidates[0]?.value).toBe('Ирина');
+  expect(findFactDiscrepancies(result)).toEqual(['personName']);
 });
 
 test('table candidates merge distinct obligations but retain conflicting amounts for review', () => {
@@ -66,6 +71,7 @@ test('table candidates merge distinct obligations but retain conflicting amounts
     { name: 'Тестовый банк', basis: 'Договор А', amount: '100.00' },
     { name: 'Тестовый банк', basis: 'Договор Б', amount: '200.00' },
   ]);
+  expect(findFactDiscrepancies(merged)).toEqual([]);
   const conflict = mergeCandidates(
     emptyFacts(),
     [table('Договор А', '100.00'), table('Договор А', '999.00')],
@@ -73,39 +79,54 @@ test('table candidates merge distinct obligations but retain conflicting amounts
   );
   expect(conflict.values.debts).toBeNull();
   expect(conflict.candidates).toHaveLength(2);
+  expect(findFactDiscrepancies(conflict)).toEqual(['debts']);
   const manual = editFacts(merged, { ...merged.values, debts: [] });
   expect(
     mergeCandidates(manual, [table('Договор В', '300.00')], false).values.debts,
   ).toEqual([]);
 });
 
-test('context status distinguishes complementary obligations from contradictory amounts', () => {
-  const documentId = crypto.randomUUID();
-  const evidence = (quote: string) => [{ documentId, imagePath: null, quote }];
-  const first = {
-    field: 'debts' as const,
-    value: [{ name: 'Bank A', basis: 'Contract A', amount: '100' }],
-    evidence: evidence('Bank A | Contract A | 100'),
-  };
-  const second = {
-    field: 'debts' as const,
-    value: [{ name: 'Bank B', basis: 'Contract B', amount: '200' }],
-    evidence: evidence('Bank B | Contract B | 200'),
-  };
-  const combined = mergeCandidates(emptyFacts(), [first, second], false);
-  expect(findFactConflicts(combined)).not.toContain('debts');
-  const conflicting = mergeCandidates(
+test('a manually saved value changes discrepancy status', () => {
+  const extracted = mergeCandidates(emptyFacts(), [candidate('Анна')], false);
+  const changed = editFacts(extracted, {
+    ...extracted.values,
+    personName: 'Ирина',
+  });
+  expect(findFactDiscrepancies(changed)).toEqual(['personName']);
+  const restored = editFacts(changed, {
+    ...changed.values,
+    personName: 'Анна',
+  });
+  expect(findFactDiscrepancies(restored)).toEqual([]);
+});
+
+test('a saved table matches regardless of row order but differs when an obligation is omitted', () => {
+  const first = { name: 'Банк А', basis: 'Договор А', amount: '100.00' };
+  const second = { name: 'Банк Б', basis: 'Договор Б', amount: '200.00' };
+  const extracted = mergeCandidates(
     emptyFacts(),
     [
-      first,
       {
-        ...first,
-        value: [{ name: 'Bank A', basis: 'Contract A', amount: '300' }],
+        field: 'debts',
+        value: [first, second],
+        evidence: [
+          {
+            documentId: crypto.randomUUID(),
+            imagePath: null,
+            quote: 'Банк А | Договор А | 100,00\nБанк Б | Договор Б | 200,00',
+          },
+        ],
       },
     ],
     false,
   );
-  expect(findFactConflicts(conflicting)).toContain('debts');
+  const reordered = editFacts(extracted, {
+    ...extracted.values,
+    debts: [second, first],
+  });
+  expect(findFactDiscrepancies(reordered)).toEqual([]);
+  const reduced = editFacts(reordered, { ...reordered.values, debts: [first] });
+  expect(findFactDiscrepancies(reduced)).toEqual(['debts']);
 });
 
 test('does not autofill an unsupported identifier, date or an amount from a different row', () => {

@@ -106,6 +106,7 @@ function viewWith(
       values: { ...emptyFieldValues(), ...values },
       manual: [],
       confirmed: [],
+      discrepancyFields: [],
       candidates: [],
     },
     cleanupPending: options.cleanupPending ?? false,

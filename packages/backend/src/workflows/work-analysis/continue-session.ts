@@ -6,7 +6,7 @@ import {
   type WorkFacts,
 } from '../../modules/agents';
 import type { DocumentAnalysis } from '../../modules/documents';
-import { findFactConflicts, mergeCandidates } from '../../modules/facts';
+import { findFactDiscrepancies, mergeCandidates } from '../../modules/facts';
 import type { WorkRunRecord } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
@@ -196,7 +196,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
                 missingFields: input.fields
                   .filter((f) => next.values[f.key] === null)
                   .map((f) => f.key),
-                conflictFields: findFactConflicts(next).filter((key) =>
+                conflictFields: findFactDiscrepancies(next).filter((key) =>
                   input.fields.some((f) => f.key === key),
                 ),
               };

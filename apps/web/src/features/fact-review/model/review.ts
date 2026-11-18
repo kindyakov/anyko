@@ -19,9 +19,9 @@ const filled = (value: FieldValue | undefined) =>
 export function reviewFields(
   view: WorkView,
   values: FieldValues,
-  conflicts: Set<string>,
   filter: ReviewFilter,
 ) {
+  const conflicts = new Set(view.facts.discrepancyFields);
   const fields = view.package.fields
     .map((field) => ({
       field,
@@ -52,5 +52,5 @@ export function reviewFields(
   const complete = view.package.fields.filter((field) =>
     filled(values[field.key]),
   ).length;
-  return { fields, applied, visible, quick, total, complete };
+  return { fields, applied, visible, quick, total, complete, conflicts };
 }

@@ -17,6 +17,7 @@ import {
 } from '../documents';
 
 import {
+  createdWorkResponseSchema,
   createWorkSchema,
   defaultWorkPageSize,
   editWorkSchema,
@@ -54,7 +55,7 @@ export const createWork = endpoint({
   path: '/workspaces/:workspaceId/works',
   params: workspaceParams,
   body: json(createWorkSchema),
-  response: json(workResponseSchema),
+  response: json(createdWorkResponseSchema),
   status: 201,
   errors: [
     'FORBIDDEN',
@@ -92,7 +93,8 @@ export const getWorkDeletion = endpoint({
 });
 
 export const getWork = endpoint({
-  summary: 'Возвращает данные работы и состояние её подготовки',
+  summary:
+    'Возвращает данные работы, включая расхождения в сохранённых сведениях',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId',
   params: workParams,

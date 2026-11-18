@@ -1,6 +1,10 @@
 import type { AgentsModule } from '../../modules/agents';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
-import { emptyFacts, type FactsModule } from '../../modules/facts';
+import {
+  emptyFacts,
+  type FactsModule,
+  findFactDiscrepancies,
+} from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
 import { requirePackage } from '../../modules/templates';
@@ -43,6 +47,9 @@ export const getWork =
               throw error;
           }
         }
+      const facts = cleanupPending
+        ? emptyFacts()
+        : await deps.facts.queries.get(scope, workId);
       return {
         work,
         session: cleanupPending
@@ -50,9 +57,8 @@ export const getWork =
           : await deps.agents.internal.get(scope.workspaceId, workId),
         package: requirePackage(work.packageVersion),
         documents,
-        facts: cleanupPending
-          ? emptyFacts()
-          : await deps.facts.queries.get(scope, workId),
+        facts,
+        factDiscrepancies: findFactDiscrepancies(facts),
         runs: cleanupPending
           ? []
           : await deps.processing.queries.runs(scope, workId),

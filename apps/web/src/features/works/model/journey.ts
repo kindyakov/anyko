@@ -1,4 +1,3 @@
-import { type FieldKey } from '@anyko/contracts/catalog';
 import { type WorkView } from '@anyko/contracts/works';
 
 import { connectionRevokedText } from './command-errors';
@@ -31,19 +30,6 @@ const active = (run: Run) =>
   run.status === 'queued' || run.status === 'running';
 const newest = (runs: Run[]) =>
   [...runs].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
-
-/** Fields whose extracted variants disagree with each other. */
-export function conflictingFields(view: WorkView): Set<FieldKey> {
-  const variants = new Map<FieldKey, Set<string>>();
-  for (const candidate of view.facts.candidates) {
-    const set = variants.get(candidate.field) ?? new Set<string>();
-    set.add(JSON.stringify(candidate.value));
-    variants.set(candidate.field, set);
-  }
-  const result = new Set<FieldKey>(view.session?.context?.conflictFields);
-  for (const [field, set] of variants) if (set.size > 1) result.add(field);
-  return result;
-}
 
 /** The single current situation of a work, used to tell the user what comes next. */
 export function workStage(view: WorkView): WorkStage {
@@ -83,7 +69,7 @@ export function workStage(view: WorkView): WorkStage {
     kind: 'review',
     run: last,
     fields: new Set(view.facts.candidates.map((item) => item.field)).size,
-    conflicts: conflictingFields(view).size,
+    conflicts: view.facts.discrepancyFields.length,
   };
 }
 

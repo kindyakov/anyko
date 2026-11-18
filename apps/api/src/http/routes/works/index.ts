@@ -31,6 +31,7 @@ import {
   removeWorkDocument,
   streamWorkEvents,
   uploadWorkDocument,
+  type WorkView,
 } from '@anyko/contracts/works';
 
 import type { Route } from '../../route';
@@ -58,6 +59,14 @@ export interface WorkHttpOptions
 const docxType =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
+function presentWork({
+  factDiscrepancies,
+  facts,
+  ...work
+}: Awaited<ReturnType<WorkViews['get']>>): WorkView {
+  return { ...work, facts: { ...facts, discrepancyFields: factDiscrepancies } };
+}
+
 export function worksRoutes(
   route: Route,
   app: Elysia,
@@ -81,10 +90,10 @@ export function worksRoutes(
     deletion.status(scope, brandWorkId(params.workId)),
   );
   route(app, createWork, async ({ scope, body }) =>
-    views.get(scope, await intake.createWork(scope, body)),
+    presentWork(await views.get(scope, await intake.createWork(scope, body))),
   );
-  route(app, getWork, ({ scope, params }) =>
-    views.get(scope, brandWorkId(params.workId)),
+  route(app, getWork, async ({ scope, params }) =>
+    presentWork(await views.get(scope, brandWorkId(params.workId))),
   );
   route(
     app,
@@ -165,12 +174,12 @@ export function worksRoutes(
   route(app, editWork, async ({ scope, params, body }) => {
     const workId = brandWorkId(params.workId);
     await review.editValues(scope, { ...body, workId });
-    return views.get(scope, workId);
+    return presentWork(await views.get(scope, workId));
   });
   route(app, confirmWork, async ({ scope, params, body }) => {
     const workId = brandWorkId(params.workId);
     await review.confirmFacts(scope, { ...body, workId });
-    return views.get(scope, workId);
+    return presentWork(await views.get(scope, workId));
   });
   route(app, generateWork, async ({ scope, params, body, requestId }) => {
     await generation.startGeneration(scope, {

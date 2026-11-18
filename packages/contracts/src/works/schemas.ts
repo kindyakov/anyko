@@ -41,6 +41,7 @@ export const factsSchema = z
     manual: z.array(fieldKeySchema),
     confirmed: z.array(fieldKeySchema).default([]),
     candidates: z.array(candidateSchema).max(500),
+    discrepancyFields: z.array(fieldKeySchema),
   })
   .strict();
 export type WorkFacts = z.infer<typeof factsSchema>;
@@ -111,6 +112,12 @@ export const workResponseSchema = z.object({
   cleanupPending: z.boolean(),
 });
 export type WorkView = z.infer<typeof workResponseSchema>;
+// Повтор создания может вернуть сохранённый до появления списка ответ.
+export const createdWorkResponseSchema = workResponseSchema.extend({
+  facts: factsSchema.extend({
+    discrepancyFields: factsSchema.shape.discrepancyFields.default([]),
+  }),
+});
 export const workListStatusSchema = z.enum(['all', 'draft', 'confirmed']);
 export type WorkListStatus = z.infer<typeof workListStatusSchema>;
 export const workPageSizes = [6, 12, 24, 48] as const;
