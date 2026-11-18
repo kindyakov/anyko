@@ -60,11 +60,11 @@ const docxType =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 function presentWork({
-  factDiscrepancies,
+  discrepancyFields,
   facts,
   ...work
 }: Awaited<ReturnType<WorkViews['get']>>): WorkView {
-  return { ...work, facts: { ...facts, discrepancyFields: factDiscrepancies } };
+  return { ...work, facts: { ...facts, discrepancyFields } };
 }
 
 export function worksRoutes(

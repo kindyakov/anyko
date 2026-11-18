@@ -172,3 +172,100 @@ test('does not autofill an unsupported identifier, date or an amount from a diff
   expect(result.values.debts).toEqual([{ name: 'Банк Б', basis: 'Договор Б' }]);
   expect(result.candidates).toHaveLength(5);
 });
+
+test.each([
+  {
+    field: 'birthDate',
+    value: '01.02.2020',
+    quote: 'Дата рождения 2020-02-01',
+  },
+  { field: 'debtTotal', value: '5 200,1', quote: 'Итого 5200.10 руб.' },
+  { field: 'inn', value: '5001 0073 2259', quote: 'ИНН 500100732259' },
+  { field: 'snils', value: '112-233-445 95', quote: 'СНИЛС 112 233 445 95' },
+] as const)(
+  'confirming the automatic value of $field works with or without evidence',
+  ({ field, value, quote }) => {
+    for (const [citation, expected] of [
+      [quote, value],
+      ['Значение отсутствует', null],
+    ] as const) {
+      const saved = mergeCandidates(
+        emptyFacts(),
+        [
+          {
+            field,
+            value,
+            evidence: [
+              {
+                documentId: crypto.randomUUID(),
+                imagePath: null,
+                quote: citation,
+              },
+            ],
+          },
+        ],
+        false,
+      );
+      expect(saved.values[field]).toBe(expected);
+      expect(findFactDiscrepancies(confirmFacts(saved))).toEqual([]);
+    }
+  },
+);
+
+test('confirming a suggested table without a supported amount only compares the saved columns', () => {
+  const saved = mergeCandidates(
+    emptyFacts(),
+    [
+      {
+        field: 'debts',
+        value: [{ name: 'Банк А', basis: 'Договор А', amount: '100.00' }],
+        evidence: [
+          {
+            documentId: crypto.randomUUID(),
+            imagePath: null,
+            quote: 'Банк А | Договор А',
+          },
+        ],
+      },
+    ],
+    false,
+  );
+  expect(saved.values.debts).toEqual([{ name: 'Банк А', basis: 'Договор А' }]);
+  expect(findFactDiscrepancies(confirmFacts(saved))).toEqual([]);
+});
+
+test('a manual numeric correction and an intentional clearing remain discrepancies', () => {
+  const supported: WorkFacts['candidates'][number] = {
+    field: 'debtTotal',
+    value: '100.00',
+    evidence: [
+      {
+        documentId: crypto.randomUUID(),
+        imagePath: null,
+        quote: 'Итого 100,00 руб.',
+      },
+    ],
+  };
+  const extracted = mergeCandidates(emptyFacts(), [supported], false);
+  const changed = editFacts(extracted, {
+    ...extracted.values,
+    debtTotal: '150.00',
+  });
+  expect(findFactDiscrepancies(confirmFacts(changed))).toEqual(['debtTotal']);
+  const cleared = editFacts(extracted, {
+    ...extracted.values,
+    debtTotal: null,
+  });
+  const unsupported = {
+    ...supported,
+    evidence: [
+      {
+        documentId: crypto.randomUUID(),
+        imagePath: null,
+        quote: 'Итого без суммы',
+      },
+    ],
+  };
+  const refreshed = mergeCandidates(cleared, [unsupported], false);
+  expect(findFactDiscrepancies(confirmFacts(refreshed))).toEqual(['debtTotal']);
+});

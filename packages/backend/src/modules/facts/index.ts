@@ -38,12 +38,10 @@ export function mergeCandidates(
     )
       continue;
     const found = candidates.filter((candidate) => candidate.field === key);
-    const proposed = reconcile(
-      key,
-      found.map((candidate) => candidate.value),
-    );
     values[key] =
-      proposed === null ? null : reconcile(key, found.map(automaticValue));
+      reconcileCandidates(key, found) === null
+        ? null
+        : reconcileCandidates(key, found, automaticValue);
   }
   return factsSchema.parse({ ...current, values, candidates });
 }
@@ -52,18 +50,32 @@ export function mergeCandidates(
 export function findFactDiscrepancies(current: WorkFacts) {
   return fieldDefinitions
     .filter(({ key }) => {
-      const proposals = current.candidates
-        .filter((c) => c.field === key)
-        .map((c) => c.value);
-      if (!proposals.length) return false;
-      const proposed = reconcile(key, proposals);
-      if (proposed === null) return true;
-      if (!current.manual.includes(key) && !current.confirmed.includes(key))
-        return false;
-      const saved = reconcile(key, [current.values[key] ?? null]);
-      return comparableFactValue(proposed) !== comparableFactValue(saved);
+      const candidates = current.candidates.filter((c) => c.field === key);
+      if (!candidates.length) return false;
+      if (reconcileCandidates(key, candidates) === null) return true;
+
+      const manual = current.manual.includes(key);
+      if (!manual && !current.confirmed.includes(key)) return false;
+      const saved = current.values[key] ?? null;
+      if (manual && saved === null) return true;
+
+      const proposed = reconcileCandidates(key, candidates, automaticValue);
+      return (
+        comparableFactValue(proposed) !==
+        comparableFactValue(reconcile(key, [saved]))
+      );
     })
     .map(({ key }) => key);
+}
+
+function reconcileCandidates(
+  key: string,
+  candidates: WorkFacts['candidates'],
+  valueOf: (candidate: WorkFacts['candidates'][number]) => FieldValue = (
+    candidate,
+  ) => candidate.value,
+): FieldValue {
+  return reconcile(key, candidates.map(valueOf));
 }
 
 function comparableFactValue(value: FieldValue): string {

@@ -58,7 +58,7 @@ export const getWork =
         package: requirePackage(work.packageVersion),
         documents,
         facts,
-        factDiscrepancies: findFactDiscrepancies(facts),
+        discrepancyFields: findFactDiscrepancies(facts),
         runs: cleanupPending
           ? []
           : await deps.processing.queries.runs(scope, workId),

@@ -196,6 +196,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
                 missingFields: input.fields
                   .filter((f) => next.values[f.key] === null)
                   .map((f) => f.key),
+                // Снимок сессии фиксирует расхождения на момент сохранения этой редакции.
                 conflictFields: findFactDiscrepancies(next).filter((key) =>
                   input.fields.some((f) => f.key === key),
                 ),

@@ -1074,15 +1074,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/facts.test.ts": {
-    "mtime": 1795016148.344308,
-    "seen": 1795016309.2999609,
-    "ast_hash": "18fdf94a31b1aec29094ec9933df097e",
+    "mtime": 1795017749.6897821,
+    "seen": 1795017785.1232383,
+    "ast_hash": "0a5f86b9992e92ca8ab976667eecc240",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/index.ts": {
-    "mtime": 1795016148.3345819,
-    "seen": 1795016309.2999618,
-    "ast_hash": "c856a80a18bd49d4d1e4826cf08418a1",
+    "mtime": 1795017637.098466,
+    "seen": 1795017695.3312297,
+    "ast_hash": "42fef6447acdab8e321cab0014200af4",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/infrastructure/store.ts": {
@@ -1692,9 +1692,9 @@
     "semantic_hash": ""
   },
   "apps/api/src/http/routes/works/index.ts": {
-    "mtime": 1795016148.3321822,
-    "seen": 1795016309.2994707,
-    "ast_hash": "20ea10d0e70f95402e3457a64b88025b",
+    "mtime": 1795017636.7308755,
+    "seen": 1795017695.2722085,
+    "ast_hash": "f4fba751886d86627888a46f3b399d8e",
     "semantic_hash": ""
   },
   "apps/api/tests/openapi.test.ts": {
@@ -2718,9 +2718,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-view/get-work.ts": {
-    "mtime": 1795016148.3453078,
-    "seen": 1795016309.3001118,
-    "ast_hash": "b7f1608da97b4a1f2b9d992729b5aa15",
+    "mtime": 1795017636.730434,
+    "seen": 1795017695.3565648,
+    "ast_hash": "3f36bd92537fc4996ae6249ce0f3035d",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-view/index.ts": {
@@ -3006,9 +3006,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/continue-session.ts": {
-    "mtime": 1795016148.3385484,
-    "seen": 1795016309.3000786,
-    "ast_hash": "063055ea59ec0b4ed8adf70e547c8540",
+    "mtime": 1795017636.7299297,
+    "seen": 1795017695.3509243,
+    "ast_hash": "ff689ff157686d14795a7edd59c0b43b",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/index.ts": {
@@ -3942,9 +3942,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/features/fact-review/model/review.test.ts": {
-    "mtime": 1795016044.354457,
-    "seen": 1795016309.2996645,
-    "ast_hash": "1aae93c2f7292be683ef60c5670e1335",
+    "mtime": 1795017636.7308755,
+    "seen": 1795017695.2947793,
+    "ast_hash": "60181db3a356812f1a870262763277f6",
     "semantic_hash": ""
   },
   "apps/web/src/features/fact-review/model/review.ts": {
