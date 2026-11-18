@@ -16,6 +16,7 @@ async function signIn(page: Page, role: 'OWNER' | 'MEMBER' | 'OUTSIDER') {
     .getByLabel('Пароль', { exact: true })
     .fill(required(`E2E_${role}_PASSWORD`));
   await page.getByRole('button', { name: 'Войти', exact: true }).click();
+  await page.waitForURL((url) => url.pathname !== '/sign-in');
 }
 
 test('sign-in remains usable at a narrow viewport and with the keyboard', async ({
@@ -189,7 +190,8 @@ test('recognition reports a failed file and allows retry', async ({ page }) => {
   await signIn(page, 'OWNER');
   const listing = page.waitForResponse(
     (response) =>
-      response.url().endsWith('/api/v1/workspaces/e2e-north/recognitions') &&
+      new URL(response.url()).pathname ===
+        '/api/v1/workspaces/e2e-north/recognitions' &&
       response.request().method() === 'GET',
   );
   await page.goto('/w/e2e-north/recognition');
