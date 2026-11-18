@@ -1,7 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { type Dispatch, type SetStateAction } from 'react';
 
-import { removeWorkDocument, uploadWorkDocument } from '@anyko/contracts/works';
+import {
+  editWorkDocumentRecognition,
+  removeWorkDocument,
+  uploadWorkDocument,
+} from '@anyko/contracts/works';
 
 import {
   invalidateDocumentCatalog,
@@ -51,6 +55,27 @@ export function useDeleteWorkDocument(workspaceId: string, workId: string) {
     mutationFn: (documentId: string) =>
       callApi(removeWorkDocument, {
         params: { workspaceId, workId, documentId },
+      }),
+    onSuccess: () => invalidateWork(client, workspaceId, workId),
+  });
+}
+
+export function useUpdateWorkDocumentRecognition(
+  workspaceId: string,
+  workId: string,
+) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      documentId,
+      ocrRevision,
+    }: {
+      documentId: string;
+      ocrRevision: number;
+    }) =>
+      callApi(editWorkDocumentRecognition, {
+        params: { workspaceId, workId, documentId },
+        body: { ocrRevision },
       }),
     onSuccess: () => invalidateWork(client, workspaceId, workId),
   });

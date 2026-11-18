@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 import { type FieldKey } from '@anyko/contracts/catalog';
 import { type WorkView } from '@anyko/contracts/works';
-import { Button, SegmentedControl } from '@anyko/ui';
+import { Button, Notice, SegmentedControl } from '@anyko/ui';
 import { EventHorizon } from '@anyko/ui/brand';
 
 import {
@@ -56,6 +56,31 @@ export function WorkReview({
         fields={view.package.fields}
       />
       <EditConflicts view={view} facts={facts} busy={busy} />
+      {!!view.facts.needsReview?.length && (
+        <Notice tone="warning" role="status" title="Нужна повторная проверка">
+          <p>
+            Значения сохранены. Проверьте сведения, чьи доказательства
+            недоступны в новой версии файла.
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {view.package.fields
+              .filter(({ key }) => view.facts.needsReview?.includes(key))
+              .map(({ key, label }) => (
+                <li key={key}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      jump(key);
+                    }}
+                  >
+                    {label}
+                  </Button>
+                </li>
+              ))}
+          </ul>
+        </Notice>
+      )}
       <section aria-labelledby="facts-title">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
           <div>

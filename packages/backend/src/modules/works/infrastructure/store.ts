@@ -171,6 +171,19 @@ export function createWorkStore(
       });
       return result.count === 1;
     },
+    async updateRecognition(workspaceId, workId, documentId, revision) {
+      const result = await db.workDocument.updateMany({
+        where: {
+          workspaceId,
+          workId,
+          documentId,
+          removed: false,
+          ocrRevision: { lt: revision },
+        },
+        data: { ocrRevision: revision },
+      });
+      return result.count === 1;
+    },
     async touch(workspaceId, id, input) {
       const row = await db.work.findFirstOrThrow({
         where: { workspaceId, id },

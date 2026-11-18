@@ -22,11 +22,14 @@ export async function requireAttachedDocument(
   scope: WorkspaceScope,
   workId: WorkId,
   documentId: DocumentId,
+  revision?: number,
 ) {
   const { documents } = await works.queries.sources(scope, workId);
   const attached = documents.find(
     (doc) => doc.id === documentId && !doc.deleted,
   );
   if (!attached) throw new WorkError('NOT_FOUND');
+  if (revision !== undefined && attached.ocrRevision !== revision)
+    throw new WorkError('NOT_READY');
   return attached;
 }

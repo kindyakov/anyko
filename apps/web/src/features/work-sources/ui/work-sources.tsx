@@ -27,6 +27,7 @@ import { useWorkspaceId } from '@/lib/api/workspace';
 import type { Upload } from '../api/commands';
 
 import { DocumentPicker } from './document-picker';
+import { OcrRevisionAction } from './ocr-revision-action';
 
 type Document = WorkView['documents'][number];
 
@@ -204,6 +205,17 @@ export function WorkSources({
                       <Trash2 size={16} />
                     </Button>
                   </div>
+                  {doc.status === 'succeeded' &&
+                    doc.processingRevision != null && (
+                      <OcrRevisionAction
+                        workId={view.work.id}
+                        documentId={doc.id}
+                        filename={doc.filename}
+                        current={doc.processingRevision}
+                        latest={doc.readyRevision ?? doc.processingRevision}
+                        disabled={busy || locked}
+                      />
+                    )}
                 </li>
               );
             })}
@@ -226,7 +238,9 @@ export function WorkSources({
             <p className="font-heading text-lg font-bold">
               {stage.kind === 'ready'
                 ? !stage.first
-                  ? `Новых файлов: ${String(stage.pending)}. Обновите сведения`
+                  ? stage.pending
+                    ? `Новых файлов: ${String(stage.pending)}. Обновите сведения`
+                    : 'Источники изменились. Обновите сведения'
                   : 'Файлы на месте. Можно извлекать сведения'
                 : stage.kind === 'processing'
                   ? 'Anyko читает файлы'

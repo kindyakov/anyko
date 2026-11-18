@@ -65,7 +65,13 @@ export function workStage(view: WorkView): WorkStage {
   const pending = last
     ? view.documents.filter((doc) => doc.createdAt > last.createdAt).length
     : view.documents.length;
-  if (!last || pending) return { kind: 'ready', pending, first: !last };
+  if (
+    !last ||
+    pending ||
+    (last.inputRevision !== undefined &&
+      last.inputRevision !== view.work.inputRevision)
+  )
+    return { kind: 'ready', pending, first: !last };
   const generation = view.generations.find(
     (item) =>
       item.revision === view.work.revision &&

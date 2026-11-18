@@ -34,6 +34,7 @@ export function mergeCandidates(
     if (
       confirmed ||
       current.confirmed.includes(key) ||
+      current.needsReview?.includes(key) ||
       current.manual.includes(key)
     )
       continue;
@@ -80,6 +81,96 @@ export function confirmFacts(current: WorkFacts): WorkFacts {
   return factsSchema.parse({
     ...current,
     confirmed: fieldDefinitions.map(({ key }) => key),
+    ...(current.needsReview && { needsReview: [] }),
+  });
+}
+
+type Candidate = WorkFacts['candidates'][number];
+export type FactEvidence = Candidate['evidence'][number];
+
+function supportedParts(
+  field: Candidate['field'],
+  saved: FieldValue,
+  candidates: Candidate[],
+  reviewed: boolean,
+  reduced?: ReadonlySet<Candidate>,
+) {
+  const proposals = candidates
+    .filter((candidate) => candidate.field === field)
+    .map((candidate) => {
+      if (!reviewed) return automaticValue(candidate);
+      if (!reduced?.has(candidate)) return candidate.value;
+      // A person can accept an image-backed value. Test the remaining quotes if part of its proof was lost.
+      return automaticValue({
+        ...candidate,
+        evidence: candidate.evidence.map((entry) => ({
+          ...entry,
+          imagePath: null,
+        })),
+      });
+    });
+  if (!Array.isArray(saved))
+    return new Set(proposals.includes(saved) ? ['value'] : []);
+  const rows = proposals.flatMap((value) =>
+    Array.isArray(value) ? value : [],
+  );
+  const identity = fieldIdentity(field);
+  const rowKey = (row: FieldRow) => {
+    const key = identity.map((column) => row[column]);
+    return key.length && key.every((cell) => cell?.trim())
+      ? JSON.stringify(key)
+      : stable([
+          Object.fromEntries(
+            Object.entries(row).filter(([, cell]) => cell !== null),
+          ),
+        ]);
+  };
+  const supported = new Set<string>();
+  for (const [index, row] of saved.entries()) {
+    const key = rowKey(row);
+    const matching = rows.filter((candidate) => rowKey(candidate) === key);
+    for (const [column, cell] of Object.entries(row))
+      if (
+        cell !== null &&
+        matching.some((candidate) => candidate[column] === cell)
+      )
+        supported.add(`${String(index)}:${column}`);
+  }
+  return supported;
+}
+
+export function refreshFactEvidence(
+  current: WorkFacts,
+  refresh: (evidence: FactEvidence) => FactEvidence | null,
+): WorkFacts {
+  const lost = new Set<Candidate['field']>();
+  const reduced = new Set<Candidate>();
+  const candidates = current.candidates.flatMap((candidate) => {
+    const evidence = candidate.evidence.flatMap(
+      (entry) => refresh(entry) ?? [],
+    );
+    const refreshed = { ...candidate, evidence };
+    if (evidence.length < candidate.evidence.length) {
+      lost.add(candidate.field);
+      reduced.add(refreshed);
+    }
+    return evidence.length ? [refreshed] : [];
+  });
+  const needsReview = new Set(current.needsReview);
+  for (const field of lost) {
+    const value = current.values[field];
+    if (value === null) continue;
+    const reviewed =
+      current.manual.includes(field) || current.confirmed.includes(field);
+    const before = supportedParts(field, value, current.candidates, reviewed);
+    const after = supportedParts(field, value, candidates, reviewed, reduced);
+    if ([...before].some((part) => !after.has(part))) needsReview.add(field);
+  }
+  return factsSchema.parse({
+    ...current,
+    candidates,
+    confirmed: current.confirmed.filter((key) => !needsReview.has(key)),
+    needsReview: [...needsReview],
   });
 }
 

@@ -32,6 +32,12 @@ const workStepSchema = z.object({
 });
 export const workRunSchema = z.object({
   id: z.uuid(),
+  inputRevision: z
+    .number()
+    .int()
+    .nullable()
+    .transform((revision) => revision ?? undefined)
+    .optional(),
   kind: z.enum(['analysis', 'generation']),
   status: z.enum([
     'queued',

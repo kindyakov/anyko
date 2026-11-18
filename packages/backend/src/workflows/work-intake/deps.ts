@@ -1,6 +1,7 @@
 import type { AgentsModule } from '../../modules/agents';
 import type { ConnectionsModule } from '../../modules/connections';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
+import type { FactsModule } from '../../modules/facts';
 import type { ProcessingModule } from '../../modules/processing';
 import type { WorksModule, WorkSourceAttachment } from '../../modules/works';
 import type { Tx, UnitOfWork } from '../../platform/transactions';
@@ -12,6 +13,7 @@ export interface WorkIntakeDeps {
   connections: ConnectionsModule;
   agents: AgentsModule;
   documents: DocumentsModule;
+  facts: FactsModule;
   locks: ResourceLocks;
   lockDocumentRevisions(
     tx: Tx,

@@ -245,3 +245,46 @@ test('work listing sends only numbered pages with deletion status', async () => 
     });
   }
 });
+
+test('the work source PATCH requires a positive OCR revision and forwards the scoped target', async () => {
+  const options = stubHttpOptions();
+  const calls: unknown[] = [];
+  const workId = crypto.randomUUID();
+  const documentId = crypto.randomUUID();
+  const app = createApp({
+    environment: 'test',
+    workHttp: {
+      ...options.workHttp,
+      access: memberAccess,
+      intake: {
+        ...options.workHttp.intake,
+        updateRecognition(scope, input) {
+          calls.push({ workspaceId: scope.workspaceId, ...input });
+          return Promise.resolve();
+        },
+      },
+    },
+  });
+  const request = (ocrRevision: number) =>
+    app.handle(
+      new Request(
+        `http://localhost/api/v1/workspaces/local/works/${workId}/documents/${documentId}`,
+        {
+          method: 'PATCH',
+          headers: {
+            origin: 'http://localhost:3000',
+            cookie: 'session=ok',
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ ocrRevision }),
+        },
+      ),
+    );
+  expect((await request(0)).status).toBe(400);
+  const updated = await request(2);
+  expect(updated.status).toBe(200);
+  expect(await updated.json()).toEqual({ status: 'updated' });
+  expect(calls).toEqual([
+    { workspaceId: 'local', workId, documentId, ocrRevision: 2 },
+  ]);
+});

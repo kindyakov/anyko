@@ -60,6 +60,10 @@ export function WorkPipeline({
         documentId,
         index: String(index),
       },
+      query: {
+        revision: view.documents.find(({ id }) => id === documentId)
+          ?.processingRevision,
+      },
     });
   const analyses = analysisRuns(view.runs);
   const [current, ...previous] = analyses;
@@ -151,7 +155,9 @@ export function WorkPipeline({
           </div>
         )}
         <RunView
+          key={current.id}
           run={current}
+          inputRevision={view.work.inputRevision}
           documents={view.documents}
           onOpen={onOpen}
           imageUrl={imageUrl}
@@ -185,6 +191,7 @@ export function WorkPipeline({
                 >
                   <RunView
                     run={run}
+                    inputRevision={view.work.inputRevision}
                     documents={view.documents}
                     onOpen={onOpen}
                     imageUrl={imageUrl}

@@ -33,6 +33,14 @@ import {
 const uuid = z.uuid();
 const workParams = workspaceParams.extend({ workId: uuid });
 const workDocumentParams = workParams.extend({ documentId: uuid });
+const ocrRevisionQuery = z.object({
+  revision: z.coerce
+    .number<string | number>()
+    .int()
+    .positive()
+    .max(2147483647)
+    .optional(),
+});
 
 export const listWorks = endpoint({
   summary: 'Возвращает страницу работ рабочей области',
@@ -184,6 +192,7 @@ export const getWorkDocumentResult = endpoint({
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/documents/:documentId/result',
   params: workDocumentParams,
+  query: ocrRevisionQuery,
   response: json(documentResultSchema),
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT', 'NOT_READY'],
@@ -195,9 +204,10 @@ export const getWorkDocumentImage = endpoint({
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/documents/:documentId/images/:index',
   params: workDocumentParams.extend({ index: z.string() }),
+  query: ocrRevisionQuery,
   response: fileDownload(),
   status: 200,
-  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT', 'NOT_READY'],
   invalid: 'INVALID_WORK_INPUT',
 });
 
@@ -233,6 +243,30 @@ export const removeWorkDocument = endpoint({
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
   invalid: 'INVALID_WORK_INPUT',
   // Повтор после принятого удаления даёт NOT_FOUND для того же документа.
+  idempotency: 'natural',
+});
+
+export const editWorkDocumentRecognition = endpoint({
+  summary: 'Обновляет закреплённую версию распознавания исходника работы',
+  method: 'PATCH',
+  path: '/workspaces/:workspaceId/works/:workId/documents/:documentId',
+  params: workDocumentParams,
+  body: json(
+    z.strictObject({
+      ocrRevision: z.number().int().positive().max(2147483647),
+    }),
+  ),
+  response: json(z.object({ status: z.literal('updated') })),
+  status: 200,
+  errors: [
+    'FORBIDDEN',
+    'NOT_FOUND',
+    'CLEANUP_PENDING',
+    'NOT_READY',
+    'WORK_BUSY',
+    'INVALID_WORK_INPUT',
+  ],
+  invalid: 'INVALID_WORK_INPUT',
   idempotency: 'natural',
 });
 
@@ -291,6 +325,7 @@ export const generateWork = endpoint({
     'CLEANUP_PENDING',
     'REVISION_CONFLICT',
     'WORK_BUSY',
+    'NOT_READY',
     'INVALID_WORK_INPUT',
     'INVALID_IDEMPOTENCY_KEY',
     'IDEMPOTENCY_CONFLICT',

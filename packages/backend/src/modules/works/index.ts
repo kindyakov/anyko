@@ -98,6 +98,12 @@ export interface WorkStore extends WorkDeletionStore {
     documentId: string,
     revision: number,
   ): Promise<void>;
+  updateRecognition(
+    workspaceId: string,
+    workId: string,
+    documentId: string,
+    revision: number,
+  ): Promise<boolean>;
   removeSource(
     workspaceId: string,
     workId: string,
@@ -189,6 +195,7 @@ export interface WorksPorts {
     | 'documents'
     | 'worksForDocument'
     | 'pinPending'
+    | 'updateRecognition'
     | 'removeSource'
     | 'dirty'
     | 'touch'

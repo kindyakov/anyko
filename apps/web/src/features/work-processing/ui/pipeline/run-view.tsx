@@ -26,11 +26,13 @@ type ImageUrl = (documentId: string, index: number) => string;
 
 export function RunView({
   run,
+  inputRevision,
   documents,
   onOpen,
   imageUrl,
 }: {
   run: Run;
+  inputRevision: number;
   documents: Document[];
   onOpen: (document: Document) => void;
   imageUrl: ImageUrl;
@@ -41,8 +43,15 @@ export function RunView({
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const groups = groupSteps(run.steps);
   const failures = run.steps.filter((step) => step.errorCode);
+  const historical =
+    run.inputRevision !== undefined && run.inputRevision !== inputRevision;
   return (
     <div className="grid gap-3">
+      {historical && (
+        <Notice tone="neutral">
+          Источники изменились после этого запуска.
+        </Notice>
+      )}
       {[...groups].map(([documentId, steps], index) => {
         const doc = documents.find((item) => item.id === documentId);
         const visuals = visionVisuals(steps, documentId);
@@ -69,7 +78,7 @@ export function RunView({
                       ? (doc?.filename ?? 'Удалённый файл')
                       : 'Все файлы вместе'}
                   </p>
-                  {doc?.status === 'succeeded' && (
+                  {!historical && doc?.status === 'succeeded' && (
                     <Button
                       variant="ghost"
                       size="xs"
@@ -109,7 +118,9 @@ export function RunView({
                 <ul className="grid gap-3 md:grid-cols-2">
                   {visuals.map((visual) => {
                     const source =
-                      visual.documentId && visual.imageIndex !== undefined
+                      !historical &&
+                      visual.documentId &&
+                      visual.imageIndex !== undefined
                         ? imageUrl(visual.documentId, visual.imageIndex)
                         : undefined;
                     return (
@@ -164,7 +175,7 @@ export function RunView({
         </Notice>
       ))}
       <Modal
-        open={preview !== null}
+        open={!historical && preview !== null}
         onOpenChange={(open) => {
           if (!open) setPreview(null);
         }}
@@ -213,7 +224,7 @@ export function RunView({
           </div>
         }
       >
-        {preview && (
+        {!historical && preview && (
           <div className="grid min-h-0 flex-1 overflow-auto rounded-xl bg-black/40 p-3">
             <div
               className="relative m-auto shrink-0"

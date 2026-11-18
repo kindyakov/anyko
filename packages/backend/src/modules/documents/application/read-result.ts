@@ -16,10 +16,12 @@ export const readResult = (deps: Pick<DocumentDeps, 'store' | 'storage'>) => {
       markdown: result.markdown,
       processorVersion: result.processorVersion,
       revision,
+      ...(result.pdfOcr && { pdfOcr: result.pdfOcr }),
       // Адрес изображения строит транспорт: версия пути у v1 и временного слоя разная.
       images: result.images.map((image, index) => ({
         path: image.path,
         index,
+        checksum: image.checksum,
       })),
     };
   };

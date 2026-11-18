@@ -5,7 +5,7 @@ import type { FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
 import { requirePackage } from '../../modules/templates';
-import type { WorksModule } from '../../modules/works';
+import { WorkError, type WorksModule } from '../../modules/works';
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
@@ -41,7 +41,11 @@ export const startGeneration =
         const connection = await deps.connections.internal.configuration(
           scope.workspaceId,
         );
-        const { values } = await deps.facts.queries.get(scope, input.workId);
+        const { values, needsReview } = await deps.facts.queries.get(
+          scope,
+          input.workId,
+        );
+        if (needsReview?.length) throw new WorkError('NOT_READY');
         await deps.uow.run(async (tx) => {
           const generationId = await deps.generation
             .in(tx)

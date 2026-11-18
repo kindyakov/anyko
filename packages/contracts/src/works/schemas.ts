@@ -40,6 +40,7 @@ export const factsSchema = z
     values: fieldValuesSchema,
     manual: z.array(fieldKeySchema),
     confirmed: z.array(fieldKeySchema).default([]),
+    needsReview: z.array(fieldKeySchema).optional(),
     candidates: z.array(candidateSchema).max(500),
   })
   .strict();
@@ -78,6 +79,7 @@ export const workStepSchema = z.object({
 });
 export const workRunSchema = z.object({
   id: z.uuid(),
+  inputRevision: z.number().int().optional(),
   kind: z.enum(['analysis', 'generation']),
   status: z.enum([
     'queued',

@@ -27,6 +27,7 @@ const unusedWorkInternal: WorksPorts['internal'] = {
   documents: unused,
   worksForDocument: unused,
   pinPending: unused,
+  updateRecognition: unused,
   removeSource: unused,
   dirty: unused,
   touch: unused,

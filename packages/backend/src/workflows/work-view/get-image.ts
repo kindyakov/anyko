@@ -14,6 +14,7 @@ export const getImage =
     workId: WorkId,
     documentId: DocumentId,
     index: number,
+    revision?: number,
   ) => {
     scope.require('works.read');
     await requireWork(deps.works.queries, scope, workId);
@@ -22,6 +23,7 @@ export const getImage =
       scope,
       workId,
       documentId,
+      revision,
     );
     return deps.documents.internal.queries.image({
       workspaceId: scope.workspaceId,

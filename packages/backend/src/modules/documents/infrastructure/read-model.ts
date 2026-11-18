@@ -241,7 +241,10 @@ export function createDocumentReadModel(
           },
         },
       });
-      return row ? view(row) : null;
+      if (!row) return null;
+      if (revision === undefined) return view(row);
+      const ready = await readyResult(workspaceId, documentId);
+      return view({ ...row, readyRevision: ready?.revision ?? null });
     },
     readyResult,
   };

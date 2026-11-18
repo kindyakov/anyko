@@ -251,11 +251,13 @@ function WorkBody({
     setViewing({
       id: document.id,
       filename: document.filename,
-      owner: { kind: 'work', workId },
+      owner: { kind: 'work', workId, revision: document.processingRevision },
       ...(page && { page }),
     });
   };
   const current = step ?? stepOf(stage);
+  const openedSource = view.documents.find(({ id }) => id === viewing?.id);
+  const openedRevision = openedSource?.processingRevision;
   return (
     <>
       <div className="animate-rise">
@@ -405,7 +407,19 @@ function WorkBody({
       {match.dialog}
       <UnsavedFactsBar facts={facts} busy={busy} />
       <DocumentViewer
-        document={viewing}
+        document={
+          viewing && openedSource
+            ? {
+                id: viewing.id,
+                filename: viewing.filename,
+                owner: { kind: 'work', workId, revision: openedRevision },
+                ...(viewing.page &&
+                  viewing.owner.revision === openedRevision && {
+                    page: viewing.page,
+                  }),
+              }
+            : undefined
+        }
         requiresRetry={
           viewing !== undefined &&
           view.documents.find((item) => item.id === viewing.id)?.errorCode ===

@@ -650,6 +650,145 @@ test('a shared source pins the latest ready OCR in each work and survives unlink
   ).toBe(2);
 }, 35000);
 
+test('updating OCR in one work preserves the other pin and marks only unsupported facts for review', async () => {
+  const input = await create();
+  const scope = memberScope(input.workspaceId);
+  const { intake, views, review, generation } = apiBackend.workHttp;
+  const catalog = apiBackend.documentHttp.documents;
+  const stableText = 'Дата: 01.06.2020.';
+  const original = `Имя: Анна. Номер: 100\n${stableText}`;
+  const revised = `Номер: 1000\nНомер: -100\n${stableText}`;
+  parseFixture = () =>
+    Promise.resolve({ markdown: original, processorVersion: 'fixture' });
+  const documentId = brandDocumentId((await upload(input)).id);
+  try {
+    await until(input, (view) => view.documents[0]?.status === 'succeeded');
+    const other = await intake.createWork(scope, {
+      packageVersion: 'technical-document-v1',
+      title: 'Другая работа с тем же файлом',
+      documentIds: [documentId],
+    });
+    extractFixture = ({ document }) =>
+      Promise.resolve({
+        candidates: [
+          {
+            field: 'personName',
+            value: 'Анна',
+            evidence: [
+              { documentId: document.id, imagePath: null, quote: 'Имя: Анна.' },
+            ],
+          },
+          {
+            field: 'documentDate',
+            value: '2020-06-01',
+            evidence: [
+              { documentId: document.id, imagePath: null, quote: stableText },
+            ],
+          },
+          {
+            field: 'documentNumber',
+            value: '100',
+            evidence: [
+              { documentId: document.id, imagePath: null, quote: '100' },
+            ],
+          },
+        ],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      });
+    await analyze(input);
+    const analyzed = await until(input, terminal);
+    expect(analyzed.facts.values).toMatchObject({
+      personName: 'Анна',
+      documentNumber: '100',
+      documentDate: '2020-06-01',
+    });
+    await review.confirmFacts(scope, {
+      workId: input.workId,
+      revision: analyzed.work.revision,
+    });
+    parseFixture = () =>
+      Promise.resolve({ markdown: revised, processorVersion: 'fixture' });
+    await catalog.commands.retry(scope, documentId, crypto.randomUUID());
+    const deadline = Date.now() + 10000;
+    while (
+      (await catalog.queries.get(scope, documentId)).status !== 'succeeded'
+    ) {
+      if (Date.now() > deadline) throw new Error('RETRY_NOT_READY');
+      await Bun.sleep(30);
+    }
+    const update = { workId: input.workId, documentId, ocrRevision: 2 };
+    await rejects(
+      intake.updateRecognition(
+        memberScope(input.workspaceId, 'read-only', ['works.read']),
+        update,
+      ),
+      'FORBIDDEN',
+    );
+    await rejects(
+      intake.updateRecognition(scope, { ...update, ocrRevision: 99 }),
+      'NOT_READY',
+    );
+    expect((await views.result(scope, input.workId, documentId)).markdown).toBe(
+      original,
+    );
+    await intake.updateRecognition(scope, update);
+    const changed = await views.get(scope, input.workId);
+    expect((await views.result(scope, input.workId, documentId)).markdown).toBe(
+      revised,
+    );
+    expect((await views.result(scope, other, documentId)).markdown).toBe(
+      original,
+    );
+    await rejects(
+      views.result(scope, input.workId, documentId, 1),
+      'NOT_READY',
+    );
+    await rejects(
+      views.image(scope, input.workId, documentId, 0, 1),
+      'NOT_READY',
+    );
+    expect(changed.facts.values).toMatchObject({
+      personName: 'Анна',
+      documentNumber: '100',
+      documentDate: '2020-06-01',
+    });
+    expect(changed.facts.needsReview?.slice().sort()).toEqual([
+      'documentNumber',
+      'personName',
+    ]);
+    expect(changed.facts.confirmed).toContain('documentDate');
+    expect(changed.facts.confirmed).not.toContain('personName');
+    expect(changed.facts.candidates.map(({ field }) => field)).toEqual([
+      'documentDate',
+    ]);
+    expect(changed.runs.map(({ id }) => id)).toEqual(
+      analyzed.runs.map(({ id }) => id),
+    );
+    await intake.updateRecognition(scope, update);
+    expect((await views.get(scope, input.workId)).work.revision).toBe(
+      changed.work.revision,
+    );
+    await rejects(
+      generation.startGeneration(scope, {
+        workId: input.workId,
+        revision: changed.work.revision,
+        correlationId: crypto.randomUUID(),
+      }),
+      'NOT_READY',
+    );
+    await review.confirmFacts(scope, {
+      workId: input.workId,
+      revision: changed.work.revision,
+    });
+    expect((await views.get(scope, input.workId)).facts.needsReview).toEqual(
+      [],
+    );
+  } finally {
+    parseFixture = undefined;
+    extractFixture = undefined;
+  }
+}, 30000);
+
 test('work creation rolls back a stale catalog selection and pins ready sources on retry', async () => {
   const input = await create();
   const scope = memberScope(input.workspaceId);

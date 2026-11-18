@@ -11,7 +11,12 @@ import { requireAttachedDocument } from './get-source';
 // а не распознавание вне работы: право recognitions.use здесь не нужно.
 export const getResult =
   (deps: { works: WorksModule; documents: DocumentsModule }) =>
-  async (scope: WorkspaceScope, workId: WorkId, documentId: DocumentId) => {
+  async (
+    scope: WorkspaceScope,
+    workId: WorkId,
+    documentId: DocumentId,
+    revision?: number,
+  ) => {
     scope.require('works.read');
     await requireWork(deps.works.queries, scope, workId);
     const source = await requireAttachedDocument(
@@ -19,6 +24,7 @@ export const getResult =
       scope,
       workId,
       documentId,
+      revision,
     );
     return deps.documents.internal.queries.result({
       workspaceId: scope.workspaceId,

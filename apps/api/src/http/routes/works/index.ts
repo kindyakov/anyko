@@ -22,6 +22,7 @@ import {
   deleteWork,
   downloadGeneratedFile,
   editWork,
+  editWorkDocumentRecognition,
   generateWork,
   getWork,
   getWorkDeletion,
@@ -126,11 +127,12 @@ export function worksRoutes(
     });
     return { status: 'attached' as const };
   });
-  route(app, getWorkDocumentResult, async ({ scope, params, link }) => {
+  route(app, getWorkDocumentResult, async ({ scope, params, query, link }) => {
     const result = await views.result(
       scope,
       brandWorkId(params.workId),
       brandDocumentId(params.documentId),
+      query.revision,
     );
     return {
       markdown: result.markdown,
@@ -138,21 +140,23 @@ export function worksRoutes(
       // Изображения адресуются через работу: ссылка ведёт на изображение исходного документа работы.
       images: result.images.map((image) => ({
         path: image.path,
-        url: link(getWorkDocumentImage, {
-          workspaceId: scope.workspaceId,
-          workId: params.workId,
-          documentId: params.documentId,
-          index: String(image.index),
-        }),
+        url:
+          link(getWorkDocumentImage, {
+            workspaceId: scope.workspaceId,
+            workId: params.workId,
+            documentId: params.documentId,
+            index: String(image.index),
+          }) + `?revision=${String(result.revision)}`,
       })),
     };
   });
-  route(app, getWorkDocumentImage, async ({ scope, params }) => {
+  route(app, getWorkDocumentImage, async ({ scope, params, query }) => {
     const image = await views.image(
       scope,
       brandWorkId(params.workId),
       brandDocumentId(params.documentId),
       imageIndex(params.index),
+      query.revision,
     );
     return { bytes: image.bytes, headers: imageHeaders(image.contentType) };
   });
@@ -169,6 +173,14 @@ export function worksRoutes(
       documentId: brandDocumentId(params.documentId),
     });
     return { status: 'deleting' as const };
+  });
+  route(app, editWorkDocumentRecognition, async ({ scope, params, body }) => {
+    await intake.updateRecognition(scope, {
+      workId: brandWorkId(params.workId),
+      documentId: brandDocumentId(params.documentId),
+      ocrRevision: body.ocrRevision,
+    });
+    return { status: 'updated' as const };
   });
   route(app, editWork, async ({ scope, params, body }) => {
     const workId = brandWorkId(params.workId);

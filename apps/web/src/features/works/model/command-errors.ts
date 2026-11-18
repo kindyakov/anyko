@@ -8,6 +8,8 @@ const workCommandTexts = {
   codes: {
     ...sharedCodeTexts,
     CONNECTION_REVOKED: connectionRevokedText,
+    NOT_READY:
+      'Проверьте и подтвердите сведения, которые потеряли доказательства.',
     REVISION_CONFLICT:
       'Работа изменилась, пока вы действовали. Сведения обновлены — проверьте их и повторите действие.',
   },

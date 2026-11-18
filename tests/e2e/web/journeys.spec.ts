@@ -438,6 +438,67 @@ test('uploading matching content offers reuse or a separate source in recognitio
   await expect(sources.getByText(workCopy)).toBeVisible();
 });
 
+test('the source stays on its original OCR until the user confirms the update', async ({
+  page,
+}) => {
+  await page.goto('/sign-in');
+  await signIn(page, 'OWNER');
+  await page.getByRole('button', { name: 'Новая работа' }).click();
+  const creation = page.getByRole('dialog', { name: 'Новая работа' });
+  await creation
+    .getByLabel('Название работы')
+    .fill('E2E 47 версия распознавания');
+  await creation.getByRole('button', { name: 'Создать и открыть' }).click();
+  const name = 'e2e-ocr-update.pdf';
+  await page.getByLabel('Файлы клиента').setInputFiles({
+    name,
+    mimeType: 'application/pdf',
+    buffer: Buffer.concat([
+      await readFile(resolve('tests/e2e/fixtures/source.pdf')),
+      Buffer.from('\n% revision-47'),
+    ]),
+  });
+  const sources = page.getByRole('region', { name: /Файлы работы/ });
+  await expect(
+    sources.getByText('Версия распознавания 1', { exact: true }),
+  ).toBeVisible();
+  const address = page.url();
+  const openSource = () =>
+    sources.getByRole('button', { name: `Просмотреть ${name}` }).click();
+  const viewer = page.getByRole('dialog', { name });
+  await openSource();
+  await expect(viewer.getByText('Текст ревизии 1.')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.getByRole('link', { name: /Распознавание/ }).click();
+  await page
+    .getByRole('searchbox', { name: 'Поиск файлов по имени' })
+    .fill(name);
+  const file = page.getByRole('listitem').filter({ hasText: name });
+  const queued = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/retry') &&
+      response.request().method() === 'POST' &&
+      response.status() === 202,
+  );
+  await file.getByRole('button', { name: 'Повторить' }).click();
+  await queued;
+  await page.goto(address);
+  const update = sources.getByRole('button', { name: 'Обновить до версии 2' });
+  await expect(update).toBeVisible();
+  await expect(
+    sources.getByText('Версия распознавания 1', { exact: true }),
+  ).toBeVisible();
+  await update.click();
+  const dialog = page.getByRole('dialog', { name: 'Обновить распознавание?' });
+  await dialog.getByRole('button', { name: 'Обновить распознавание' }).click();
+  await expect(
+    sources.getByText('Версия распознавания 2', { exact: true }),
+  ).toBeVisible();
+  await expect(update).toHaveCount(0);
+  await openSource();
+  await expect(viewer.getByText('Текст ревизии 2.')).toBeVisible();
+});
+
 test('owner switches areas without seeing the other area works; a member cannot open a foreign area', async ({
   page,
 }) => {

@@ -128,12 +128,23 @@ export function WorkResults({
   );
   const fresh = latest?.revision === view.work.revision;
   const blocked = busy || locked || hasDraft;
+  const needsReview = !!view.facts.needsReview?.length;
   return (
     <div className="grid grid-cols-1 gap-8">
       {hasDraft && (
         <Notice tone="warning" role="status" title="Есть несохранённые правки">
           Сохраните или отмените правки полей — документы формируются из
           сохранённой версии.
+        </Notice>
+      )}
+      {needsReview && (
+        <Notice
+          tone="warning"
+          role="status"
+          title="Проверьте сведения перед формированием"
+        >
+          Часть доказательств изменилась после обновления распознавания.
+          Проверьте сохранённые значения и подтвердите сведения.
         </Notice>
       )}
       <ol className="grid gap-4 lg:grid-cols-2">
@@ -191,7 +202,7 @@ export function WorkResults({
             <Button
               variant={confirmed ? 'primary' : 'secondary'}
               loading={generating}
-              disabled={blocked}
+              disabled={blocked || needsReview}
               onClick={onGenerate}
             >
               <PackageCheck size={17} />

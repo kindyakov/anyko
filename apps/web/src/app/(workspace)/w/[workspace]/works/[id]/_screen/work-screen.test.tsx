@@ -185,6 +185,54 @@ test('a work source with an expired OCR result can be recognized again from its 
   ]);
 });
 
+test('analysis history does not open current OCR artifacts under an older description', async () => {
+  const view: WorkView = {
+    ...workView,
+    facts: { ...workView.facts, version: 1 },
+    work: { ...workView.work, inputRevision: 3 },
+    documents: [{ ...source, processingRevision: 2 }],
+    runs: [
+      {
+        id: crypto.randomUUID(),
+        inputRevision: 2,
+        kind: 'analysis',
+        status: 'succeeded',
+        errorCode: null,
+        createdAt: source.createdAt,
+        steps: [
+          {
+            id: crypto.randomUUID(),
+            stage: 'vision',
+            documentId: source.id,
+            status: 'succeeded',
+            errorCode: null,
+            visuals: [
+              {
+                path: 'images/old.png',
+                description: 'Прежнее изображение',
+                imageIndex: 0,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+  serveApi(() => json(200, view));
+  const user = userEvent.setup();
+  renderWork();
+  await user.click(await screen.findByRole('tab', { name: /Извлечение/ }));
+  await screen.findByText('Источники изменились после этого запуска.');
+  expect(
+    screen.queryByRole('button', { name: 'Распознанный текст' }),
+  ).toBeNull();
+  await user.click(screen.getByText(/Что Anyko увидел на изображениях/));
+  await screen.findByText('Прежнее изображение');
+  expect(
+    screen.queryByRole('button', { name: 'Открыть изображение из файла' }),
+  ).toBeNull();
+});
+
 test.each(['run', 'step'] as const)(
   'the reason for the revoked connection remains visible when recorded on the analysis %s',
   async (location) => {

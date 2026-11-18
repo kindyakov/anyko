@@ -46,7 +46,8 @@ export interface DocumentResultView {
   markdown: string;
   processorVersion: string;
   revision: number;
-  images: { path: string; index: number }[];
+  images: { path: string; index: number; checksum?: string }[];
+  pdfOcr?: DocumentResult['pdfOcr'];
 }
 
 export interface DocumentImage {

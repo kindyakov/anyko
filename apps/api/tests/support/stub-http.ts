@@ -57,6 +57,7 @@ export function stubHttpOptions(): {
       documents: unused,
       worksForDocument: unused,
       pinPending: unused,
+      updateRecognition: unused,
       removeSource: unused,
       dirty: unused,
       touch: unused,
@@ -96,6 +97,7 @@ export function stubHttpOptions(): {
     uploadDocument: unused,
     attachDocuments: unused,
     removeDocument: unused,
+    updateRecognition: unused,
     analyzeWork: unused,
   };
   const review: WorkReview = {

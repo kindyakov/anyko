@@ -12,6 +12,7 @@ export interface WorkFacts {
   values: FieldValues;
   manual: FieldKey[];
   confirmed: FieldKey[];
+  needsReview?: FieldKey[] | undefined;
   candidates: z.infer<typeof candidateSchema>[];
 }
 

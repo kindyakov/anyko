@@ -59,6 +59,7 @@ function documentLinks(workspaceId: string, document: ViewedDocument) {
       image: (index: number) =>
         endpointUrl(getWorkDocumentImage, {
           params: { workspaceId, workId, documentId, index: String(index) },
+          query: { revision: document.owner.revision },
         }),
     };
   }

@@ -74,7 +74,7 @@ test('the result of a work document answers 200 with image links through the wor
       images: [
         {
           path: 'images/a.png',
-          url: `/api/v1/workspaces/local/works/${workId}/documents/${documentId}/images/0`,
+          url: `/api/v1/workspaces/local/works/${workId}/documents/${documentId}/images/0?revision=1`,
         },
       ],
     });

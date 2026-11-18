@@ -48,6 +48,7 @@ const parser: DocumentParser = {
     if (ocrHeld) await new Promise<void>((resolve) => ocrWaiters.add(resolve));
     const attempt = await fixtureDb.runAttempt.findUniqueOrThrow({
       where: { id: attemptId },
+      include: { run: { select: { revision: true } } },
     });
     if (!attempt.documentId) throw new Error('OCR_ATTEMPT_DOCUMENT_MISSING');
     const document = await fixtureDb.sourceDocument.findFirstOrThrow({
@@ -56,7 +57,10 @@ const parser: DocumentParser = {
     });
     if (document.filename === 'fail.pdf') throw new Error('E2E_OCR_FAILURE');
     return {
-      markdown: 'Имя: Анна. Номер: 42.',
+      markdown:
+        document.filename === 'e2e-ocr-update.pdf'
+          ? `Текст ревизии ${String(attempt.run?.revision)}.`
+          : 'Имя: Анна. Номер: 42.',
       processorVersion: 'e2e-fixture',
       images: [],
     };

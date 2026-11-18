@@ -3,10 +3,13 @@ import { expect, test } from 'bun:test';
 import type { WorkFacts } from './schemas';
 
 import {
+  confirmFacts,
   editFacts,
   emptyFacts,
+  type FactEvidence,
   findFactConflicts,
   mergeCandidates,
+  refreshFactEvidence,
 } from './index';
 
 const candidate = (value: string): WorkFacts['candidates'][number] => ({
@@ -15,6 +18,116 @@ const candidate = (value: string): WorkFacts['candidates'][number] => ({
   evidence: [
     { documentId: crypto.randomUUID(), imagePath: null, quote: value },
   ],
+});
+test('refresh preserves a value supported by another source and a manual value without that evidence', () => {
+  const removed = candidate('Анна');
+  const retained = candidate('Анна');
+  const initial = confirmFacts(
+    mergeCandidates(emptyFacts(), [removed, retained], false),
+  );
+  const refresh = (entry: FactEvidence) =>
+    entry.documentId === removed.evidence[0]?.documentId ? null : entry;
+  const supported = refreshFactEvidence(initial, refresh);
+  expect(supported.needsReview).toEqual([]);
+  expect(supported.confirmed).toContain('personName');
+  expect(supported.candidates).toEqual([retained]);
+  const manual = editFacts(initial, { ...initial.values, personName: 'Ирина' });
+  expect(refreshFactEvidence(manual, () => null).needsReview).toEqual([]);
+});
+
+test('automatic extraction keeps a value whose evidence was lost until explicit confirmation', () => {
+  const initial = confirmFacts(
+    mergeCandidates(emptyFacts(), [candidate('Анна')], false),
+  );
+  const stale = refreshFactEvidence(initial, () => null);
+  expect(stale.needsReview).toEqual(['personName']);
+  const analyzed = mergeCandidates(stale, [candidate('Ирина')], false);
+  expect(analyzed.values.personName).toBe('Анна');
+  expect(analyzed.needsReview).toEqual(['personName']);
+  expect(confirmFacts(analyzed).needsReview).toEqual([]);
+});
+
+test('an accepted date loses confirmation when its image proof disappears', () => {
+  const draft = emptyFacts();
+  const initial = confirmFacts(
+    editFacts(
+      {
+        ...draft,
+        candidates: [
+          {
+            field: 'documentDate',
+            value: '2020-06-01',
+            evidence: [
+              {
+                documentId: crypto.randomUUID(),
+                imagePath: 'images/date.png',
+                quote: '01.06.2020',
+              },
+            ],
+          },
+        ],
+      },
+      { ...draft.values, documentDate: '2020-06-01' },
+    ),
+  );
+  const next = refreshFactEvidence(initial, () => null);
+  expect(next.values.documentDate).toBe('2020-06-01');
+  expect(next.confirmed).not.toContain('documentDate');
+  expect(next.needsReview).toEqual(['documentDate']);
+});
+
+test('a surviving quote without the accepted amount does not keep its confirmation', () => {
+  const documentId = crypto.randomUUID();
+  const initial = confirmFacts(
+    mergeCandidates(
+      emptyFacts(),
+      [
+        {
+          field: 'debtTotal',
+          value: '100',
+          evidence: [
+            { documentId, imagePath: null, quote: 'Итого: 100' },
+            { documentId, imagePath: null, quote: 'Сумма долга' },
+          ],
+        },
+      ],
+      false,
+    ),
+  );
+  expect(initial.values.debtTotal).toBe('100');
+  const next = refreshFactEvidence(initial, (entry) =>
+    entry.quote === 'Сумма долга' ? entry : null,
+  );
+  expect(next.values.debtTotal).toBe('100');
+  expect(next.candidates[0]?.evidence[0]?.quote).toBe('Сумма долга');
+  expect(next.confirmed).not.toContain('debtTotal');
+  expect(next.needsReview).toEqual(['debtTotal']);
+});
+
+test('a confirmed table row without a complete identity still loses review support when its quote disappears', () => {
+  const initial = confirmFacts(
+    mergeCandidates(
+      emptyFacts(),
+      [
+        {
+          field: 'realEstate',
+          value: [{ description: 'Гараж', address: null }],
+          evidence: [
+            {
+              documentId: crypto.randomUUID(),
+              imagePath: null,
+              quote: 'Гараж',
+            },
+          ],
+        },
+      ],
+      false,
+    ),
+  );
+  const next = refreshFactEvidence(initial, () => null);
+  expect(next.values.realEstate).toEqual([{ description: 'Гараж' }]);
+  expect(next.confirmed).not.toContain('realEstate');
+  expect(next.needsReview).toEqual(['realEstate']);
 });
 test('contradictory sources remain visible and do not silently choose a value', () => {
   const result = mergeCandidates(
