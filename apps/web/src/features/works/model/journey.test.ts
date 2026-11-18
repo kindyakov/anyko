@@ -4,6 +4,8 @@ import { type WorkView } from '@anyko/contracts/works';
 
 import { stepOf, workStage } from '@/features/works/model/journey';
 
+import { availableWorkCommands } from '../../../../test/fixtures';
+
 const id = () => crypto.randomUUID();
 function view(patch: Partial<WorkView> = {}): WorkView {
   return {
@@ -38,6 +40,7 @@ function view(patch: Partial<WorkView> = {}): WorkView {
     generations: [],
     cursor: '0',
     cleanupPending: false,
+    availability: availableWorkCommands,
     ...patch,
   };
 }

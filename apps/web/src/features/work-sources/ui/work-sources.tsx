@@ -21,9 +21,7 @@ import {
   recognitionFailureText,
   recognitionRetryCode,
 } from '@/features/document-recognition';
-import type { WorkStage } from '@/features/works';
-
-import type { Upload } from '../api/commands';
+import type { Upload, WorkStage } from '@/features/works';
 
 type Document = WorkView['documents'][number];
 
@@ -38,7 +36,9 @@ const labels: Record<Document['status'], [string, Tone]> = {
 export function WorkSources({
   view,
   stage,
-  locked,
+  disabled,
+  retryDisabled,
+  removing,
   busy,
   uploads,
   onUpload,
@@ -50,8 +50,9 @@ export function WorkSources({
 }: {
   view: WorkView;
   stage: WorkStage;
-  /** Processing or cleanup is running: inputs must not change. */
-  locked: boolean;
+  disabled: { upload: boolean; remove: boolean; analyze: boolean };
+  retryDisabled: boolean;
+  removing: boolean;
   busy: boolean;
   uploads: Upload[];
   onUpload: (files: File[]) => Promise<number>;
@@ -62,9 +63,7 @@ export function WorkSources({
   onAnalyze: () => void;
 }) {
   const [deleting, setDeleting] = useState<Document>();
-  const [removing, setRemoving] = useState(false);
   const uploading = uploads.some((item) => item.state === 'uploading');
-  const full = view.documents.length >= 20;
   return (
     <div className="grid grid-cols-1 gap-8">
       <DropZone
@@ -73,15 +72,11 @@ export function WorkSources({
             ? 'Добавьте ещё файлы клиента'
             : 'Отправьте файлы клиента в Anyko'
         }
-        hint={
-          full
-            ? 'В работе уже 20 файлов — это максимум. Удалите лишние, чтобы добавить новые.'
-            : 'Паспорт, СНИЛС, справки, выписки, договоры — PDF, DOCX или фото до 20 МБ, всего до 20 файлов. Новые файлы дополнят уже найденные сведения.'
-        }
+        hint="Паспорт, СНИЛС, справки, выписки, договоры — PDF, DOCX или фото до 20 МБ, всего до 20 файлов. Новые файлы дополнят уже найденные сведения."
         inputLabel="Файлы клиента"
         accept={accept}
         busy={uploading}
-        disabled={locked || full || (busy && !uploading)}
+        disabled={disabled.upload}
         onFiles={onUpload}
       />
       {uploads.length > 0 && (
@@ -158,7 +153,7 @@ export function WorkSources({
                     {doc.status === 'failed' && (
                       <DocumentRetryButton
                         loading={retryingId === doc.id}
-                        disabled={busy || locked}
+                        disabled={retryDisabled}
                         onRetry={() => {
                           onRetry(doc.id);
                         }}
@@ -181,7 +176,7 @@ export function WorkSources({
                       size="icon-sm"
                       aria-label={`Удалить ${doc.filename}`}
                       title="Удалить"
-                      disabled={busy || locked}
+                      disabled={disabled.remove}
                       onClick={() => {
                         setDeleting(doc);
                       }}
@@ -216,7 +211,7 @@ export function WorkSources({
             size="lg"
             variant={stage.kind === 'ready' ? 'primary' : 'secondary'}
             loading={busy && !uploading && !deleting}
-            disabled={locked || uploading}
+            disabled={disabled.analyze}
             onClick={onAnalyze}
           >
             <Sparkles size={18} />
@@ -233,9 +228,7 @@ export function WorkSources({
         pending={removing}
         onConfirm={() => {
           if (!deleting) return;
-          setRemoving(true);
           void onDelete(deleting).finally(() => {
-            setRemoving(false);
             setDeleting(undefined);
           });
         }}

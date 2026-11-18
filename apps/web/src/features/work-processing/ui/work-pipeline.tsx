@@ -39,13 +39,13 @@ const runTones: Record<Run['status'], Tone> = {
 
 export function WorkPipeline({
   view,
-  locked,
+  analyzeDisabled,
   busy,
   onOpen,
   onAnalyze,
 }: {
   view: WorkView;
-  locked: boolean;
+  analyzeDisabled: boolean;
   busy: boolean;
   onOpen: (document: Document) => void;
   onAnalyze: () => void;
@@ -80,7 +80,7 @@ export function WorkPipeline({
             size="lg"
             className="mt-8"
             loading={busy}
-            disabled={locked}
+            disabled={analyzeDisabled}
             onClick={onAnalyze}
           >
             <Sparkles size={18} />
@@ -119,7 +119,7 @@ export function WorkPipeline({
                 variant="secondary"
                 size="sm"
                 loading={busy}
-                disabled={locked}
+                disabled={analyzeDisabled}
                 onClick={onAnalyze}
               >
                 <Sparkles size={15} />

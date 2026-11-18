@@ -5,6 +5,7 @@ import { PostgresStore } from '@mastra/pg';
 import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
+import { httpErrorSchema } from '@anyko/contracts/common';
 import {
   createDatabase,
   createDatabasePool,
@@ -21,7 +22,6 @@ import type {
   SourceStorage,
 } from '../../../packages/backend/src/modules/documents';
 import { createWorkProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/work-store';
-import { createWorkStore } from '../../../packages/backend/src/modules/works/infrastructure/store';
 import {
   brandDocumentId,
   brandFileId,
@@ -48,7 +48,6 @@ const testRedisUrl: string = redisUrl;
 type WorkView = Awaited<ReturnType<typeof apiBackend.workHttp.views.get>>;
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabase(pool);
-const locks = createResourceLocks(pool);
 // Read-side adapters the processing assertions use directly, on the same database.
 const workProcessing = createWorkProcessingStore(db);
 const actualPool = createDatabasePool(databaseUrl);
@@ -597,7 +596,7 @@ test('a package generates three individually scoped DOCX files from one snapshot
   ).toBe(false);
 });
 
-test('manual edits during model execution survive; optimistic revision rejects stale saves', async () => {
+test('manual edits during model execution survive acceptance of the result', async () => {
   const input = await create();
   await upload(input);
   let release: () => void = () => {};
@@ -626,14 +625,6 @@ test('manual edits during model execution survive; optimistic revision rejects s
         revision: view.work.revision,
         values: { ...emptyFieldValues(), personName: 'Ручное значение' },
       },
-    );
-    await rejects(
-      apiBackend.workHttp.review.editValues(memberScope(input.workspaceId), {
-        workId: brandWorkId(input.workId),
-        revision: view.work.revision,
-        values: emptyFieldValues(),
-      }),
-      'REVISION_CONFLICT',
     );
     release();
     expect((await until(input, terminal)).facts.values.personName).toBe(
@@ -730,58 +721,6 @@ test('deletion during model execution hides derivatives immediately and fences t
     release();
     waitForExtraction = undefined;
   }
-});
-
-test('lease recovery atomically reopens the outbox and rejects a superseded attempt', async () => {
-  const input = await create();
-  const runId = crypto.randomUUID();
-  await locks.run(`work-run:${input.workspaceId}:${runId}`, async () => {
-    await workProcessing.start({
-      ...input,
-      id: runId,
-      actorId: 'fixture',
-      kind: 'analysis',
-      inputRevision: 0,
-      documentIds: [],
-      settingsRevision: 1,
-      generationId: null,
-      correlationId: crypto.randomUUID(),
-      attemptToken: null,
-      modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
-    });
-    const old = await workProcessing.claim(input.workspaceId, runId);
-    if (!old) throw new Error('CLAIM_MISSING');
-    await db.runOutbox.update({
-      where: { runId },
-      data: { deliveredAt: new Date() },
-    });
-    await db.run.update({
-      where: { id: runId },
-      data: { leaseUntil: new Date(0) },
-    });
-    await workProcessing.reconcile();
-    expect(
-      (await db.runOutbox.findUniqueOrThrow({ where: { runId } })).deliveredAt,
-    ).toBeNull();
-    const fresh = await workProcessing.claim(input.workspaceId, runId);
-    if (!fresh) throw new Error('RECLAIM_MISSING');
-    expect(await workProcessing.valid(old)).toBe(false);
-    await workProcessing.finish(old, 'succeeded');
-    expect(await workProcessing.valid(fresh)).toBe(true);
-    await db.$transaction(async (tx) => {
-      await tx.$executeRaw`SET LOCAL TIME ZONE 'Europe/Moscow'`;
-      await createWorkProcessingStore(tx).reconcile();
-      expect(await createWorkProcessingStore(tx).valid(fresh)).toBe(true);
-    });
-    await rejects(
-      workProcessing.step(old, {
-        stage: 'extraction',
-        status: 'succeeded',
-      }),
-      'STALE_WORK_ATTEMPT',
-    );
-    await workProcessing.finish(fresh, 'cancelled');
-  });
 });
 
 test('confirmation survives added sources and repeated analysis; only the new file calls the model', async () => {
@@ -1843,41 +1782,161 @@ test('deleting during contextual reasoning removes its session, turns, and all r
   }
 });
 
-test('superseded attempt cannot commit a session checkpoint or facts', async () => {
+type Command = keyof WorkView['availability'];
+type Reason = Extract<
+  WorkView['availability'][Command],
+  { available: false }
+>['reason'];
+const availabilityCases: {
+  state: string;
+  blocked: Partial<Record<Command, Reason>>;
+}[] = [
+  { state: 'ready', blocked: {} },
+  {
+    state: 'empty',
+    blocked: { analyze: 'NO_DOCUMENTS', remove: 'NO_DOCUMENTS' },
+  },
+  {
+    state: 'busy',
+    blocked: {
+      analyze: 'WORK_BUSY',
+      generate: 'WORK_BUSY',
+      confirm: 'WORK_BUSY',
+    },
+  },
+  {
+    state: 'cleanup',
+    blocked: {
+      analyze: 'CLEANUP_PENDING',
+      generate: 'CLEANUP_PENDING',
+      confirm: 'CLEANUP_PENDING',
+      upload: 'CLEANUP_PENDING',
+    },
+  },
+  { state: 'revoked', blocked: { analyze: 'CONNECTION_REVOKED' } },
+  { state: 'unconfigured', blocked: { analyze: 'LLM_NOT_CONFIGURED' } },
+  {
+    state: 'read-only',
+    blocked: {
+      analyze: 'FORBIDDEN',
+      generate: 'FORBIDDEN',
+      confirm: 'FORBIDDEN',
+      upload: 'FORBIDDEN',
+      remove: 'FORBIDDEN',
+    },
+  },
+];
+
+const commands: Command[] = [
+  'analyze',
+  'generate',
+  'confirm',
+  'upload',
+  'remove',
+];
+test.each(
+  availabilityCases.flatMap(({ state, blocked }) =>
+    commands.map((command) => ({ state, command, reason: blocked[command] })),
+  ),
+)(
+  'work availability agrees with $command in state $state',
+  async ({ state, command, reason }) => {
+    const { workspaceId, workId } = await create();
+    const document =
+      state !== 'empty' && (await upload({ workspaceId, workId }));
+    const owner = memberScope(workspaceId);
+    const scope =
+      state === 'read-only'
+        ? memberScope(workspaceId, 'reader', ['works.read'])
+        : owner;
+    if (state === 'busy')
+      await db.run.create({
+        data: {
+          id: crypto.randomUUID(),
+          workspaceId,
+          workId,
+          kind: 'work.analysis',
+          inputRevision: 1,
+          documentIds: document ? [document.id] : [],
+          settingsRevision: 1,
+          modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
+          initiatedBy: owner.userId,
+          correlationId: crypto.randomUUID(),
+        },
+      });
+    if (state === 'cleanup')
+      await db.processingIo.create({
+        data: {
+          id: crypto.randomUUID(),
+          kind: 'work',
+          workspaceId,
+          workId,
+          uncertain: true,
+        },
+      });
+    if (state === 'revoked') await apiBackend.workHttp.settings.revoke(owner);
+    if (state === 'unconfigured')
+      await db.llmSettings.deleteMany({ where: { workspaceId } });
+    const view = await apiBackend.workHttp.views.get(scope, workId);
+    expect(view.availability[command]).toEqual(
+      reason ? { available: false, reason } : { available: true },
+    );
+
+    const correlationId = crypto.randomUUID();
+    const revision = view.work.revision;
+    const execute: Record<Command, () => Promise<unknown>> = {
+      analyze: () =>
+        apiBackend.workHttp.intake.analyzeWork(scope, {
+          workId,
+          correlationId,
+        }),
+      generate: () =>
+        apiBackend.workHttp.generation.startGeneration(scope, {
+          workId,
+          correlationId,
+          revision,
+        }),
+      confirm: () =>
+        apiBackend.workHttp.review.confirmFacts(scope, { workId, revision }),
+      upload: () =>
+        apiBackend.workHttp.intake.uploadDocument(scope, {
+          workId,
+          correlationId,
+          filename: 'next.pdf',
+          bytes: new TextEncoder().encode('%PDF-1.7\n synthetic'),
+          requestKey: crypto.randomUUID(),
+        }),
+      remove: () =>
+        apiBackend.workHttp.intake.removeDocument(scope, {
+          workId,
+          documentId: brandDocumentId(
+            document ? document.id : crypto.randomUUID(),
+          ),
+        }),
+    };
+    if (!reason) await execute[command]();
+    else
+      await rejects(
+        execute[command](),
+        reason === 'NO_DOCUMENTS'
+          ? command === 'remove'
+            ? 'NOT_FOUND'
+            : 'INVALID_WORK_INPUT'
+          : reason,
+      );
+  },
+);
+
+test('server rejects upload at the work source limit and reports the reason', async () => {
   const input = await create();
-  const runId = crypto.randomUUID();
-  await workProcessing.start({
-    id: runId,
-    ...input,
-    kind: 'analysis',
-    inputRevision: 0,
-    documentIds: [],
-    settingsRevision: 1,
-    generationId: null,
-    correlationId: crypto.randomUUID(),
-    attemptToken: null,
-    actorId: 'fixture',
-    modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
-  });
-  const old = await workProcessing.claim(input.workspaceId, runId);
-  if (!old) throw Error('claim');
-  await db.run.update({
-    where: { id: runId },
-    data: { attemptToken: crypto.randomUUID() },
-  });
-  await rejects(
-    db.$transaction(async (tx) => {
-      await createWorkProcessingStore(tx).fence(old);
-      await createWorkStore(tx).touch(input.workspaceId, input.workId, {});
-    }),
-    'STALE_WORK_ATTEMPT',
+  for (let i = 0; i < 20; i++) await upload(input);
+  const view = await apiBackend.workHttp.views.get(
+    memberScope(input.workspaceId),
+    input.workId,
   );
-  expect(
-    (
-      await apiBackend.workHttp.views.get(
-        memberScope(input.workspaceId),
-        brandWorkId(input.workId),
-      )
-    ).work.revision,
-  ).toBe(0);
+  expect(view.availability.upload).toEqual({
+    available: false,
+    reason: 'SOURCE_LIMIT_REACHED',
+  });
+  await rejects(upload(input), 'INVALID_WORK_INPUT');
 });

@@ -1,7 +1,6 @@
 import type { Tx } from '../../platform/transactions';
 
 import { attachDocument } from './application/attach-document';
-import { bumpRevision } from './application/bump-revision';
 import { createWork } from './application/create-work';
 import { findWork } from './application/find-work';
 import { hasActiveDocument } from './application/has-active-document';
@@ -10,7 +9,6 @@ import { listWorks } from './application/list-works';
 import { notifyDocumentChanged } from './application/notify-document-changed';
 import { readCursor } from './application/read-cursor';
 import { readSources } from './application/read-sources';
-import { recordEvent } from './application/record-event';
 
 import type { WorkIoPort, WorksModule, WorksPorts, WorkStore } from './index';
 
@@ -33,8 +31,6 @@ export function createWorksModule(deps: WorksDeps): WorksModule {
         knownPackage: deps.knownPackage,
       }),
       attachDocument: attachDocument({ store }),
-      bumpRevision: bumpRevision({ store }),
-      recordEvent: recordEvent({ store }),
     },
     queries: {
       list: listWorks({ store }),

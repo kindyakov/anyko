@@ -9,7 +9,8 @@ import type { WorksModule } from '../../modules/works';
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
-import { requireIdle, requireRevision, workLockKey } from '../work-guards';
+import { changeWork } from '../change-work';
+import { workCommandPolicy } from '../work-command-guards';
 
 // Старт генерации: снимок сведений, результат, запуск и журнал в одной транзакции. Исполнение — в worker.
 export const startGeneration =
@@ -27,22 +28,24 @@ export const startGeneration =
     scope: WorkspaceScope,
     input: { workId: WorkId; revision: number; correlationId: string },
   ) => {
-    scope.require('works.generate');
-    await deps.locks.run(
-      workLockKey(scope.workspaceId, input.workId),
-      async () => {
-        const { work, documents } = await requireRevision(
-          deps.works.queries,
-          scope,
-          input.workId,
-          input.revision,
-        );
-        await requireIdle(deps.processing.queries, scope, input.workId);
-        const connection = await deps.connections.internal.configuration(
-          scope.workspaceId,
-        );
-        const { values } = await deps.facts.queries.get(scope, input.workId);
-        await deps.uow.run(async (tx) => {
+    scope.require(workCommandPolicy.generate.right);
+    await changeWork(
+      deps,
+      scope,
+      {
+        workId: input.workId,
+        expectedRevision: input.revision,
+        command: 'generate',
+        event: 'generation.queued',
+      },
+      ({ work, documents }) =>
+        async (tx) => {
+          const connection = await deps.connections
+            .in(tx)
+            .internal.configuration(scope.workspaceId);
+          const { values } = await deps.facts
+            .in(tx)
+            .queries.get(scope, input.workId);
           const generationId = await deps.generation
             .in(tx)
             .commands.create(scope, {
@@ -69,10 +72,6 @@ export const startGeneration =
             correlationId: input.correlationId,
             modelSnapshot: { vision: '', extraction: '' },
           });
-          await deps.works.in(tx).commands.recordEvent(scope, {
-            workId: input.workId,
-            kind: 'generation.queued',
-          });
           await deps.audit.in(tx).commands.record({
             workspaceId: scope.workspaceId,
             actorId: scope.userId,
@@ -81,7 +80,6 @@ export const startGeneration =
             data: { workId: input.workId },
             correlationId: input.correlationId,
           });
-        });
-      },
+        },
     );
   };

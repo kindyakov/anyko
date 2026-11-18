@@ -1,3 +1,4 @@
+import { availableWorkCommands } from '../../../../test/fixtures';
 import '../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
@@ -83,6 +84,7 @@ const createdWorkView = {
   generations: [],
   cursor: '0',
   cleanupPending: false,
+  availability: availableWorkCommands,
 };
 
 function json(status: number, body: unknown) {

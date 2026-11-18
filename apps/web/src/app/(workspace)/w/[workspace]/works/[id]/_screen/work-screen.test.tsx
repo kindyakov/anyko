@@ -115,50 +115,50 @@ test('a work source with an expired OCR result can be recognized again from its 
   ]);
 });
 
-test.each(['run', 'step'] as const)(
-  'the reason for the revoked connection remains visible when recorded on the analysis %s',
-  async (location) => {
-    const run: WorkView['runs'][number] = {
-      id: 'dd1617a1-3bf9-4f68-8b37-bcf42947ad26',
-      kind: 'analysis',
-      status: 'failed',
-      errorCode: location === 'run' ? 'CONNECTION_REVOKED' : null,
-      createdAt: source.createdAt,
-      steps:
-        location === 'step'
-          ? [
-              {
-                id: '62210c15-ee45-43f1-bc02-95be7dd3c023',
-                documentId: source.id,
-                stage: 'vision',
-                status: 'failed',
-                errorCode: 'CONNECTION_REVOKED',
-                visuals: [],
-              },
-            ]
-          : [],
-    };
-    serveApi(() =>
-      json(200, { ...workView, documents: [source], runs: [run] }),
-    );
-    const user = userEvent.setup();
-    renderWork();
+test('server availability disables analysis and shows the revoked connection even without a run', async () => {
+  const blocked = {
+    ...workView,
+    documents: [source],
+    availability: {
+      ...workView.availability,
+      analyze: { available: false, reason: 'CONNECTION_REVOKED' },
+    },
+  } satisfies WorkView;
+  const requests = serveApi(() => json(200, blocked));
+  const user = userEvent.setup();
+  renderWork();
 
-    expect(await screen.findByText(connectionRevoked)).toBeTruthy();
-    await user.click(screen.getByRole('tab', { name: /Извлечение/ }));
-    const pipeline = within(screen.getByRole('tabpanel'));
-    expect(await pipeline.findByText(connectionRevoked)).toBeTruthy();
-  },
-);
+  expect(await screen.findByText(connectionRevoked)).toBeTruthy();
+  const files = within(await screen.findByRole('tabpanel'));
+  const analyze = files.getByRole('button', { name: 'Извлечь сведения' });
+  expect(analyze).toHaveProperty('disabled', true);
+  await user.click(analyze);
+  expect(requests.some(({ method }) => method === 'POST')).toBe(false);
+  expect(
+    (await files.findByLabelText<HTMLInputElement>('Файлы клиента')).disabled,
+  ).toBe(false);
+});
 
 test('an analysis command rejected because the connection was revoked shows guidance', async () => {
-  const requests = serveApi(({ method }) =>
-    method === 'POST'
-      ? json(409, {
-          error: { code: 'CONNECTION_REVOKED', requestId: 'analysis' },
-        })
-      : json(200, { ...workView, documents: [source] }),
-  );
+  let revoked = false;
+  const requests = serveApi(({ method }) => {
+    if (method === 'POST') {
+      revoked = true;
+      return json(409, {
+        error: { code: 'CONNECTION_REVOKED', requestId: 'analysis' },
+      });
+    }
+    return json(200, {
+      ...workView,
+      documents: [source],
+      availability: {
+        ...workView.availability,
+        analyze: revoked
+          ? { available: false, reason: 'CONNECTION_REVOKED' }
+          : { available: true },
+      },
+    });
+  });
   const user = userEvent.setup();
   renderWork();
   const files = within(await screen.findByRole('tabpanel'));
@@ -168,9 +168,14 @@ test('an analysis command rejected because the connection was revoked shows guid
 
   const message = within(await screen.findByRole('alert'));
   expect(message.getByText(connectionRevoked)).toBeTruthy();
-  expect(requests.at(-1)).toMatchObject({
+  expect(requests.find(({ method }) => method === 'POST')).toMatchObject({
     method: 'POST',
     url: `${workAddress}/analyze`,
+  });
+  await waitFor(() => {
+    expect(
+      files.getByRole('button', { name: 'Извлечь сведения' }),
+    ).toHaveProperty('disabled', true);
   });
 });
 

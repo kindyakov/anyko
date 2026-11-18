@@ -1,3 +1,4 @@
+'use client';
 import {
   type QueryClient,
   useMutation,
@@ -14,6 +15,7 @@ import {
 } from '@anyko/contracts/works';
 
 import { callApi } from '@/lib/api/call';
+import { useIdempotencyKey, withIdempotencyKey } from '@/lib/api/idempotency';
 
 import { workKeys } from './keys';
 
@@ -69,12 +71,15 @@ export function useDeleteWork(workspaceId: string) {
 
 export function useAnalyzeWork(workspaceId: string, workId: string) {
   const client = useQueryClient();
+  const key = useIdempotencyKey();
   return useMutation({
-    mutationFn: ({ idempotencyKey }: { idempotencyKey: string }) =>
-      callApi(analyzeWork, {
-        params: { workspaceId, workId },
-        idempotencyKey,
-      }),
+    mutationFn: () =>
+      withIdempotencyKey(key, (idempotencyKey) =>
+        callApi(analyzeWork, {
+          params: { workspaceId, workId },
+          idempotencyKey,
+        }),
+      ),
     onSuccess: () => invalidateWork(client, workspaceId, workId),
   });
 }

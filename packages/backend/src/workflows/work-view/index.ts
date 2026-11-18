@@ -1,4 +1,5 @@
 import type { AgentsModule } from '../../modules/agents';
+import type { ConnectionsModule } from '../../modules/connections';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import type { FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
@@ -15,6 +16,7 @@ export interface WorkViewDeps {
   works: WorksModule;
   facts: FactsModule;
   processing: ProcessingModule;
+  connections: ConnectionsModule;
   generation: GenerationModule;
   documents: DocumentsModule;
   agents: AgentsModule;

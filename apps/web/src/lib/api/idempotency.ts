@@ -39,6 +39,20 @@ export function useIdempotencyKey(): IdempotencyKey {
   return key;
 }
 
+export async function withIdempotencyKey<T>(
+  key: IdempotencyKey,
+  send: (idempotencyKey: string) => Promise<T>,
+): Promise<T> {
+  try {
+    const result = await send(key.take());
+    key.settle();
+    return result;
+  } catch (error) {
+    key.settle(error);
+    throw error;
+  }
+}
+
 function isUnknownOutcome(error: unknown): boolean {
   if (!(error instanceof ApiError)) return false;
   return error.status === undefined || unknownOutcomeCodes.has(error.code);

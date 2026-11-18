@@ -24,12 +24,14 @@ export function WorkReview({
   view,
   facts,
   busy,
+  analyzeDisabled,
   onOpen,
   onExtract,
 }: {
   view: WorkView;
   facts: FactsForm;
   busy: boolean;
+  analyzeDisabled: boolean;
   onOpen: (document: Document, page?: number) => void;
   onExtract: () => void;
 }) {
@@ -153,6 +155,7 @@ export function WorkReview({
                 variant="secondary"
                 className="mt-6"
                 loading={busy}
+                disabled={analyzeDisabled}
                 onClick={onExtract}
               >
                 <FileSearch size={16} />

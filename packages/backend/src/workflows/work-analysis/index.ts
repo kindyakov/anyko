@@ -2,11 +2,11 @@ import { LlmError } from '@anyko/llm';
 
 import { DocumentError } from '../../modules/documents';
 import type { WorkFacts } from '../../modules/facts';
-import { stepOutputSchema, type WorkRunRecord } from '../../modules/processing';
+import { stepOutputSchema, type WorkAttempt } from '../../modules/processing';
 import { requirePackage } from '../../modules/templates';
 import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
-import { createRunState, type RunState } from '../work-execution/run-state';
+import { createRunState } from '../work-execution/run-state';
 
 import {
   type ContinuationSource,
@@ -32,58 +32,52 @@ const delay = (signal: AbortSignal) =>
 // Анализ работы: разбор документов, описание изображений, извлечение кандидатов и сверка сессии.
 // Каждый шаг пишется в запуск; вызовы модели выполняются вне UnitOfWork.
 export function createWorkAnalysis(deps: WorkDependencies) {
-  const state: RunState = createRunState(deps);
-  const current = (run: WorkRunRecord) => state.current(run);
-  const step: RunState['step'] = (run, input) => state.step(run, input);
   const continueSession = createWorkContinuation(deps);
-  const parse = async (
-    run: WorkRunRecord,
-    documentId: string,
-    signal: AbortSignal,
-  ) => {
-    await step(run, { stage: 'parsing', documentId, status: 'running' });
-    let doc = await deps.documents.internal.queries.get({
-      workspaceId: run.workspaceId,
-      documentId,
-    });
-    if (doc.status === 'failed')
-      doc = await deps.documents.internal.commands.retry({
-        workspaceId: run.workspaceId,
-        documentId,
-        actorId: 'work-pipeline',
-        correlationId: run.correlationId,
-      });
-    while (doc.status === 'queued' || doc.status === 'running') {
-      signal.throwIfAborted();
-      await current(run);
-      await delay(signal);
-      doc = await deps.documents.internal.queries.get({
-        workspaceId: run.workspaceId,
-        documentId,
-      });
-    }
-    if (doc.status !== 'succeeded') throw new Error('PARSING_FAILED');
-    await step(run, { stage: 'parsing', documentId, status: 'succeeded' });
-    return deps.documents.internal.queries.analysis({
-      workspaceId: run.workspaceId,
-      documentId,
-    });
-  };
   return async (
-    run: WorkRunRecord,
+    attempt: WorkAttempt,
     signal: AbortSignal,
     loadConnection: (
       revision: number | null,
     ) => ReturnType<WorkDependencies['connections']['internal']['connection']>,
   ) => {
+    const { run } = attempt;
+    const { current, step } = createRunState(deps, attempt);
+    const parse = async (documentId: string) => {
+      await step({ stage: 'parsing', documentId, status: 'running' });
+      let doc = await deps.documents.internal.queries.get({
+        workspaceId: run.workspaceId,
+        documentId,
+      });
+      if (doc.status === 'failed')
+        doc = await deps.documents.internal.commands.retry({
+          workspaceId: run.workspaceId,
+          documentId,
+          actorId: 'work-pipeline',
+          correlationId: run.correlationId,
+        });
+      while (doc.status === 'queued' || doc.status === 'running') {
+        signal.throwIfAborted();
+        await current();
+        await delay(signal);
+        doc = await deps.documents.internal.queries.get({
+          workspaceId: run.workspaceId,
+          documentId,
+        });
+      }
+      if (doc.status !== 'succeeded') throw new Error('PARSING_FAILED');
+      await step({ stage: 'parsing', documentId, status: 'succeeded' });
+      return deps.documents.internal.queries.analysis({
+        workspaceId: run.workspaceId,
+        documentId,
+      });
+    };
     const { revision } = await loadConnection(run.settingsRevision);
-    const selectedRun = { ...run, settingsRevision: revision };
     const readConnection = () => loadConnection(revision);
     const assertCurrent = async () => {
-      await current(run);
+      await current();
       await readConnection();
     };
-    const pack = requirePackage((await current(run)).packageVersion);
+    const pack = requirePackage((await current()).packageVersion);
     const candidates: WorkFacts['candidates'] = [];
     const sources: ContinuationSource[] = [];
     let failures = 0,
@@ -92,17 +86,16 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       let stage: 'parsing' | 'vision' | 'extraction' = 'parsing';
       try {
         signal.throwIfAborted();
-        await current(run);
-        const source = await parse(run, documentId, signal);
+        await current();
+        const source = await parse(documentId);
         stage = 'vision';
-        let output = await deps.processing.internal.cached(
-          run,
+        let output = await attempt.cached(
           documentId,
           'vision',
           source.sourceDigest,
         );
         if (!output) {
-          await step(run, { stage, documentId, status: 'running' });
+          await step({ stage, documentId, status: 'running' });
           const visuals = [];
           let usage: {
             inputTokens: number | null;
@@ -114,7 +107,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           );
           for (const image of normalized.length ? normalized : source.images) {
             signal.throwIfAborted();
-            await current(run);
+            await current();
             const stepConnection = await readConnection();
             const callId = deps.newId();
             const result = await callModel({
@@ -145,7 +138,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
                 (item) => item.path === image.path,
               ),
             });
-            await step(run, { stage, documentId, status: 'running', usage });
+            await step({ stage, documentId, status: 'running', usage });
           }
           output = {
             version: 1,
@@ -153,7 +146,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
             visuals,
             candidates: [],
           };
-          await step(run, {
+          await step({
             stage,
             documentId,
             status: visuals.length ? 'succeeded' : 'skipped',
@@ -162,14 +155,13 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           });
         }
         stage = 'extraction';
-        let extracted = await deps.processing.internal.cached(
-          run,
+        let extracted = await attempt.cached(
           documentId,
           stage,
           source.sourceDigest,
         );
         if (!extracted) {
-          await step(run, { stage, documentId, status: 'running' });
+          await step({ stage, documentId, status: 'running' });
           const found: WorkFacts['candidates'] = [];
           let usage: {
             inputTokens: number | null;
@@ -181,7 +173,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
             offset += 62000
           ) {
             signal.throwIfAborted();
-            await current(run);
+            await current();
             const stepConnection = await readConnection();
             const threadId = deps.newId();
             await deps.processing.internal.thread(
@@ -215,7 +207,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
             });
             found.push(...result.candidates);
             usage = addUsage(usage, result.usage);
-            await step(run, { stage, documentId, status: 'running', usage });
+            await step({ stage, documentId, status: 'running', usage });
           }
           extracted = stepOutputSchema.parse({
             version: 1,
@@ -223,7 +215,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
             visuals: output.visuals,
             candidates: found,
           });
-          await step(run, {
+          await step({
             stage,
             documentId,
             status: 'succeeded',
@@ -257,9 +249,9 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           (error instanceof DocumentError && error.code === 'NOT_FOUND')
         )
           throw error;
-        await current(run);
+        await current();
         failures++;
-        await step(run, {
+        await step({
           stage,
           documentId,
           status: 'failed',
@@ -271,7 +263,8 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       }
     }
     await continueSession({
-      run: selectedRun,
+      attempt,
+      settingsRevision: revision,
       readConnection,
       fields: pack.fields,
       candidates,
@@ -279,7 +272,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       failures,
       completed,
       signal,
-      current: () => current(run),
+      current,
     });
   };
 }

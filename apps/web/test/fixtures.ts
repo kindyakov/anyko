@@ -1,4 +1,5 @@
 import type { Session } from '@anyko/contracts/session';
+import type { WorkView } from '@anyko/contracts/works';
 
 // Общие данные тестов: рабочая область, работа и её вид проходят схемы contracts.
 export const workspaceId = 'workspace-1';
@@ -14,6 +15,14 @@ export const session: Session = {
     },
   ],
 };
+
+export const availableWorkCommands = {
+  analyze: { available: true },
+  generate: { available: true },
+  confirm: { available: true },
+  upload: { available: true },
+  remove: { available: true },
+} satisfies WorkView['availability'];
 
 export const workView = {
   work: {
@@ -56,6 +65,7 @@ export const workView = {
   generations: [],
   cursor: '0',
   cleanupPending: false,
+  availability: availableWorkCommands,
 };
 
 // Вид работы с другим названием: так тест показывает, что кэш взял ответ сервера заново.

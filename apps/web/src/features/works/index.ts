@@ -1,9 +1,4 @@
-export {
-  invalidateWork,
-  useAnalyzeWork,
-  useConfirmWork,
-  useSaveFacts,
-} from '@/features/works/api/mutations';
+export { invalidateWork, useSaveFacts } from '@/features/works/api/mutations';
 export { useWorkView } from '@/features/works/api/use-work-view';
 export {
   errorText,
@@ -16,5 +11,6 @@ export {
   type WorkStage,
   workStage,
 } from '@/features/works/model/journey';
-export { describeWorkCommandError } from '@/features/works/model/command-errors';
+export { useWorkCommands } from '@/features/works/api/use-work-commands';
+export type { Upload } from '@/features/works/api/source-commands';
 export { WorkList } from '@/features/works/ui/work-list';

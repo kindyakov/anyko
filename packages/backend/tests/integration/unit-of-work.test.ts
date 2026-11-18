@@ -1,12 +1,22 @@
 import { afterAll, expect, test } from 'bun:test';
 
-import { createDatabase, createDatabasePool } from '@anyko/database';
+import {
+  createDatabase,
+  createDatabasePool,
+  createLockPool,
+  createResourceLocks,
+} from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 
 import type { AuditWriter } from '../../src/modules/audit';
 import type { SourceStorage } from '../../src/modules/documents';
-import { brandWorkId } from '../../src/platform/ids';
+import { emptyFacts } from '../../src/modules/facts';
+import { factsStoreFor } from '../../src/modules/facts/infrastructure/store';
+import { createWorkProcessingStore } from '../../src/modules/processing/infrastructure/work-store';
+import { brandWorkId, uuidV7 } from '../../src/platform/ids';
 import { createBackend } from '../../src/runtime';
+import { createUnitOfWork } from '../../src/runtime/transactions';
+import { changeWork } from '../../src/workflows/change-work';
 import { integrationConfig } from '../support/composition';
 import { memberScope } from '../support/scope';
 
@@ -14,12 +24,17 @@ import { memberScope } from '../support/scope';
 // Сценарий — старт генерации: результат, запуск, событие и журнал пишутся в одной транзакции.
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
+if (
+  !databaseUrl ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+)
   throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
 const redisUrl = process.env.TEST_REDIS_URL;
 if (!redisUrl) throw new Error('TEST_REDIS_URL required');
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabase(pool);
+const lockPool = createLockPool(databaseUrl);
+const runs = createWorkProcessingStore(db);
 const logger = createLogger({
   service: 'api',
   environment: 'test',
@@ -68,14 +83,16 @@ async function workspaceWithWork() {
   return { workspaceId, workId, revision: view.work.revision };
 }
 
-async function rejects(operation: Promise<unknown>, message: string) {
-  let caught: unknown;
+async function failureOf(operation: Promise<unknown>): Promise<unknown> {
   try {
     await operation;
   } catch (error) {
-    caught = error;
+    return error;
   }
-  expect(caught).toMatchObject({ message });
+}
+
+async function rejects(operation: Promise<unknown>, message: string) {
+  expect(await failureOf(operation)).toMatchObject({ message });
 }
 
 afterAll(async () => {
@@ -86,14 +103,17 @@ afterAll(async () => {
   await db.workGeneration.deleteMany({ where });
   await db.workEvent.deleteMany({ where });
   await db.run.deleteMany({ where });
+  await db.processingIo.deleteMany({ where });
+  await db.workFacts.deleteMany({ where });
   await db.work.deleteMany({ where });
   await db.auditEvent.deleteMany({ where });
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
   await db.$disconnect();
   await pool.end();
+  await lockPool.end();
 });
 
-test('a failed audit write rolls back the generation result, the run and the event with the action', async () => {
+test('a failed audit write leaves no generation result, run or event', async () => {
   const { workspaceId, workId, revision } = await workspaceWithWork();
   const scope = memberScope(workspaceId, 'fixture');
   await rejects(
@@ -141,4 +161,131 @@ test('the same start with a working audit writes the result, the run, the event 
       where: { workspaceId, action: 'generation.started' },
     }),
   ).toBe(1);
+});
+
+const changeDeps = {
+  works: normal.workHttp.works,
+  locks: createResourceLocks(lockPool),
+  uow: createUnitOfWork(db),
+  processing: {
+    queries: {
+      isActive: (scope: ReturnType<typeof memberScope>, workId: string) =>
+        runs.active(scope.workspaceId, workId),
+    },
+  },
+};
+
+test.each([
+  { cleanup: true, stale: true, code: 'CLEANUP_PENDING' },
+  { cleanup: false, stale: true, code: 'REVISION_CONFLICT' },
+  { cleanup: false, stale: false, code: 'WORK_BUSY' },
+])(
+  'change work rejects $code before saving an effect, revision or event',
+  async ({ cleanup, stale, code }) => {
+    const { workspaceId, workId, revision } = await workspaceWithWork();
+    const scope = memberScope(workspaceId);
+    const id = brandWorkId(workId);
+    await normal.workHttp.generation.startGeneration(scope, {
+      workId: id,
+      revision,
+      correlationId: crypto.randomUUID(),
+    });
+    if (cleanup)
+      await db.processingIo.create({
+        data: {
+          id: uuidV7(),
+          kind: 'work',
+          workspaceId,
+          workId,
+          uncertain: true,
+        },
+      });
+
+    const where = { workspaceId, workId };
+    expect(
+      await failureOf(
+        changeWork(
+          changeDeps,
+          scope,
+          {
+            workId: id,
+            expectedRevision: stale ? revision - 1 : revision,
+            command: 'confirm',
+            advance: 'draft',
+            event: 'facts.changed',
+          },
+          () => (tx) =>
+            factsStoreFor(tx).save(workspaceId, workId, emptyFacts()),
+        ),
+      ),
+    ).toMatchObject({ code });
+    expect(await db.workFacts.count({ where })).toBe(0);
+    expect(
+      await db.workEvent.count({ where: { ...where, kind: 'facts.changed' } }),
+    ).toBe(0);
+    expect(await normal.workHttp.works.queries.find(scope, id)).toMatchObject({
+      revision,
+    });
+  },
+);
+
+test('two concurrent changes of the same revision save one effect, one revision and one event', async () => {
+  const { workspaceId, workId, revision } = await workspaceWithWork();
+  const scope = memberScope(workspaceId);
+  const id = brandWorkId(workId);
+  const save = (personName: string) =>
+    changeWork(
+      changeDeps,
+      scope,
+      {
+        workId: id,
+        expectedRevision: revision,
+        command: 'edit',
+        advance: 'draft',
+        event: 'facts.changed',
+      },
+      () => (tx) => {
+        const facts = emptyFacts();
+        facts.values.personName = personName;
+        return factsStoreFor(tx).save(workspaceId, workId, facts);
+      },
+    );
+
+  const first = 'Первое имя';
+  const second = 'Второе имя';
+  const results = await Promise.allSettled([save(first), save(second)]);
+  expect(results).toContainEqual({ status: 'fulfilled', value: undefined });
+  const rejected = results.find((result) => result.status === 'rejected');
+  const reason: unknown = rejected?.reason;
+  expect(reason).toMatchObject({ code: 'REVISION_CONFLICT' });
+  const view = await normal.workHttp.views.get(scope, id);
+  expect(view.facts.values.personName).toBe(
+    results[0].status === 'fulfilled' ? first : second,
+  );
+  expect(view.work.revision).toBe(revision + 1);
+  const events = await normal.workHttp.works.queries.events(scope, id, '0');
+  expect(events.filter((event) => event.kind === 'facts.changed')).toHaveLength(
+    1,
+  );
+});
+
+test('an unknown fact table column fails validation and leaves the saved work untouched', async () => {
+  const { workspaceId, workId, revision } = await workspaceWithWork();
+  const scope = memberScope(workspaceId);
+  const id = brandWorkId(workId);
+  const before = await normal.workHttp.views.get(scope, id);
+
+  expect(
+    await failureOf(
+      normal.workHttp.review.editValues(scope, {
+        workId: id,
+        revision,
+        values: { ...emptyFacts().values, debts: [{ rogue: 'x' }] },
+      }),
+    ),
+  ).toMatchObject({
+    code: 'INVALID_WORK_INPUT',
+    fields: [{ path: ['values', 'debts', 0, 'rogue'], code: 'invalid_value' }],
+  });
+  expect(await normal.workHttp.views.get(scope, id)).toEqual(before);
 });
