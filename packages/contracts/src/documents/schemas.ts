@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { cursorResponseSchema } from '../common';
+
 export const documentSchema = z.object({
   id: z.string().min(1),
   filename: z.string(),
@@ -8,9 +10,8 @@ export const documentSchema = z.object({
   errorCode: z.string().nullable().optional(),
 });
 export const documentResponseSchema = z.object({ document: documentSchema });
-export const documentsResponseSchema = z.object({
-  documents: z.array(documentSchema),
-  deletions: z.array(
+export const documentsResponseSchema = cursorResponseSchema(documentSchema, {
+  pendingDeletions: z.array(
     z.object({
       id: z.string().min(1),
       createdAt: z.iso.datetime(),

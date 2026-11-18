@@ -56,9 +56,13 @@ export function pageResponseSchema<
     .register(listResponses, { mode: 'page' });
 }
 
-export function cursorResponseSchema<T extends z.ZodType>(item: T) {
+export function cursorResponseSchema<
+  T extends z.ZodType,
+  F extends z.ZodRawShape,
+>(item: T, extra: F) {
   return z
     .strictObject({
+      ...extra,
       items: z.array(item),
       nextCursor: cursor.nullable(),
     })

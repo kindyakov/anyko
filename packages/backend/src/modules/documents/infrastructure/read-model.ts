@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import type { Database } from '@anyko/database';
 
-import type { DocumentView } from '../application/ports';
+import type { DocumentPosition, DocumentView } from '../application/ports';
 const statusSchema = z.enum(['queued', 'running', 'succeeded', 'failed']);
 /** Explicit document screen read model: source metadata + latest processing summary. */
 export function createDocumentReadModel(db: Database) {
@@ -114,12 +114,21 @@ export function createDocumentReadModel(db: Database) {
         select: { key: true, contentType: true, size: true, checksum: true },
       });
     },
-    async list(workspaceId: string) {
+    async list(workspaceId: string, limit: number, after?: DocumentPosition) {
       return (
         await db.sourceDocument.findMany({
-          where: { workspaceId, deletedAt: null },
-          orderBy: { createdAt: 'desc' },
-          take: 100,
+          where: {
+            workspaceId,
+            deletedAt: null,
+            ...(after && {
+              OR: [
+                { createdAt: { lt: after.createdAt } },
+                { createdAt: after.createdAt, id: { lt: after.id } },
+              ],
+            }),
+          },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          take: limit,
           select,
         })
       ).map(view);

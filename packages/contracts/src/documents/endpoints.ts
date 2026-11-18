@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import {
+  cursorQuerySchema,
   endpoint,
   fileDownload,
   json,
@@ -26,10 +27,11 @@ export const listDocuments = endpoint({
   method: 'GET',
   path: recognitionsPath,
   params: workspaceParams,
+  query: cursorQuerySchema,
   response: json(documentsResponseSchema),
   status: 200,
-  errors: ['FORBIDDEN', 'NOT_FOUND'],
-  invalid: 'NOT_FOUND',
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_DOCUMENT'],
+  invalid: 'INVALID_DOCUMENT',
 });
 
 export const uploadDocument = endpoint({

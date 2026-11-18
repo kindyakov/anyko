@@ -39,13 +39,6 @@ const globals = new Map([
 
 const legacy = {
   lists: {
-    listDocuments: {
-      address: 'GET /workspaces/:workspaceId/recognitions',
-      reason:
-        'Возвращает documents и pendingDeletions для экрана распознавания',
-      action:
-        'Согласовать пагинацию и представление ожидающих удалений вместе с клиентом',
-    },
     listDocumentPackages: {
       address: 'GET /document-packages',
       reason:

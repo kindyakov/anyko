@@ -35,9 +35,9 @@ export function documentRoutes(
   options: Pick<DocumentHttpOptions, 'documents'>,
 ) {
   const { documents } = options;
-  route(app, listDocuments, async ({ scope }) => ({
-    documents: await documents.queries.list(scope),
-    deletions: await documents.queries.pendingDeletions(scope),
+  route(app, listDocuments, async ({ scope, query }) => ({
+    ...(await documents.queries.list(scope, query)),
+    pendingDeletions: await documents.queries.pendingDeletions(scope),
   }));
   route(app, uploadDocument, async ({ scope, headers, body, requestId }) => ({
     document: await documents.commands.upload(scope, {

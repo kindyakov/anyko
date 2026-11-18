@@ -61,6 +61,21 @@ export interface DocumentParser {
   ): Promise<DocumentResult>;
   eraseAttempt(attemptId: string): Promise<void>;
 }
+export interface DocumentPosition {
+  createdAt: Date;
+  id: string;
+}
+
+export interface DocumentListInput {
+  after?: string | undefined;
+  limit: number;
+}
+
+export interface DocumentPage {
+  items: DocumentView[];
+  nextCursor: string | null;
+}
+
 export interface DocumentStore {
   source(
     workspaceId: string,
@@ -85,7 +100,11 @@ export interface DocumentStore {
     correlationId: string;
     requestKey: string;
   }): Promise<DocumentView>;
-  list(workspaceId: string): Promise<DocumentView[]>;
+  list(
+    workspaceId: string,
+    limit: number,
+    after?: DocumentPosition,
+  ): Promise<DocumentView[]>;
   pendingDeletions(workspaceId: string): Promise<
     {
       id: string;

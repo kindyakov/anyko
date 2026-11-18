@@ -1,5 +1,5 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 
@@ -20,9 +20,9 @@ const accept =
   '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff';
 export function DocumentWorkspace() {
   const workspaceId = useWorkspaceId();
-  const list = useQuery(documentsQueryOptions(workspaceId));
-  const documents = list.data?.documents ?? [];
-  const deletions = list.data?.deletions ?? [];
+  const list = useInfiniteQuery(documentsQueryOptions(workspaceId));
+  const documents = list.data?.pages.flatMap((page) => page.items) ?? [];
+  const deletions = list.data?.pages[0]?.pendingDeletions ?? [];
   const uploadMutation = useUploadDocument(workspaceId);
   const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
@@ -133,6 +133,19 @@ export function DocumentWorkspace() {
         documents={documents}
         loading={list.isPending}
       />
+      {list.hasNextPage && (
+        <Button
+          className="mt-4"
+          variant="secondary"
+          loading={list.isFetchingNextPage}
+          disabled={list.isFetching}
+          onClick={() => {
+            void list.fetchNextPage();
+          }}
+        >
+          Показать ещё
+        </Button>
+      )}
     </>
   );
 }

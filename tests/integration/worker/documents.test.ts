@@ -141,6 +141,43 @@ afterAll(async () => {
   await pool.end();
 });
 
+test('recognition cursor survives deletion of the previous page boundary with equal timestamps', async () => {
+  const id = await workspace();
+  const createdAt = new Date();
+  const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()]
+    .sort()
+    .reverse();
+  await db.sourceDocument.createMany({
+    data: ids.map((documentId) => ({
+      id: documentId,
+      workspaceId: id,
+      filename: 'fixture.pdf',
+      sourceKey: 'fixture/' + documentId,
+      sourceChecksum: documentId,
+      requestKey: documentId,
+      size: 1,
+      createdBy: 'synthetic-actor',
+      createdAt,
+    })),
+  });
+  const scope = memberScope(id);
+  const first = await recognition.queries.list(scope, { limit: 1 });
+  expect(first.items.map((item) => item.id)).toEqual(ids.slice(0, 1));
+  if (!first.nextCursor) throw new Error('Expected continuation cursor');
+  const boundary = first.items[0];
+  if (!boundary) throw new Error('Expected page boundary');
+  await db.sourceDocument.update({
+    where: { id: boundary.id },
+    data: { deletedAt: new Date() },
+  });
+  const second = await recognition.queries.list(scope, {
+    limit: 2,
+    after: first.nextCursor,
+  });
+  expect(second.items.map((item) => item.id)).toEqual(ids.slice(1));
+  expect(second.nextCursor).toBeNull();
+});
+
 test('upload atomically persists metadata, run and outbox; foreign workspace cannot read it', async () => {
   const own = await workspace(),
     foreign = await workspace();
@@ -153,7 +190,9 @@ test('upload atomically persists metadata, run and outbox; foreign workspace can
   ).toBe(1);
   expect(await db.runOutbox.count({ where: { workspaceId: own } })).toBe(1);
   expect(await db.sourceUpload.count({ where: { workspaceId: own } })).toBe(0);
-  expect(await recognition.queries.list(memberScope(foreign))).toEqual([]);
+  expect(
+    await recognition.queries.list(memberScope(foreign), { limit: 50 }),
+  ).toEqual({ items: [], nextCursor: null });
   await expectRejected(
     recognition.queries.get(memberScope(foreign), brandDocumentId(document.id)),
     'NOT_FOUND',
@@ -215,7 +254,9 @@ test('a retained document without run history is readable and can be recognized 
     status: 'failed',
     errorCode: 'OCR_RETRY_REQUIRED',
   });
-  expect(await recognition.queries.list(scope)).toHaveLength(1);
+  expect(
+    (await recognition.queries.list(scope, { limit: 50 })).items,
+  ).toHaveLength(1);
   await expectRejected(
     recognition.queries.result(scope, documentId),
     'NOT_READY',

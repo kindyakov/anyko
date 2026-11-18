@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query';
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 
 import { getDocumentResult, listDocuments } from '@anyko/contracts/documents';
 import { getWorkDocumentResult } from '@anyko/contracts/works';
@@ -10,12 +10,20 @@ import { recognitionPollInterval } from '../model/poll';
 import { documentKeys } from './keys';
 
 export function documentsQueryOptions(workspaceId: string) {
-  return queryOptions({
+  return infiniteQueryOptions({
     queryKey: documentKeys.list(workspaceId),
-    queryFn: ({ signal }) =>
-      callApi(listDocuments, { params: { workspaceId }, signal }),
-    // Список обновляется сам, пока есть документ в обработке или незавершённое удаление.
-    refetchInterval: (query) => recognitionPollInterval(query.state.data),
+    initialPageParam: undefined as string | undefined,
+    queryFn: ({ signal, pageParam }) =>
+      callApi(listDocuments, {
+        params: { workspaceId },
+        query: { after: pageParam },
+        signal,
+      }),
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    // При опросе обновляются загруженные страницы, включая состояние удалений.
+    refetchInterval: (query) =>
+      query.state.data?.pages.map(recognitionPollInterval).find(Boolean) ??
+      false,
   });
 }
 

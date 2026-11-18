@@ -427,7 +427,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     });
     expect(foreignList.status).toBe(200);
     expect(
-      documentsResponseSchema.parse(await foreignList.json()).documents,
+      documentsResponseSchema.parse(await foreignList.json()).items,
     ).toEqual([]);
     const documentPath = `${documentsRoot}/${uploaded.document.id}`;
     expect(
@@ -479,9 +479,12 @@ test('real sessions enforce closed signup, mutation origin and document workspac
         })
       ).json(),
     );
-    expect(ownerAfterDelete.documents).toEqual([]);
+    expect(ownerAfterDelete.items).toEqual([]);
     expect(
-      ownerAfterDelete.deletions.map(({ id, status }) => ({ id, status })),
+      ownerAfterDelete.pendingDeletions.map(({ id, status }) => ({
+        id,
+        status,
+      })),
     ).toEqual([
       {
         id: uploaded.document.id,
@@ -495,7 +498,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
         })
       ).json(),
     );
-    expect(foreignAfterDelete.deletions).toEqual([]);
+    expect(foreignAfterDelete.pendingDeletions).toEqual([]);
     // Документ работы адресуется через свою работу: документ, не связанный с ней, — 404.
     for (const suffix of ['source', 'result'])
       expect(

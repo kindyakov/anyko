@@ -3,7 +3,11 @@
 import type { DocumentId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 
-import type { DocumentView } from './application/ports';
+import type {
+  DocumentListInput,
+  DocumentPage,
+  DocumentView,
+} from './application/ports';
 
 export type {
   ArtifactRegistry,
@@ -87,7 +91,7 @@ export interface DocumentsCommands {
 }
 
 export interface DocumentsQueries {
-  list(scope: WorkspaceScope): Promise<DocumentView[]>;
+  list(scope: WorkspaceScope, input: DocumentListInput): Promise<DocumentPage>;
   pendingDeletions(scope: WorkspaceScope): Promise<PendingDocumentDeletion[]>;
   get(scope: WorkspaceScope, documentId: DocumentId): Promise<DocumentView>;
   result(

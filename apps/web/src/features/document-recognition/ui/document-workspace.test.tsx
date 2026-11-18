@@ -42,8 +42,9 @@ function renderWorkspace() {
 // Опрос идёт раз в 2 секунды, поэтому ожидания тестов выше интервала.
 test('the list polls while a document is being recognized and stops once none is left', async () => {
   let listed = {
-    documents: [doc('d1', 'scan.pdf', 'running')],
-    deletions: [],
+    items: [doc('d1', 'scan.pdf', 'running')],
+    nextCursor: null,
+    pendingDeletions: [],
   };
   const exchanges = serveApi(() => json(200, listed));
   renderWorkspace();
@@ -61,8 +62,9 @@ test('the list polls while a document is being recognized and stops once none is
   ]);
 
   listed = {
-    documents: [doc('d1', 'scan.pdf', 'succeeded')],
-    deletions: [],
+    items: [doc('d1', 'scan.pdf', 'succeeded')],
+    nextCursor: null,
+    pendingDeletions: [],
   };
   await waitFor(
     () => {
@@ -78,7 +80,7 @@ test('the list polls while a document is being recognized and stops once none is
 test('each file of a multi-file upload gets its own idempotency key', async () => {
   const exchanges = serveApi((exchange) =>
     exchange.method === 'GET'
-      ? json(200, { documents: [], deletions: [] })
+      ? json(200, { items: [], nextCursor: null, pendingDeletions: [] })
       : json(202, { document: doc('d1', 'a.pdf', 'queued') }),
   );
   const user = userEvent.setup();
@@ -113,7 +115,7 @@ test('each file of a multi-file upload gets its own idempotency key', async () =
 test('only server-confirmed recognition uploads contribute to the receipt', async () => {
   serveApi((exchange) => {
     if (exchange.method === 'GET')
-      return json(200, { documents: [], deletions: [] });
+      return json(200, { items: [], nextCursor: null, pendingDeletions: [] });
     const file =
       exchange.body instanceof FormData ? exchange.body.get('file') : null;
     return file instanceof File && file.name === 'good.pdf'
@@ -146,8 +148,9 @@ test('a deletion that is still pending stops polling when the screen leaves the 
     if (exchange.url.endsWith('/deletion'))
       return json(200, { status: 'deleting' });
     return json(200, {
-      documents: [doc('d1', 'scan.pdf', 'succeeded')],
-      deletions: [],
+      items: [doc('d1', 'scan.pdf', 'succeeded')],
+      nextCursor: null,
+      pendingDeletions: [],
     });
   });
   const user = userEvent.setup();
@@ -184,7 +187,11 @@ test('an old result asks for new recognition and a 409 keeps the preview usable'
       document = { ...document, status: 'queued', errorCode: '' };
       return json(202, { document });
     }
-    return json(200, { documents: [document], deletions: [] });
+    return json(200, {
+      items: [document],
+      nextCursor: null,
+      pendingDeletions: [],
+    });
   });
   const user = userEvent.setup();
   renderWorkspace();
@@ -227,7 +234,12 @@ test('bulk retry runs only for selected failed files and reports partial success
     doc('unselected', 'unselected.pdf', 'failed'),
   ];
   const exchanges = serveApi(({ method, url }) => {
-    if (method !== 'POST') return json(200, { documents, deletions: [] });
+    if (method !== 'POST')
+      return json(200, {
+        items: documents,
+        nextCursor: null,
+        pendingDeletions: [],
+      });
     if (url === `${recognitionsAddress}/first/retry`) {
       const started = doc('first', 'first.pdf', 'queued');
       documents[0] = started;
@@ -288,7 +300,11 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
       return json(202, { status: 'deleting' });
     }
     if (url.endsWith('/deletion')) return json(200, { status: 'deleted' });
-    return json(200, { documents, deletions: [] });
+    return json(200, {
+      items: documents,
+      nextCursor: null,
+      pendingDeletions: [],
+    });
   });
   const user = userEvent.setup();
   renderWorkspace();
@@ -325,4 +341,27 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
   expect(
     screen.queryByRole('checkbox', { name: 'Выбрать second.pdf' }),
   ).toBeNull();
+});
+
+test('shows more recognition results using the cursor returned by the first page', async () => {
+  const exchanges = serveApi(({ url }) =>
+    json(200, {
+      items:
+        url === recognitionsAddress
+          ? [doc('d1', 'first.pdf', 'succeeded')]
+          : [doc('d2', 'second.pdf', 'succeeded')],
+      nextCursor: url === recognitionsAddress ? 'page-two' : null,
+      pendingDeletions: [],
+    }),
+  );
+  renderWorkspace();
+  const more = await screen.findByRole('button', { name: 'Показать ещё' });
+  await userEvent.setup().click(more);
+  expect(await screen.findByText('second.pdf')).toBeTruthy();
+  expect(screen.getByText('first.pdf')).toBeTruthy();
+  expect(exchanges.map(({ url }) => url)).toEqual([
+    recognitionsAddress,
+    recognitionsAddress + '?after=page-two',
+  ]);
+  expect(screen.queryByRole('button', { name: 'Показать ещё' })).toBeNull();
 });

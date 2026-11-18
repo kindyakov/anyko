@@ -3,8 +3,8 @@ import type { DocumentSummary } from '@anyko/contracts/documents';
 export const recognitionPollMs = 2000;
 
 type RecognitionSnapshot = {
-  readonly documents: readonly { readonly status: DocumentSummary['status'] }[];
-  readonly deletions: readonly unknown[];
+  readonly items: readonly { readonly status: DocumentSummary['status'] }[];
+  readonly pendingDeletions: readonly unknown[];
 };
 
 // Опрос идёт, пока есть документ в очереди или обработке и пока удаление не завершено; иначе список
@@ -14,8 +14,8 @@ export function recognitionPollInterval(
 ): number | false {
   if (!snapshot) return false;
   const busy =
-    snapshot.deletions.length > 0 ||
-    snapshot.documents.some(
+    snapshot.pendingDeletions.length > 0 ||
+    snapshot.items.some(
       (document) =>
         document.status === 'queued' || document.status === 'running',
     );

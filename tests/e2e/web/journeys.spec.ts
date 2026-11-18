@@ -187,7 +187,20 @@ test('work goes from list through upload, automatic status and editable facts', 
 test('recognition reports a failed file and allows retry', async ({ page }) => {
   await page.goto('/sign-in');
   await signIn(page, 'OWNER');
+  const listing = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/v1/workspaces/e2e-north/recognitions') &&
+      response.request().method() === 'GET',
+  );
   await page.goto('/w/e2e-north/recognition');
+  const listed = await listing;
+  expect(listed.status()).toBe(200);
+  const pageBody: unknown = await listed.json();
+  expect(pageBody).toHaveProperty('nextCursor');
+  expect(pageBody).toMatchObject({
+    items: expect.any(Array),
+    pendingDeletions: expect.any(Array),
+  });
   await page
     .getByLabel('Файлы для распознавания')
     .setInputFiles(resolve('tests/e2e/fixtures/fail.pdf'));
