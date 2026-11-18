@@ -12,6 +12,7 @@ import {
   type ContinuationSource,
   createWorkContinuation,
 } from './continue-session';
+import { locateEvidence } from './locate-evidence';
 import { addUsage, callModel } from './model-call';
 
 const delay = (signal: AbortSignal) =>
@@ -238,9 +239,14 @@ export function createWorkAnalysis(deps: WorkDependencies) {
             ).find((d) => d.id === documentId)?.filename ?? documentId,
           digest: source.sourceDigest,
           text: source.text,
+          ...(source.pdfOcr && { pdfOcr: source.pdfOcr }),
           visuals: output.visuals,
         });
-        candidates.push(...extracted.candidates);
+        candidates.push(
+          ...locateEvidence(extracted.candidates, [
+            { id: documentId, ...source },
+          ]),
+        );
         completed++;
       } catch (error) {
         if (isAppError(error) && error.code === 'CONNECTION_REVOKED')

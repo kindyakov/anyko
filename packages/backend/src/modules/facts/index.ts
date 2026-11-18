@@ -1,6 +1,7 @@
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
+import { automaticValue } from '../../profiles/bfl/automatic-value';
 import {
   emptyFieldValues,
   fieldDefinitions,
@@ -36,10 +37,13 @@ export function mergeCandidates(
       current.manual.includes(key)
     )
       continue;
-    const found = candidates
-      .filter((candidate) => candidate.field === key)
-      .map((candidate) => candidate.value);
-    values[key] = reconcile(key, found);
+    const found = candidates.filter((candidate) => candidate.field === key);
+    const proposed = reconcile(
+      key,
+      found.map((candidate) => candidate.value),
+    );
+    values[key] =
+      proposed === null ? null : reconcile(key, found.map(automaticValue));
   }
   return factsSchema.parse({ ...current, values, candidates });
 }

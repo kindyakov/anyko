@@ -34,7 +34,7 @@ export function CandidateList({
   facts: FactsForm;
   busy: boolean;
   jump: (key: FieldKey) => void;
-  onOpen: (document: WorkView['documents'][number]) => void;
+  onOpen: (document: WorkView['documents'][number], page?: number) => void;
 }) {
   return (
     <ul className="grid gap-3 xl:grid-cols-2">
@@ -133,13 +133,15 @@ export function CandidateList({
                                 size="xs"
                                 className="max-w-full"
                                 onClick={() => {
-                                  onOpen(doc);
+                                  onOpen(doc, source.page);
                                 }}
                               >
                                 <FileSearch size={13} />
                                 <span className="truncate">
                                   {doc.filename}
                                   {source.imagePath && ' · изображение'}
+                                  {source.page &&
+                                    ' · стр. ' + String(source.page)}
                                 </span>
                               </Button>
                             ) : (

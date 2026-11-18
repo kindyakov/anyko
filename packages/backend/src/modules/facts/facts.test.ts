@@ -50,7 +50,11 @@ test('table candidates merge distinct obligations but retain conflicting amounts
     field: 'debts',
     value: [{ name: 'Тестовый банк', basis, amount }],
     evidence: [
-      { documentId: crypto.randomUUID(), imagePath: null, quote: basis },
+      {
+        documentId: crypto.randomUUID(),
+        imagePath: null,
+        quote: `Тестовый банк · ${basis} · ${amount}`,
+      },
     ],
   });
   const merged = mergeCandidates(
@@ -77,16 +81,16 @@ test('table candidates merge distinct obligations but retain conflicting amounts
 
 test('context status distinguishes complementary obligations from contradictory amounts', () => {
   const documentId = crypto.randomUUID();
-  const evidence = [{ documentId, imagePath: null, quote: 'fixture' }];
+  const evidence = (quote: string) => [{ documentId, imagePath: null, quote }];
   const first = {
     field: 'debts' as const,
     value: [{ name: 'Bank A', basis: 'Contract A', amount: '100' }],
-    evidence,
+    evidence: evidence('Bank A | Contract A | 100'),
   };
   const second = {
     field: 'debts' as const,
     value: [{ name: 'Bank B', basis: 'Contract B', amount: '200' }],
-    evidence,
+    evidence: evidence('Bank B | Contract B | 200'),
   };
   const combined = mergeCandidates(emptyFacts(), [first, second], false);
   expect(findFactConflicts(combined)).not.toContain('debts');
@@ -102,4 +106,48 @@ test('context status distinguishes complementary obligations from contradictory 
     false,
   );
   expect(findFactConflicts(conflicting)).toContain('debts');
+});
+
+test('does not autofill an unsupported identifier, date or an amount from a different row', () => {
+  const documentId = crypto.randomUUID();
+  const evidence = (quote: string) => [{ documentId, imagePath: null, quote }];
+  const result = mergeCandidates(
+    emptyFacts(),
+    [
+      {
+        field: 'inn',
+        value: '123456789048',
+        evidence: evidence('ИНН 123456789048'),
+      },
+      {
+        field: 'birthDate',
+        value: '2000-02-29',
+        evidence: evidence('Дата рождения 28.02.2000'),
+      },
+      {
+        field: 'snils',
+        value: '112-233-445 95',
+        evidence: evidence('СНИЛС 112 233 445 95'),
+      },
+      {
+        field: 'debtTotal',
+        value: '5200.10',
+        evidence: evidence('Итого 5 200,10 руб.'),
+      },
+      {
+        field: 'debts',
+        value: [{ name: 'Банк Б', basis: 'Договор Б', amount: '7500.00' }],
+        evidence: evidence(
+          'Банк А | Договор А | 7500,00\nБанк Б | Договор Б |',
+        ),
+      },
+    ],
+    false,
+  );
+  expect(result.values.inn).toBeNull();
+  expect(result.values.birthDate).toBeNull();
+  expect(result.values.snils).toBe('112-233-445 95');
+  expect(result.values.debtTotal).toBe('5200.10');
+  expect(result.values.debts).toEqual([{ name: 'Банк Б', basis: 'Договор Б' }]);
+  expect(result.candidates).toHaveLength(5);
 });

@@ -31,7 +31,7 @@ export function WorkReview({
   view: WorkView;
   facts: FactsForm;
   busy: boolean;
-  onOpen: (document: Document) => void;
+  onOpen: (document: Document, page?: number) => void;
   onExtract: () => void;
 }) {
   const { values } = facts;

@@ -220,11 +220,12 @@ function WorkBody({
     setError('');
     confirmation.mutate({ revision: view.work.revision }, { onError: fail });
   };
-  const openDocument = (document: Document) => {
+  const openDocument = (document: Document, page?: number) => {
     setViewing({
       id: document.id,
       filename: document.filename,
       owner: { kind: 'work', workId },
+      ...(page && { page }),
     });
   };
   const current = step ?? stepOf(stage);

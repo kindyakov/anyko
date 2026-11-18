@@ -166,7 +166,7 @@ test('without the create right no creation button is offered, the list still sho
   );
 });
 
-test('without the create right the empty list offers no creation either', async () => {
+test('an empty list hides pagination and respects the create right', async () => {
   globalThis.fetch = ((input: RequestInfo | URL) => {
     const url =
       typeof input === 'string'
@@ -195,6 +195,9 @@ test('without the create right the empty list offers no creation either', async 
   ).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Создать работу' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Новая работа' })).toBeNull();
+  expect(
+    screen.queryByRole('navigation', { name: 'Страницы работ' }),
+  ).toBeNull();
 });
 
 test('the title field gets focus when the create dialog opens', async () => {
@@ -208,34 +211,21 @@ test('the title field gets focus when the create dialog opens', async () => {
   });
 });
 
-test.each([0, 1])(
-  'shows pagination with both arrows disabled for %i works',
-  async (total) => {
-    serveApi(({ url }) =>
-      url === documentPackagesAddress
-        ? json(200, { packages })
-        : json(200, {
-            items: total ? [existingWork] : [],
-            page: 1,
-            pageSize: 24,
-            total,
-            deletions: [],
-          }),
+test('shows pagination with both arrows disabled for one work', async () => {
+  serveWorkList({ status: 201, body: createdWorkView });
+  renderWorkList();
+  const pager = within(
+    await screen.findByRole('navigation', { name: 'Страницы работ' }),
+  );
+  expect(pager.getByText('Найдено работ: 1')).toBeTruthy();
+  expect(
+    pager.getByRole('button', { name: 'Страница 1', current: 'page' }),
+  ).toBeTruthy();
+  for (const name of ['Предыдущая страница', 'Следующая страница'])
+    expect(pager.getByRole('button', { name }).hasAttribute('disabled')).toBe(
+      true,
     );
-    renderWorkList();
-    const pager = within(
-      await screen.findByRole('navigation', { name: 'Страницы работ' }),
-    );
-    expect(pager.getByText(`Найдено работ: ${String(total)}`)).toBeTruthy();
-    expect(
-      pager.getByRole('button', { name: 'Страница 1', current: 'page' }),
-    ).toBeTruthy();
-    for (const name of ['Предыдущая страница', 'Следующая страница'])
-      expect(pager.getByRole('button', { name }).hasAttribute('disabled')).toBe(
-        true,
-      );
-  },
-);
+});
 
 test('a linked filter and page size are sent to the server and changing size resets the page', async () => {
   navigation.search = 'q=Иван&status=confirmed&page=2&pageSize=12&view=list';

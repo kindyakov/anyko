@@ -159,8 +159,13 @@ export function WorkList() {
           Проверьте подключение и попробуйте ещё раз.
         </Notice>
       ) : !works.length && !hasFilters ? (
-        <section className="animate-rise glass relative overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(90%_120%_at_50%_0%,#2a0a12aa,transparent_60%)] px-6 py-14 text-center sm:px-12">
-          <EventHorizon state="idle" className="mx-auto size-56" />
+        <section className="animate-rise glass relative isolate overflow-hidden rounded-3xl border border-white/[0.08] bg-[radial-gradient(90%_120%_at_50%_0%,#2a0a12aa,transparent_60%)] px-6 py-14 text-center sm:px-12">
+          <div className="relative -z-10 flex h-56 items-center justify-center">
+            <EventHorizon
+              state="idle"
+              className="aspect-square w-full max-w-[28rem]"
+            />
+          </div>
           <h2 className="font-heading mt-8 text-2xl font-bold tracking-tight">
             Начните с первой работы
           </h2>
@@ -227,7 +232,7 @@ export function WorkList() {
           ))}
         </ul>
       )}
-      {pagination && (
+      {pagination && pagination.total > 0 && (
         <WorkPagination
           total={pagination.total}
           page={list.isPlaceholderData ? page : pagination.page}

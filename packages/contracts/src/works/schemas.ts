@@ -19,6 +19,7 @@ export const evidenceSchema = z
     documentId: z.uuid(),
     imagePath: z.string().max(240).nullable(),
     quote: z.string().max(2000),
+    page: z.number().int().positive().optional(),
   })
   .strict();
 export const candidateSchema = z

@@ -5,12 +5,14 @@ import {
   selectSessionCandidates,
   type WorkFacts,
 } from '../../modules/agents';
+import type { DocumentAnalysis } from '../../modules/documents';
 import { findFactConflicts, mergeCandidates } from '../../modules/facts';
 import type { WorkRunRecord } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
 
+import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
 
 export interface ContinuationSource {
@@ -18,6 +20,7 @@ export interface ContinuationSource {
   filename: string;
   digest: string;
   text: string;
+  pdfOcr?: DocumentAnalysis['pdfOcr'];
   visuals: { path: string; description: string }[];
 }
 
@@ -135,6 +138,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
               },
             }),
         });
+        output.candidates = locateEvidence(output.candidates, input.sources);
       } catch (error) {
         if (isAppError(error) && error.code === 'CONNECTION_REVOKED')
           throw error;

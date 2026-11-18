@@ -17,7 +17,10 @@ import { startJobWorker } from '@anyko/worker/queues';
 
 import type { DocumentAgents } from '../../../packages/backend/src/modules/agents';
 import { createDocumentAgents } from '../../../packages/backend/src/modules/agents/infrastructure/mastra';
-import type { SourceStorage } from '../../../packages/backend/src/modules/documents';
+import type {
+  DocumentParser,
+  SourceStorage,
+} from '../../../packages/backend/src/modules/documents';
 import { createWorkProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/work-store';
 import { createWorkStore } from '../../../packages/backend/src/modules/works/infrastructure/store';
 import {
@@ -79,6 +82,8 @@ let describeCount = 0;
 let waitForVision: (() => Promise<void>) | undefined;
 let extractionModel: string | undefined;
 let waitForExtraction: (() => Promise<void>) | undefined;
+let extractFixture: DocumentAgents['extract'] | undefined;
+let parseFixture: DocumentParser['parseDocument'] | undefined;
 const agents: DocumentAgents = {
   ready: () => Promise.resolve(),
   stop: () => Promise.resolve(),
@@ -103,6 +108,7 @@ const agents: DocumentAgents = {
   },
   async extract(input) {
     if (actualAgents) return actualAgents.extract(input);
+    if (extractFixture) return extractFixture(input);
     extractionCount++;
     extractionModel = input.modelId;
     threads.add(input.threadId);
@@ -160,7 +166,8 @@ const workerBackend = createBackend(testConfig, {
     storage,
     agents,
     parser: {
-      parseDocument: async () => {
+      parseDocument: async (...args) => {
+        if (parseFixture) return parseFixture(...args);
         await pauseOcr?.();
         return {
           markdown: 'Имя: Анна. Номер: 42.',
@@ -217,6 +224,103 @@ async function until(
 const terminal = (view: WorkView) =>
   !!view.runs.length &&
   view.runs.every((run) => !['queued', 'running'].includes(run.status));
+
+test('reprocesses an older PDF, traces its quote to the page and renders only the supported value', async () => {
+  const input = await create();
+  const name = 'Тестова Мария';
+  const inventedDate = '2026-08-19';
+  const original = 'Заявитель: ' + name;
+  const scope = memberScope(input.workspaceId);
+  parseFixture = () =>
+    Promise.resolve({
+      markdown: '1, 26.2',
+      processorVersion: 'mineru-4.1.7',
+    });
+  try {
+    const document = await upload(input);
+    await until(input, (view) =>
+      view.documents.some(
+        (doc) =>
+          doc.id === document.id && doc.errorCode === 'OCR_RETRY_REQUIRED',
+      ),
+    );
+    await rejects(
+      apiBackend.workHttp.views.result(
+        scope,
+        brandWorkId(input.workId),
+        brandDocumentId(document.id),
+      ),
+      'NOT_READY',
+    );
+    parseFixture = () =>
+      Promise.resolve({
+        markdown: '## Страница 2\n\n' + original + '\n\nДата:',
+        processorVersion: 'mineru-4.1.7+eslav.1',
+        pdfOcr: {
+          version: 1,
+          pages: [
+            {
+              page: 2,
+              omittedLines: 1,
+              lines: [
+                {
+                  text: original,
+                  bbox: [0.1, 0.2, 0.8, 0.25],
+                  confidence: 0.95,
+                },
+              ],
+            },
+          ],
+        },
+      });
+    extractFixture = ({ document }) => {
+      expect(document.text).toContain(original);
+      const evidence = [
+        { documentId: document.id, imagePath: null, quote: original },
+      ];
+      return Promise.resolve({
+        candidates: [
+          { field: 'personName', value: name, evidence },
+          { field: 'documentDate', value: inventedDate, evidence },
+        ],
+        usage: { inputTokens: null, outputTokens: null },
+      });
+    };
+    await analyze(input);
+    const view = await until(input, terminal);
+    expect(view.documents[0]?.status).toBe('succeeded');
+    expect(view.facts.values.personName).toBe(name);
+    expect(view.facts.values.documentDate).toBeNull();
+    expect(
+      view.facts.candidates.find((item) => item.field === 'personName')
+        ?.evidence[0]?.page,
+    ).toBe(2);
+    await apiBackend.workHttp.generation.startGeneration(scope, {
+      workId: brandWorkId(input.workId),
+      revision: view.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    const generated = await until(input, (state) =>
+      state.generations.some((item) => item.status === 'succeeded'),
+    );
+    const generation = generated.generations[0];
+    if (!generation) throw new Error('MISSING_GENERATION');
+    const { bytes } = await apiBackend.workHttp.generation.downloadResult(
+      scope,
+      {
+        workId: brandWorkId(input.workId),
+        generationId: brandGenerationId(generation.id),
+      },
+    );
+    const xml = unzipSync(bytes)['word/document.xml'];
+    if (!xml) throw new Error('MISSING_DOCUMENT_XML');
+    expect(strFromU8(xml)).toContain(name);
+    expect(strFromU8(xml)).not.toContain(inventedDate);
+  } finally {
+    parseFixture = undefined;
+    extractFixture = undefined;
+  }
+});
 async function upload(input: { workspaceId: string; workId: string }) {
   return apiBackend.workHttp.intake.uploadDocument(
     memberScope(input.workspaceId, 'fixture'),
