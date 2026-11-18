@@ -13,6 +13,7 @@ import type { WorkView } from '@anyko/contracts/works';
 
 import { useWorkView } from '@/features/works';
 import { createQueryClient } from '@/lib/api/query-client';
+import { UnsavedNavigation } from '@/lib/unsaved-navigation';
 
 import {
   type Exchange,
@@ -172,9 +173,97 @@ function FactsEditor({ view }: { view: WorkView }) {
         onExtract={() => undefined}
       />
       <UnsavedFactsBar facts={facts} busy={busy} />
+      <UnsavedNavigation dirty={facts.hasEdits} />
+      <a href="/w/workspace-1/works">Все работы</a>
+      <a href="/w/workspace-1/works" target="_blank" rel="noreferrer">
+        В новой вкладке
+      </a>
     </>
   );
 }
+
+test('an internal link asks before discarding edits, and staying preserves the draft', async () => {
+  window.location.href = 'http://localhost/w/workspace-1/works/current';
+  serveWork(viewWith({ personName: 'Иван' }));
+  renderFacts();
+  const user = userEvent.setup();
+  await typeInto(await findField('ФИО полностью'), 'Новая запись');
+  const address = window.location.href;
+  await user.click(screen.getByRole('link', { name: 'Все работы' }));
+  expect(await screen.findByRole('alertdialog')).toBeDefined();
+  await user.click(screen.getByRole('button', { name: 'Остаться' }));
+  expect(personName().value).toBe('Новая запись');
+  expect(window.location.href).toBe(address);
+  expect(navigation.calls).toEqual([]);
+  await user.click(screen.getByRole('link', { name: 'Все работы' }));
+  await user.click(screen.getByRole('button', { name: 'Уйти' }));
+  expect(navigation.calls).toContainEqual({
+    method: 'push',
+    href: '/w/workspace-1/works',
+  });
+});
+
+test('a clean form does not block internal links', async () => {
+  window.location.href = 'http://localhost/w/workspace-1/works/current';
+  serveWork(viewWith({ personName: 'Иван' }));
+  renderFacts();
+  await findField('ФИО полностью');
+  const link = screen.getByRole('link', { name: 'Все работы' });
+  const click = new MouseEvent('click', {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+  });
+  expect(link.dispatchEvent(click)).toBe(true);
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+});
+
+test('after saving, a link is no longer blocked', async () => {
+  window.location.href = 'http://localhost/w/workspace-1/works/current';
+  serveWork(viewWith({ personName: 'Иван' }));
+  renderFacts();
+  await typeInto(await findField('ФИО полностью'), 'Новая запись');
+  const user = userEvent.setup();
+  await user.click(saveButton());
+  await waitFor(() => {
+    expect(strip()).toBeNull();
+  });
+  const link = screen.getByRole('link', { name: 'Все работы' });
+  const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+  expect(link.dispatchEvent(click)).toBe(true);
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+});
+
+test('modified clicks and links opening a new tab do not block the dirty form', async () => {
+  window.location.href = 'http://localhost/w/workspace-1/works/current';
+  serveWork(viewWith({ personName: 'Иван' }));
+  renderFacts();
+  await typeInto(await findField('ФИО полностью'), 'Новая запись');
+  const link = screen.getByRole('link', { name: 'Все работы' });
+  const newTab = screen.getByRole('link', { name: 'В новой вкладке' });
+  let reachedLink = 0;
+  for (const item of [link, newTab]) {
+    item.addEventListener('click', (event) => {
+      reachedLink++;
+      event.preventDefault();
+    });
+  }
+  act(() => {
+    link.dispatchEvent(
+      new MouseEvent('click', {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+      }),
+    );
+    newTab.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
+  });
+  expect(reachedLink).toBe(2);
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(personName().value).toBe('Новая запись');
+});
 
 function renderFacts() {
   navigation.params = { workspace: workspaceId };

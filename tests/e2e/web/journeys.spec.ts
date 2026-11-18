@@ -207,7 +207,7 @@ test('recognition reports a failed file and allows retry', async ({ page }) => {
     .getByLabel('Файлы для распознавания')
     .setInputFiles(resolve('tests/e2e/fixtures/fail.pdf'));
   const row = page.getByRole('listitem').filter({ hasText: 'fail.pdf' });
-  await expect(row).toContainText('Не удалось обработать');
+  await expect(row).toContainText('Не удалось распознать документ');
   const retry = page.waitForResponse(
     (response) =>
       response.url().endsWith('/retry') &&
@@ -215,7 +215,7 @@ test('recognition reports a failed file and allows retry', async ({ page }) => {
   );
   await row.getByRole('button', { name: 'Повторить' }).click();
   expect((await retry).status()).toBe(202);
-  await expect(row).toContainText('Не удалось обработать');
+  await expect(row).toContainText('Не удалось распознать документ');
 });
 
 test('owner switches areas without seeing the other area works; a member cannot open a foreign area', async ({

@@ -43,6 +43,7 @@ import { isUnauthorized } from '@/lib/api/errors';
 import { useIdempotencyKey } from '@/lib/api/idempotency';
 import { useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
+import { UnsavedNavigation } from '@/lib/unsaved-navigation';
 
 import { Hero } from './hero';
 import { Stepper } from './stepper';
@@ -372,6 +373,7 @@ function WorkBody({
           </Tabs.Panel>
         </div>
       </Tabs.Root>
+      <UnsavedNavigation dirty={facts.hasEdits} />
       <UnsavedFactsBar facts={facts} busy={busy} />
       <DocumentViewer
         document={viewing}

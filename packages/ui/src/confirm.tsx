@@ -11,6 +11,7 @@ export function Confirm({
   title,
   children,
   confirmLabel,
+  cancelLabel = 'Отмена',
   pending,
   onConfirm,
   onCancel,
@@ -19,6 +20,7 @@ export function Confirm({
   title: ReactNode;
   children: ReactNode;
   confirmLabel: string;
+  cancelLabel?: string;
   pending: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -44,7 +46,7 @@ export function Confirm({
           </AlertDialog.Description>
           <div className="mt-7 flex flex-wrap justify-end gap-3">
             <Button variant="secondary" disabled={pending} onClick={onCancel}>
-              Отмена
+              {cancelLabel}
             </Button>
             <Button variant="danger" loading={pending} onClick={onConfirm}>
               <Trash2 size={16} />
