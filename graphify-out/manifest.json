@@ -1074,15 +1074,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/facts.test.ts": {
-    "mtime": 1795017749.6897821,
-    "seen": 1795017785.1232383,
-    "ast_hash": "0a5f86b9992e92ca8ab976667eecc240",
+    "mtime": 1795019680.5636272,
+    "seen": 1795019746.350958,
+    "ast_hash": "c9d6bc0bc43db34e6017cb955464c809",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/index.ts": {
-    "mtime": 1795017637.098466,
-    "seen": 1795017695.3312297,
-    "ast_hash": "42fef6447acdab8e321cab0014200af4",
+    "mtime": 1795019680.565142,
+    "seen": 1795019746.3509634,
+    "ast_hash": "e1f0c15275091110c9fdf862e3d535b3",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/infrastructure/store.ts": {
@@ -1890,9 +1890,9 @@
     "semantic_hash": ""
   },
   "packages/contracts/src/works/endpoints.ts": {
-    "mtime": 1795016148.3311775,
-    "seen": 1795016309.3001585,
-    "ast_hash": "650480baeff772a25f17e1cd4acb7488",
+    "mtime": 1795019603.8672626,
+    "seen": 1795019746.4101043,
+    "ast_hash": "2af6b9c4de7ff1f77e51961623b1da81",
     "semantic_hash": ""
   },
   "packages/contracts/src/works/index.ts": {
@@ -1902,9 +1902,9 @@
     "semantic_hash": ""
   },
   "packages/contracts/src/works/schemas.ts": {
-    "mtime": 1795016148.3433022,
-    "seen": 1795016309.3001604,
-    "ast_hash": "222e745c53a4a23cb4e55f20fb6b6bfb",
+    "mtime": 1795019680.5526655,
+    "seen": 1795019746.4103768,
+    "ast_hash": "3e9f9a17895c69dc6dbce7f4c585ccc0",
     "semantic_hash": ""
   },
   "apps/web/src/app/(public)/sign-in/_components/sign-in-screen.tsx": {
@@ -2718,9 +2718,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-view/get-work.ts": {
-    "mtime": 1795017636.730434,
-    "seen": 1795017695.3565648,
-    "ast_hash": "3f36bd92537fc4996ae6249ce0f3035d",
+    "mtime": 1795019603.8175821,
+    "seen": 1795019746.3967087,
+    "ast_hash": "be0e13f394d402056d86514c765b54c7",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-view/index.ts": {
@@ -3684,9 +3684,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/app/(workspace)/w/[workspace]/works/[id]/_screen/work-screen.test.tsx": {
-    "mtime": 1795016251.484241,
-    "seen": 1795016309.299546,
-    "ast_hash": "343a3fc74553fd17708668b957e42976",
+    "mtime": 1795019680.565142,
+    "seen": 1795019746.2810903,
+    "ast_hash": "facc1da8a7e1935ceec2f35209b1b859",
     "semantic_hash": ""
   },
   "apps/web/src/features/document-recognition/model/error-texts.ts": {
@@ -3942,21 +3942,21 @@
     "semantic_hash": ""
   },
   "apps/web/src/features/fact-review/model/review.test.ts": {
-    "mtime": 1795017636.7308755,
-    "seen": 1795017695.2947793,
-    "ast_hash": "60181db3a356812f1a870262763277f6",
+    "mtime": 1795019751.1654499,
+    "seen": 1795019811.8918428,
+    "ast_hash": "e58e3bc48be37dd7cb5938031268518a",
     "semantic_hash": ""
   },
   "apps/web/src/features/fact-review/model/review.ts": {
-    "mtime": 1795016044.3245115,
-    "seen": 1795016309.2996662,
-    "ast_hash": "a70d888e9a9afd951c810431c250d53d",
+    "mtime": 1795019751.2638772,
+    "seen": 1795019811.8918476,
+    "ast_hash": "806162ccdd79fc85092c09d3685ef102",
     "semantic_hash": ""
   },
   "apps/web/src/features/fact-review/ui/review/candidate-list.tsx": {
-    "mtime": 1795015719.9857042,
-    "seen": 1795016309.2996767,
-    "ast_hash": "585cd525b580beafca5fada4ad3905c4",
+    "mtime": 1795019603.92885,
+    "seen": 1795019746.298169,
+    "ast_hash": "877ec111585462a7061bce36ad332518",
     "semantic_hash": ""
   },
   "apps/web/src/features/fact-review/ui/review/edit-conflicts.tsx": {
@@ -4050,9 +4050,9 @@
     "semantic_hash": ""
   },
   "docs/engineering/api-catalog.md": {
-    "mtime": 1795016131.2088144,
-    "seen": 1795016309.3004189,
-    "ast_hash": "a538f20882451c68923ab54251d68469",
+    "mtime": 1795019604.863196,
+    "seen": 1795019746.4835045,
+    "ast_hash": "1b4e6f42f0ec9d6530359378b63e8816",
     "semantic_hash": ""
   },
   "apps/web/src/features/document-recognition/ui/docx-original.tsx": {
