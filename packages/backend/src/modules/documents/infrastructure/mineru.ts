@@ -1,7 +1,9 @@
 import { unzipSync } from 'fflate';
 import { z } from 'zod';
 
+import { documentImageLimit } from '../../../platform/document-output';
 import type { DocumentResult } from '../application/ports';
+import { pdfOcrSchema } from '../application/result-schema';
 import {
   matchesSourceFormat,
   sourceContentTypes,
@@ -9,11 +11,25 @@ import {
   sourceFormatFromKey,
 } from '../application/source-format';
 
+const processorErrors = new Map([
+  ['TOO_MANY_EXPORTED_IMAGES', 'MINERU_TOO_MANY_IMAGES'],
+  ['DOCUMENT_VISUALS_TOO_LARGE', 'MINERU_RESULT_TOO_LARGE'],
+  ['EXPORT_TOO_LARGE', 'MINERU_RESULT_TOO_LARGE'],
+  ['UNSUPPORTED_DOCUMENT_VISUAL', 'MINERU_UNSUPPORTED_EMBEDDED_IMAGE'],
+  ['IMAGE_TOO_LARGE', 'MINERU_IMAGE_TOO_LARGE'],
+  ['PDF_OCR_NO_READABLE_TEXT', 'MINERU_NO_READABLE_TEXT'],
+]);
+const archiveLimitErrors = new Set([
+  'MINERU_TOO_MANY_IMAGES',
+  'MINERU_RESULT_TOO_LARGE',
+]);
+
 function decodeArchive(
   archive: Uint8Array,
   processorVersion: string,
 ): DocumentResult {
   let markdownBytes: Uint8Array | undefined;
+  let pdfOcr: DocumentResult['pdfOcr'];
   const images: NonNullable<DocumentResult['images']> = [];
   try {
     let expandedSize = 0;
@@ -24,29 +40,46 @@ function decodeArchive(
         if (names.has(entry.name) || names.size >= 2048)
           throw new Error('MINERU_INVALID_RESPONSE');
         names.add(entry.name);
-        if (entry.name === 'markdown.md')
-          return entry.originalSize <= 4 * 1024 * 1024;
+        if (entry.name === 'markdown.md') {
+          if (entry.originalSize > 4 * 1024 * 1024)
+            throw new Error('MINERU_RESULT_TOO_LARGE');
+          return true;
+        }
+        if (entry.name === 'pdf-ocr.json') {
+          if (entry.originalSize > 2 * 1024 * 1024)
+            throw new Error('MINERU_RESULT_TOO_LARGE');
+          return true;
+        }
         if (
           !/^images\/[a-zA-Z0-9_.-]+\.(?:jpg|jpeg|png|webp)$/i.test(entry.name)
         )
           return false;
         expandedSize += entry.originalSize;
+        if (++imageCount > documentImageLimit)
+          throw new Error('MINERU_TOO_MANY_IMAGES');
         if (
-          ++imageCount > 32 ||
           entry.originalSize > 3 * 1024 * 1024 ||
           expandedSize > 8 * 1024 * 1024
         )
-          throw new Error('MINERU_INVALID_RESPONSE');
+          throw new Error('MINERU_RESULT_TOO_LARGE');
         return true;
       },
     });
     markdownBytes = entries['markdown.md'];
+    const evidence = entries['pdf-ocr.json'];
+    if (evidence) {
+      if (evidence.length > 2 * 1024 * 1024)
+        throw new Error('MINERU_RESULT_TOO_LARGE');
+      pdfOcr = pdfOcrSchema.parse(
+        JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(evidence)),
+      );
+    }
     let actualSize = 0;
     for (const [path, bytes] of Object.entries(entries)) {
-      if (path === 'markdown.md') continue;
+      if (path === 'markdown.md' || path === 'pdf-ocr.json') continue;
       actualSize += bytes.length;
       if (bytes.length > 3 * 1024 * 1024 || actualSize > 8 * 1024 * 1024)
-        throw new Error('MINERU_INVALID_RESPONSE');
+        throw new Error('MINERU_RESULT_TOO_LARGE');
       const format = sourceFormatFromKey(path);
       if (
         !format ||
@@ -60,8 +93,10 @@ function decodeArchive(
         bytes,
       });
     }
-  } catch {
-    throw new Error('MINERU_INVALID_RESPONSE');
+  } catch (error) {
+    if (error instanceof Error && archiveLimitErrors.has(error.message))
+      throw error;
+    throw new Error('MINERU_INVALID_RESPONSE', { cause: error });
   }
   if (!markdownBytes || markdownBytes.byteLength > 4 * 1024 * 1024)
     throw new Error('MINERU_INVALID_RESPONSE');
@@ -70,7 +105,8 @@ function decodeArchive(
   );
   return {
     markdown,
-    processorVersion,
+    processorVersion: pdfOcr ? processorVersion + '+eslav.1' : processorVersion,
+    ...(pdfOcr && { pdfOcr }),
     images,
   };
 }
@@ -122,7 +158,9 @@ export function createMineruParser(options: {
           throw new Error(
             response.status === 409 || response.status === 410
               ? 'MINERU_CANCELLED'
-              : 'MINERU_FAILED',
+              : (processorErrors.get(
+                  response.headers.get('x-anyko-processor-error') ?? '',
+                ) ?? 'MINERU_FAILED'),
           );
         }
         const version = response.headers.get('x-mineru-version');
@@ -140,7 +178,7 @@ export function createMineruParser(options: {
             if (next.done) break;
             size += next.value.length;
             if (size > 10 * 1024 * 1024)
-              throw new Error('MINERU_INVALID_RESPONSE');
+              throw new Error('MINERU_RESULT_TOO_LARGE');
             chunks.push(next.value);
           }
         } catch (error) {
@@ -155,7 +193,10 @@ export function createMineruParser(options: {
           archive.set(chunk, offset);
           offset += chunk.length;
         }
-        return decodeArchive(archive, 'mineru-' + version);
+        const result = decodeArchive(archive, 'mineru-' + version);
+        if (format === 'pdf' && !result.pdfOcr)
+          throw new Error('MINERU_PDF_OCR_OUTDATED');
+        return result;
       } catch (error) {
         if (signal.aborted) throw new Error('MINERU_TIMEOUT', { cause: error });
         if (error instanceof Error && /^MINERU_[A-Z_]+$/.test(error.message))

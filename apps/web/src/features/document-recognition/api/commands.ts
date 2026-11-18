@@ -8,6 +8,7 @@ import { useEffect, useRef } from 'react';
 
 import {
   deleteDocument,
+  type DocumentSummary,
   getDocumentDeletion,
   retryDocument,
   uploadDocument,
@@ -31,7 +32,10 @@ function requestRetry(workspaceId: string, documentId: string) {
 }
 
 // Ключ создаёт обработчик выбора файла: один файл — один ключ, повтор того же файла — тот же ключ.
-export function useUploadDocument(workspaceId: string) {
+export function useUploadDocument(
+  workspaceId: string,
+  track: (document: DocumentSummary) => void,
+) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({
@@ -46,7 +50,10 @@ export function useUploadDocument(workspaceId: string) {
         body: { file },
         idempotencyKey,
       }),
-    onSuccess: () => refreshList(client, workspaceId),
+    onSuccess: ({ document }) => {
+      track(document);
+      return refreshList(client, workspaceId);
+    },
   });
 }
 
@@ -97,7 +104,10 @@ async function runForDocuments(
   return { succeeded, failed };
 }
 
-export function useRecognitionAction(workspaceId: string) {
+export function useRecognitionAction(
+  workspaceId: string,
+  track: (document: DocumentSummary) => void,
+) {
   const client = useQueryClient();
   const screen = useRef<AbortController | null>(null);
   useEffect(() => {
@@ -111,9 +121,10 @@ export function useRecognitionAction(workspaceId: string) {
     mutationFn: async ({ kind, documentIds }: RecognitionAction) => {
       const signal = screen.current?.signal;
       if (kind === 'retry')
-        return runForDocuments(documentIds, signal, (id) =>
-          requestRetry(workspaceId, id),
-        );
+        return runForDocuments(documentIds, signal, async (id) => {
+          const { document } = await requestRetry(workspaceId, id);
+          track(document);
+        });
 
       const requested = await runForDocuments(
         documentIds,

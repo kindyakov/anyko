@@ -15,15 +15,17 @@ import { documentsQueryOptions } from '../api/queries';
 import { describeDocumentError } from '../model/error-texts';
 
 import { DocumentList } from './document-list';
+import { useRecognitionFailureToasts } from './use-recognition-failure-toasts';
 
 const accept =
-  '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff';
+  '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,.avif,.heif,.heic,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/webp,image/tiff,image/avif,image/heif,image/heic';
 export function DocumentWorkspace() {
   const workspaceId = useWorkspaceId();
   const list = useInfiniteQuery(documentsQueryOptions(workspaceId));
   const documents = list.data?.pages.flatMap((page) => page.items) ?? [];
   const deletions = list.data?.pages[0]?.pendingDeletions ?? [];
-  const uploadMutation = useUploadDocument(workspaceId);
+  const track = useRecognitionFailureToasts(documents);
+  const uploadMutation = useUploadDocument(workspaceId, track);
   const { add } = useToast();
   const [refreshing, setRefreshing] = useState(false);
   const listError =
@@ -38,9 +40,11 @@ export function DocumentWorkspace() {
         problems.push(`${file.name}: максимальный размер файла — 20 МБ.`);
         continue;
       }
-      if (!/\.(pdf|docx|jpe?g|png|webp|tiff?)$/i.test(file.name)) {
+      if (
+        !/\.(pdf|docx|jpe?g|png|webp|tiff?|avif|heif|heic)$/i.test(file.name)
+      ) {
         problems.push(
-          `${file.name}: поддерживаются PDF, DOCX, JPEG, PNG, WebP и TIFF.`,
+          `${file.name}: поддерживаются PDF, DOCX, JPEG, PNG, WebP, TIFF, AVIF и HEIF/HEIC.`,
         );
         continue;
       }
@@ -103,7 +107,7 @@ export function DocumentWorkspace() {
       <div className="animate-rise [animation-delay:60ms]">
         <DropZone
           title="Отправьте файлы в Anyko"
-          hint="PDF, DOCX, JPEG, PNG, WebP или TIFF до 20 МБ. Каждый файл распознаётся отдельно: текст, таблицы, формулы и изображения."
+          hint="PDF, DOCX, JPEG, PNG, WebP, TIFF, AVIF или HEIF/HEIC до 20 МБ. Каждый файл распознаётся отдельно: текст, таблицы, формулы и изображения."
           inputLabel="Файлы для распознавания"
           accept={accept}
           onFiles={upload}
@@ -144,6 +148,7 @@ export function DocumentWorkspace() {
         workspaceId={workspaceId}
         documents={documents}
         loading={list.isPending}
+        track={track}
       />
       {list.hasNextPage && (
         <Button

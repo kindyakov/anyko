@@ -1,7 +1,10 @@
+import type { z } from 'zod';
+
 import type { Logger } from '@anyko/logger';
 
 import type { ProcessingIo } from '../../processing';
 
+import type { pdfOcrSchema } from './result-schema';
 import type { SourceFormat } from './source-format';
 
 type DocumentStatus = 'queued' | 'running' | 'succeeded' | 'failed';
@@ -11,10 +14,12 @@ export interface DocumentView {
   status: DocumentStatus;
   createdAt: string;
   errorCode: string | null;
+  processingRevision?: number;
 }
 export interface DocumentResult {
   markdown: string;
   processorVersion: string;
+  pdfOcr?: z.infer<typeof pdfOcrSchema>;
   images?: { path: string; contentType: string; bytes: Uint8Array }[];
 }
 interface Artifact {

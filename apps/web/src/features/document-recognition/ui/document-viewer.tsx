@@ -112,7 +112,7 @@ export function DocumentViewer({
   );
   const workspaceId = useWorkspaceId();
   const kind = document && documentKind(document.filename);
-  const downloadOriginal = kind === 'docx';
+  const downloadOriginal = kind === 'docx' || kind === 'heif';
   const canSync = mode === 'split' && (kind === 'docx' || kind === 'pdf');
   const source = document
     ? documentLinks(workspaceId, document).source +
@@ -278,6 +278,8 @@ export function DocumentViewer({
                   key={source}
                   filename={document.filename}
                   source={source}
+                  resultImages={recognized?.images}
+                  imageUrl={documentLinks(workspaceId, document).image}
                   page={document.page ?? 1}
                   split={mode === 'split'}
                   onScrollSource={setScrollSource}

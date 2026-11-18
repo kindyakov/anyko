@@ -1,7 +1,13 @@
+import { documentProcessingMessage } from '@anyko/contracts/documents';
+
 import { ApiError, describeApiError, sharedCodeTexts } from '@/lib/api/errors';
 
 export const recognitionRetryCode = 'OCR_RETRY_REQUIRED';
 export const recognitionRetryText = 'Документ нужно распознать заново';
+
+export function recognitionFailureText(code?: string | null) {
+  return documentProcessingMessage(code);
+}
 
 const documentTexts = {
   codes: {
@@ -14,7 +20,7 @@ const documentTexts = {
     INVALID_DOCUMENT:
       'Не удалось прочитать файл. Проверьте, что его содержимое соответствует формату PDF, DOCX или изображения.',
     UNSUPPORTED_DOCUMENT_FORMAT:
-      'Поддерживаются PDF, DOCX, JPEG, PNG, WebP и TIFF.',
+      'Поддерживаются PDF, DOCX, JPEG, PNG, WebP, TIFF, AVIF и HEIF/HEIC.',
     REQUEST_TIMEOUT:
       'Сервер не ответил вовремя. Обновите список, чтобы проверить результат.',
     RETRY_CONFLICT: 'Файл уже обрабатывается или больше не требует повтора.',

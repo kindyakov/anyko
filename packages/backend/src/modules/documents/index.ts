@@ -3,9 +3,12 @@
 import type { DocumentId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 
+export { documentImageLimit } from '../../platform/document-output';
+
 import type {
   DocumentListInput,
   DocumentPage,
+  DocumentResult,
   DocumentView,
 } from './application/ports';
 
@@ -53,6 +56,7 @@ export interface DocumentImage {
 // Текст и изображения для анализа: читаются только из проверенного результата распознавания.
 export interface DocumentAnalysis {
   text: string;
+  pdfOcr?: DocumentResult['pdfOcr'];
   images: { path: string; bytes: Uint8Array; contentType: string }[];
   sourceDigest: string;
 }

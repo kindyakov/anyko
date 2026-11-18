@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { documentImageLimit } from '../../../platform/document-output';
 import { candidateSchema } from '../../../profiles/bfl/candidate';
 
 const workStepSchema = z.object({
@@ -19,7 +20,12 @@ const workStepSchema = z.object({
       z.object({
         path: z.string(),
         description: z.string(),
-        imageIndex: z.number().int().min(0).max(31).optional(),
+        imageIndex: z
+          .number()
+          .int()
+          .min(0)
+          .max(documentImageLimit - 1)
+          .optional(),
       }),
     )
     .default([]),
@@ -50,10 +56,15 @@ export const stepOutputSchema = z
         z.object({
           path: z.string(),
           description: z.string().max(12000),
-          imageIndex: z.number().int().min(0).max(31).optional(),
+          imageIndex: z
+            .number()
+            .int()
+            .min(0)
+            .max(documentImageLimit - 1)
+            .optional(),
         }),
       )
-      .max(32),
+      .max(documentImageLimit),
     candidates: z.array(candidateSchema).max(500),
   })
   .strict();

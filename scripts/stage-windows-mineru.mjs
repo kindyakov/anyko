@@ -119,9 +119,17 @@ await command([
   resolve('infra/mineru/prepare-portable-models.py'),
   modelHome,
 ]);
+await command([
+  python,
+  '-B',
+  resolve('infra/mineru/prepare-pdf-ocr-model.py'),
+  modelHome,
+]);
 await copyFile('infra/mineru/processor.py', resolve(stage, 'processor.py'));
+await copyFile('infra/mineru/pdf_ocr.py', resolve(stage, 'pdf_ocr.py'));
+await copyFile('infra/mineru/docx_media.py', resolve(stage, 'docx_media.py'));
 await writeFile(
   resolve(stage, 'complete.json'),
-  JSON.stringify({ format: 1, python: pyRelative }),
+  JSON.stringify({ format: 2, python: pyRelative }),
 );
 console.log(`MinerU ready: ${stage}`);

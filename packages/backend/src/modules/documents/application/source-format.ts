@@ -1,6 +1,7 @@
 import { unzipSync } from 'fflate';
 
-export type SourceFormat = 'pdf' | 'docx' | 'jpg' | 'png' | 'webp' | 'tiff';
+export type SourceFormat =
+  'pdf' | 'docx' | 'jpg' | 'png' | 'webp' | 'tiff' | 'avif' | 'heif';
 
 const formats: Record<string, SourceFormat> = {
   pdf: 'pdf',
@@ -11,6 +12,9 @@ const formats: Record<string, SourceFormat> = {
   webp: 'webp',
   tif: 'tiff',
   tiff: 'tiff',
+  avif: 'avif',
+  heic: 'heif',
+  heif: 'heif',
 };
 
 export const sourceContentTypes: Record<SourceFormat, string> = {
@@ -20,6 +24,8 @@ export const sourceContentTypes: Record<SourceFormat, string> = {
   png: 'image/png',
   webp: 'image/webp',
   tiff: 'image/tiff',
+  avif: 'image/avif',
+  heif: 'image/heif',
 };
 
 export function sourceFormatFromKey(key: string): SourceFormat | undefined {
@@ -29,6 +35,44 @@ export function sourceFormatFromKey(key: string): SourceFormat | undefined {
 
 function startsWith(bytes: Uint8Array, signature: readonly number[]) {
   return signature.every((byte, index) => bytes[index] === byte);
+}
+
+function imageContainerFormat(bytes: Uint8Array) {
+  if (
+    bytes.length < 16 ||
+    ![0x66, 0x74, 0x79, 0x70].every((byte, index) => bytes[index + 4] === byte)
+  )
+    return;
+  const box = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const shortSize = box.getUint32(0);
+  const header = shortSize === 1 ? 16 : 8;
+  if (bytes.length < header + 8) return;
+  const size = shortSize === 1 ? Number(box.getBigUint64(8)) : shortSize;
+  if (size < header + 8 || size > bytes.length || size > 4096 || size % 4 !== 0)
+    return;
+
+  const ascii = new TextDecoder();
+  const brands = new Set<string>([
+    ascii.decode(bytes.subarray(header, header + 4)),
+  ]);
+  for (let offset = header + 8; offset < size; offset += 4)
+    brands.add(ascii.decode(bytes.subarray(offset, offset + 4)));
+  if (brands.has('avif') || brands.has('avis')) return 'avif';
+  if (
+    [
+      'heic',
+      'heix',
+      'hevc',
+      'hevx',
+      'heim',
+      'heis',
+      'hevm',
+      'hevs',
+      'mif1',
+      'msf1',
+    ].some((brand) => brands.has(brand))
+  )
+    return 'heif';
 }
 
 function isDocx(bytes: Uint8Array) {
@@ -96,5 +140,8 @@ export function matchesSourceFormat(bytes: Uint8Array, format: SourceFormat) {
       );
     case 'docx':
       return isDocx(bytes);
+    case 'avif':
+    case 'heif':
+      return imageContainerFormat(bytes) === format;
   }
 }

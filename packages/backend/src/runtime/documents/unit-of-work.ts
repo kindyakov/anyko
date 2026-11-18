@@ -88,12 +88,14 @@ export function createDocumentUnitOfWork(db: Database): DocumentStore {
           documentId,
         );
         if (!exists) return false;
-        return createProcessingCommands(tx).retry({
+        const document = await createDocumentReadModel(tx).get(
           workspaceId,
           documentId,
-          actorId,
-          correlationId,
-        });
+        );
+        return createProcessingCommands(tx).retry(
+          { workspaceId, documentId, actorId, correlationId },
+          document?.errorCode === 'OCR_RETRY_REQUIRED',
+        );
       });
       return retried ? reads.get(workspaceId, documentId) : null;
     },

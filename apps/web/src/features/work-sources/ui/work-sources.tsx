@@ -18,8 +18,8 @@ import { DropZone } from '@anyko/ui/brand';
 
 import {
   DocumentRetryButton,
+  recognitionFailureText,
   recognitionRetryCode,
-  recognitionRetryText,
 } from '@/features/document-recognition';
 import type { WorkStage } from '@/features/works';
 
@@ -27,7 +27,7 @@ import type { Upload } from '../api/commands';
 
 type Document = WorkView['documents'][number];
 
-const accept = '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff';
+const accept = '.pdf,.docx,.jpg,.jpeg,.png,.webp,.tif,.tiff,.avif,.heif,.heic';
 const labels: Record<Document['status'], [string, Tone]> = {
   queued: ['Ожидает обработки', 'neutral'],
   running: ['Распознаётся', 'progress'],
@@ -145,7 +145,9 @@ export function WorkSources({
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <StatusPill tone={tone}>
-                        {requiresRetry ? recognitionRetryText : label}
+                        {(doc.status === 'failed' &&
+                          recognitionFailureText(doc.errorCode)) ||
+                          label}
                       </StatusPill>
                       <span className="text-muted text-xs">
                         <RelativeTime value={doc.createdAt} />

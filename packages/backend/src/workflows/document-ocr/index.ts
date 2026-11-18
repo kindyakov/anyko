@@ -12,6 +12,21 @@ import {
   StorageWriteOutcomeUnknown,
 } from '../../modules/documents';
 import type { createProcessingService } from '../../modules/processing';
+import { documentImageLimit } from '../../platform/document-output';
+
+const failureCodes = new Map([
+  ['MINERU_PDF_OCR_OUTDATED', 'OCR_PROCESSOR_OUTDATED'],
+  ['MINERU_TOO_MANY_IMAGES', 'OCR_TOO_MANY_IMAGES'],
+  ['MINERU_RESULT_TOO_LARGE', 'OCR_RESULT_TOO_LARGE'],
+  ['OCR_RESULT_TOO_LARGE', 'OCR_RESULT_TOO_LARGE'],
+  ['OCR_TOO_MANY_IMAGES', 'OCR_TOO_MANY_IMAGES'],
+  ['MINERU_UNSUPPORTED_EMBEDDED_IMAGE', 'OCR_UNSUPPORTED_EMBEDDED_IMAGE'],
+  ['MINERU_IMAGE_TOO_LARGE', 'OCR_IMAGE_TOO_LARGE'],
+  ['MINERU_NO_READABLE_TEXT', 'OCR_NO_READABLE_TEXT'],
+  ['MINERU_TIMEOUT', 'OCR_TIMEOUT'],
+  ['MINERU_UNAVAILABLE', 'OCR_PROCESSOR_UNAVAILABLE'],
+  ['MINERU_INVALID_RESPONSE', 'OCR_INVALID_RESULT'],
+]);
 export function createDocumentOcrWorkflow(options: {
   processing: ReturnType<typeof createProcessingService>;
   storage: SourceStorage;
@@ -53,11 +68,9 @@ export function createDocumentOcrWorkflow(options: {
       let total = 0;
       for (const [position, image] of (parsed.images ?? []).entries()) {
         total += image.bytes.length;
-        if (
-          position >= 32 ||
-          image.bytes.length > 3 * 1024 * 1024 ||
-          total > 8 * 1024 * 1024
-        )
+        if (position >= documentImageLimit)
+          throw new Error('OCR_TOO_MANY_IMAGES');
+        if (image.bytes.length > 3 * 1024 * 1024 || total > 8 * 1024 * 1024)
           throw new Error('OCR_RESULT_TOO_LARGE');
         const key = `${prefix}/${image.path}`;
         const metadata = {
@@ -90,6 +103,7 @@ export function createDocumentOcrWorkflow(options: {
         version: 2,
         markdown: parsed.markdown,
         processorVersion: parsed.processorVersion,
+        pdfOcr: parsed.pdfOcr,
         images,
       });
       const bytes = new TextEncoder().encode(JSON.stringify(result));
@@ -127,15 +141,19 @@ export function createDocumentOcrWorkflow(options: {
         correlationId: claim.correlationId,
       });
     } catch (error) {
+      const errorCode =
+        (error instanceof Error
+          ? failureCodes.get(error.message)
+          : undefined) ?? 'OCR_FAILED';
       options.logger.error({
         event: 'document_ocr_failed',
         jobId: claim.runId,
         correlationId: claim.correlationId,
-        errorCode: 'OCR_FAILED',
+        errorCode,
       });
       if (error instanceof StorageWriteOutcomeUnknown) {
         try {
-          await options.processing.fail(claim, 'OCR_FAILED');
+          await options.processing.fail(claim, errorCode);
         } catch {
           options.logger.warn({
             event: 'document_failure_status_pending',
@@ -144,7 +162,7 @@ export function createDocumentOcrWorkflow(options: {
         }
         throw error;
       }
-      await options.processing.fail(claim, 'OCR_FAILED');
+      await options.processing.fail(claim, errorCode);
     } finally {
       try {
         await options.parser.eraseAttempt(claim.attemptToken);

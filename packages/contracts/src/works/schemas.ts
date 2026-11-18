@@ -70,7 +70,7 @@ export const workStepSchema = z.object({
       z.object({
         path: z.string(),
         description: z.string(),
-        imageIndex: z.number().int().min(0).max(31).optional(),
+        imageIndex: z.number().int().nonnegative().optional(),
       }),
     )
     .default([]),

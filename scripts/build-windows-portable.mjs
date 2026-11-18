@@ -69,7 +69,7 @@ try {
   for (const [name, variable, version] of [
     ['infrastructure', 'ANYKO_WINDOWS_INFRA_PATH', 1],
     ['migrator', 'ANYKO_WINDOWS_MIGRATOR_PATH', 2],
-    ['mineru', 'ANYKO_WINDOWS_MINERU_PATH', 1],
+    ['mineru', 'ANYKO_WINDOWS_MINERU_PATH', 2],
   ]) {
     await run([process.execPath, 'run', `build:windows:${name}`]);
     env[variable] = await completed(

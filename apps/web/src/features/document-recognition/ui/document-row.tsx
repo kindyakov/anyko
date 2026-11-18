@@ -13,8 +13,8 @@ import {
 } from '@anyko/ui';
 
 import {
+  recognitionFailureText,
   recognitionRetryCode,
-  recognitionRetryText,
 } from '../model/error-texts';
 
 import { DocumentRetryButton } from './retry-button';
@@ -113,7 +113,9 @@ export function DocumentRow({
         </p>
       </div>
       <StatusPill tone={tones[document.status]}>
-        {requiresRetry ? recognitionRetryText : labels[document.status]}
+        {(document.status === 'failed' &&
+          recognitionFailureText(document.errorCode)) ||
+          labels[document.status]}
       </StatusPill>
       <div className="flex flex-wrap gap-2">
         {document.status === 'failed' && (

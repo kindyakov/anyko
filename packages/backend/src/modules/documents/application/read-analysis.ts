@@ -29,6 +29,7 @@ export const readAnalysis = (deps: Pick<DocumentDeps, 'store' | 'storage'>) => {
     }
     return {
       text: result.markdown,
+      ...(result.pdfOcr && { pdfOcr: result.pdfOcr }),
       images,
       sourceDigest: await checksum(
         new TextEncoder().encode(JSON.stringify(result)),

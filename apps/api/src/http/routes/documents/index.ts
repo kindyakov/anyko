@@ -19,6 +19,7 @@ import {
 import type { Route } from '../../route';
 
 import { imageHeaders, imageIndex, sourceFileHeaders } from './files';
+import { documentSummary } from './summary';
 
 export interface DocumentHttpOptions {
   documents: DocumentsModule;
@@ -35,22 +36,27 @@ export function documentRoutes(
   options: Pick<DocumentHttpOptions, 'documents'>,
 ) {
   const { documents } = options;
-  route(app, listDocuments, async ({ scope, query }) => ({
-    ...(await documents.queries.list(scope, query)),
-    pendingDeletions: await documents.queries.pendingDeletions(scope),
-  }));
+  route(app, listDocuments, async ({ scope, query }) => {
+    const page = await documents.queries.list(scope, query);
+    return {
+      ...page,
+      items: page.items.map(documentSummary),
+      pendingDeletions: await documents.queries.pendingDeletions(scope),
+    };
+  });
   route(app, uploadDocument, async ({ scope, headers, body, requestId }) => ({
-    document: await documents.commands.upload(scope, {
-      requestKey: headers['idempotency-key'],
-      filename: body.file.name,
-      bytes: new Uint8Array(await body.file.arrayBuffer()),
-      correlationId: requestId,
-    }),
+    document: documentSummary(
+      await documents.commands.upload(scope, {
+        requestKey: headers['idempotency-key'],
+        filename: body.file.name,
+        bytes: new Uint8Array(await body.file.arrayBuffer()),
+        correlationId: requestId,
+      }),
+    ),
   }));
   route(app, getDocument, async ({ scope, params }) => ({
-    document: await documents.queries.get(
-      scope,
-      brandDocumentId(params.documentId),
+    document: documentSummary(
+      await documents.queries.get(scope, brandDocumentId(params.documentId)),
     ),
   }));
   route(app, getDocumentResult, async ({ scope, params, link }) => {
@@ -100,10 +106,12 @@ export function documentRoutes(
     return { status: 'deleting' as const };
   });
   route(app, retryDocument, async ({ scope, params, requestId }) => ({
-    document: await documents.commands.retry(
-      scope,
-      brandDocumentId(params.documentId),
-      requestId,
+    document: documentSummary(
+      await documents.commands.retry(
+        scope,
+        brandDocumentId(params.documentId),
+        requestId,
+      ),
     ),
   }));
 }

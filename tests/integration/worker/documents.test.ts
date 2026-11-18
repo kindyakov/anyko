@@ -526,7 +526,7 @@ test('document formats survive source storage and queue delivery independently o
   const own = await workspace();
   for (const [filename, code] of [
     ['fake.docx', 'INVALID_DOCUMENT'],
-    ['unsupported.heic', 'UNSUPPORTED_DOCUMENT_FORMAT'],
+    ['unsupported.gif', 'UNSUPPORTED_DOCUMENT_FORMAT'],
   ] as const) {
     await expectRejected(
       recognition.commands.upload(memberScope(own, 'synthetic-actor'), {

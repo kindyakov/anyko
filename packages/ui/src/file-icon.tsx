@@ -12,7 +12,7 @@ export function FileIcon({
   className?: string;
 }) {
   const extension = fileExtension(filename);
-  const Icon = /^(jpe?g|png|webp|tiff?)$/.test(extension)
+  const Icon = /^(jpe?g|png|webp|tiff?|avif|heif|heic)$/.test(extension)
     ? FileImage
     : extension === 'docx'
       ? FileType2

@@ -4,7 +4,7 @@ const uploadTexts = {
   codes: {
     ...sharedCodeTexts,
     UNSUPPORTED_DOCUMENT_FORMAT:
-      'Поддерживаются PDF, DOCX, JPEG, PNG, WebP и TIFF.',
+      'Поддерживаются PDF, DOCX, JPEG, PNG, WebP, TIFF, AVIF и HEIF/HEIC.',
     INVALID_DOCUMENT:
       'Содержимое файла не соответствует формату или файл повреждён.',
     PAYLOAD_TOO_LARGE: 'Размер файла превышает 20 МБ.',

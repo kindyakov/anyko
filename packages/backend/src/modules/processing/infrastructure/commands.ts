@@ -55,7 +55,7 @@ export function createProcessingCommands(db: Connection) {
         },
       });
     },
-    async retry(input: Omit<Start, 'runId'>) {
+    async retry(input: Omit<Start, 'runId'>, replaceSucceeded = false) {
       const previous = await db.run.findFirst({
         where: { workspaceId: input.workspaceId, documentId: input.documentId },
         orderBy: { revision: 'desc' },
@@ -64,6 +64,7 @@ export function createProcessingCommands(db: Connection) {
         previous?.revision === null
           ? null
           : previous && { ...previous, revision: previous.revision },
+        replaceSucceeded,
       );
       if (revision === null) return false;
       await start({ ...input, runId: uuidV7() }, revision);

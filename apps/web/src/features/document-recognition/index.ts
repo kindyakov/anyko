@@ -1,7 +1,7 @@
 export { useRetryDocument } from './api/commands';
 export {
+  recognitionFailureText,
   recognitionRetryCode,
-  recognitionRetryText,
 } from './model/error-texts';
 export { DocumentRetryButton } from './ui/retry-button';
 

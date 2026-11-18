@@ -19,12 +19,14 @@ export function DocumentList({
   workspaceId,
   documents,
   loading,
+  track,
 }: {
   workspaceId: string;
   documents: DocumentSummary[];
   loading: boolean;
+  track: (document: DocumentSummary) => void;
 }) {
-  const mutation = useRecognitionAction(workspaceId);
+  const mutation = useRecognitionAction(workspaceId, track);
   const selectAllId = useId();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [viewing, setViewing] = useState<ViewedDocument>();

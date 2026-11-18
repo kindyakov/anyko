@@ -8,6 +8,8 @@ export const documentSchema = z.object({
   status: z.enum(['queued', 'running', 'succeeded', 'failed']),
   createdAt: z.iso.datetime(),
   errorCode: z.string().nullable().optional(),
+  errorMessage: z.string().optional(),
+  processingRevision: z.number().int().positive().optional(),
 });
 export const documentResponseSchema = z.object({ document: documentSchema });
 export const documentsResponseSchema = cursorResponseSchema(documentSchema, {

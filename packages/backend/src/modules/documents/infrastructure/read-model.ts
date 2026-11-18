@@ -5,30 +5,65 @@ import type { Database } from '@anyko/database';
 import type { DocumentPosition, DocumentView } from '../application/ports';
 const statusSchema = z.enum(['queued', 'running', 'succeeded', 'failed']);
 /** Explicit document screen read model: source metadata + latest processing summary. */
-export function createDocumentReadModel(db: Database) {
+export function createDocumentReadModel(
+  db: Pick<
+    Database,
+    'sourceDocument' | 'documentDeletion' | 'processingIo' | 'documentArtifact'
+  >,
+) {
   const select = {
     id: true,
     filename: true,
+    sourceKey: true,
     createdAt: true,
     runs: {
       orderBy: { revision: 'desc' as const },
       take: 1,
-      select: { status: true, errorCode: true, resultKey: true },
+      select: {
+        status: true,
+        errorCode: true,
+        revision: true,
+        resultKey: true,
+        processorVersion: true,
+      },
     },
   };
+  function legacyPdf(row: {
+    sourceKey: string;
+    runs: { status: string; processorVersion: string | null }[];
+  }) {
+    const run = row.runs[0];
+    return (
+      row.sourceKey.endsWith('.pdf') &&
+      run?.status === 'succeeded' &&
+      run.processorVersion?.startsWith('mineru-') &&
+      !run.processorVersion.includes('+eslav.')
+    );
+  }
+
   function view(row: {
     id: string;
     filename: string;
+    sourceKey: string;
     createdAt: Date;
-    runs: { status: string; errorCode: string | null }[];
+    runs: {
+      status: string;
+      errorCode: string | null;
+      revision: number | null;
+      processorVersion: string | null;
+    }[];
   }): DocumentView {
-    const run = row.runs[0];
+    const run = legacyPdf(row) ? undefined : row.runs[0];
+    const errorCode = run ? run.errorCode : 'OCR_RETRY_REQUIRED';
     return {
       id: row.id,
       filename: row.filename,
       createdAt: row.createdAt.toISOString(),
       status: run ? statusSchema.parse(run.status) : 'failed',
-      errorCode: run ? run.errorCode : 'OCR_RETRY_REQUIRED',
+      errorCode,
+      ...(typeof run?.revision === 'number' && {
+        processingRevision: run.revision,
+      }),
     };
   }
   return {
@@ -102,7 +137,14 @@ export function createDocumentReadModel(db: Database) {
         select,
       });
       const run = row?.runs[0];
-      if (!run || run.status !== 'succeeded' || !run.resultKey) return null;
+      if (
+        !row ||
+        legacyPdf(row) ||
+        !run ||
+        run.status !== 'succeeded' ||
+        !run.resultKey
+      )
+        return null;
       return db.documentArtifact.findFirst({
         where: {
           workspaceId,
@@ -152,7 +194,9 @@ export function createDocumentReadModel(db: Database) {
         select,
       });
       const run = row?.runs[0];
-      return run?.status === 'succeeded' ? run.resultKey : null;
+      return row && !legacyPdf(row) && run?.status === 'succeeded'
+        ? run.resultKey
+        : null;
     },
   };
 }

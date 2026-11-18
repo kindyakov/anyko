@@ -44,6 +44,59 @@ function renderWorkspace() {
 }
 
 // Опрос идёт раз в 2 секунды, поэтому ожидания тестов выше интервала.
+test('a failed attempt displays the server reason and code once; historical failures stay in the list', async () => {
+  const history = {
+    ...doc('old', 'старый.pdf', 'failed'),
+    processingRevision: 1,
+  };
+  const queued = {
+    ...doc('new', 'новый.docx', 'queued'),
+    processingRevision: 1,
+  };
+  let current: typeof queued & { errorCode?: string; errorMessage?: string } =
+    queued;
+  serveApi(({ method, url }) => {
+    if (method === 'POST' && url === `${recognitionsAddress}/new/retry`) {
+      current = { ...current, processingRevision: 2 };
+      return json(202, { document: { ...queued, processingRevision: 2 } });
+    }
+    return json(200, {
+      items: [history, current],
+      nextCursor: null,
+      pendingDeletions: [],
+    });
+  });
+  const user = userEvent.setup();
+  renderWorkspace();
+  await screen.findByText('старый.pdf');
+  const notifications = within(
+    screen.getByRole('region', { name: 'Уведомления' }),
+  );
+  const description =
+    'новый.docx: Вложение WMF нужно заменить на PNG. (OCR_UNSUPPORTED_EMBEDDED_IMAGE)';
+  expect(notifications.queryByText('Ошибка распознавания')).toBeNull();
+  current = {
+    ...queued,
+    status: 'failed',
+    errorCode: 'OCR_UNSUPPORTED_EMBEDDED_IMAGE',
+    errorMessage: 'Вложение WMF нужно заменить на PNG.',
+  };
+  const refresh = screen.getByRole('button', { name: 'Обновить' });
+  await user.click(refresh);
+  expect(await notifications.findByText(description)).toBeTruthy();
+  await user.click(refresh);
+  expect(notifications.getAllByText(description)).toHaveLength(1);
+
+  const retry = screen
+    .getAllByRole('listitem')
+    .find((element) => within(element).queryByText('новый.docx'));
+  if (!retry) throw new Error('Expected the failed recognition row');
+  await user.click(within(retry).getByRole('button', { name: 'Повторить' }));
+  await waitFor(() => {
+    expect(notifications.getAllByText(description)).toHaveLength(2);
+  });
+});
+
 test('the list polls while a document is being recognized and stops once none is left', async () => {
   let listed = {
     items: [doc('d1', 'scan.pdf', 'running')],
@@ -279,6 +332,39 @@ test('a DOCX source error keeps the extracted text and the original download ava
   expect(
     exchanges.filter(({ url }) => url === `${address}/source`),
   ).toHaveLength(1);
+});
+
+test('a HEIC recognition uses the JPEG preview and keeps the original download', async () => {
+  const address = `${recognitionsAddress}/photo`;
+  serveApi(({ url }) => {
+    if (url === `${address}/result`)
+      return json(200, {
+        markdown: 'Распознанный текст',
+        processorVersion: 'fixture',
+        images: [
+          { path: 'images/anyko-source-000.jpg', url: `${address}/images/0` },
+        ],
+      });
+    return json(200, {
+      items: [doc('photo', 'photo.HEIC', 'succeeded')],
+      nextCursor: null,
+      pendingDeletions: [],
+    });
+  });
+
+  const user = userEvent.setup();
+  renderWorkspace();
+  await user.click(await screen.findByRole('button', { name: 'Открыть' }));
+  const preview = within(
+    await screen.findByRole('dialog', { name: 'photo.HEIC' }),
+  );
+  const image = await preview.findByRole('img', {
+    name: 'Оригинал: photo.HEIC',
+  });
+  expect(image.getAttribute('src')).toBe(`${address}/images/0`);
+  const link = preview.getByRole('link', { name: 'Скачать оригинал' });
+  expect(link.hasAttribute('download')).toBe(true);
+  expect(link.getAttribute('href')).toBe(`${address}/source`);
 });
 
 test('bulk retry runs only for selected failed files and reports partial success', async () => {

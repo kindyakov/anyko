@@ -1,1 +1,2 @@
 mineru==4.1.7
+pillow-heif==1.8.1

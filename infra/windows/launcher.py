@@ -337,7 +337,7 @@ def run():
     # pg_ctl invokes cmd.exe, which can expand these characters inside quotes.
     if any(char in str(ROOT) for char in '%!'):
         raise RuntimeError('Move the Anyko folder to a path without % or !')
-    for directory, version in [(INFRA, 1), (MIGRATOR, 2), (MINERU, 1)]:
+    for directory, version in [(INFRA, 1), (MIGRATOR, 2), (MINERU, 2)]:
         if json.loads((directory/'complete.json').read_text(encoding='utf8')).get('format') != version:
             raise RuntimeError('Incomplete component: ' + str(directory))
     DATA.mkdir(exist_ok=True)

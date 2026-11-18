@@ -53,7 +53,7 @@ jobs:
         run: bun run verify:fast
       - name: Build applications
         run: bun run build
-      - name: Processor lifecycle without model dependencies
+      - name: Processor lifecycle and export without model weights
         run: |
           python -m venv work/processor-tests-venv
           work/processor-tests-venv/bin/pip install --no-deps mineru==4.1.7
