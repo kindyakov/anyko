@@ -103,10 +103,11 @@ bun run test:worker:integration
 сбрасывает указанную E2E-базу и запускает API на `API_PORT`.
 
 Для браузерных сценариев установите Node версии из `.node-version`, выполните
-`bun run build` и `node node_modules/@playwright/test/cli.js install chromium`,
-затем `bun run test:e2e`. Команда повторно готовит и очищает указанную E2E-базу
-и очереди, затем сама запускает backend и production-сборку web на портах 3031 и 3030. Эти порты должны быть свободны. `bun run verify` включает браузерные
-сценарии наряду с остальными проверками.
+`node node_modules/@playwright/test/cli.js install chromium`, затем
+`bun run test:e2e`. Команда собирает web из текущих исходников, повторно готовит
+и очищает указанную E2E-базу и очереди, затем запускает backend и свежую
+production-сборку web на портах 3031 и 3030. Эти порты должны быть свободны.
+`bun run verify` включает браузерные сценарии наряду с остальными проверками.
 
 Приложения пишут JSON в stdout. Для серверного хранения и доступа агента подготовлены [инструкция Dokploy](docs/engineering/deployment.md) и [контракт runtime](docs/engineering/runtime-foundation.md). История journald, SSH-ограничения и сохранение после перезагрузки требуют отдельной проверки на Linux-сервере. На Windows доступ к Docker и HTTP loopback может блокироваться песочницей инструмента: ошибка доступа не означает, что Engine или HTTP-handler сломан.
 

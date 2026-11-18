@@ -51,8 +51,6 @@ jobs:
         run: bun run db:generate
       - name: Run fast checks
         run: bun run verify:fast
-      - name: Build applications
-        run: bun run build
       - name: Processor lifecycle and export without model weights
         run: |
           python -m venv work/processor-tests-venv
