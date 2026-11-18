@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from 'bun:test';
+import { expect, test } from 'bun:test';
 
 import { type QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
@@ -99,9 +99,7 @@ test('an OCR revision request blocks other work commands and refreshes a conflic
   const workKey = ['works', workspaceId, 'detail', workId];
   client.setQueryData(workKey, workView);
   const response = Promise.withResolvers<Response>();
-  const fetchMock = spyOn(globalThis, 'fetch').mockImplementation(
-    () => response.promise,
-  );
+  serveApi(() => response.promise);
   const { result } = renderHook(
     () => ({
       revision: useUpdateWorkDocumentRecognition(workspaceId, workId),
@@ -126,7 +124,6 @@ test('an OCR revision request blocks other work commands and refreshes a conflic
       json(409, { error: { code: 'REVISION_CONFLICT', requestId: 'fixture' } }),
     );
     await waitFor(() => expect(result.current.revision.isError).toBe(true));
-    fetchMock.mockRestore();
   }
   expect(result.current.commands.pending).toBe(false);
   expect(client.getQueryState(workKey)?.isInvalidated).toBe(true);

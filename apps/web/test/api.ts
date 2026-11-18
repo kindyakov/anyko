@@ -30,7 +30,9 @@ export function json(status: number, body: unknown) {
 
 // Ответ выбирает handler по запросу; список запросов сохраняет их в порядке отправки.
 export function serveApi(
-  handler: (exchange: Exchange) => Response | typeof networkError,
+  handler: (
+    exchange: Exchange,
+  ) => Response | Promise<Response> | typeof networkError,
 ) {
   const exchanges: Exchange[] = [];
   globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
