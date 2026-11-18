@@ -4,6 +4,7 @@ import {
   emptyFacts,
   type FactsModule,
   findFactDiscrepancies,
+  markSelectedCandidates,
 } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
@@ -57,7 +58,7 @@ export const getWork =
           : await deps.agents.internal.get(scope.workspaceId, workId),
         package: requirePackage(work.packageVersion),
         documents,
-        facts,
+        facts: { ...facts, candidates: markSelectedCandidates(facts) },
         discrepancyFields: findFactDiscrepancies(facts),
         runs: cleanupPending
           ? []

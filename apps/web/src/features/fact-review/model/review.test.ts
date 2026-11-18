@@ -4,7 +4,7 @@ import type { WorkView } from '@anyko/contracts/works';
 
 import { reviewFields } from './review';
 
-test('selects pending candidates and excludes filled or disputed values from quick apply', () => {
+test('selects pending candidates and excludes selected or disputed values from quick apply', () => {
   const view = {
     package: {
       fields: [{ key: 'a' }, { key: 'b' }, { key: 'c' }, { key: 'd' }],
@@ -12,9 +12,10 @@ test('selects pending candidates and excludes filled or disputed values from qui
     facts: {
       discrepancyFields: ['b'],
       candidates: [
-        { field: 'a', value: 'A' },
-        { field: 'b', value: 'B' },
-        { field: 'c', value: 'C' },
+        { field: 'a', value: 'A', selected: true },
+        { field: 'b', value: 'B', selected: false },
+        { field: 'c', value: 'C', selected: false },
+        { field: 'd', value: [], selected: true },
       ],
     },
   } as WorkView;
@@ -31,9 +32,9 @@ test('the conflicts filter selects the fields supplied by the server', () => {
     facts: {
       discrepancyFields: ['firstName'],
       candidates: [
-        { field: 'firstName', value: 'Анна' },
-        { field: 'lastName', value: 'Иванова' },
-        { field: 'lastName', value: 'Иванов' },
+        { field: 'firstName', value: 'Анна', selected: false },
+        { field: 'lastName', value: 'Иванова', selected: false },
+        { field: 'lastName', value: 'Иванов', selected: false },
       ],
     },
   } as WorkView;

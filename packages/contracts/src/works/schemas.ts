@@ -26,6 +26,9 @@ export const candidateSchema = z
   .object({
     origin: z.enum(['document', 'context']).optional(),
     field: fieldKeySchema,
+    selected: z
+      .boolean()
+      .describe('Значение кандидата вошло в сохранённые сведения'),
     value: fieldValueSchema.refine(
       (value) =>
         value !== null &&
@@ -112,10 +115,17 @@ export const workResponseSchema = z.object({
   cleanupPending: z.boolean(),
 });
 export type WorkView = z.infer<typeof workResponseSchema>;
-// Повтор создания может вернуть сохранённый до появления списка ответ.
+// Повтор создания может вернуть ответ, сохранённый до появления списка и отметок.
 export const createdWorkResponseSchema = workResponseSchema.extend({
   facts: factsSchema.extend({
     discrepancyFields: factsSchema.shape.discrepancyFields.default([]),
+    candidates: z
+      .array(
+        candidateSchema.extend({
+          selected: candidateSchema.shape.selected.default(false),
+        }),
+      )
+      .max(500),
   }),
 });
 export const workListStatusSchema = z.enum(['all', 'draft', 'confirmed']);

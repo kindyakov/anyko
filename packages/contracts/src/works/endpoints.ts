@@ -94,7 +94,7 @@ export const getWorkDeletion = endpoint({
 
 export const getWork = endpoint({
   summary:
-    'Возвращает данные работы, включая расхождения в сохранённых сведениях',
+    'Возвращает данные работы, расхождения и отметки выбранных кандидатов в сохранённых сведениях',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId',
   params: workParams,

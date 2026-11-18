@@ -7,6 +7,7 @@ import {
   editFacts,
   emptyFacts,
   findFactDiscrepancies,
+  markSelectedCandidates,
   mergeCandidates,
 } from './index';
 
@@ -72,6 +73,9 @@ test('table candidates merge distinct obligations but retain conflicting amounts
     { name: 'Тестовый банк', basis: 'Договор Б', amount: '200.00' },
   ]);
   expect(findFactDiscrepancies(merged)).toEqual([]);
+  expect(
+    markSelectedCandidates(merged).map(({ selected }) => selected),
+  ).toEqual([true, true]);
   const conflict = mergeCandidates(
     emptyFacts(),
     [table('Договор А', '100.00'), table('Договор А', '999.00')],
@@ -80,6 +84,9 @@ test('table candidates merge distinct obligations but retain conflicting amounts
   expect(conflict.values.debts).toBeNull();
   expect(conflict.candidates).toHaveLength(2);
   expect(findFactDiscrepancies(conflict)).toEqual(['debts']);
+  expect(
+    markSelectedCandidates(conflict).map(({ selected }) => selected),
+  ).toEqual([false, false]);
   const manual = editFacts(merged, { ...merged.values, debts: [] });
   expect(
     mergeCandidates(manual, [table('Договор В', '300.00')], false).values.debts,
@@ -88,10 +95,12 @@ test('table candidates merge distinct obligations but retain conflicting amounts
 
 test('a manually saved value changes discrepancy status', () => {
   const extracted = mergeCandidates(emptyFacts(), [candidate('Анна')], false);
+  expect(markSelectedCandidates(extracted)[0]?.selected).toBe(true);
   const changed = editFacts(extracted, {
     ...extracted.values,
     personName: 'Ирина',
   });
+  expect(markSelectedCandidates(changed)[0]?.selected).toBe(false);
   expect(findFactDiscrepancies(changed)).toEqual(['personName']);
   const restored = editFacts(changed, {
     ...changed.values,
@@ -268,4 +277,95 @@ test('a manual numeric correction and an intentional clearing remain discrepanci
   };
   const refreshed = mergeCandidates(cleared, [unsupported], false);
   expect(findFactDiscrepancies(confirmFacts(refreshed))).toEqual(['debtTotal']);
+});
+
+test('selection follows contributing cells and the same row identity after manual edits', () => {
+  const evidence = (quote: string) => [
+    { documentId: crypto.randomUUID(), imagePath: null, quote },
+  ];
+  const field = 'debts';
+  const first = { name: 'Банк А', basis: 'Договор А' };
+  const second = { name: 'Банк Б', basis: 'Договор Б' };
+  const extracted = mergeCandidates(
+    emptyFacts(),
+    [
+      {
+        field,
+        value: [{ ...first, amount: '100.00' }, second],
+        evidence: evidence('Банк А | Договор А'),
+      },
+      {
+        field,
+        value: [{ ...first, arrears: '50.00' }],
+        evidence: evidence('Банк А | Договор А | 50,00'),
+      },
+    ],
+    false,
+  );
+  expect(extracted.values.debts).toEqual([
+    { ...first, arrears: '50.00' },
+    second,
+  ]);
+  expect(
+    markSelectedCandidates(extracted).map(({ selected }) => selected),
+  ).toEqual([true, true]);
+  const manuallyEdited = editFacts(extracted, {
+    ...extracted.values,
+    debts: [{ ...first, arrears: '25.00' }],
+  });
+  expect(
+    markSelectedCandidates(manuallyEdited).map(({ selected }) => selected),
+  ).toEqual([false, false]);
+});
+
+test('a numeric candidate with no accepted value is selected only if the lawyer saves it', () => {
+  const extracted = mergeCandidates(
+    emptyFacts(),
+    [
+      {
+        field: 'inn',
+        value: '500100732259',
+        evidence: [
+          {
+            documentId: crypto.randomUUID(),
+            imagePath: null,
+            quote: 'ИНН не указан',
+          },
+        ],
+      },
+    ],
+    false,
+  );
+  expect(markSelectedCandidates(extracted)[0]?.selected).toBe(false);
+  const manuallySelected = editFacts(extracted, {
+    ...extracted.values,
+    inn: '500100732259',
+  });
+  expect(markSelectedCandidates(manuallySelected)[0]?.selected).toBe(true);
+});
+
+test('a candidate for an empty table only matches a saved empty table', () => {
+  const extracted = mergeCandidates(
+    emptyFacts(),
+    [
+      {
+        field: 'debts',
+        value: [],
+        evidence: [
+          {
+            documentId: crypto.randomUUID(),
+            imagePath: null,
+            quote: 'Обязательств нет',
+          },
+        ],
+      },
+    ],
+    false,
+  );
+  expect(markSelectedCandidates(extracted)[0]?.selected).toBe(true);
+  const manuallyEdited = editFacts(extracted, {
+    ...extracted.values,
+    debts: [{ name: 'Банк А', basis: 'Договор А' }],
+  });
+  expect(markSelectedCandidates(manuallyEdited)[0]?.selected).toBe(false);
 });

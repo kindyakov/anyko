@@ -11,8 +11,6 @@ export type ReviewField = {
   candidates: WorkView['facts']['candidates'];
 };
 
-export const same = (a: FieldValue | undefined, b: FieldValue) =>
-  JSON.stringify(a ?? null) === JSON.stringify(b);
 const filled = (value: FieldValue | undefined) =>
   Array.isArray(value) ? value.length > 0 : !!value;
 
@@ -30,11 +28,12 @@ export function reviewFields(
       ),
     }))
     .filter((item) => item.candidates.length);
-  const applied = (key: FieldKey) =>
-    fields
-      .find((item) => item.field.key === key)
-      ?.candidates.some((candidate) => same(values[key], candidate.value)) ??
-    false;
+  const appliedFields = new Set(
+    view.facts.candidates
+      .filter(({ selected }) => selected)
+      .map(({ field }) => field),
+  );
+  const applied = (key: FieldKey) => appliedFields.has(key);
   const visible = fields.filter(({ field }) =>
     filter === 'conflicts'
       ? conflicts.has(field.key)
@@ -45,6 +44,7 @@ export function reviewFields(
   const quick = fields.filter(
     ({ field, candidates }) =>
       !conflicts.has(field.key) &&
+      !applied(field.key) &&
       !filled(values[field.key]) &&
       candidates[0] !== undefined,
   );

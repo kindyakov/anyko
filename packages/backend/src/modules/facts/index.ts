@@ -68,6 +68,31 @@ export function findFactDiscrepancies(current: WorkFacts) {
     .map(({ key }) => key);
 }
 
+export function markSelectedCandidates({ values, candidates }: WorkFacts) {
+  return candidates.map((candidate) => {
+    const { field, value } = candidate;
+    const saved = reconcile(field, [values[field] ?? null]);
+    const selected =
+      saved !== null &&
+      (includesFactValue(field, saved, value) ||
+        includesFactValue(field, saved, automaticValue(candidate)));
+    return { ...candidate, selected };
+  });
+}
+
+function includesFactValue(
+  key: string,
+  saved: FieldValue,
+  proposed: FieldValue,
+) {
+  if (!Array.isArray(saved) || !Array.isArray(proposed))
+    return saved === proposed;
+  return (
+    comparableFactValue(reconcile(key, [saved, proposed])) ===
+    comparableFactValue(saved)
+  );
+}
+
 function reconcileCandidates(
   key: string,
   candidates: WorkFacts['candidates'],

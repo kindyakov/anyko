@@ -233,11 +233,13 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
         {
           field: 'firstName',
           value: 'Анна',
+          selected: false,
           evidence: [{ documentId: source.id, imagePath: null, quote: 'Анна' }],
         },
         {
           field: 'lastName',
           value: 'Петрова',
+          selected: true,
           evidence: [
             { documentId: source.id, imagePath: null, quote: 'Петрова' },
           ],
@@ -255,6 +257,10 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
         facts: {
           ...view.facts,
           values: { ...view.facts.values, firstName: 'Анна' },
+          candidates: view.facts.candidates.map((candidate) => ({
+            ...candidate,
+            selected: true,
+          })),
           discrepancyFields: [],
         },
       };
@@ -277,6 +283,8 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
   await user.click(review.getByRole('button', { name: 'Применить' }));
   expect(review.getByRole('button', { name: 'Расхождения · 1' })).toBeTruthy();
   expect(review.getByText('Расхождение')).toBeTruthy();
+  expect(review.getByText('Выбрано')).toBeTruthy();
+  expect(review.queryByRole('button', { name: 'Применить' })).toBeNull();
 
   await user.click(screen.getByRole('button', { name: 'Сохранить' }));
   expect(
@@ -292,4 +300,85 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
       values: { firstName: 'Анна', lastName: 'Петрова' },
     },
   );
+});
+
+test('saved candidate marks keep a merged field out of pending review and hide its apply actions', async () => {
+  const first = { name: 'Банк А', basis: 'Договор А' };
+  const second = { name: 'Банк Б', basis: 'Договор Б' };
+  const view: WorkView = {
+    ...workView,
+    documents: [source],
+    runs: [
+      {
+        id: 'dd1617a1-3bf9-4f68-8b37-bcf42947ad26',
+        kind: 'analysis',
+        status: 'succeeded',
+        errorCode: null,
+        createdAt: source.createdAt,
+        steps: [],
+      },
+    ],
+    package: {
+      ...workView.package,
+      fields: [
+        {
+          key: 'debts',
+          label: 'Обязательства',
+          kind: 'rows',
+          columns: [],
+          limits: {},
+          multiline: false,
+        },
+        {
+          key: 'firstName',
+          label: 'Имя',
+          kind: 'text',
+          columns: [],
+          limits: {},
+          multiline: false,
+        },
+      ],
+    },
+    facts: {
+      ...workView.facts,
+      values: { debts: [first, second], firstName: 'Мария' },
+      candidates: [
+        {
+          field: 'debts',
+          value: [first],
+          selected: true,
+          evidence: [
+            { documentId: source.id, imagePath: null, quote: first.name },
+          ],
+        },
+        {
+          field: 'debts',
+          value: [second],
+          selected: true,
+          evidence: [
+            { documentId: source.id, imagePath: null, quote: second.name },
+          ],
+        },
+        {
+          field: 'firstName',
+          value: 'Анна',
+          selected: false,
+          evidence: [{ documentId: source.id, imagePath: null, quote: 'Анна' }],
+        },
+      ],
+    },
+  };
+  serveApi(() => json(200, view));
+  const user = userEvent.setup();
+  renderWork();
+
+  const review = within(
+    await screen.findByRole('region', { name: 'Найденные сведения' }),
+  );
+  expect(review.getAllByText('Выбрано')).toHaveLength(2);
+  expect(review.getAllByRole('button', { name: 'Применить' })).toHaveLength(1);
+  await user.click(review.getByRole('button', { name: 'Не применены · 1' }));
+  expect(review.queryByRole('heading', { name: 'Обязательства' })).toBeNull();
+  expect(review.getByRole('heading', { name: 'Имя' })).toBeTruthy();
+  expect(review.queryByText('Выбрано')).toBeNull();
 });
