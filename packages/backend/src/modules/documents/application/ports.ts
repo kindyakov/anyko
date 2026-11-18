@@ -73,6 +73,7 @@ export interface DocumentPosition {
 }
 
 interface DocumentListFilters {
+  checksum?: string | undefined;
   q?: string | undefined;
   formats?: readonly SourceFormat[] | undefined;
 }

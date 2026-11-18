@@ -8,6 +8,7 @@ import userEvent from '@testing-library/user-event';
 import type { WorkView } from '@anyko/contracts/works';
 
 import { createQueryClient } from '@/lib/api/query-client';
+import { sessionKeys } from '@/lib/api/session';
 
 import {
   installEventSource,
@@ -40,8 +41,18 @@ const connectionRevoked =
 function renderWork() {
   installEventSource();
   navigation.params = { workspace: workspaceId, id: workId };
+  const client = createQueryClient();
+  client.setQueryData(sessionKeys.all, {
+    user: { id: 'user-1', name: 'Test', email: 'test@example.test' },
+    memberships: [
+      {
+        workspace: { id: workspaceId, name: 'Anyko' },
+        rights: ['recognitions.use', 'documents.upload'],
+      },
+    ],
+  });
   render(
-    <QueryClientProvider client={createQueryClient()}>
+    <QueryClientProvider client={client}>
       <WorkScreen workId={workId} />
     </QueryClientProvider>,
   );
@@ -50,7 +61,9 @@ function renderWork() {
 test('upload confirmation is visible when returning to Files after a pending upload', async () => {
   const response = Promise.withResolvers<undefined>();
   const document = { ...source, status: 'queued' };
-  const requests = serveApi(({ method }) => {
+  const requests = serveApi(({ method, url }) => {
+    if (url.includes('checksum='))
+      return json(200, { items: [], nextCursor: null, pendingDeletions: [] });
     if (method !== 'POST') return json(200, workView);
     const reply = json(202, { document });
     reply.json = async () => {
@@ -64,19 +77,76 @@ test('upload confirmation is visible when returning to Files after a pending upl
   await user.upload(await screen.findByLabelText('Файлы клиента'), [
     new File(['%PDF'], source.filename, { type: 'application/pdf' }),
   ]);
-  expect(requests.at(-1)).toMatchObject({
-    method: 'POST',
-    url: `${workAddress}/documents`,
+  await waitFor(() => {
+    expect(requests.at(-1)).toMatchObject({
+      method: 'POST',
+      url: `${workAddress}/documents`,
+    });
   });
   expect(screen.queryByText('Принято 1 файл')).toBeNull();
   await user.click(screen.getByRole('tab', { name: /Извлечение/ }));
   response.resolve(undefined);
   await waitFor(() => {
-    expect(requests.filter(({ method }) => method === 'GET')).toHaveLength(2);
+    expect(
+      requests.filter(
+        ({ method, url }) => method === 'GET' && url === workAddress,
+      ),
+    ).toHaveLength(2);
   });
   await user.click(screen.getByRole('tab', { name: /^1\s*Файлы/ }));
   expect(await screen.findByText('Принято 1 файл')).toBeTruthy();
 });
+
+test('a matching queued source becomes reusable in the work after its OCR completes', async () => {
+  let ready = false;
+  const requests = serveApi(({ method, url }) => {
+    const digest = new URL(url, 'http://localhost').searchParams.get(
+      'checksum',
+    );
+    if (digest)
+      return json(200, {
+        items: [
+          {
+            ...source,
+            status: ready ? 'succeeded' : 'queued',
+            readyRevision: ready ? 1 : null,
+          },
+        ],
+        checksum: digest,
+        nextCursor: null,
+        pendingDeletions: [],
+      });
+    if (method === 'POST' && url === `${workAddress}/attach`)
+      return json(200, { status: 'attached' });
+    return json(200, workView);
+  });
+  const user = userEvent.setup();
+  renderWork();
+  await user.upload(await screen.findByLabelText('Файлы клиента'), [
+    new File(['%PDF'], 'same-content.pdf', { type: 'application/pdf' }),
+  ]);
+  const match = within(
+    await screen.findByRole('dialog', { name: 'Такой файл уже есть' }),
+  );
+  const use = match.getByRole('button', { name: 'Использовать существующий' });
+  expect(use.hasAttribute('disabled')).toBe(true);
+  ready = true;
+  await waitFor(
+    () => {
+      expect(use.hasAttribute('disabled')).toBe(false);
+    },
+    { timeout: 4500 },
+  );
+  await user.click(use);
+  await screen.findByText('Принято 1 файл');
+  expect(
+    requests
+      .filter(({ method }) => method === 'POST')
+      .map(({ url, body }) => ({ url, body })),
+  ).toEqual([
+    { url: `${workAddress}/attach`, body: { documentIds: [source.id] } },
+  ]);
+}, 7000);
 
 test('a work source with an expired OCR result can be recognized again from its row', async () => {
   let document: WorkView['documents'][number] = {

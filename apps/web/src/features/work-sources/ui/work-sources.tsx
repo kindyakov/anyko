@@ -108,7 +108,7 @@ export function WorkSources({
               <span className="min-w-0 flex-1 wrap-anywhere">
                 {item.state === 'failed'
                   ? item.reason
-                  : `${item.name} — ${item.state === 'uploading' ? 'передаём в Anyko' : 'загружен'}`}
+                  : `${item.name} — ${item.state === 'uploading' ? 'обрабатываем' : 'добавлен'}`}
               </span>
             </li>
           ))}

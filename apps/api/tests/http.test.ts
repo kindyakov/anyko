@@ -123,22 +123,31 @@ test('recognition listing validates filters and forwards them with the cursor', 
       ),
     );
   const valid = new URLSearchParams({
+    checksum: 'a'.repeat(64),
     q: '  Счёт_100%  ',
     formats: 'pdf,heif',
     after: 'cursor',
     limit: '20',
   });
-  expect((await request(valid.toString())).status).toBe(200);
+  const listing = await request(valid.toString());
+  expect(listing.status).toBe(200);
+  expect(await listing.json()).toMatchObject({ checksum: 'a'.repeat(64) });
   expect(inputs).toEqual([
     {
       workspaceId: 'local',
+      checksum: 'a'.repeat(64),
       q: 'Счёт_100%',
       formats: ['pdf', 'heif'],
       after: 'cursor',
       limit: 20,
     },
   ]);
-  for (const query of ['formats=pdf,exe', 'formats=pdf,', 'q=%00']) {
+  for (const query of [
+    'formats=pdf,exe',
+    'formats=pdf,',
+    'q=%00',
+    'checksum=wrong',
+  ]) {
     const response = await request(query);
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({

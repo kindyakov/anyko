@@ -15,6 +15,7 @@ import {
   documentResponseSchema,
   documentResultSchema,
   documentsResponseSchema,
+  sourceChecksumSchema,
   sourceFormatSchema,
   uploadFileSchema,
 } from './schemas';
@@ -37,11 +38,13 @@ const formatList = z
   );
 
 export const listDocuments = endpoint({
-  summary: 'Возвращает список распознаваний вне работы',
+  summary:
+    'Возвращает каталог распознаваний с фильтрами по имени, формату и содержимому',
   method: 'GET',
   path: recognitionsPath,
   params: workspaceParams,
   query: cursorQuery({
+    checksum: sourceChecksumSchema.optional(),
     q: z
       .string()
       .trim()

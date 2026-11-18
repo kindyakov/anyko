@@ -11,6 +11,7 @@ import { EventHorizon } from '@anyko/ui/brand';
 import {
   DocumentViewer,
   recognitionRetryCode,
+  useUploadMatchChoice,
   type ViewedDocument,
 } from '@/features/document-recognition';
 import {
@@ -34,6 +35,7 @@ import {
   type StepKey,
   stepOf,
   useAnalyzeWork,
+  useAttachWorkDocuments,
   useConfirmWork,
   useWorkView,
   type WorkStage,
@@ -41,7 +43,7 @@ import {
 } from '@/features/works';
 import { isUnauthorized } from '@/lib/api/errors';
 import { useIdempotencyKey } from '@/lib/api/idempotency';
-import { useWorkspaceId } from '@/lib/api/workspace';
+import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 import { UnsavedNavigation } from '@/lib/unsaved-navigation';
 
@@ -124,6 +126,9 @@ function WorkBody({
   const facts = useFactsForm(view);
   const generation = useGenerateWork(workspaceId, workId);
   const uploadDocument = useUploadWorkDocument(workspaceId, workId);
+  const canReuse = useCan('recognitions.use');
+  const match = useUploadMatchChoice(workspaceId);
+  const attach = useAttachWorkDocuments(workspaceId);
   const deletion = useDeleteWorkDocument(workspaceId, workId);
   const retry = useRetryWorkDocument(workspaceId, workId);
   // Ключ каждой команды живёт на всё действие: повтор после неизвестного исхода передаёт тот же ключ.
@@ -154,10 +159,29 @@ function WorkBody({
   }
   async function upload(files: File[]) {
     setError('');
+    const attached = new Set(view.documents.map(({ id }) => id));
     const accepted = await uploadWorkFiles(
       files,
-      (file, idempotencyKey) =>
-        uploadDocument.mutateAsync({ file, idempotencyKey }),
+      async (file, idempotencyKey) => {
+        if (canReuse && file.size <= 20 * 1024 * 1024) {
+          const choice = await match.decide(file, attached);
+          if (!choice) return false;
+          if (choice.kind === 'reuse') {
+            await attach.mutateAsync({
+              workId,
+              documentIds: [choice.document.id],
+            });
+            attached.add(choice.document.id);
+            return true;
+          }
+        }
+        const { document } = await uploadDocument.mutateAsync({
+          file,
+          idempotencyKey,
+        });
+        attached.add(document.id);
+        return true;
+      },
       setUploads,
     );
     setTimeout(() => {
@@ -378,6 +402,7 @@ function WorkBody({
         </div>
       </Tabs.Root>
       <UnsavedNavigation dirty={facts.hasEdits} />
+      {match.dialog}
       <UnsavedFactsBar facts={facts} busy={busy} />
       <DocumentViewer
         document={viewing}

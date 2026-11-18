@@ -67,7 +67,7 @@ export function useRetryWorkDocument(workspaceId: string, workId: string) {
 // и не прерывает остальные; 401 останавливает загрузку, сессию истекает кэш.
 export async function uploadWorkFiles(
   files: File[],
-  send: (file: File, idempotencyKey: string) => Promise<unknown>,
+  send: (file: File, idempotencyKey: string) => Promise<boolean>,
   setUploads: Dispatch<SetStateAction<Upload[]>>,
 ): Promise<number> {
   const batch: Upload[] = files.map((file) => ({
@@ -85,7 +85,10 @@ export async function uploadWorkFiles(
   for (const [index, file] of files.entries()) {
     const id = batch[index]?.id ?? '';
     try {
-      await send(file, newIdempotencyKey());
+      if (!(await send(file, newIdempotencyKey()))) {
+        setUploads((items) => items.filter((item) => item.id !== id));
+        continue;
+      }
       accepted++;
       mark(id, { state: 'done' });
     } catch (failure) {

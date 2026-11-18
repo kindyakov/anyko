@@ -40,6 +40,7 @@ export function documentRoutes(
     const page = await documents.queries.list(scope, query);
     return {
       ...page,
+      ...(query.checksum && { checksum: query.checksum }),
       items: page.items.map(documentSummary),
       pendingDeletions: await documents.queries.pendingDeletions(scope),
     };

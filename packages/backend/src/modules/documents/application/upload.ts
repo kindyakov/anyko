@@ -2,6 +2,7 @@ import type { WorkspaceScope } from '../../../platform/scope/workspace-scope';
 import { DocumentError } from '../errors';
 import type { DocumentUploadInput, InternalUploadInput } from '../index';
 
+import { checksum } from './checksum';
 import type { DocumentDeps, DocumentView } from './ports';
 import {
   matchesSourceFormat,
@@ -36,13 +37,7 @@ export const uploadDocument = (deps: DocumentDeps) => {
           },
           async () => {
             const sourceKey = `sources/${input.workspaceId}/${id}.${format}`;
-            const digest = await crypto.subtle.digest(
-              'SHA-256',
-              Uint8Array.from(input.bytes),
-            );
-            const sourceChecksum = Array.from(new Uint8Array(digest), (value) =>
-              value.toString(16).padStart(2, '0'),
-            ).join('');
+            const sourceChecksum = await checksum(input.bytes);
             await deps.store.stageSource(sourceKey, input.workspaceId);
             await deps.artifacts.stage({
               key: sourceKey,

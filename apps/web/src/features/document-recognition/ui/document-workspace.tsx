@@ -3,11 +3,11 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { type ComponentProps, useCallback, useState } from 'react';
 
-import type { DocumentSummary } from '@anyko/contracts/documents';
+import { type DocumentSummary, getDocument } from '@anyko/contracts/documents';
 import { Button, Notice, RelativeTime, useToast } from '@anyko/ui';
 import { DropZone } from '@anyko/ui/brand';
 
-import { newIdempotencyKey } from '@/lib/api/call';
+import { callApi, newIdempotencyKey } from '@/lib/api/call';
 import { isUnauthorized } from '@/lib/api/errors';
 import { useWorkspaceId } from '@/lib/api/workspace';
 
@@ -16,6 +16,7 @@ import { type DocumentFilters, documentsQueryOptions } from '../api/queries';
 import { describeDocumentError } from '../model/error-texts';
 
 import { DocumentSearch } from './catalog/document-search';
+import { useUploadMatchChoice } from './catalog/use-upload-match-choice';
 import { DocumentList } from './document-list';
 import { useRecognitionFailureToasts } from './use-recognition-failure-toasts';
 
@@ -64,6 +65,7 @@ function WorkspaceDocuments({
     [documents, trackPending],
   );
   const uploadMutation = useUploadDocument(workspaceId, track);
+  const match = useUploadMatchChoice(workspaceId);
   const { add } = useToast();
   const [refreshing, setRefreshing] = useState(false);
   const listError =
@@ -88,6 +90,20 @@ function WorkspaceDocuments({
       }
       // Каждый файл — отдельное действие с собственным ключом идемпотентности.
       try {
+        const choice = await match.decide(file);
+        if (!choice) continue;
+        if (choice.kind === 'reuse') {
+          const { document } = await callApi(getDocument, {
+            params: { workspaceId, documentId: choice.document.id },
+          });
+          track(document);
+          add({
+            variant: 'success',
+            title: 'Использован файл из каталога',
+            description: document.filename,
+          });
+          continue;
+        }
         await uploadMutation.mutateAsync({
           file,
           idempotencyKey: newIdempotencyKey(),
@@ -118,6 +134,7 @@ function WorkspaceDocuments({
   }
   return (
     <>
+      {match.dialog}
       <header className="animate-rise mb-8 flex flex-wrap items-end justify-between gap-5">
         <div>
           <h1 className="font-heading text-3xl font-bold tracking-tight sm:text-4xl">

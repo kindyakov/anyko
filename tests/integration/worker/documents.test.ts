@@ -246,6 +246,38 @@ test('recognition searches the workspace before paging and filters by verified f
   expect(pngPage.items.map(({ id }) => id)).toEqual([sameNamePng]);
 }, 15000);
 
+test('content matches include only live originals in the selected workspace', async () => {
+  const own = await workspace();
+  const other = await workspace();
+  const scope = memberScope(own);
+  const first = await upload(own);
+  const copy = await upload(own);
+  const deleted = await upload(own);
+  const foreign = await upload(other);
+  const different = await upload(
+    own,
+    crypto.randomUUID(),
+    new TextEncoder().encode('%PDF-1.7\n same filename, different content'),
+  );
+  expect(different.filename).toBe(first.filename);
+  await recognition.commands.remove(scope, brandDocumentId(deleted.id));
+  const checksum = Bun.CryptoHasher.hash('sha256', pdf, 'hex');
+  const page = await recognition.queries.list(scope, { limit: 1, checksum });
+  expect(page.items.map(({ id }) => id)).toEqual([copy.id]);
+  const second = await recognition.queries.list(scope, {
+    limit: 1,
+    checksum,
+    after: page.nextCursor ?? '',
+  });
+  expect(second.items.map(({ id }) => id)).toEqual([first.id]);
+  expect(second.nextCursor).toBeNull();
+  const otherPage = await recognition.queries.list(memberScope(other), {
+    limit: 20,
+    checksum,
+  });
+  expect(otherPage.items.map(({ id }) => id)).toEqual([foreign.id]);
+}, 20000);
+
 test('upload atomically persists metadata, run and outbox; foreign workspace cannot read it', async () => {
   const own = await workspace(),
     foreign = await workspace();

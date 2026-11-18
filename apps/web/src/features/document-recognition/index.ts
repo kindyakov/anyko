@@ -1,5 +1,6 @@
 export { invalidateDocumentCatalog, useRetryDocument } from './api/commands';
 export { CatalogSelection } from './ui/catalog/catalog-selection';
+export { useUploadMatchChoice } from './ui/catalog/use-upload-match-choice';
 export { SelectedCatalogFiles } from './ui/catalog/selected-catalog-files';
 export { unavailableCatalogFiles } from './model/catalog-selection';
 export {

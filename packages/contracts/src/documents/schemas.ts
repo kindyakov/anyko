@@ -25,7 +25,12 @@ export const documentSchema = z.object({
   readyRevision: z.number().int().positive().nullable().optional(),
 });
 export const documentResponseSchema = z.object({ document: documentSchema });
+export const sourceChecksumSchema = z
+  .string()
+  .regex(/^[a-f0-9]{64}$/)
+  .describe('SHA-256 оригинала в hex');
 export const documentsResponseSchema = cursorResponseSchema(documentSchema, {
+  checksum: sourceChecksumSchema.optional(),
   pendingDeletions: z.array(
     z.object({
       id: z.string().min(1),

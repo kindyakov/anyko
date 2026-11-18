@@ -66,8 +66,10 @@ test('each file of an upload gets its own idempotency key, and a refused file do
         new File(['%PDF'], 'scheme.spl7'),
         new File(['%PDF'], 'passport.pdf', { type: 'application/pdf' }),
       ],
-      (file, idempotencyKey) =>
-        result.current.upload.mutateAsync({ file, idempotencyKey }),
+      async (file, idempotencyKey) => {
+        await result.current.upload.mutateAsync({ file, idempotencyKey });
+        return true;
+      },
       result.current.setUploads,
     );
     expect(accepted).toBe(1);

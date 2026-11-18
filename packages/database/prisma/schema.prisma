@@ -101,6 +101,7 @@ model SourceDocument {
  @@unique([workspaceId,id])
  @@unique([workspaceId,requestKey])
  @@index([workspaceId,createdAt])
+ @@index([workspaceId,sourceChecksum,deletedAt,createdAt,id],map:"SourceDocument_workspace_checksum_page_idx")
  @@index([deletedAt,purgedAt])
 }
 

@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { expect, type Page, test } from '@playwright/test';
@@ -349,6 +350,92 @@ test('ready catalog files can be used when creating and extending a work', async
   await creation.getByLabel('Название работы').fill('E2E из распознавания');
   await creation.getByRole('button', { name: 'Создать и открыть' }).click();
   await expect(sources.getByText('Каталог E2E 32.pdf')).toBeVisible();
+});
+
+test('uploading matching content offers reuse or a separate source in recognition and works', async ({
+  page,
+}) => {
+  await page.goto('/sign-in');
+  await signIn(page, 'OWNER');
+  await page.getByRole('link', { name: /Распознавание/ }).click();
+  const original = 'E2E 46 исходник.pdf';
+  const buffer = Buffer.concat([
+    await readFile(resolve('tests/e2e/fixtures/source.pdf')),
+    Buffer.from('\n% match-46'),
+  ]);
+  const file = (name: string) => ({
+    name,
+    buffer,
+    mimeType: 'application/pdf',
+  });
+  const input = page.getByLabel('Файлы для распознавания');
+  const wasUploaded = (suffix: string) =>
+    page.waitForResponse(
+      (response) =>
+        response.url().endsWith(suffix) &&
+        response.request().method() === 'POST' &&
+        response.status() === 202,
+    );
+  const recognitionCreation = wasUploaded('/recognitions');
+  await input.setInputFiles(file(original));
+  const first = (await (await recognitionCreation).json()) as {
+    document: { id: string };
+  };
+  const catalog = page.getByRole('list', { name: 'Загруженные файлы' });
+  const match = page.getByRole('dialog', { name: 'Такой файл уже есть' });
+  await expect(catalog.getByText(original)).toBeVisible();
+  await input.setInputFiles(file('E2E 46 другое имя.pdf'));
+  await expect(match.getByText(original)).toBeVisible();
+  await match
+    .getByRole('button', { name: 'Использовать существующий' })
+    .click();
+  await expect(page.getByText('Использован файл из каталога')).toBeVisible();
+  await expect(catalog.getByText('E2E 46 другое имя.pdf')).toHaveCount(0);
+
+  const copy = 'E2E 46 копия из каталога.pdf';
+  await input.setInputFiles(file(copy));
+  const recognitionCopy = wasUploaded('/recognitions');
+  await match.getByRole('button', { name: 'Загрузить отдельно' }).click();
+  const separate = (await (await recognitionCopy).json()) as {
+    document: { id: string };
+  };
+  expect(separate.document.id).not.toBe(first.document.id);
+  await expect(catalog.getByText(copy)).toBeVisible();
+
+  await page.getByRole('link', { name: /Работы/ }).click();
+  await page.getByRole('button', { name: 'Новая работа' }).click();
+  const creation = page.getByRole('dialog', { name: 'Новая работа' });
+  await creation.getByLabel('Название работы').fill('E2E 46 переиспользование');
+  await creation.getByRole('button', { name: 'Создать и открыть' }).click();
+  const workInput = page.getByLabel('Файлы клиента');
+  await workInput.setInputFiles(file('E2E 46 не загружен.pdf'));
+  await match
+    .getByRole('radio', { name: new RegExp(original.replace('.', '\\.')) })
+    .check();
+  const attached = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/attach') && response.status() === 200,
+  );
+  await match
+    .getByRole('button', { name: 'Использовать существующий' })
+    .click();
+  expect((await attached).request().postDataJSON()).toEqual({
+    documentIds: [first.document.id],
+  });
+  const sources = page.getByRole('region', { name: /Файлы работы/ });
+  await expect(sources.getByText(original)).toBeVisible();
+
+  const workCopy = 'E2E 46 копия из работы.pdf';
+  await workInput.setInputFiles(file(workCopy));
+  await expect(match.getByText('Уже в работе')).toBeVisible();
+  const workCreation = wasUploaded('/documents');
+  await match.getByRole('button', { name: 'Загрузить отдельно' }).click();
+  const uploaded = (await (await workCreation).json()) as {
+    document: { id: string };
+  };
+  expect(uploaded.document.id).not.toBe(first.document.id);
+  expect(uploaded.document.id).not.toBe(separate.document.id);
+  await expect(sources.getByText(workCopy)).toBeVisible();
 });
 
 test('owner switches areas without seeing the other area works; a member cannot open a foreign area', async ({

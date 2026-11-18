@@ -167,7 +167,13 @@ export function createDocumentReadModel(
     },
     async list(
       workspaceId: string,
-      { limit, after, q, formats }: Parameters<DocumentStore['list']>[1],
+      {
+        limit,
+        after,
+        q,
+        formats,
+        checksum,
+      }: Parameters<DocumentStore['list']>[1],
     ) {
       const namePattern = q ? `%${q.replace(/[\\%_]/g, '\\$&')}%` : null;
       // Формат в ключе хранения нормализован после проверки байтов при загрузке.
@@ -185,6 +191,7 @@ export function createDocumentReadModel(
           SELECT id, filename, "sourceKey", "createdAt"
           FROM "SourceDocument"
           WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
+            AND (${checksum ?? null}::text IS NULL OR "sourceChecksum" = ${checksum ?? null})
             AND (${namePattern}::text IS NULL OR
               casefold(filename COLLATE pg_catalog.pg_unicode_fast)
                 LIKE casefold(${namePattern}::text COLLATE pg_catalog.pg_unicode_fast))
