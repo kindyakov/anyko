@@ -17,6 +17,9 @@ const manrope = localFont({
 export const metadata = {
   title: 'Anyko — рабочая область',
   description: 'Документы, сведения и источники в одной рабочей области.',
+  icons: {
+    icon: { url: '/brand/anyko-mark-source.svg', type: 'image/svg+xml' },
+  },
 };
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
