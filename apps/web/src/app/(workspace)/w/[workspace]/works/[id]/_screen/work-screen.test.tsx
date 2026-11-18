@@ -261,22 +261,55 @@ test.each(['run', 'step'] as const)(
     );
     const user = userEvent.setup();
     renderWork();
-
+    await user.click(await screen.findByRole('tab', { name: /Извлечение/ }));
     expect(await screen.findByText(connectionRevoked)).toBeTruthy();
-    await user.click(screen.getByRole('tab', { name: /Извлечение/ }));
-    const pipeline = within(screen.getByRole('tabpanel'));
-    expect(await pipeline.findByText(connectionRevoked)).toBeTruthy();
   },
 );
 
+test('server availability disables analysis and shows the revoked connection even without a run', async () => {
+  const blocked = {
+    ...workView,
+    documents: [source],
+    availability: {
+      ...workView.availability,
+      analyze: { available: false, reason: 'CONNECTION_REVOKED' },
+    },
+  } satisfies WorkView;
+  const requests = serveApi(() => json(200, blocked));
+  const user = userEvent.setup();
+  renderWork();
+
+  expect(await screen.findByText(connectionRevoked)).toBeTruthy();
+  const files = within(await screen.findByRole('tabpanel'));
+  const analyze = files.getByRole('button', { name: 'Извлечь сведения' });
+  expect(analyze).toHaveProperty('disabled', true);
+  await user.click(analyze);
+  expect(requests.some(({ method }) => method === 'POST')).toBe(false);
+  expect(
+    (await files.findByLabelText<HTMLInputElement>('Файлы клиента')).disabled,
+  ).toBe(false);
+});
+
 test('an analysis command rejected because the connection was revoked shows guidance', async () => {
-  const requests = serveApi(({ method }) =>
-    method === 'POST'
-      ? json(409, {
-          error: { code: 'CONNECTION_REVOKED', requestId: 'analysis' },
-        })
-      : json(200, { ...workView, documents: [source] }),
-  );
+  let revoked = false;
+  const requests = serveApi(({ method }) => {
+    if (method === 'POST') {
+      revoked = true;
+      return json(409, {
+        error: { code: 'CONNECTION_REVOKED', requestId: 'analysis' },
+      });
+    }
+    return json(200, {
+      ...workView,
+      documents: [source],
+      availability: {
+        ...workView.availability,
+        analyze: revoked
+          ? { available: false, reason: 'CONNECTION_REVOKED' }
+          : { available: true },
+      },
+    });
+  });
   const user = userEvent.setup();
   renderWork();
   const files = within(await screen.findByRole('tabpanel'));
@@ -286,8 +319,222 @@ test('an analysis command rejected because the connection was revoked shows guid
 
   const message = within(await screen.findByRole('alert'));
   expect(message.getByText(connectionRevoked)).toBeTruthy();
-  expect(requests.at(-1)).toMatchObject({
+  expect(requests.find(({ method }) => method === 'POST')).toMatchObject({
     method: 'POST',
     url: `${workAddress}/analyze`,
   });
+  await waitFor(() => {
+    expect(
+      files.getByRole('button', { name: 'Извлечь сведения' }),
+    ).toHaveProperty('disabled', true);
+  });
+});
+
+test('review shows the saved discrepancy list through an unsaved edit and refreshes it after saving', async () => {
+  const view: WorkView = {
+    ...workView,
+    package: {
+      ...workView.package,
+      fields: [
+        {
+          key: 'firstName',
+          label: 'Имя',
+          multiline: false,
+          kind: 'text',
+          limits: {},
+          columns: [],
+        },
+        {
+          key: 'lastName',
+          label: 'Фамилия',
+          multiline: false,
+          kind: 'text',
+          limits: {},
+          columns: [],
+        },
+      ],
+    },
+    documents: [source],
+    runs: [
+      {
+        id: 'dd1617a1-3bf9-4f68-8b37-bcf42947ad26',
+        kind: 'analysis',
+        status: 'succeeded',
+        errorCode: null,
+        createdAt: source.createdAt,
+        steps: [],
+      },
+    ],
+    session: {
+      id: '62210c15-ee45-43f1-bc02-95be7dd3c023',
+      revision: 1,
+      updatedAt: source.createdAt,
+      context: {
+        version: 1,
+        workRevision: 1,
+        inputRevision: 1,
+        settingsRevision: 1,
+        promptVersion: 'work-context-v1',
+        summary: 'Сводка по документам',
+        documents: [],
+        missingFields: [],
+        conflictFields: ['lastName'],
+      },
+    },
+    facts: {
+      ...workView.facts,
+      values: { firstName: 'Мария', lastName: 'Петрова' },
+      manual: ['firstName'],
+      candidates: [
+        {
+          field: 'firstName',
+          value: 'Анна',
+          selected: false,
+          evidence: [{ documentId: source.id, imagePath: null, quote: 'Анна' }],
+        },
+        {
+          field: 'lastName',
+          value: 'Петрова',
+          selected: true,
+          evidence: [
+            { documentId: source.id, imagePath: null, quote: 'Петрова' },
+          ],
+        },
+      ],
+      discrepancyFields: ['firstName'],
+    },
+  };
+  let saved = view;
+  const requests = serveApi(({ method }) => {
+    if (method === 'PATCH')
+      saved = {
+        ...view,
+        work: { ...view.work, revision: 2 },
+        facts: {
+          ...view.facts,
+          values: { ...view.facts.values, firstName: 'Анна' },
+          candidates: view.facts.candidates.map((candidate) => ({
+            ...candidate,
+            selected: true,
+          })),
+          discrepancyFields: [],
+        },
+      };
+    return json(200, saved);
+  });
+  const user = userEvent.setup();
+  renderWork();
+
+  expect(
+    await screen.findByText('Проверьте сведения и разрешите расхождения'),
+  ).toBeTruthy();
+  expect(screen.getByText(/^Найдено полей: 2, расхождений: 1\./)).toBeTruthy();
+  expect(screen.getByText('Требуют проверки')).toBeTruthy();
+  const review = within(
+    screen.getByRole('region', { name: 'Найденные сведения' }),
+  );
+  await user.click(review.getByRole('button', { name: 'Расхождения · 1' }));
+  expect(review.getByRole('heading', { name: 'Имя' })).toBeTruthy();
+  expect(review.queryByRole('heading', { name: 'Фамилия' })).toBeNull();
+  await user.click(review.getByRole('button', { name: 'Применить' }));
+  expect(review.getByRole('button', { name: 'Расхождения · 1' })).toBeTruthy();
+  expect(review.getByText('Расхождение')).toBeTruthy();
+  expect(review.getByText('Выбрано')).toBeTruthy();
+  expect(review.queryByRole('button', { name: 'Применить' })).toBeNull();
+
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+  expect(
+    await review.findByRole('button', { name: 'Расхождения · 0' }),
+  ).toBeTruthy();
+  expect(
+    review.getByText('В сохранённых сведениях нет расхождений.'),
+  ).toBeTruthy();
+  expect(screen.getByText('Проверьте найденные сведения')).toBeTruthy();
+  expect(requests.find(({ method }) => method === 'PATCH')?.body).toMatchObject(
+    {
+      revision: 1,
+      values: { firstName: 'Анна', lastName: 'Петрова' },
+    },
+  );
+});
+
+test('saved candidate marks keep a merged field out of pending review and hide its apply actions', async () => {
+  const first = { name: 'Банк А', basis: 'Договор А' };
+  const second = { name: 'Банк Б', basis: 'Договор Б' };
+  const view: WorkView = {
+    ...workView,
+    documents: [source],
+    runs: [
+      {
+        id: 'dd1617a1-3bf9-4f68-8b37-bcf42947ad26',
+        kind: 'analysis',
+        status: 'succeeded',
+        errorCode: null,
+        createdAt: source.createdAt,
+        steps: [],
+      },
+    ],
+    package: {
+      ...workView.package,
+      fields: [
+        {
+          key: 'debts',
+          label: 'Обязательства',
+          kind: 'rows',
+          columns: [],
+          limits: {},
+          multiline: false,
+        },
+        {
+          key: 'firstName',
+          label: 'Имя',
+          kind: 'text',
+          columns: [],
+          limits: {},
+          multiline: false,
+        },
+      ],
+    },
+    facts: {
+      ...workView.facts,
+      values: { debts: [first, second], firstName: 'Мария' },
+      candidates: [
+        {
+          field: 'debts',
+          value: [first],
+          selected: true,
+          evidence: [
+            { documentId: source.id, imagePath: null, quote: first.name },
+          ],
+        },
+        {
+          field: 'debts',
+          value: [second],
+          selected: true,
+          evidence: [
+            { documentId: source.id, imagePath: null, quote: second.name },
+          ],
+        },
+        {
+          field: 'firstName',
+          value: 'Анна',
+          selected: false,
+          evidence: [{ documentId: source.id, imagePath: null, quote: 'Анна' }],
+        },
+      ],
+    },
+  };
+  serveApi(() => json(200, view));
+  const user = userEvent.setup();
+  renderWork();
+
+  const review = within(
+    await screen.findByRole('region', { name: 'Найденные сведения' }),
+  );
+  expect(review.getAllByText('Выбрано')).toHaveLength(2);
+  expect(review.getAllByRole('button', { name: 'Применить' })).toHaveLength(1);
+  await user.click(review.getByRole('button', { name: 'Не применены · 1' }));
+  expect(review.queryByRole('heading', { name: 'Обязательства' })).toBeNull();
+  expect(review.getByRole('heading', { name: 'Имя' })).toBeTruthy();
+  expect(review.queryByText('Выбрано')).toBeNull();
 });

@@ -33,6 +33,7 @@ import {
   removeWorkDocument,
   streamWorkEvents,
   uploadWorkDocument,
+  type WorkView,
 } from '@anyko/contracts/works';
 
 import type { Route } from '../../route';
@@ -43,6 +44,7 @@ import {
   imageIndex,
   sourceFileHeaders,
 } from '../documents/files';
+import { presentDocumentResult } from '../documents/result';
 
 import { workEventStream } from './events';
 
@@ -59,6 +61,15 @@ export interface WorkHttpOptions
 
 const docxType =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+function presentWork({
+  availability,
+  discrepancyFields,
+  facts,
+  ...work
+}: Awaited<ReturnType<WorkViews['get']>>): WorkView {
+  return { ...work, availability, facts: { ...facts, discrepancyFields } };
+}
 
 export function worksRoutes(
   route: Route,
@@ -82,11 +93,20 @@ export function worksRoutes(
   route(app, getWorkDeletion, ({ scope, params }) =>
     deletion.status(scope, brandWorkId(params.workId)),
   );
-  route(app, createWork, async ({ scope, body }) =>
-    views.get(scope, await intake.createWork(scope, body)),
-  );
-  route(app, getWork, ({ scope, params }) =>
-    views.get(scope, brandWorkId(params.workId)),
+  route(app, createWork, async ({ scope, body }) => {
+    const workId = await intake.createWork(scope, body);
+    const view = await views.get(scope, workId);
+    return {
+      body: presentWork(view),
+      resource: {
+        kind: 'work' as const,
+        id: workId,
+        documentIds: view.documents.map(({ id }) => id),
+      },
+    };
+  });
+  route(app, getWork, async ({ scope, params }) =>
+    presentWork(await views.get(scope, brandWorkId(params.workId))),
   );
   route(
     app,
@@ -102,15 +122,19 @@ export function worksRoutes(
   route(
     app,
     uploadWorkDocument,
-    async ({ scope, params, headers, body, requestId }) => ({
-      document: await intake.uploadDocument(scope, {
+    async ({ scope, params, headers, body, requestId }) => {
+      const document = await intake.uploadDocument(scope, {
         workId: brandWorkId(params.workId),
         filename: body.file.name,
         bytes: new Uint8Array(await body.file.arrayBuffer()),
         correlationId: requestId,
         requestKey: headers['idempotency-key'],
-      }),
-    }),
+      });
+      return {
+        body: { document },
+        resource: { kind: 'document' as const, id: document.id },
+      };
+    },
   );
   route(app, getWorkDocumentSource, async ({ scope, params }) => {
     const source = await views.source(
@@ -134,21 +158,14 @@ export function worksRoutes(
       brandDocumentId(params.documentId),
       query.revision,
     );
-    return {
-      markdown: result.markdown,
-      processorVersion: result.processorVersion,
-      // Изображения адресуются через работу: ссылка ведёт на изображение исходного документа работы.
-      images: result.images.map((image) => ({
-        path: image.path,
-        url:
-          link(getWorkDocumentImage, {
-            workspaceId: scope.workspaceId,
-            workId: params.workId,
-            documentId: params.documentId,
-            index: String(image.index),
-          }) + `?revision=${String(result.revision)}`,
-      })),
-    };
+    return presentDocumentResult(result, (index) =>
+      link(getWorkDocumentImage, {
+        workspaceId: scope.workspaceId,
+        workId: params.workId,
+        documentId: params.documentId,
+        index,
+      }),
+    );
   });
   route(app, getWorkDocumentImage, async ({ scope, params, query }) => {
     const image = await views.image(
@@ -165,7 +182,7 @@ export function worksRoutes(
       workId: brandWorkId(params.workId),
       correlationId: requestId,
     });
-    return { status: 'queued' as const };
+    return { body: { status: 'queued' as const }, resource: null };
   });
   route(app, removeWorkDocument, async ({ scope, params }) => {
     await intake.removeDocument(scope, {
@@ -185,12 +202,12 @@ export function worksRoutes(
   route(app, editWork, async ({ scope, params, body }) => {
     const workId = brandWorkId(params.workId);
     await review.editValues(scope, { ...body, workId });
-    return views.get(scope, workId);
+    return presentWork(await views.get(scope, workId));
   });
   route(app, confirmWork, async ({ scope, params, body }) => {
     const workId = brandWorkId(params.workId);
     await review.confirmFacts(scope, { ...body, workId });
-    return views.get(scope, workId);
+    return presentWork(await views.get(scope, workId));
   });
   route(app, generateWork, async ({ scope, params, body, requestId }) => {
     await generation.startGeneration(scope, {
@@ -198,7 +215,7 @@ export function worksRoutes(
       workId: brandWorkId(params.workId),
       correlationId: requestId,
     });
-    return { status: 'queued' as const };
+    return { body: { status: 'queued' as const }, resource: null };
   });
   route(app, downloadGeneratedFile, async ({ scope, params }) => {
     const result = await generation.downloadResult(scope, {

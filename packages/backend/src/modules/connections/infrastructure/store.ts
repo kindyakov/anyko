@@ -49,8 +49,10 @@ export function createConnectionsStore(
   };
   return {
     lock,
-    async current(workspaceId) {
+    async current(workspaceId, rejectRevoked = false) {
       const row = await latest(workspaceId);
+      if (rejectRevoked && row?.revokedAt)
+        throw new ConnectionErrors.Failure('CONNECTION_REVOKED');
       return row && !row.revokedAt
         ? {
             revision: row.revision,

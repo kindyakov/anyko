@@ -1,7 +1,6 @@
-import { WorkError } from '../../modules/works';
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
-import { requireIdle, requireWork, workLockKey } from '../work-guards';
+import { changeWork } from '../change-work';
 
 import {
   requireCatalogSelection,
@@ -22,30 +21,32 @@ export const attachDocuments =
   ) => {
     requireCatalogSelection(scope);
     const { workspaceId } = scope;
-    await deps.locks.run(workLockKey(workspaceId, workId), () =>
-      deps.uow.run(async (tx) => {
-        const work = deps.works.in(tx);
-        await requireWork(work.queries, scope, workId);
-        const previous = await work.queries.sources(scope, workId);
-        const existing = new Set(
-          previous.documents
-            .filter(({ deleted }) => !deleted)
-            .map(({ id }) => id),
-        );
+    await changeWork(
+      deps,
+      scope,
+      {
+        workId,
+        command: 'attach',
+        event: 'documents.changed',
+        sourceChange: true,
+      },
+      ({ documents }) => {
+        const existing = new Set(documents.map(({ id }) => id));
         if (documentIds.every((id) => existing.has(id))) return;
-        if (previous.cleanupPending) throw new WorkError('CLEANUP_PENDING');
-        await requireIdle(deps.processing.in(tx).queries, scope, workId);
-        const selected = await resolveCatalogSelection(
-          deps,
-          tx,
-          workspaceId,
-          documentIds,
-          existing,
-        );
-        await work.commands.attachDocuments(scope, {
-          workId,
-          documents: selected,
-        });
-      }),
+        return async (tx, lockRevision) => {
+          const selected = await resolveCatalogSelection(
+            deps,
+            tx,
+            workspaceId,
+            documentIds,
+            existing,
+          );
+          await lockRevision();
+          await deps.works
+            .in(tx)
+            .commands.attachDocuments(scope, { workId, documents: selected });
+          return { confirmed: false };
+        };
+      },
     );
   };

@@ -13,7 +13,7 @@ import {
   type Upload,
   uploadWorkFiles,
   useUploadWorkDocument,
-} from './commands';
+} from './source-commands';
 
 function wrapperFor(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {

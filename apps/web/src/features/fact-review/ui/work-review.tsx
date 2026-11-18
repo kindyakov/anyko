@@ -11,7 +11,6 @@ import {
   reviewFields,
   type ReviewFilter,
 } from '@/features/fact-review/model/review';
-import { conflictingFields } from '@/features/works';
 
 import type { FactsForm } from './facts-form';
 import { PackagePreview } from './package-preview';
@@ -25,25 +24,22 @@ export function WorkReview({
   view,
   facts,
   busy,
+  analyzeDisabled,
   onOpen,
   onExtract,
 }: {
   view: WorkView;
   facts: FactsForm;
   busy: boolean;
+  analyzeDisabled: boolean;
   onOpen: (document: Document, page?: number) => void;
   onExtract: () => void;
 }) {
   const { values } = facts;
   const [filter, setFilter] = useState<ReviewFilter>('all');
   const [focus, setFocus] = useState<{ key: FieldKey; nonce: number }>();
-  const conflicts = conflictingFields(view);
-  const { fields, applied, visible, quick, total, complete } = reviewFields(
-    view,
-    values,
-    conflicts,
-    filter,
-  );
+  const { fields, applied, visible, quick, total, complete, conflicts } =
+    reviewFields(view, values, filter);
   // Каждый переход получает новый nonce: повторный переход к тому же полю снова его подсвечивает.
   const jump = (key: FieldKey) => {
     setFocus((previous) => ({ key, nonce: (previous?.nonce ?? 0) + 1 }));
@@ -184,6 +180,7 @@ export function WorkReview({
                 variant="secondary"
                 className="mt-6"
                 loading={busy}
+                disabled={analyzeDisabled}
                 onClick={onExtract}
               >
                 <FileSearch size={16} />
@@ -194,7 +191,7 @@ export function WorkReview({
         ) : !visible.length ? (
           <p className="glass text-muted rounded-2xl border border-dashed border-white/10 px-6 py-8 text-center text-sm">
             {filter === 'conflicts'
-              ? 'Расхождений нет — все файлы согласны между собой.'
+              ? 'В сохранённых сведениях нет расхождений.'
               : 'Все найденные значения применены.'}
           </p>
         ) : (

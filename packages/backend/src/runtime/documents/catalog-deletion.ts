@@ -5,7 +5,11 @@ import { record } from '../../modules/audit';
 import type { DocumentDeletionConfirmation } from '../../modules/documents';
 import { createDocumentCommands } from '../../modules/documents/infrastructure/commands';
 import { createDocumentReadModel } from '../../modules/documents/infrastructure/read-model';
-import { createFactsStore } from '../../modules/facts/infrastructure/store';
+import {
+  createFactsStore,
+  factsStoreFor,
+} from '../../modules/facts/infrastructure/store';
+import { createFactsModule } from '../../modules/facts/module';
 import { createSourceWorkProcessing } from '../../modules/processing/infrastructure/catalog-sources';
 import { createProcessingCommands } from '../../modules/processing/infrastructure/commands';
 import { createCatalogWorkLinks } from '../../modules/works/infrastructure/catalog-sources';
@@ -88,7 +92,10 @@ export function requestCatalogDeletion(
       links.unlink(workspaceId, documentId, workIds),
     eraseSteps: (workspaceId, documentId, workIds) =>
       processing.eraseSteps(workspaceId, documentId, workIds),
-    facts: createFactsStore(tx),
+    facts: createFactsModule({
+      store: createFactsStore(tx),
+      storeFor: factsStoreFor,
+    }).internal,
     works: createWorkStore(tx),
     eraseSession: (workspaceId, workId) => sessions.erase(workspaceId, workId),
     markDeleted: (workspaceId, documentId) =>

@@ -56,21 +56,17 @@ import {
 } from '../modules/idempotency';
 import { createIdempotencyMaintenanceStore } from '../modules/idempotency/infrastructure/maintenance-store';
 import {
+  claimDocumentAttempt,
   createJobProcessing,
-  createProcessingService,
 } from '../modules/processing';
 import { createProcessingIo } from '../modules/processing/infrastructure/io';
 import { createJobRunReader } from '../modules/processing/infrastructure/job-store';
 import {
+  type NotifyDocumentRun,
   recoverRuns,
   runDelivery,
 } from '../modules/processing/infrastructure/run-engine';
-import { createProcessingStore } from '../modules/processing/infrastructure/store';
-import {
-  createWorkProcessingStore,
-  workProcessingStoreFor,
-} from '../modules/processing/infrastructure/work-store';
-import { createProcessingModule } from '../modules/processing/module';
+import { createDocumentProcessingStore } from '../modules/processing/infrastructure/store';
 import { hasPackage } from '../modules/templates';
 import type { WorksModule } from '../modules/works';
 import {
@@ -115,6 +111,7 @@ import {
   redactDeletedWorkResponses,
   redactWorkUploadResponses,
 } from './works/idempotency';
+import { createWorkProcessing } from './works/processing';
 
 /**
  * Test seams: each one replaces an external client. Production passes nothing, so the
@@ -244,11 +241,7 @@ export function createBackend(
     storeFor: generationStoreFor,
     newId: uuidV7,
   });
-  const processingFacade = createProcessingModule({
-    store: createWorkProcessingStore(db),
-    storeFor: workProcessingStoreFor,
-    newId: uuidV7,
-  });
+  const processingFacade = createWorkProcessing(db, uow);
 
   let agentsDelegate: DocumentAgents | undefined = dependencies.agents;
   const agents = () => (agentsDelegate ??= createDocumentAgents({ pool }));
@@ -385,98 +378,77 @@ export function createBackend(
       baseUrl: worker.mineru.baseUrl,
       timeoutMs: worker.mineru.timeoutMs,
     });
-  const notifyWork = async (
-    handle: object,
-    workspaceId: string,
-    documentId: string,
-    readyRevision?: number,
+  const notifyWork: NotifyDocumentRun = async (
+    handle,
+    workspaceId,
+    documentId,
+    revision,
   ) => {
     const tx = openTransaction(handle);
-    const work = works.in(tx).internal;
-    const targets = await work.worksForDocument(workspaceId, documentId);
-    if (!targets.length) return;
-    if (
-      readyRevision !== undefined &&
+    const ready =
+      revision !== undefined &&
       (await createReadyResults(
         transactionHandle<Pick<Database, '$queryRaw'>>(tx),
-      )(workspaceId, documentId, readyRevision))
-    )
-      await work.pinPending(workspaceId, documentId, readyRevision);
-    for (const workId of targets)
-      await work.event(workspaceId, workId, 'documents.changed');
+      )(workspaceId, documentId, revision));
+    await works
+      .in(tx)
+      .internal.notifyDocumentChanged(
+        workspaceId,
+        documentId,
+        ready ? revision : undefined,
+      );
   };
-  const processing = createProcessingService(
-    createProcessingStore(db, notifyWork),
-    {
-      clock: systemClock,
-      newId: uuidV7,
-    },
-  );
+  const processing = createDocumentProcessingStore(db, notifyWork);
   const deleteDocuments = createDocumentDeletionWorkflow({
     ...documentDeletions,
     resultKeys: processing.resultKeys,
     attemptIds: processing.attemptIds,
-    eraseAttempt: (id) => parser.eraseAttempt(id),
+    eraseAttempt: parser.eraseAttempt.bind(parser),
     finish: (workspaceId, documentId, keys) =>
       finishDocumentDeletion(db, workspaceId, documentId, keys),
     locks,
     storage,
     logger,
   });
-  const documentDeps = {
-    processing,
-    io,
-    locks,
-    storage,
-    logger,
-    execute: createDocumentOcrWorkflow({
-      processing,
-      artifacts: createArtifactRegistry(db),
-      storage,
-      parser,
-      logger,
-      leaseMs: worker.mineru.timeoutMs + 60000,
-    }),
-    deleteDocuments,
-    cleanupSources: createSourceCleanup(db, storage),
-  };
+  const ocrTimeoutMs = worker.mineru.timeoutMs + 60000;
   const jobProcessing = createJobProcessing(createJobRunReader(db));
-  const executeWork = createWorkExecution(work);
-  const cleanupWork = createWorkCleanup(work, {
-    clock: systemClock,
-    sourcesDeleted: (workspaceId, ids) =>
-      documentDeletions.completed(workspaceId, ids),
-  });
   const registry = createJobRegistry({
     processing: jobProcessing,
-    ocr: async (scope, signal) => {
-      const documentId = await processing.documentId(
-        scope.workspaceId,
-        scope.runId,
-      );
-      if (documentId)
-        await locks.run(
-          `document:${scope.workspaceId}:${documentId}`,
-          (lockSignal) =>
-            documentDeps.io.run(
-              { kind: 'document', workspaceId: scope.workspaceId, documentId },
-              () =>
-                documentDeps.execute(
-                  scope,
-                  AbortSignal.any([signal, lockSignal]),
-                ),
-            ),
-        );
+    ocr: {
+      processing,
+      io,
+      locks,
+      timeoutMs: ocrTimeoutMs,
+      recognize: createDocumentOcrWorkflow({
+        processing,
+        claimAttempt: claimDocumentAttempt({
+          store: processing,
+          uow,
+          clock: systemClock,
+          newId: uuidV7,
+          leaseMs: ocrTimeoutMs,
+        }),
+        artifacts: createArtifactRegistry(db),
+        storage,
+        parser,
+        logger,
+      }),
     },
-    execute: (scope, signal, connection) =>
-      executeWork(scope.workspaceId, scope.runId, signal, connection),
-    maintain: cleanupWork,
-    documents: documentDeps,
+    execute: createWorkExecution(work),
+    maintain: createWorkCleanup(work, {
+      clock: systemClock,
+      sourcesDeleted: documentDeletions.completed,
+    }),
+    documents: {
+      processing,
+      storage,
+      deleteDocuments,
+      cleanupSources: createSourceCleanup(db, storage),
+    },
     idempotency: createIdempotencyMaintenance({
       store: createIdempotencyMaintenanceStore(db),
       clock: systemClock,
     }),
-    ocrTimeoutMs: worker.mineru.timeoutMs + 60000,
   });
   const delivery = runDelivery(db);
   return {

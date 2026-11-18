@@ -5,23 +5,32 @@ import type {
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 
+import { sameFieldValue } from './field-value';
+
 export type ReviewFilter = 'all' | 'conflicts' | 'pending';
 export type ReviewField = {
   field: WorkView['package']['fields'][number];
   candidates: WorkView['facts']['candidates'];
 };
 
-export const same = (a: FieldValue | undefined, b: FieldValue) =>
-  JSON.stringify(a ?? null) === JSON.stringify(b);
 const filled = (value: FieldValue | undefined) =>
   Array.isArray(value) ? value.length > 0 : !!value;
+
+export function candidateSelection(
+  value: FieldValue | undefined,
+  saved: FieldValue | undefined,
+) {
+  const unchanged = sameFieldValue(value, saved);
+  return (candidate: ReviewField['candidates'][number]) =>
+    unchanged ? candidate.selected : sameFieldValue(value, candidate.value);
+}
 
 export function reviewFields(
   view: WorkView,
   values: FieldValues,
-  conflicts: Set<string>,
   filter: ReviewFilter,
 ) {
+  const conflicts = new Set(view.facts.discrepancyFields);
   const fields = view.package.fields
     .map((field) => ({
       field,
@@ -30,11 +39,12 @@ export function reviewFields(
       ),
     }))
     .filter((item) => item.candidates.length);
-  const applied = (key: FieldKey) =>
-    fields
-      .find((item) => item.field.key === key)
-      ?.candidates.some((candidate) => same(values[key], candidate.value)) ??
-    false;
+  const appliedFields = new Set(
+    view.facts.candidates
+      .filter(({ selected }) => selected)
+      .map(({ field }) => field),
+  );
+  const applied = (key: FieldKey) => appliedFields.has(key);
   const visible = fields.filter(({ field }) =>
     filter === 'conflicts'
       ? conflicts.has(field.key)
@@ -45,6 +55,7 @@ export function reviewFields(
   const quick = fields.filter(
     ({ field, candidates }) =>
       !conflicts.has(field.key) &&
+      !applied(field.key) &&
       !filled(values[field.key]) &&
       candidates[0] !== undefined,
   );
@@ -52,5 +63,5 @@ export function reviewFields(
   const complete = view.package.fields.filter((field) =>
     filled(values[field.key]),
   ).length;
-  return { fields, applied, visible, quick, total, complete };
+  return { fields, applied, visible, quick, total, complete, conflicts };
 }

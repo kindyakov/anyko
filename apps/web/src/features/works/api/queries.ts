@@ -1,4 +1,8 @@
-import { queryOptions, skipToken } from '@tanstack/react-query';
+import {
+  type QueryClient,
+  queryOptions,
+  skipToken,
+} from '@tanstack/react-query';
 
 import { listDocumentPackages } from '@anyko/contracts/catalog';
 import {
@@ -13,6 +17,13 @@ import {
 import { callApi } from '@/lib/api/call';
 
 import { documentPackageKeys, workKeys } from './keys';
+
+export function invalidateWorkspaceWorks(
+  client: QueryClient,
+  workspaceId: string,
+) {
+  return client.invalidateQueries({ queryKey: workKeys.all(workspaceId) });
+}
 
 export function worksQueryOptions(
   workspaceId: string,

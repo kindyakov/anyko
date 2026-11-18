@@ -15,7 +15,7 @@ export function EditConflicts({
   busy: boolean;
 }) {
   const { values } = facts;
-  return facts.conflicts.length > 0 ? (
+  return facts.editConflicts.length > 0 ? (
     <section
       aria-labelledby="conflicts-title"
       className="animate-rise rounded-2xl border border-amber-400/25 bg-amber-400/[0.03] p-4 sm:p-5"
@@ -31,7 +31,7 @@ export function EditConflicts({
         нельзя.
       </p>
       <ul className="mt-4 grid gap-3">
-        {facts.conflicts.map((key) => (
+        {facts.editConflicts.map((key) => (
           <li
             key={key}
             className="grid gap-3 rounded-xl border border-white/[0.07] bg-black/25 p-3.5 sm:grid-cols-2"

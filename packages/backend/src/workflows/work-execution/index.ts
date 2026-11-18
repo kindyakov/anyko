@@ -1,5 +1,6 @@
 import { LlmError } from '@anyko/llm';
 
+import type { ExecutionScope } from '../../modules/processing';
 import { isAppError } from '../../platform/errors';
 import type { RunPolicy } from '../../platform/jobs';
 import { createWorkAnalysis } from '../work-analysis';
@@ -12,16 +13,16 @@ export function createWorkExecution(deps: WorkDependencies) {
   const generation = createWorkGenerationRun(deps);
 
   return async (
-    workspaceId: string,
-    runId: string,
+    { workspaceId, runId }: ExecutionScope,
     signal: AbortSignal,
     connection: RunPolicy['connection'],
   ) => {
     await deps.locks.run(
       `work-run:${workspaceId}:${runId}`,
       async (lockSignal) => {
-        const run = await deps.processing.internal.claim(workspaceId, runId);
-        if (!run) return;
+        const attempt = await deps.processing.claimAttempt(workspaceId, runId);
+        if (!attempt) return;
+        const { run } = attempt;
         deps.logger.info({
           event: 'work_started',
           jobId: run.id,
@@ -37,10 +38,10 @@ export function createWorkExecution(deps: WorkDependencies) {
           if ((run.kind === 'analysis') !== (connection === 'required'))
             throw new Error('RUN_CONNECTION_POLICY_MISMATCH');
           return connection === 'required'
-            ? analysis(run, bounded, (revision) =>
+            ? analysis(attempt, bounded, (revision) =>
                 deps.connections.internal.connection(run.workspaceId, revision),
               )
-            : generation(run, bounded);
+            : generation(attempt, bounded);
         };
         const guarded = (index: number): Promise<void> => {
           const id = run.documentIds[index];
@@ -61,24 +62,18 @@ export function createWorkExecution(deps: WorkDependencies) {
             error instanceof LlmError || isAppError(error)
               ? error.code
               : 'WORK_PROCESSING_FAILED';
-          const finished = await deps.uow.run(async (tx) => {
-            const accepted = await deps.processing
-              .in(tx)
-              .internal.finish(
-                run,
-                bounded.aborted ? 'cancelled' : 'failed',
-                errorCode,
-              );
-            if (!accepted) return false;
-            if (run.generationId)
-              await deps.generation
+          const finished = await attempt.finish(
+            { status: bounded.aborted ? 'cancelled' : 'failed', errorCode },
+            async (tx) => {
+              if (run.generationId)
+                await deps.generation
+                  .in(tx)
+                  .internal.fail(workspaceId, run.generationId);
+              await deps.works
                 .in(tx)
-                .internal.fail(workspaceId, run.generationId);
-            await deps.works
-              .in(tx)
-              .internal.event(workspaceId, run.workId, 'processing.failed');
-            return true;
-          });
+                .internal.event(workspaceId, run.workId, 'processing.failed');
+            },
+          );
           if (!finished) return;
           deps.logger.error({
             event: 'work_processing_failed',

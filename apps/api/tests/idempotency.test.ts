@@ -1,12 +1,14 @@
 import { expect, test } from 'bun:test';
 
 import { AppError } from '@anyko/backend/errors';
+import type { IdempotencyApi } from '@anyko/backend/idempotency';
 import type { WorkIntake } from '@anyko/backend/workflows';
 import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../src/http/app';
 
 import { memberAccess } from './support/member-access';
+import { memoryIdempotency } from './support/memory-idempotency';
 import { stubHttpOptions } from './support/stub-http';
 
 const origin = 'http://localhost:3000';
@@ -14,7 +16,7 @@ const origin = 'http://localhost:3000';
 type Analyze = WorkIntake['analyzeWork'];
 
 // Приложение с подменённым сценарием анализа. Остальные сценарии не вызываются этими тестами.
-function appWith(analyze: Analyze) {
+function appWith(analyze: Analyze, idempotency?: IdempotencyApi) {
   const options = stubHttpOptions();
   const app = createApp({
     logger: createLogger({
@@ -28,6 +30,7 @@ function appWith(analyze: Analyze) {
     workHttp: {
       ...options.workHttp,
       access: memberAccess,
+      idempotency: idempotency ?? options.workHttp.idempotency,
       intake: { ...options.workHttp.intake, analyzeWork: analyze },
     },
   });
@@ -56,6 +59,19 @@ function analyzeRequest(
   return fetch(`${base}${path}`, {
     method: 'POST',
     headers: { cookie: 'session=ok', origin, ...headers },
+  });
+}
+
+function createWorkRequest(base: string, body: unknown) {
+  return fetch(`${base}/api/v1/workspaces/local/works`, {
+    method: 'POST',
+    headers: {
+      cookie: 'session=ok',
+      origin,
+      'content-type': 'application/json',
+      'idempotency-key': crypto.randomUUID(),
+    },
+    body: JSON.stringify(body),
   });
 }
 
@@ -114,6 +130,59 @@ test('the same key and input run the command once and replay the stored response
       first.headers.get('content-type'),
     );
     expect(second.headers.get('cache-control')).toBe('no-store');
+  });
+  expect(calls).toBe(1);
+});
+
+test('a replay for a deleted work answers NOT_FOUND with the current request ID', async () => {
+  const app = appWith(() => Promise.resolve(), {
+    run: () =>
+      Promise.resolve({ kind: 'resource_unavailable', replayed: true }),
+  });
+  await withServer(app, async (base) => {
+    const response = await createWorkRequest(base, {
+      packageVersion: 'synthetic',
+      title: 'Synthetic',
+    });
+    expect(response.status).toBe(404);
+    const requestId = response.headers.get('x-request-id');
+    expect(requestId).toBeTruthy();
+    expect(await response.json()).toEqual({
+      error: { code: 'NOT_FOUND', requestId },
+    });
+  });
+});
+
+test('analyze replay does not become unavailable when no created resource is recorded', async () => {
+  let calls = 0;
+  let hasResource = false;
+  const idempotency = memoryIdempotency();
+  const app = appWith(
+    () => {
+      calls++;
+      return Promise.resolve();
+    },
+    {
+      async run(command, execute) {
+        const result = await idempotency.run(command, async () => {
+          const reply = await execute();
+          hasResource = reply.resource !== undefined;
+          return reply;
+        });
+        // Simulate erasure of the reply only if the route recorded a created resource.
+        return result.replayed && hasResource
+          ? { kind: 'resource_unavailable', replayed: true }
+          : result;
+      },
+    },
+  );
+  await withServer(app, async (base) => {
+    const path = `/api/v1/workspaces/local/works/${crypto.randomUUID()}/analyze`;
+    const headers = { 'idempotency-key': crypto.randomUUID() };
+    expect((await analyzeRequest(base, path, headers)).status).toBe(202);
+    const replay = await analyzeRequest(base, path, headers);
+    expect(replay.status).toBe(202);
+    expect(await replay.json()).toEqual({ status: 'queued' });
   });
   expect(calls).toBe(1);
 });
@@ -202,32 +271,9 @@ test('a failed command releases the key so the same key runs again', async () =>
 });
 
 test('work creation with an invalid body reports the input code before the command runs', async () => {
-  const options = stubHttpOptions();
-  const app = createApp({
-    logger: createLogger({
-      service: 'api',
-      environment: 'test',
-      release: 'idempotency-route',
-      level: 'fatal',
-    }),
-    environment: 'test',
-    documentHttp: { ...options.documentHttp, access: memberAccess },
-    workHttp: {
-      ...options.workHttp,
-      access: memberAccess,
-    },
-  });
+  const app = appWith(() => Promise.resolve());
   await withServer(app, async (base) => {
-    const response = await fetch(`${base}/api/v1/workspaces/local/works`, {
-      method: 'POST',
-      headers: {
-        cookie: 'session=ok',
-        origin,
-        'content-type': 'application/json',
-        'idempotency-key': crypto.randomUUID(),
-      },
-      body: JSON.stringify({ title: 1 }),
-    });
+    const response = await createWorkRequest(base, { title: 1 });
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
       error: { code: 'INVALID_WORK_INPUT' },

@@ -1,14 +1,11 @@
 import type { DocumentResultView } from '../../modules/documents';
-import { type FactEvidence, refreshFactEvidence } from '../../modules/facts';
+import { type FactEvidence } from '../../modules/facts';
 import { WorkError } from '../../modules/works';
 import type { DocumentId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
-import {
-  requireCleanSources,
-  requireIdle,
-  requireWork,
-  workLockKey,
-} from '../work-guards';
+import { changeWork } from '../change-work';
+import { workCommandPolicy } from '../work-command-guards';
+import { requireWorkDocument } from '../work-view/require-work-document';
 
 import type { WorkIntakeDeps } from './deps';
 
@@ -99,60 +96,66 @@ export const updateRecognition =
       ocrRevision: number;
     },
   ) => {
-    scope.require('works.edit');
+    scope.require(workCommandPolicy.updateRecognition.right);
     const { workspaceId } = scope;
-    await deps.locks.run(workLockKey(workspaceId, workId), async () => {
-      const works = deps.works.queries;
-      const work = await requireWork(works, scope, workId);
-      const source = (await requireCleanSources(works, scope, workId)).find(
-        ({ id }) => id === documentId,
-      );
-      if (!source) throw new WorkError('NOT_FOUND');
-      if (source.ocrRevision === null) throw new WorkError('NOT_READY');
-      if (source.ocrRevision >= ocrRevision) return;
-      await requireIdle(deps.processing.queries, scope, workId);
-      const [previous, next, facts] = await Promise.all([
-        deps.documents.internal.queries.result({
-          workspaceId,
+    await changeWork(
+      deps,
+      scope,
+      {
+        workId,
+        command: 'updateRecognition',
+        event: 'documents.changed',
+        sourceChange: true,
+      },
+      async ({ work }) => {
+        const source = await requireWorkDocument(
+          deps.works.queries,
+          scope,
+          workId,
           documentId,
-          revision: source.ocrRevision,
-        }),
-        deps.documents.internal.queries.result({
-          workspaceId,
-          documentId,
-          revision: ocrRevision,
-        }),
-        deps.facts.internal.get(workspaceId, workId),
-      ]);
-      const refreshed = refreshFactEvidence(
-        facts,
-        recognitionEvidence(documentId, previous, next),
-      );
-      await deps.uow.run(async (tx) => {
-        const [live] = await deps.lockDocumentRevisions(tx, workspaceId, [
-          documentId,
-        ]);
-        if (!live) throw new WorkError('NOT_FOUND');
-        if (live.revision === null || live.revision < ocrRevision)
-          throw new WorkError('NOT_READY');
-        const workStore = deps.works.in(tx).internal;
-        if (
-          !(await workStore.updateRecognition(
+        );
+        if (source.revision === null) throw new WorkError('NOT_READY');
+        if (source.revision >= ocrRevision) return;
+        const [previous, next] = await Promise.all([
+          deps.documents.internal.queries.result(source),
+          deps.documents.internal.queries.result({
             workspaceId,
-            workId,
             documentId,
-            ocrRevision,
-          ))
-        )
-          throw new WorkError('NOT_FOUND');
-        await deps.facts.in(tx).internal.save(workspaceId, workId, refreshed);
-        await workStore.touch(workspaceId, workId, {
-          inputChanged: true,
-          confirmed:
-            work.confirmedRevision === work.revision &&
-            !refreshed.needsReview?.length,
-        });
-        await workStore.event(workspaceId, workId, 'documents.changed');
-      });
-    });
+            revision: ocrRevision,
+          }),
+        ]);
+        return async (tx, lockRevision) => {
+          const [live] = await deps.lockDocumentRevisions(tx, workspaceId, [
+            documentId,
+          ]);
+          if (!live) throw new WorkError('NOT_FOUND');
+          if (live.revision === null || live.revision < ocrRevision)
+            throw new WorkError('NOT_READY');
+          await lockRevision();
+          if (
+            !(await deps.works
+              .in(tx)
+              .internal.updateRecognition(
+                workspaceId,
+                workId,
+                documentId,
+                ocrRevision,
+              ))
+          )
+            throw new WorkError('NOT_FOUND');
+          const refreshed = await deps.facts
+            .in(tx)
+            .internal.refreshEvidence(
+              workspaceId,
+              workId,
+              recognitionEvidence(documentId, previous, next),
+            );
+          return {
+            confirmed:
+              work.confirmedRevision === work.revision &&
+              !refreshed.needsReview?.length,
+          };
+        };
+      },
+    );
   };

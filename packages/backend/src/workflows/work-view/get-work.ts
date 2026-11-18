@@ -1,6 +1,12 @@
 import type { AgentsModule } from '../../modules/agents';
+import type { ConnectionsModule } from '../../modules/connections';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
-import { emptyFacts, type FactsModule } from '../../modules/facts';
+import {
+  emptyFacts,
+  type FactsModule,
+  findFactDiscrepancies,
+  markSelectedCandidates,
+} from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
 import { requirePackage } from '../../modules/templates';
@@ -9,6 +15,8 @@ import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import { requireWork, workLockKey } from '../work-guards';
 
+import { workAvailability } from './work-availability';
+
 // Представление работы: сборка из модулей под блокировкой работы. Курсор читается первым: параллельные
 // изменения придут повторно, но не пропадут. Пока исходники не готовы, сведения и запуски скрыты.
 export const getWork =
@@ -16,6 +24,7 @@ export const getWork =
     works: WorksModule;
     facts: FactsModule;
     processing: ProcessingModule;
+    connections: ConnectionsModule;
     generation: GenerationModule;
     documents: DocumentsModule;
     agents: AgentsModule;
@@ -26,8 +35,8 @@ export const getWork =
     return deps.locks.run(workLockKey(scope.workspaceId, workId), async () => {
       const cursor = await deps.works.queries.cursor(scope, workId);
       const work = await requireWork(deps.works.queries, scope, workId);
-      const { documents: rows, cleanupPending } =
-        await deps.works.queries.sources(scope, workId);
+      const sources = await deps.works.queries.sources(scope, workId);
+      const { documents: rows, cleanupPending } = sources;
       const documents = [];
       for (const row of rows)
         if (!row.deleted) {
@@ -44,6 +53,16 @@ export const getWork =
               throw error;
           }
         }
+      const facts = cleanupPending
+        ? emptyFacts()
+        : await deps.facts.queries.get(scope, workId);
+      const availability = await workAvailability(
+        deps,
+        scope,
+        workId,
+        sources,
+        !!facts.needsReview?.length,
+      );
       return {
         work,
         session: cleanupPending
@@ -51,9 +70,8 @@ export const getWork =
           : await deps.agents.internal.get(scope.workspaceId, workId),
         package: requirePackage(work.packageVersion),
         documents,
-        facts: cleanupPending
-          ? emptyFacts()
-          : await deps.facts.queries.get(scope, workId),
+        facts: { ...facts, candidates: markSelectedCandidates(facts) },
+        discrepancyFields: findFactDiscrepancies(facts),
         runs: cleanupPending
           ? []
           : await deps.processing.queries.runs(scope, workId),
@@ -62,6 +80,7 @@ export const getWork =
           : await deps.generation.queries.list(scope, workId),
         cursor,
         cleanupPending,
+        availability,
       };
     });
   };

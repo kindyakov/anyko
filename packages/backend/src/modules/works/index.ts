@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { defineErrors } from '../../platform/errors';
-import type { WorkId } from '../../platform/ids';
+import type { DocumentId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
 
@@ -28,15 +28,13 @@ export const WorkErrors = defineErrors({
 });
 export class WorkError extends WorkErrors.Failure {}
 
-// Виды событий работы, которые пишут сценарии этапа 5a. Процессы 5b пишут события через WorkStore.
 export type WorkEventKind =
-  | 'work.created'
-  | 'documents.changed'
-  | 'sources.deleting'
   | 'processing.queued'
   | 'facts.changed'
   | 'facts.confirmed'
-  | 'generation.queued';
+  | 'generation.queued'
+  | 'documents.changed'
+  | 'sources.deleting';
 
 export interface WorkSourceRow {
   id: string;
@@ -92,6 +90,11 @@ export interface WorkStore extends WorkDeletionStore {
     documents: readonly WorkSourceAttachment[],
   ): Promise<number>;
   documents(workspaceId: string, workId: string): Promise<WorkSourceRow[]>;
+  activeDocument(
+    workspaceId: string,
+    workId: string,
+    documentId: string,
+  ): Promise<{ ocrRevision: number | null; uploaded: boolean } | null>;
   worksForDocument(workspaceId: string, documentId: string): Promise<string[]>;
   pinPending(
     workspaceId: string,
@@ -112,7 +115,15 @@ export interface WorkStore extends WorkDeletionStore {
   touch(
     workspaceId: string,
     workId: string,
-    input: { inputChanged?: boolean; confirmed?: boolean },
+    input: { inputChanged?: boolean } & (
+      | { expectedRevision?: number; confirmed?: false }
+      | { expectedRevision: number; confirmed: true }
+    ),
+  ): Promise<void>;
+  lockRevision(
+    workspaceId: string,
+    workId: string,
+    revision: number,
   ): Promise<void>;
   event(workspaceId: string, workId: string, kind: string): Promise<void>;
   events(
@@ -150,8 +161,6 @@ export interface WorkListPage {
   total: number;
 }
 
-// Команды меняют данные работы. Право проверяет сама команда, если она сценарий владельца;
-// внутренние шаги (ревизия, событие) вызывает сценарий, который уже проверил право.
 export interface WorksCommands {
   create(
     scope: WorkspaceScope,
@@ -160,23 +169,20 @@ export interface WorksCommands {
   attachDocuments(
     scope: WorkspaceScope,
     input: { workId: WorkId; documents: readonly WorkSourceAttachment[] },
-  ): Promise<void>;
-  bumpRevision(
-    scope: WorkspaceScope,
-    input: { workId: WorkId; confirmed: boolean },
-  ): Promise<void>;
-  recordEvent(
-    scope: WorkspaceScope,
-    input: { workId: WorkId; kind: WorkEventKind },
-  ): Promise<void>;
+  ): Promise<number>;
 }
 
-// Запросы читают данные работы. Право чтения проверяют list и events; find, sources и cursor
-// внутренние: сценарий, который их вызывает, проверяет право сам.
+// Запросы читают данные работы. Право чтения проверяют list и events.
+// Для остальных запросов право проверяет вызывающий сценарий.
 export interface WorksQueries {
   list(scope: WorkspaceScope, input: WorkSearch): Promise<WorkListPage>;
   find(scope: WorkspaceScope, workId: WorkId): Promise<WorkSummary | null>;
   sources(scope: WorkspaceScope, workId: WorkId): Promise<WorkSources>;
+  activeDocument(
+    scope: WorkspaceScope,
+    workId: WorkId,
+    documentId: DocumentId,
+  ): Promise<{ ocrRevision: number | null; uploaded: boolean } | null>;
   cursor(scope: WorkspaceScope, workId: WorkId): Promise<string>;
   events(
     scope: WorkspaceScope,
@@ -199,10 +205,17 @@ export interface WorksPorts {
     | 'removeSource'
     | 'dirty'
     | 'touch'
+    | 'lockRevision'
     | 'event'
     | 'detachDeleted'
   > &
-    WorkDeletionStore;
+    WorkDeletionStore & {
+      notifyDocumentChanged(
+        workspaceId: string,
+        documentId: string,
+        readyRevision?: number,
+      ): Promise<void>;
+    };
 }
 
 // Фасад модуля: те же команды и запросы внутри транзакции через in(tx).

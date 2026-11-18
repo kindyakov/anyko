@@ -8,6 +8,15 @@ export function createUnitOfWork(
   db: Pick<Database, '$transaction'>,
 ): UnitOfWork {
   return {
-    run: (work) => db.$transaction((tx) => work(openTransaction(tx))),
+    async run(work, signal) {
+      signal?.throwIfAborted();
+      return db.$transaction(async (tx) => {
+        signal?.throwIfAborted();
+        const result = await work(openTransaction(tx));
+        // Ошибка из callback откатывает транзакцию до того, как Prisma отправит COMMIT.
+        signal?.throwIfAborted();
+        return result;
+      });
+    },
   };
 }

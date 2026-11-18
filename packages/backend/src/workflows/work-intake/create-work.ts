@@ -1,4 +1,5 @@
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
+import { finishSourceChange } from '../change-work';
 
 import {
   requireCatalogSelection,
@@ -28,7 +29,7 @@ export const createWork =
     scope.require('works.create');
     if (documentIds?.length) requireCatalogSelection(scope);
     return deps.uow.run(async (tx) => {
-      const { commands } = deps.works.in(tx);
+      const { commands, internal } = deps.works.in(tx);
       const workId = await commands.create(scope, input);
       if (documentIds?.length) {
         const documents = await resolveCatalogSelection(
@@ -39,6 +40,14 @@ export const createWork =
           new Set(),
         );
         await commands.attachDocuments(scope, { workId, documents });
+        await finishSourceChange(
+          internal,
+          scope.workspaceId,
+          workId,
+          0,
+          'documents.changed',
+          { confirmed: false },
+        );
       }
       await deps.agents.in(tx).internal.ensure(scope.workspaceId, workId);
       return workId;

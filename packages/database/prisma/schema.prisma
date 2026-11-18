@@ -320,7 +320,7 @@ model AuditEvent {
 }
 
 // Повтор команды с Idempotency-Key (ADR 0009). Ключ действует в пределах области и команды;
-// state: in_progress | completed. Просроченная запись считается отсутствующей.
+// state: in_progress | completed | resource_unavailable. Просроченная запись считается отсутствующей.
 model IdempotencyKey {
  workspaceId String
  workspace AnykoWorkspace @relation(fields:[workspaceId],references:[id],onDelete:Restrict)
@@ -330,12 +330,17 @@ model IdempotencyKey {
  token String
  state String
  status Int?
- body Json?
+ body String?
+ resourceKind String?
+ resourceId String?
+ resourceDocumentIds String[] @default([])
  createdAt DateTime @default(now())
  expiresAt DateTime
  lockedUntil DateTime
  @@id([workspaceId,command,key])
  @@index([expiresAt])
+ @@index([workspaceId,resourceKind,resourceId],map:"IdempotencyKey_resource_idx")
+ @@index([resourceDocumentIds],type:Gin,map:"IdempotencyKey_resource_documents_idx")
 }
 
 model WorkAgentSession {

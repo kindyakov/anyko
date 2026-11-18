@@ -11,7 +11,7 @@ export interface Tx {
 // Callback может быть повторён драйвером при конфликте сериализации: внешние вызовы (S3, Redis, OCR,
 // LLM) внутри него не выполняются (backend.md, «Транзакции»).
 export interface UnitOfWork {
-  run<T>(work: (tx: Tx) => Promise<T>): Promise<T>;
+  run<T>(work: (tx: Tx) => Promise<T>, signal?: AbortSignal): Promise<T>;
 }
 
 const handles = new WeakMap<Tx, object>();

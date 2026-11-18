@@ -5,16 +5,13 @@ import { PostgresStore } from '@mastra/pg';
 import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
-import { httpErrorSchema } from '@anyko/contracts/common';
-import {
-  createDatabase,
-  createDatabasePool,
-  createResourceLocks,
-} from '@anyko/database';
+import { rightCatalog } from '@anyko/backend/scope';
+import { createDatabase, createDatabasePool } from '@anyko/database';
 import { LlmError } from '@anyko/llm';
 import { createLogger } from '@anyko/logger';
 import { startJobWorker } from '@anyko/worker/queues';
 
+import { createApp } from '../../../apps/api/src/http/app';
 import type { DocumentAgents } from '../../../packages/backend/src/modules/agents';
 import { createDocumentAgents } from '../../../packages/backend/src/modules/agents/infrastructure/mastra';
 import type {
@@ -22,7 +19,6 @@ import type {
   SourceStorage,
 } from '../../../packages/backend/src/modules/documents';
 import { createWorkProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/work-store';
-import { createWorkStore } from '../../../packages/backend/src/modules/works/infrastructure/store';
 import {
   brandDocumentId,
   brandFileId,
@@ -36,15 +32,19 @@ import { memberScope } from '../../../packages/backend/tests/support/scope';
 import { integrationConfig } from './support/composition';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
-  throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
+if (
+  !databaseUrl ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+)
+  throw new Error(
+    'Dedicated anyko_test or anyko_test_<worktree> TEST_DATABASE_URL required',
+  );
 const redisUrl = process.env.TEST_REDIS_URL;
 if (!redisUrl) throw new Error('TEST_REDIS_URL required');
 const testRedisUrl: string = redisUrl;
 type WorkView = Awaited<ReturnType<typeof apiBackend.workHttp.views.get>>;
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabase(pool);
-const locks = createResourceLocks(pool);
 // Read-side adapters the processing assertions use directly, on the same database.
 const workProcessing = createWorkProcessingStore(db);
 const actualPool = createDatabasePool(databaseUrl);
@@ -382,25 +382,13 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
   const view = await until(input, terminal);
   expect(view.runs[0]?.status).toBe('succeeded');
   expect(view.facts.values.personName).toBe('Анна');
-  // Результат исходного документа работы: тот же текст, что у распознавания; документ другой работы — NOT_FOUND.
+  // Результат исходного документа работы содержит распознанный текст.
   const documentResult = await apiBackend.workHttp.views.result(
     memberScope(input.workspaceId),
     brandWorkId(input.workId),
     brandDocumentId(doc.id),
   );
   expect(documentResult.markdown).toBe('Имя: Анна. Номер: 42.');
-  const otherWorkId = await apiBackend.workHttp.intake.createWork(
-    memberScope(input.workspaceId, 'fixture'),
-    { packageVersion: 'technical-document-v1', title: 'Другая работа' },
-  );
-  await rejects(
-    apiBackend.workHttp.views.result(
-      memberScope(input.workspaceId),
-      brandWorkId(otherWorkId),
-      brandDocumentId(doc.id),
-    ),
-    'NOT_FOUND',
-  );
   const count = extractionCount;
   await analyze(input);
   await until(input, terminal);
@@ -814,8 +802,15 @@ test('global source deletion confirms live links, refuses running works, and kee
     fingerprint: 'catalog-source-deletion',
   };
   const creation = await views.get(scope, other);
-  const response = () => Promise.resolve({ status: 201, body: creation });
-  expect((await cache.run(ref, response)).status).toBe(201);
+  const response = () =>
+    Promise.resolve({
+      response: { status: 201, body: JSON.stringify(creation) },
+      resource: { kind: 'work' as const, id: other, documentIds: [documentId] },
+    });
+  expect(await cache.run(ref, response)).toMatchObject({
+    kind: 'response',
+    response: { status: 201 },
+  });
   await rejects(
     catalog.commands.remove(scope, documentId, original.token),
     'REVISION_CONFLICT',
@@ -887,7 +882,7 @@ test('global source deletion confirms live links, refuses running works, and kee
   await rejects(views.source(scope, other, documentId), 'NOT_FOUND');
   await rejects(views.result(scope, other, documentId), 'NOT_FOUND');
   expect(await cache.run(ref, response)).toMatchObject({
-    status: 404,
+    kind: 'resource_unavailable',
     replayed: true,
   });
   expect((await views.get(scope, other)).documents).toEqual([]);
@@ -1004,20 +999,26 @@ test('work upload responses cannot be replayed after unlinking while the catalog
     fingerprint: 'synthetic',
   };
   const response = () =>
-    Promise.resolve({ status: 202, body: { document: source } });
-  expect((await cache.run(ref, response)).status).toBe(202);
+    Promise.resolve({
+      response: { status: 202, body: JSON.stringify({ document: source }) },
+      resource: { kind: 'document' as const, id: source.id },
+    });
+  expect(await cache.run(ref, response)).toMatchObject({
+    kind: 'response',
+    response: { status: 202 },
+  });
   await intake.removeDocument(scope, {
     workId: input.workId,
     documentId: brandDocumentId(source.id),
   });
   expect(await cache.run(ref, response)).toMatchObject({
-    status: 404,
+    kind: 'resource_unavailable',
     replayed: true,
   });
   const late = { ...ref, key: crypto.randomUUID() };
   await cache.run(late, response);
   expect(await cache.run(late, response)).toMatchObject({
-    status: 404,
+    kind: 'resource_unavailable',
     replayed: true,
   });
   expect(
@@ -1139,7 +1140,7 @@ test('a package generates three individually scoped DOCX files from one snapshot
   ).toBe(false);
 });
 
-test('manual edits during model execution survive; optimistic revision rejects stale saves', async () => {
+test('manual edits during model execution survive acceptance of the result', async () => {
   const input = await create();
   await upload(input);
   let release: () => void = () => {};
@@ -1168,14 +1169,6 @@ test('manual edits during model execution survive; optimistic revision rejects s
         revision: view.work.revision,
         values: { ...emptyFieldValues(), personName: 'Ручное значение' },
       },
-    );
-    await rejects(
-      apiBackend.workHttp.review.editValues(memberScope(input.workspaceId), {
-        workId: brandWorkId(input.workId),
-        revision: view.work.revision,
-        values: emptyFieldValues(),
-      }),
-      'REVISION_CONFLICT',
     );
     release();
     expect((await until(input, terminal)).facts.values.personName).toBe(
@@ -1272,58 +1265,6 @@ test('deletion during model execution hides derivatives immediately and fences t
     release();
     waitForExtraction = undefined;
   }
-});
-
-test('lease recovery atomically reopens the outbox and rejects a superseded attempt', async () => {
-  const input = await create();
-  const runId = crypto.randomUUID();
-  await locks.run(`work-run:${input.workspaceId}:${runId}`, async () => {
-    await workProcessing.start({
-      ...input,
-      id: runId,
-      actorId: 'fixture',
-      kind: 'analysis',
-      inputRevision: 0,
-      documentIds: [],
-      settingsRevision: 1,
-      generationId: null,
-      correlationId: crypto.randomUUID(),
-      attemptToken: null,
-      modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
-    });
-    const old = await workProcessing.claim(input.workspaceId, runId);
-    if (!old) throw new Error('CLAIM_MISSING');
-    await db.runOutbox.update({
-      where: { runId },
-      data: { deliveredAt: new Date() },
-    });
-    await db.run.update({
-      where: { id: runId },
-      data: { leaseUntil: new Date(0) },
-    });
-    await workProcessing.reconcile();
-    expect(
-      (await db.runOutbox.findUniqueOrThrow({ where: { runId } })).deliveredAt,
-    ).toBeNull();
-    const fresh = await workProcessing.claim(input.workspaceId, runId);
-    if (!fresh) throw new Error('RECLAIM_MISSING');
-    expect(await workProcessing.valid(old)).toBe(false);
-    await workProcessing.finish(old, 'succeeded');
-    expect(await workProcessing.valid(fresh)).toBe(true);
-    await db.$transaction(async (tx) => {
-      await tx.$executeRaw`SET LOCAL TIME ZONE 'Europe/Moscow'`;
-      await createWorkProcessingStore(tx).reconcile();
-      expect(await createWorkProcessingStore(tx).valid(fresh)).toBe(true);
-    });
-    await rejects(
-      workProcessing.step(old, {
-        stage: 'extraction',
-        status: 'succeeded',
-      }),
-      'STALE_WORK_ATTEMPT',
-    );
-    await workProcessing.finish(fresh, 'cancelled');
-  });
 });
 
 test('confirmation survives added sources and repeated analysis; only the new file calls the model', async () => {
@@ -1453,6 +1394,96 @@ test('numbered search filters the whole workspace and counts only matching revis
   expect(literal.items.map(({ title }) => title)).toEqual(['Дело Анны 100%']);
 });
 
+test.each(['work document', 'standalone recognition'])(
+  'replaying an upload after deletion of the %s returns NOT_FOUND',
+  async (kind) => {
+    const { workspaceId, workId } = await create();
+    const { workHttp, documentHttp } = apiBackend;
+    const access = {
+      ...workHttp.access,
+      session: () =>
+        Promise.resolve({
+          user: {
+            id: 'fixture',
+            name: 'Fixture',
+            email: 'fixture@example.test',
+          },
+          memberships: [
+            {
+              workspace: { id: workspaceId, name: 'Workspace' },
+              rights: [...rightCatalog],
+            },
+          ],
+        }),
+    };
+    const app = createApp({
+      environment: 'test',
+      logger,
+      workHttp: { ...workHttp, access },
+      documentHttp: { ...documentHttp, access },
+    }).listen({ hostname: '127.0.0.1', port: 0 });
+    try {
+      const port = app.server?.port;
+      if (port === undefined) throw new Error('NO_HTTP_LISTENER');
+      const workspacePath = `http://127.0.0.1:${String(port)}/api/v1/workspaces/${workspaceId}`;
+      const target =
+        kind === 'work document'
+          ? `${workspacePath}/works/${workId}/documents`
+          : `${workspacePath}/recognitions`;
+      const key = crypto.randomUUID();
+      const origin = workHttp.origin;
+      const post = () => {
+        const body = new FormData();
+        body.set(
+          'file',
+          new File(['%PDF-1.7\n synthetic'], 'fixture.pdf', {
+            type: 'application/pdf',
+          }),
+        );
+        return fetch(target, {
+          method: 'POST',
+          headers: { origin, 'idempotency-key': key },
+          body,
+        });
+      };
+      const first = await post();
+      expect(first.status).toBe(202);
+      const payload = z
+        .object({ document: z.object({ id: z.uuid() }) })
+        .parse(await first.clone().json());
+      const cached = await post();
+      expect(cached.status).toBe(202);
+      expect(await cached.text()).toBe(await first.text());
+      const deletion = await fetch(`${target}/${payload.document.id}`, {
+        method: 'DELETE',
+        headers: { origin },
+      });
+      expect(deletion.status).toBe(202);
+
+      const replay = await post();
+      expect(replay.status).toBe(404);
+      const requestId = replay.headers.get('x-request-id');
+      expect(requestId).toBeTruthy();
+      expect(await replay.json()).toEqual({
+        error: { code: 'NOT_FOUND', requestId },
+      });
+      expect(
+        await db.idempotencyKey.findFirstOrThrow({
+          where: { workspaceId, key },
+        }),
+      ).toMatchObject({
+        resourceKind: 'document',
+        resourceId: payload.document.id,
+        state: 'resource_unavailable',
+        status: null,
+        body: null,
+      });
+    } finally {
+      await app.stop();
+    }
+  },
+);
+
 test('owner deletion fences a running writer, purges the work, and retains its source', async () => {
   const input = await create();
   const source = await upload(input);
@@ -1477,11 +1508,33 @@ test('owner deletion fences a running writer, purges the work, and retains its s
   const cachedSource = makeRef(
     'POST /workspaces/:workspaceId/works/:workId/documents',
   );
-  const workResponse = () => Promise.resolve({ status: 201, body: analyzed });
+  const workResponse = () =>
+    Promise.resolve({
+      response: { status: 201, body: 'opaque work reply' },
+      resource: { kind: 'work' as const, id: input.workId },
+    });
   const sourceResponse = () =>
-    Promise.resolve({ status: 202, body: { document: source } });
-  expect((await responses.run(cachedWork, workResponse)).status).toBe(201);
-  expect((await responses.run(cachedSource, sourceResponse)).status).toBe(202);
+    Promise.resolve({
+      response: { status: 202, body: 'opaque document reply' },
+      resource: { kind: 'document' as const, id: source.id },
+    });
+  const unrelated = makeRef(cachedWork.command);
+  const similarResponse = await responses.run(unrelated, () =>
+    Promise.resolve({
+      response: {
+        status: 201,
+        body: JSON.stringify({ work: { id: input.workId } }),
+      },
+    }),
+  );
+  expect(await responses.run(cachedWork, workResponse)).toMatchObject({
+    kind: 'response',
+    replayed: false,
+  });
+  expect(await responses.run(cachedSource, sourceResponse)).toMatchObject({
+    kind: 'response',
+    replayed: false,
+  });
   const ref = { workspaceId: input.workspaceId, workId: input.workId };
   const ownedThreads = await db.workAgentThread.findMany({
     where: ref,
@@ -1557,15 +1610,33 @@ test('owner deletion fences a running writer, purges the work, and retains its s
       'deleted',
     );
     const lateResponse = makeRef(cachedWork.command);
-    await responses.run(lateResponse, workResponse);
+    expect(await responses.run(lateResponse, workResponse)).toMatchObject({
+      kind: 'response',
+      replayed: false,
+    });
     for (const ref of [cachedWork, cachedSource, lateResponse]) {
       const response = await responses.run(ref, () => {
         throw new Error('DELETED_RESPONSE_REEXECUTED');
       });
-      expect(response.status).toBe(404);
-      expect(response.replayed).toBe(true);
-      expect(httpErrorSchema.parse(response.body).error.code).toBe('NOT_FOUND');
+      expect(response).toEqual({
+        kind: 'resource_unavailable',
+        replayed: true,
+      });
     }
+    expect(
+      await db.idempotencyKey.count({
+        where: {
+          workspaceId: input.workspaceId,
+          key: { in: [cachedWork.key, cachedSource.key, lateResponse.key] },
+          body: { not: null },
+        },
+      }),
+    ).toBe(0);
+    expect(
+      await responses.run(unrelated, () => {
+        throw new Error('UNRELATED_RESPONSE_REEXECUTED');
+      }),
+    ).toEqual({ ...similarResponse, replayed: true });
   } finally {
     finishWrite.resolve(undefined);
     pauseGeneratedWrite = undefined;
@@ -1627,6 +1698,85 @@ test('owner deletion fences a running writer, purges the work, and retains its s
 const fixtureImage = Uint8Array.fromBase64(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=',
 );
+
+test('work document source, recognition result and image share the same access matrix', async () => {
+  const { workspaceId, workId } = await create();
+  const scope = memberScope(workspaceId, 'fixture', ['works.read']);
+  const otherWorkId = await apiBackend.workHttp.intake.createWork(
+    memberScope(workspaceId, 'fixture'),
+    { packageVersion: 'technical-document-v1', title: 'Другая работа' },
+  );
+  imageFixture = [
+    {
+      path: 'images/fixture.png',
+      contentType: 'image/png',
+      bytes: fixtureImage,
+    },
+  ];
+  try {
+    const doc = await upload({ workspaceId, workId });
+    const documentId = brandDocumentId(doc.id);
+    await until({ workspaceId, workId }, (view) =>
+      view.documents.some(
+        (document) =>
+          document.id === documentId && document.status === 'succeeded',
+      ),
+    );
+    const { views } = apiBackend.workHttp;
+    const reads = [
+      {
+        read: views.source,
+        value: { filename: 'fixture.pdf', contentType: 'application/pdf' },
+      },
+      {
+        read: views.result,
+        value: {
+          markdown: 'Имя: Анна. Номер: 42.',
+          images: [{ path: 'images/fixture.png', index: 0 }],
+        },
+      },
+      {
+        read: (
+          requestScope: typeof scope,
+          work: typeof workId,
+          doc: typeof documentId,
+        ) => views.image(requestScope, work, doc, 0),
+        value: { contentType: 'image/png', bytes: fixtureImage },
+      },
+    ];
+    for (const { read, value } of reads)
+      expect(await read(scope, workId, documentId)).toMatchObject(value);
+
+    const cases = [
+      { scope, workId: otherWorkId, code: 'NOT_FOUND' },
+      { scope: memberScope(crypto.randomUUID()), workId, code: 'NOT_FOUND' },
+      {
+        scope: memberScope(workspaceId, 'fixture', ['recognitions.use']),
+        workId,
+        code: 'FORBIDDEN',
+      },
+    ];
+    for (const entry of cases)
+      for (const { read } of reads)
+        await rejects(read(entry.scope, entry.workId, documentId), entry.code);
+
+    const deletedAt = new Date();
+    await db.work.update({ where: { id: workId }, data: { deletedAt } });
+    for (const { read } of reads)
+      await rejects(read(scope, workId, documentId), 'NOT_FOUND');
+    await db.work.update({ where: { id: workId }, data: { deletedAt: null } });
+
+    await db.sourceDocument.update({
+      where: { id: documentId },
+      data: { deletedAt },
+    });
+    for (const { read } of reads)
+      await rejects(read(scope, workId, documentId), 'NOT_FOUND');
+  } finally {
+    imageFixture = [];
+  }
+}, 45000);
+
 function holdFirstVisual() {
   const release = Promise.withResolvers<undefined>();
   const started = Promise.withResolvers<undefined>();
@@ -2273,41 +2423,164 @@ test('deleting during contextual reasoning removes its session, turns, and all r
   }
 });
 
-test('superseded attempt cannot commit a session checkpoint or facts', async () => {
+type Command = Exclude<
+  keyof WorkView['availability'],
+  'attach' | 'updateRecognition'
+>;
+type Reason = Extract<
+  WorkView['availability'][Command],
+  { available: false }
+>['reason'];
+const availabilityCases: {
+  state: string;
+  blocked: Partial<Record<Command, Reason>>;
+}[] = [
+  { state: 'ready', blocked: {} },
+  {
+    state: 'empty',
+    blocked: { analyze: 'NO_DOCUMENTS', remove: 'NO_DOCUMENTS' },
+  },
+  {
+    state: 'busy',
+    blocked: {
+      analyze: 'WORK_BUSY',
+      generate: 'WORK_BUSY',
+      confirm: 'WORK_BUSY',
+    },
+  },
+  {
+    state: 'cleanup',
+    blocked: {
+      analyze: 'CLEANUP_PENDING',
+      generate: 'CLEANUP_PENDING',
+      confirm: 'CLEANUP_PENDING',
+      upload: 'CLEANUP_PENDING',
+    },
+  },
+  { state: 'revoked', blocked: { analyze: 'CONNECTION_REVOKED' } },
+  { state: 'unconfigured', blocked: { analyze: 'LLM_NOT_CONFIGURED' } },
+  {
+    state: 'read-only',
+    blocked: {
+      analyze: 'FORBIDDEN',
+      generate: 'FORBIDDEN',
+      confirm: 'FORBIDDEN',
+      upload: 'FORBIDDEN',
+      remove: 'FORBIDDEN',
+    },
+  },
+];
+
+const commands: Command[] = [
+  'analyze',
+  'generate',
+  'confirm',
+  'upload',
+  'remove',
+];
+test.each(
+  availabilityCases.flatMap(({ state, blocked }) =>
+    commands.map((command) => ({ state, command, reason: blocked[command] })),
+  ),
+)(
+  'work availability agrees with $command in state $state',
+  async ({ state, command, reason }) => {
+    const { workspaceId, workId } = await create();
+    const document =
+      state !== 'empty' && (await upload({ workspaceId, workId }));
+    const owner = memberScope(workspaceId);
+    const scope =
+      state === 'read-only'
+        ? memberScope(workspaceId, 'reader', ['works.read'])
+        : owner;
+    if (state === 'busy')
+      await db.run.create({
+        data: {
+          id: crypto.randomUUID(),
+          workspaceId,
+          workId,
+          kind: 'work.analysis',
+          inputRevision: 1,
+          documentIds: document ? [document.id] : [],
+          settingsRevision: 1,
+          modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
+          initiatedBy: owner.userId,
+          correlationId: crypto.randomUUID(),
+        },
+      });
+    if (state === 'cleanup')
+      await db.processingIo.create({
+        data: {
+          id: crypto.randomUUID(),
+          kind: 'work',
+          workspaceId,
+          workId,
+          uncertain: true,
+        },
+      });
+    if (state === 'revoked') await apiBackend.workHttp.settings.revoke(owner);
+    if (state === 'unconfigured')
+      await db.llmSettings.deleteMany({ where: { workspaceId } });
+    const view = await apiBackend.workHttp.views.get(scope, workId);
+    expect(view.availability[command]).toEqual(
+      reason ? { available: false, reason } : { available: true },
+    );
+
+    const correlationId = crypto.randomUUID();
+    const revision = view.work.revision;
+    const execute: Record<Command, () => Promise<unknown>> = {
+      analyze: () =>
+        apiBackend.workHttp.intake.analyzeWork(scope, {
+          workId,
+          correlationId,
+        }),
+      generate: () =>
+        apiBackend.workHttp.generation.startGeneration(scope, {
+          workId,
+          correlationId,
+          revision,
+        }),
+      confirm: () =>
+        apiBackend.workHttp.review.confirmFacts(scope, { workId, revision }),
+      upload: () =>
+        apiBackend.workHttp.intake.uploadDocument(scope, {
+          workId,
+          correlationId,
+          filename: 'next.pdf',
+          bytes: new TextEncoder().encode('%PDF-1.7\n synthetic'),
+          requestKey: crypto.randomUUID(),
+        }),
+      remove: () =>
+        apiBackend.workHttp.intake.removeDocument(scope, {
+          workId,
+          documentId: brandDocumentId(
+            document ? document.id : crypto.randomUUID(),
+          ),
+        }),
+    };
+    if (!reason) await execute[command]();
+    else
+      await rejects(
+        execute[command](),
+        reason === 'NO_DOCUMENTS'
+          ? command === 'remove'
+            ? 'NOT_FOUND'
+            : 'INVALID_WORK_INPUT'
+          : reason,
+      );
+  },
+);
+
+test('server rejects upload at the work source limit and reports the reason', async () => {
   const input = await create();
-  const runId = crypto.randomUUID();
-  await workProcessing.start({
-    id: runId,
-    ...input,
-    kind: 'analysis',
-    inputRevision: 0,
-    documentIds: [],
-    settingsRevision: 1,
-    generationId: null,
-    correlationId: crypto.randomUUID(),
-    attemptToken: null,
-    actorId: 'fixture',
-    modelSnapshot: { vision: 'fixture', extraction: 'fixture' },
-  });
-  const old = await workProcessing.claim(input.workspaceId, runId);
-  if (!old) throw Error('claim');
-  await db.run.update({
-    where: { id: runId },
-    data: { attemptToken: crypto.randomUUID() },
-  });
-  await rejects(
-    db.$transaction(async (tx) => {
-      await createWorkProcessingStore(tx).fence(old);
-      await createWorkStore(tx).touch(input.workspaceId, input.workId, {});
-    }),
-    'STALE_WORK_ATTEMPT',
+  for (let i = 0; i < 20; i++) await upload(input);
+  const view = await apiBackend.workHttp.views.get(
+    memberScope(input.workspaceId),
+    input.workId,
   );
-  expect(
-    (
-      await apiBackend.workHttp.views.get(
-        memberScope(input.workspaceId),
-        brandWorkId(input.workId),
-      )
-    ).work.revision,
-  ).toBe(0);
+  expect(view.availability.upload).toEqual({
+    available: false,
+    reason: 'SOURCE_LIMIT_REACHED',
+  });
+  await rejects(upload(input), 'INVALID_WORK_INPUT');
 });

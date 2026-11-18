@@ -17,7 +17,7 @@ export function UnsavedFactsBar({
   busy: boolean;
 }) {
   if (!facts.hasEdits) return null;
-  const conflicted = facts.conflicts.length > 0;
+  const conflicted = facts.editConflicts.length > 0;
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4 md:pl-[264px]">
       <div
@@ -31,7 +31,7 @@ export function UnsavedFactsBar({
           {conflicted && (
             <>
               <p className="text-xs text-amber-200">
-                {conflictSummary(facts.conflicts.length)}
+                {conflictSummary(facts.editConflicts.length)}
               </p>
               <p className="text-muted text-xs">
                 Сохранение станет доступно после решения по каждому полю.

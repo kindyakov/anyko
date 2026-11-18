@@ -14,15 +14,16 @@ import {
 } from '../../../packages/backend/src/modules/documents';
 import { createArtifactRegistry } from '../../../packages/backend/src/modules/documents/infrastructure/artifact-store';
 import { createDeletionStore } from '../../../packages/backend/src/modules/documents/infrastructure/deletion-store';
-import { createProcessingService } from '../../../packages/backend/src/modules/processing';
+import { claimDocumentAttempt } from '../../../packages/backend/src/modules/processing';
 import { createProcessingIo } from '../../../packages/backend/src/modules/processing/infrastructure/io';
-import { createProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/store';
+import { createDocumentProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/store';
 import {
   brandDocumentId,
   uuidV7,
 } from '../../../packages/backend/src/platform/ids';
 import { createBackend } from '../../../packages/backend/src/runtime';
 import { finishDocumentDeletion } from '../../../packages/backend/src/runtime/documents/unit-of-work';
+import { createUnitOfWork } from '../../../packages/backend/src/runtime/transactions';
 import { createDocumentDeletionWorkflow } from '../../../packages/backend/src/workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../../../packages/backend/src/workflows/document-ocr';
 import { memberScope } from '../../../packages/backend/tests/support/scope';
@@ -35,7 +36,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL,
   redisUrl = process.env.TEST_REDIS_URL;
 if (
   !databaseUrl ||
-  new URL(databaseUrl).pathname !== '/anyko_test' ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname) ||
   !redisUrl
 )
   throw new Error('Dedicated test services required');
@@ -94,7 +95,7 @@ test('separate images and all document data are physically erased; unknown/activ
   };
   const api = startApi(storage);
   const recognition = api.documentHttp.documents;
-  const processing = createProcessingStore(db),
+  const processing = createDocumentProcessingStore(db),
     registry = createArtifactRegistry(db);
   const eraseAttempt = (id: string) => {
     if (failures.processor) throw new Error('PROCESSOR_DOWN');
@@ -404,22 +405,26 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
     const run = await db.run.findFirstOrThrow({
       where: { workspaceId, documentId: document.id },
     });
-    const processing = createProcessingService(
-      {
-        ...createProcessingStore(db),
-        fail() {
+    const processing = createDocumentProcessingStore(db);
+    const claimAttempt = claimDocumentAttempt({
+      store: {
+        ...processing,
+        finish() {
           calls.failure++;
           return Promise.reject(new Error('STATUS_UPDATE_DOWN'));
         },
       },
-      { clock: { now: () => new Date() }, newId: () => crypto.randomUUID() },
-    );
+      uow: createUnitOfWork(db),
+      clock: { now: () => new Date() },
+      newId: () => crypto.randomUUID(),
+      leaseMs: 60_000,
+    });
     const execute = createDocumentOcrWorkflow({
       processing,
+      claimAttempt,
       storage,
       artifacts: createArtifactRegistry(db),
       logger,
-      leaseMs: 60000,
       parser: {
         parseDocument: () =>
           Promise.resolve({

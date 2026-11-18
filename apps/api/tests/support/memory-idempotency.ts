@@ -2,15 +2,14 @@ import {
   createIdempotency,
   type IdempotencyApi,
   type IdempotencyStore,
+  type StoredOutcome,
 } from '@anyko/backend/idempotency';
 import { createLogger } from '@anyko/logger';
 
 interface Row {
   readonly fingerprint: string;
   token: string;
-  state: 'in_progress' | 'completed';
-  status: number;
-  body: unknown;
+  outcome?: StoredOutcome;
   expiresAt: Date;
   lockedUntil: Date;
 }
@@ -26,9 +25,6 @@ export function memoryIdempotency(): IdempotencyApi {
       const claim = {
         fingerprint: input.fingerprint,
         token: input.token,
-        state: 'in_progress' as const,
-        status: 0,
-        body: null,
         expiresAt: input.expiresAt,
         lockedUntil: input.lockedUntil,
       };
@@ -38,10 +34,10 @@ export function memoryIdempotency(): IdempotencyApi {
       }
       if (row.fingerprint !== input.fingerprint)
         return Promise.resolve({ kind: 'conflict' });
-      if (row.state === 'completed')
+      if (row.outcome)
         return Promise.resolve({
           kind: 'replay',
-          response: { status: row.status, body: row.body },
+          outcome: row.outcome,
         });
       if (row.lockedUntil > input.now)
         return Promise.resolve({ kind: 'in_progress' });
@@ -52,16 +48,14 @@ export function memoryIdempotency(): IdempotencyApi {
       });
       return Promise.resolve({ kind: 'acquired' });
     },
-    complete(ref, token, response, now) {
+    complete(ref, token, outcome, _resource, now) {
       const id = `${ref.workspaceId}\n${ref.command}\n${ref.key}`;
       const row = rows.get(id);
-      if (!row || row.token !== token || row.state !== 'in_progress')
+      if (!row || row.token !== token || row.outcome)
         return Promise.resolve(false);
       rows.set(id, {
         ...row,
-        state: 'completed',
-        status: response.status,
-        body: JSON.parse(JSON.stringify(response.body)),
+        outcome,
         lockedUntil: now,
       });
       return Promise.resolve(true);
@@ -69,7 +63,7 @@ export function memoryIdempotency(): IdempotencyApi {
     release(ref, token) {
       const id = `${ref.workspaceId}\n${ref.command}\n${ref.key}`;
       const row = rows.get(id);
-      if (row?.token === token && row.state === 'in_progress') rows.delete(id);
+      if (row?.token === token && !row.outcome) rows.delete(id);
       return Promise.resolve();
     },
   };

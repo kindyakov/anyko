@@ -16,7 +16,7 @@ export interface ConnectionsPorts {
   commands: Pick<ConnectionSettingsApi, 'save' | 'revoke'>;
   queries: Pick<ConnectionSettingsApi, 'current'>;
   internal: {
-    configuration(workspaceId: string): Promise<LlmConfiguration | null>;
+    configuration: LlmSettingsStore['current'];
     connection: LlmSettingsStore['connection'];
   };
 }

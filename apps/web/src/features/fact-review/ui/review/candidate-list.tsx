@@ -10,7 +10,10 @@ import type { FieldKey, FieldValues } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 import { Button, stagger, StatusPill } from '@anyko/ui';
 
-import { type ReviewField, same } from '@/features/fact-review/model/review';
+import {
+  candidateSelection,
+  type ReviewField,
+} from '@/features/fact-review/model/review';
 
 import type { FactsForm } from '../facts-form';
 import { CandidateValue } from '../work-fields';
@@ -41,6 +44,10 @@ export function CandidateList({
       {visible.map(({ field, candidates }, index) => {
         const conflict = conflicts.has(field.key);
         const used = applied(field.key);
+        const isSelected = candidateSelection(
+          values[field.key],
+          view.facts.values[field.key],
+        );
         return (
           <li
             key={field.key}
@@ -73,7 +80,7 @@ export function CandidateList({
             </div>
             <ul className="mt-4 grid gap-2.5">
               {candidates.map((candidate, i) => {
-                const current = same(values[field.key], candidate.value);
+                const current = isSelected(candidate);
                 return (
                   <li
                     key={i}

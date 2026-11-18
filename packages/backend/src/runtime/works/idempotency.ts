@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 import type { Database } from '@anyko/database';
 
 import { lockLiveDocumentForResponse } from '../../modules/documents/infrastructure/commands';
@@ -13,27 +11,10 @@ import {
   lockLiveWorkForResponse,
   lockLiveWorkUploadForResponse,
 } from '../../modules/works/infrastructure/deletion-store';
-import { uuidV7 } from '../../platform/ids';
 import { type Tx, type UnitOfWork } from '../../platform/transactions';
 
-const resourceIdentity = z.object({
-  work: z.object({ id: z.uuid() }).optional(),
-  document: z.object({ id: z.uuid() }).optional(),
-  documents: z.array(z.object({ id: z.uuid() })).optional(),
-});
-const unavailable = () => ({
-  status: 404,
-  body: { error: { code: 'NOT_FOUND', requestId: uuidV7() } },
-});
 const workUploadCommand =
   'POST /workspaces/:workspaceId/works/:workId/documents';
-const workUploadResponses = (ids: string[]) =>
-  ids.map((id) => ({
-    path: ['document', 'id'],
-    id,
-    command: workUploadCommand,
-  }));
-
 export function createResourceAwareIdempotencyStore(
   db: Database,
   uow: UnitOfWork,
@@ -41,38 +22,38 @@ export function createResourceAwareIdempotencyStore(
   const store = createIdempotencyStore(db);
   return {
     ...store,
-    complete: (ref, token, response, now) => {
-      const resource = resourceIdentity.safeParse(response.body).data;
-      if (!resource?.work && !resource?.document)
-        return store.complete(ref, token, response, now);
+    complete: (ref, token, outcome, resource, now) => {
+      if (!resource) return store.complete(ref, token, outcome, resource, now);
       return uow.run(async (tx) => {
-        const documentIds = resource.document
-          ? [resource.document.id]
-          : (resource.documents?.map(({ id }) => id) ?? []);
-        let documentsVisible = true;
-        for (const id of [...new Set(documentIds)].sort())
+        for (const id of [...new Set(resource.documentIds)].sort()) {
           if (!(await lockLiveDocumentForResponse(tx, ref.workspaceId, id)))
-            documentsVisible = false;
+            return idempotencyStoreFor(tx).complete(
+              ref,
+              token,
+              { kind: 'resource_unavailable' },
+              resource,
+              now,
+            );
+        }
         const visible =
-          documentsVisible &&
-          (resource.work
-            ? await lockLiveWorkForResponse(
+          resource.kind === 'work'
+            ? await lockLiveWorkForResponse(tx, ref.workspaceId, resource.id)
+            : (await lockLiveDocumentForResponse(
                 tx,
                 ref.workspaceId,
-                resource.work.id,
-              )
-            : resource.document &&
-              (ref.command === workUploadCommand
-                ? await lockLiveWorkUploadForResponse(
-                    tx,
-                    ref.workspaceId,
-                    resource.document.id,
-                  )
-                : true));
+                resource.id,
+              )) &&
+              (ref.command !== workUploadCommand ||
+                (await lockLiveWorkUploadForResponse(
+                  tx,
+                  ref.workspaceId,
+                  resource.id,
+                )));
         return idempotencyStoreFor(tx).complete(
           ref,
           token,
-          visible ? response : unavailable(),
+          visible ? outcome : { kind: 'resource_unavailable' },
+          resource,
           now,
         );
       });
@@ -85,34 +66,21 @@ export function redactDeletedDocumentResponses(
   workspaceId: string,
   documentId: string,
 ) {
-  return redactResourceResponses(
-    tx,
-    workspaceId,
-    [
-      { path: ['document', 'id'], id: documentId },
-      {
-        path: ['documents'],
-        id: documentId,
-        command: 'POST /workspaces/:workspaceId/works',
-        array: true,
-      },
-    ],
-    unavailable(),
-  );
+  return redactResourceResponses(tx, workspaceId, [
+    { kind: 'document', id: documentId },
+  ]);
 }
 
-export function redactDeletedWorkResponses(
+export async function redactDeletedWorkResponses(
   tx: Tx,
   workspaceId: string,
   workId: string,
   documentIds: string[],
 ) {
-  return redactResourceResponses(
-    tx,
-    workspaceId,
-    [{ path: ['work', 'id'], id: workId }, ...workUploadResponses(documentIds)],
-    unavailable(),
-  );
+  await redactResourceResponses(tx, workspaceId, [
+    { kind: 'work', id: workId },
+  ]);
+  await redactWorkUploadResponses(tx, workspaceId, documentIds);
 }
 
 export function redactWorkUploadResponses(
@@ -123,7 +91,10 @@ export function redactWorkUploadResponses(
   return redactResourceResponses(
     tx,
     workspaceId,
-    workUploadResponses(documentIds),
-    unavailable(),
+    documentIds.map((id) => ({
+      kind: 'document' as const,
+      id,
+    })),
+    workUploadCommand,
   );
 }

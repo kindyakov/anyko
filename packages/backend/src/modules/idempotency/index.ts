@@ -7,9 +7,10 @@ export { createIdempotency, type IdempotencyApi } from './module';
 export type {
   AcquireInput,
   AcquireOutcome,
+  CreatedResource,
   IdempotencyKeyRef,
   IdempotencyStore,
-  StoredResponse,
+  StoredOutcome,
 } from './application/ports';
 
 export { createIdempotencyMaintenance } from './maintenance';
