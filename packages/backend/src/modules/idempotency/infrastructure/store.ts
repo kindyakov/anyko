@@ -1,14 +1,12 @@
-import { z } from 'zod';
-
 import type { Database } from '@anyko/database';
 
 import { transactionHandle, type Tx } from '../../../platform/transactions';
 import type {
   AcquireInput,
   AcquireOutcome,
+  CreatedResource,
   IdempotencyKeyRef,
   IdempotencyStore,
-  StoredResponse,
 } from '../application/ports';
 
 type Connection = Pick<Database, 'idempotencyKey' | '$executeRaw'>;
@@ -20,21 +18,20 @@ export function idempotencyStoreFor(tx: Tx) {
 export async function redactResourceResponses(
   tx: Tx,
   workspaceId: string,
-  resources: { path: string[]; id: string }[],
-  response: { status: number; body: z.infer<typeof storedBodySchema> },
+  resources: CreatedResource[],
 ) {
   await transactionHandle<Connection>(tx).idempotencyKey.updateMany({
     where: {
       workspaceId,
       state: 'completed',
-      OR: resources.map(({ path, id }) => ({ body: { path, equals: id } })),
+      OR: resources.map(({ kind, id }) => ({
+        resourceKind: kind,
+        resourceId: id,
+      })),
     },
-    data: { status: response.status, body: response.body },
+    data: { state: 'resource_unavailable', status: null, body: null },
   });
 }
-
-// Тело хранится как JSON-объект; запись проверяет его форму и приводит к JSON так же, как ответ.
-const storedBodySchema = z.record(z.string(), z.json());
 
 const lookupKey = (ref: IdempotencyKeyRef) => ({
   workspaceId: ref.workspaceId,
@@ -71,14 +68,16 @@ export function createIdempotencyStore(db: Connection): IdempotencyStore {
           continue;
         }
         if (row.fingerprint !== input.fingerprint) return { kind: 'conflict' };
+        if (row.state === 'resource_unavailable')
+          return { kind: 'replay', outcome: { kind: 'resource_unavailable' } };
         if (row.state === 'completed') {
-          if (row.status === null)
+          if (row.status === null || row.body === null)
             throw new Error('IDEMPOTENCY_RESPONSE_MISSING');
           return {
             kind: 'replay',
-            response: {
-              status: row.status,
-              body: storedBodySchema.parse(row.body),
+            outcome: {
+              kind: 'response',
+              response: { status: row.status, body: row.body },
             },
           };
         }
@@ -103,17 +102,16 @@ export function createIdempotencyStore(db: Connection): IdempotencyStore {
       throw new Error('IDEMPOTENCY_ACQUIRE_UNSETTLED');
     },
 
-    async complete(ref, token, response: StoredResponse, now) {
-      // Тот же путь приведения к JSON, что у ответа: повтор отдаёт побайтно то же содержимое.
-      const body = storedBodySchema.parse(
-        JSON.parse(JSON.stringify(response.body)),
-      );
+    async complete(ref, token, outcome, resource, now) {
+      const response = outcome.kind === 'response' ? outcome.response : null;
       const saved = await db.idempotencyKey.updateMany({
         where: { ...lookupKey(ref), token, state: 'in_progress' },
         data: {
-          state: 'completed',
-          status: response.status,
-          body,
+          state: response ? 'completed' : 'resource_unavailable',
+          status: response?.status ?? null,
+          body: response?.body ?? null,
+          resourceKind: resource?.kind ?? null,
+          resourceId: resource?.id ?? null,
           lockedUntil: now,
         },
       });

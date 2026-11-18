@@ -44,16 +44,18 @@ export function documentRoutes(
       pendingDeletions: await documents.queries.pendingDeletions(scope),
     };
   });
-  route(app, uploadDocument, async ({ scope, headers, body, requestId }) => ({
-    document: documentSummary(
-      await documents.commands.upload(scope, {
-        requestKey: headers['idempotency-key'],
-        filename: body.file.name,
-        bytes: new Uint8Array(await body.file.arrayBuffer()),
-        correlationId: requestId,
-      }),
-    ),
-  }));
+  route(app, uploadDocument, async ({ scope, headers, body, requestId }) => {
+    const document = await documents.commands.upload(scope, {
+      requestKey: headers['idempotency-key'],
+      filename: body.file.name,
+      bytes: new Uint8Array(await body.file.arrayBuffer()),
+      correlationId: requestId,
+    });
+    return {
+      body: { document: documentSummary(document) },
+      resource: { kind: 'document' as const, id: document.id },
+    };
+  });
   route(app, getDocument, async ({ scope, params }) => ({
     document: documentSummary(
       await documents.queries.get(scope, brandDocumentId(params.documentId)),

@@ -14,7 +14,10 @@ import { createIdempotencyStore } from '../../src/modules/idempotency/infrastruc
 import type { Clock } from '../../src/platform/clock';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
+if (
+  !databaseUrl ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+)
   throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
 const pool = createDatabasePool(databaseUrl);
 const db = createDatabase(pool);
@@ -38,6 +41,8 @@ const store = createIdempotencyStore(db);
 
 const command = 'POST /workspaces/:workspaceId/works';
 const owned: string[] = [];
+
+const reply = (body: string) => ({ response: { status: 201, body } });
 
 async function workspace() {
   const id = crypto.randomUUID();
@@ -75,10 +80,7 @@ test('the same key and input return the stored response and run the command once
   let calls = 0;
   const execute = () => {
     calls++;
-    return Promise.resolve({
-      status: 201,
-      body: { id: crypto.randomUUID(), title: 'Synthetic work' },
-    });
+    return Promise.resolve(reply(crypto.randomUUID()));
   };
   const first = await api.run(
     { workspaceId: ws, command, key, fingerprint },
@@ -90,6 +92,7 @@ test('the same key and input return the stored response and run the command once
   );
   expect(calls).toBe(1);
   expect(first.replayed).toBe(false);
+  expect(first.kind).toBe('response');
   expect(second).toEqual({ ...first, replayed: true });
 });
 
@@ -101,7 +104,7 @@ test('the same key with another input is a conflict and runs nothing', async () 
   let calls = 0;
   const execute = () => {
     calls++;
-    return Promise.resolve({ status: 201, body: { ok: true } });
+    return Promise.resolve(reply('accepted'));
   };
   await api.run(
     { workspaceId: ws, command, key, fingerprint: original },
@@ -133,7 +136,7 @@ test('a request with the same key while the first is running is refused as in pr
       calls++;
       started();
       await gate;
-      return { status: 201, body: { ok: true } };
+      return reply('accepted');
     },
   );
   // Второй запрос приходит только после того, как первый захватил ключ и начал выполнение.
@@ -141,7 +144,7 @@ test('a request with the same key while the first is running is refused as in pr
   await expectFailure(
     api.run({ workspaceId: ws, command, key, fingerprint }, () => {
       calls++;
-      return Promise.resolve({ status: 201, body: { ok: false } });
+      return Promise.resolve(reply('unexpected'));
     }),
     'IDEMPOTENCY_IN_PROGRESS',
   );
@@ -173,13 +176,13 @@ test('a failed run releases its capture so the same key runs again', async () =>
     { workspaceId: ws, command, key, fingerprint },
     () => {
       calls++;
-      return Promise.resolve({ status: 201, body: { attempt: 2 } });
+      return Promise.resolve(reply('second attempt'));
     },
   );
   expect(calls).toBe(2);
   expect(retried).toEqual({
-    status: 201,
-    body: { attempt: 2 },
+    kind: 'response',
+    ...reply('second attempt'),
     replayed: false,
   });
 });
@@ -192,7 +195,7 @@ test('the same key in another workspace is an independent command', async () => 
   let calls = 0;
   const execute = () => {
     calls++;
-    return Promise.resolve({ status: 201, body: { calls } });
+    return Promise.resolve(reply(String(calls)));
   };
   await api.run({ workspaceId: first, command, key, fingerprint }, execute);
   const other = await api.run(
@@ -209,15 +212,19 @@ test('an expired result is treated as absent and the command runs again', async 
   const fingerprint = await fingerprintInput({ body: { title: 'Expiring' } });
   const start = current;
   await api.run({ workspaceId: ws, command, key, fingerprint }, () =>
-    Promise.resolve({ status: 201, body: { round: 1 } }),
+    Promise.resolve(reply('original')),
   );
   current = new Date(start.getTime() + 24 * 60 * 60 * 1000 + 1000);
   try {
     const again = await api.run(
       { workspaceId: ws, command, key, fingerprint },
-      () => Promise.resolve({ status: 201, body: { round: 2 } }),
+      () => Promise.resolve(reply('renewed')),
     );
-    expect(again).toEqual({ status: 201, body: { round: 2 }, replayed: false });
+    expect(again).toEqual({
+      kind: 'response',
+      ...reply('renewed'),
+      replayed: false,
+    });
   } finally {
     current = start;
   }
@@ -243,25 +250,26 @@ test('a capture left by a crashed process is taken over after its lease expires'
   // Пока захват действует, повтор ждёт.
   await expectFailure(
     api.run({ ...ref, fingerprint }, () =>
-      Promise.resolve({ status: 201, body: {} }),
+      Promise.resolve(reply('unexpected')),
     ),
     'IDEMPOTENCY_IN_PROGRESS',
   );
   current = new Date(start.getTime() + 6 * 60 * 1000);
   try {
     const taken = await api.run({ ...ref, fingerprint }, () =>
-      Promise.resolve({ status: 201, body: { taken: true } }),
+      Promise.resolve(reply('new owner')),
     );
     expect(taken).toEqual({
-      status: 201,
-      body: { taken: true },
+      kind: 'response',
+      ...reply('new owner'),
       replayed: false,
     });
     // Старый владелец больше не может записать результат: токен захвата уже сменился.
     const lateWrite = await store.complete(
       ref,
       crashedToken,
-      { status: 201, body: { late: true } },
+      { kind: 'response', ...reply('old owner') },
+      undefined,
       current,
     );
     expect(lateWrite).toBe(false);
