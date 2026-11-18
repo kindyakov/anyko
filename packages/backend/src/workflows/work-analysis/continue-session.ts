@@ -11,6 +11,7 @@ import type { WorkRunRecord } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
+import { workLockKey } from '../work-guards';
 
 import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
@@ -42,7 +43,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
     const { run } = input;
     for (let attempt = 0; attempt < 2; attempt++) {
       const snapshot = await deps.locks.run(
-        `work:${run.workspaceId}:${run.workId}`,
+        workLockKey(run.workspaceId, run.workId),
         async () => {
           const work = await input.current();
           const facts = await deps.facts.internal.get(
@@ -147,7 +148,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
         await input.current();
       }
       const accepted = await deps.locks.run(
-        `work:${run.workspaceId}:${run.workId}`,
+        workLockKey(run.workspaceId, run.workId),
         async () => {
           const work = await input.current();
           if (work.revision !== snapshot.work.revision && attempt === 0)

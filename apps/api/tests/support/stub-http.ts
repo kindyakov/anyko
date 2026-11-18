@@ -70,8 +70,6 @@ export function stubHttpOptions(): {
     commands: {
       create: unused,
       attachDocument: unused,
-      bumpRevision: unused,
-      recordEvent: unused,
     },
     queries: {
       list: unused,

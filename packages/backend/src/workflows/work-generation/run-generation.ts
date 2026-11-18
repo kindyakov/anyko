@@ -8,6 +8,7 @@ import {
 } from '../../modules/templates';
 import type { WorkDependencies } from '../work-dependencies';
 import { createRunState } from '../work-execution/run-state';
+import { workLockKey } from '../work-guards';
 
 const DOCX =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -68,7 +69,7 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       // Storage errors propagate to the durable I/O barrier; never hide an unknown PUT outcome.
       await deps.storage.put(key, bytes, DOCX, signal);
       await deps.locks.run(
-        `work:${run.workspaceId}:${run.workId}`,
+        workLockKey(run.workspaceId, run.workId),
         async () => {
           await current(run);
           await deps.uow.run(async (tx) => {
@@ -99,7 +100,7 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
         : completed
           ? 'partial'
           : 'failed';
-    await deps.locks.run(`work:${run.workspaceId}:${run.workId}`, async () => {
+    await deps.locks.run(workLockKey(run.workspaceId, run.workId), async () => {
       await current(run);
       await deps.uow.run(async (tx) => {
         const generation = deps.generation.in(tx).internal;

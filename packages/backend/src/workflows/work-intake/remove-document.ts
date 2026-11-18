@@ -31,10 +31,11 @@ export const removeDocument =
           documentId: input.documentId,
           actorId: scope.userId,
         });
-        await deps.works.commands.recordEvent(scope, {
-          workId: input.workId,
-          kind: 'sources.deleting',
-        });
+        await deps.works.internal.event(
+          scope.workspaceId,
+          input.workId,
+          'sources.deleting',
+        );
       },
     );
   };

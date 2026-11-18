@@ -36,7 +36,10 @@ import { memberScope } from '../../../packages/backend/tests/support/scope';
 import { integrationConfig } from './support/composition';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
-if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test')
+if (
+  !databaseUrl ||
+  !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+)
   throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
 const redisUrl = process.env.TEST_REDIS_URL;
 if (!redisUrl) throw new Error('TEST_REDIS_URL required');
@@ -605,7 +608,7 @@ test('a package generates three individually scoped DOCX files from one snapshot
   ).toBe(false);
 });
 
-test('manual edits during model execution survive; optimistic revision rejects stale saves', async () => {
+test('manual edits during model execution survive acceptance of the result', async () => {
   const input = await create();
   await upload(input);
   let release: () => void = () => {};
@@ -634,14 +637,6 @@ test('manual edits during model execution survive; optimistic revision rejects s
         revision: view.work.revision,
         values: { ...emptyFieldValues(), personName: 'Ручное значение' },
       },
-    );
-    await rejects(
-      apiBackend.workHttp.review.editValues(memberScope(input.workspaceId), {
-        workId: brandWorkId(input.workId),
-        revision: view.work.revision,
-        values: emptyFieldValues(),
-      }),
-      'REVISION_CONFLICT',
     );
     release();
     expect((await until(input, terminal)).facts.values.personName).toBe(

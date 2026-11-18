@@ -28,11 +28,7 @@ export const WorkErrors = defineErrors({
 });
 export class WorkError extends WorkErrors.Failure {}
 
-// Виды событий работы, которые пишут сценарии этапа 5a. Процессы 5b пишут события через WorkStore.
 export type WorkEventKind =
-  | 'work.created'
-  | 'documents.changed'
-  | 'sources.deleting'
   | 'processing.queued'
   | 'facts.changed'
   | 'facts.confirmed'
@@ -130,8 +126,6 @@ export interface WorkListPage {
   total: number;
 }
 
-// Команды меняют данные работы. Право проверяет сама команда, если она сценарий владельца;
-// внутренние шаги (ревизия, событие) вызывает сценарий, который уже проверил право.
 export interface WorksCommands {
   create(
     scope: WorkspaceScope,
@@ -140,14 +134,6 @@ export interface WorksCommands {
   attachDocument(
     scope: WorkspaceScope,
     input: { workId: WorkId; documentId: DocumentId },
-  ): Promise<void>;
-  bumpRevision(
-    scope: WorkspaceScope,
-    input: { workId: WorkId; confirmed: boolean },
-  ): Promise<void>;
-  recordEvent(
-    scope: WorkspaceScope,
-    input: { workId: WorkId; kind: WorkEventKind },
   ): Promise<void>;
 }
 

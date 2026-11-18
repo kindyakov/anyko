@@ -5,12 +5,7 @@ import { WorkError, type WorksModule } from '../../modules/works';
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
-import {
-  requireCleanSources,
-  requireIdle,
-  requireWork,
-  workLockKey,
-} from '../work-guards';
+import { changeWork } from '../change-work';
 
 // Запуск анализа: снимок модели и ревизии входа ставится в очередь в одной транзакции с событием.
 export const analyzeWork =
@@ -26,23 +21,18 @@ export const analyzeWork =
     input: { workId: WorkId; correlationId: string },
   ) => {
     scope.require('works.edit');
-    await deps.locks.run(
-      workLockKey(scope.workspaceId, input.workId),
-      async () => {
-        const work = await requireWork(deps.works.queries, scope, input.workId);
-        const documents = await requireCleanSources(
-          deps.works.queries,
-          scope,
-          input.workId,
-        );
+    await changeWork(
+      deps,
+      scope,
+      { workId: input.workId, requireIdle: true, event: 'processing.queued' },
+      async ({ work, documents }) => {
         if (!documents.length) throw new WorkError('INVALID_WORK_INPUT');
         const settings = await deps.connections.internal.configuration(
           scope.workspaceId,
         );
         if (!settings) throw new WorkError('LLM_NOT_CONFIGURED');
-        await requireIdle(deps.processing.queries, scope, input.workId);
-        await deps.uow.run(async (tx) => {
-          await deps.processing.in(tx).commands.start(scope, {
+        return (tx) =>
+          deps.processing.in(tx).commands.start(scope, {
             workId: input.workId,
             kind: 'analysis',
             inputRevision: work.inputRevision,
@@ -55,11 +45,6 @@ export const analyzeWork =
               extraction: settings.extractionModel,
             },
           });
-          await deps.works.in(tx).commands.recordEvent(scope, {
-            workId: input.workId,
-            kind: 'processing.queued',
-          });
-        });
       },
     );
   };
