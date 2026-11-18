@@ -42,6 +42,7 @@ interface Props {
 export function PackagePreview(props: Props) {
   const { pack, values, disabled, onChange, focus } = props;
   const [selected, select] = useState(pack.documents[0]?.version);
+  const [handledFocus, setHandledFocus] = useState<typeof focus>();
   const [zoom, setZoom] = useState<number | 'fit'>('fit');
   const [fit, setFit] = useState(1);
   const frame = useRef<HTMLDivElement>(null);
@@ -67,22 +68,25 @@ export function PackagePreview(props: Props) {
       observer.disconnect();
     };
   }, []);
-  // Переход к полю открывает документ, где оно упомянуто. Выбор делается при рендере, а не в эффекте:
-  // прокрутка ниже уже находит поле в выбранном документе.
-  const host = focus
-    ? pack.documents.find((item) =>
-        new RegExp(`\\{[#]?${focus.key}\\}`).test(mentions(item.blocks)),
-      )
-    : undefined;
-  if (host && host.version !== selected) select(host.version);
+  // Обрабатываем каждый запрос перехода один раз, оставляя последующий выбор вкладки пользователю.
+  if (
+    focus &&
+    (focus.key !== handledFocus?.key || focus.nonce !== handledFocus.nonce)
+  ) {
+    setHandledFocus(focus);
+    const host = pack.documents.find((item) =>
+      new RegExp(`\\{[#]?${focus.key}\\}`).test(mentions(item.blocks)),
+    );
+    if (host && host.version !== selected) select(host.version);
+  }
+  const focusKey = focus?.key;
+  const focusNonce = focus?.nonce;
   useEffect(() => {
-    if (!focus) return;
+    if (!focusKey || focusNonce === undefined) return;
     const target =
-      frame.current?.querySelector<HTMLElement>(
-        `[data-field="${focus.key}"]`,
-      ) ??
+      frame.current?.querySelector<HTMLElement>(`[data-field="${focusKey}"]`) ??
       window.document.querySelector<HTMLElement>(
-        `[data-field-editor="${focus.key}"]`,
+        `[data-field-editor="${focusKey}"]`,
       );
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -94,8 +98,7 @@ export function PackagePreview(props: Props) {
     const input = target.querySelector('textarea');
     input?.focus({ preventScroll: true });
     input?.setSelectionRange(input.value.length, input.value.length);
-    // `selected` is a dependency so the jump finishes after a tab switch.
-  }, [focus, selected, pack.documents]);
+  }, [focusKey, focusNonce]);
   if (!document) return null;
   const scale = zoom === 'fit' ? fit : zoom;
   const zoomIndex = zooms.findIndex((item) => item.value === scale);

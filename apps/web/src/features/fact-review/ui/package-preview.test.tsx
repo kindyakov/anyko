@@ -1,5 +1,6 @@
-import { expect, test } from 'bun:test';
+import { expect, spyOn, test } from 'bun:test';
 
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { documentPackageSchema } from '@anyko/contracts/catalog';
@@ -56,6 +57,76 @@ const pack = documentPackageSchema.parse({
       },
     ],
   })),
+});
+
+test('a find request opens the matching document, preserves it on data refresh and permits later tab selection', async () => {
+  const scroll = spyOn(HTMLElement.prototype, 'scrollIntoView');
+  const twoDocuments = documentPackageSchema.parse({
+    ...pack,
+    documents: [
+      {
+        ...pack.documents[0],
+        blocks: [
+          { kind: 'paragraph', paragraph: paragraph('Первый документ') },
+        ],
+      },
+      {
+        ...pack.documents[1],
+        blocks: [
+          { kind: 'paragraph', paragraph: paragraph('Имя: {lastName}') },
+        ],
+      },
+    ],
+  });
+  const props = {
+    pack: twoDocuments,
+    values: emptyFieldValues(),
+    disabled: false,
+    onChange: () => undefined,
+  };
+  const view = render(<PackagePreview {...props} />);
+  const focus = { key: 'lastName', nonce: 1 };
+  view.rerender(<PackagePreview {...props} focus={focus} />);
+  await waitFor(() => {
+    expect(
+      screen.getByRole('tab', { name: 'Опись' }).getAttribute('aria-selected'),
+    ).toBe('true');
+  });
+  expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+  const target = scroll.mock.contexts[0] as HTMLElement;
+  expect(target.getAttribute('data-field')).toBe('lastName');
+  await waitFor(() => {
+    expect(target.classList.contains('animate-flash')).toBe(true);
+  });
+  view.rerender(
+    <PackagePreview
+      {...props}
+      pack={{ ...twoDocuments, documents: [...twoDocuments.documents] }}
+      focus={focus}
+    />,
+  );
+  expect(
+    screen.getByRole('tab', { name: 'Опись' }).getAttribute('aria-selected'),
+  ).toBe('true');
+  fireEvent.click(screen.getByRole('tab', { name: 'Заявление' }));
+  expect(
+    screen
+      .getByRole('tab', { name: 'Заявление' })
+      .getAttribute('aria-selected'),
+  ).toBe('true');
+  view.rerender(<PackagePreview {...props} focus={{ ...focus }} />);
+  expect(
+    screen
+      .getByRole('tab', { name: 'Заявление' })
+      .getAttribute('aria-selected'),
+  ).toBe('true');
+  view.rerender(<PackagePreview {...props} focus={{ ...focus, nonce: 2 }} />);
+  await waitFor(() => {
+    expect(
+      screen.getByRole('tab', { name: 'Опись' }).getAttribute('aria-selected'),
+    ).toBe('true');
+  });
+  scroll.mockRestore();
 });
 
 test('package preview exposes all documents and renders nested creditor loops once each without leaking service tags', () => {
