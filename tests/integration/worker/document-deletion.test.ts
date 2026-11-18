@@ -132,13 +132,17 @@ test('catalog deletion and claiming a replacement OCR run share the same lock or
     const processing = createDocumentProcessingStore(
       db,
       async (tx, workspace, document) => {
-        const [row] = await tx.$queryRaw<
+        const connection = tx as Parameters<typeof createWorkStore>[0];
+        const [row] = await connection.$queryRaw<
           { pid: number }[]
         >`SELECT pg_backend_pid() AS pid`;
         if (!row) throw new Error('Missing OCR connection');
         notifyEntered.resolve(row.pid);
         await releaseNotify.promise;
-        await notifyDocumentChanged(createWorkStore(tx))(workspace, document);
+        await notifyDocumentChanged(createWorkStore(connection))(
+          workspace,
+          document,
+        );
       },
     );
     const claim = processing.claim(
@@ -148,7 +152,12 @@ test('catalog deletion and claiming a replacement OCR run share the same lock or
       new Date(Date.now() + 60_000),
     );
     completed = Promise.allSettled([claim]);
-    const pid = await notifyEntered.promise;
+    const pid = await Promise.race([
+      notifyEntered.promise,
+      claim.then(() => {
+        throw new Error('OCR claim finished before notifying work');
+      }),
+    ]);
     const deletion = db.$transaction((tx) =>
       requestCatalogDeletion(tx, workspaceId, documentId, 'fixture', {
         canDeleteLinked: true,
