@@ -18,6 +18,7 @@ import {
   useFactsForm,
   WorkReview,
 } from '@/features/fact-review';
+import { WorkAgentHistory } from '@/features/work-agent-history';
 import { WorkResults } from '@/features/work-generation';
 import { WorkPipeline } from '@/features/work-processing';
 import { WorkSources } from '@/features/work-sources';
@@ -169,6 +170,7 @@ function WorkBody({
             <p className="text-muted mt-2 text-sm">{view.package.title}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <WorkAgentHistory workspaceId={workspaceId} view={view} />
             {view.work.confirmedRevision === view.work.revision ? (
               <StatusPill tone="success">Подтверждена</StatusPill>
             ) : (
@@ -219,10 +221,8 @@ function WorkBody({
           stage={stage}
           step={current}
           busy={commands.pending}
-          analyzeDisabled={commands.disabled.analyze}
           generateDisabled={commands.disabled.generate}
           onStep={setStep}
-          onAnalyze={analyze}
           onGenerate={generate}
         />
       </div>
@@ -248,13 +248,10 @@ function WorkBody({
           >
             <WorkSources
               view={view}
-              stage={stage}
               disabled={commands.disabled}
-              busy={commands.pending}
               uploads={commands.uploads}
               onUpload={commands.upload}
               onOpen={openDocument}
-              onAnalyze={analyze}
               onDelete={deleteDocument}
               onRetry={commands.retry}
               removing={commands.removing}
@@ -276,9 +273,7 @@ function WorkBody({
               view={view}
               facts={facts}
               busy={commands.editingBlocked}
-              analyzeDisabled={commands.disabled.analyze}
               onOpen={openDocument}
-              onExtract={analyze}
             />
           </Tabs.Panel>
           <Tabs.Panel value="documents" className="animate-rise outline-none">

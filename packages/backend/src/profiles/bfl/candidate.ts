@@ -2,9 +2,8 @@ import { z } from 'zod';
 
 import { fieldKeySchema, fieldValueIssue, fieldValueSchema } from './fields';
 
-export const candidateSchema = z
+const candidateBaseSchema = z
   .object({
-    origin: z.enum(['document', 'context']).optional(),
     field: fieldKeySchema,
     value: fieldValueSchema.refine(
       (value) =>
@@ -30,4 +29,22 @@ export const candidateSchema = z
     const issue = fieldValueIssue(value.field, value.value);
     if (issue)
       ctx.addIssue({ code: 'custom', path: ['value'], message: issue });
+  });
+
+export const extractedCandidateSchema = candidateBaseSchema.safeExtend({
+  origin: z.enum(['document', 'context']).optional(),
+});
+
+export const candidateSchema = candidateBaseSchema
+  .safeExtend({
+    origin: z.enum(['document', 'context', 'inference']).optional(),
+    explanation: z.string().trim().min(1).max(2000).optional(),
+  })
+  .superRefine(({ origin, explanation }, ctx) => {
+    if ((origin === 'inference') !== (explanation !== undefined))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['explanation'],
+        message: 'Only inferred values require an explanation',
+      });
   });

@@ -67,6 +67,12 @@ export function WorkPipeline({
     });
   const analyses = analysisRuns(view.runs);
   const [current, ...previous] = analyses;
+  const refreshSources =
+    view.pendingUploadCount === 0 &&
+    view.documents.length > 0 &&
+    (!current ||
+      (current.inputRevision !== undefined &&
+        current.inputRevision !== view.work.inputRevision));
   if (!current)
     return (
       <section className="animate-rise glass flex flex-col items-center rounded-3xl border border-white/[0.08] bg-[radial-gradient(90%_120%_at_50%_0%,#2a0a12aa,transparent_60%)] px-6 py-14 text-center">
@@ -76,10 +82,10 @@ export function WorkPipeline({
         </h2>
         <p className="text-muted mt-3 max-w-md leading-7">
           {view.documents.length
-            ? 'Запустите его — Anyko прочитает каждый файл и найдёт сведения для документов. Здесь будет видно, что происходит с каждым файлом.'
+            ? 'Anyko начнёт извлечение автоматически после распознавания файлов. Если файл не прочитан, проверьте его на шаге «Файлы».'
             : 'Сначала добавьте файлы клиента на шаге «Файлы».'}
         </p>
-        {view.documents.length > 0 && (
+        {refreshSources && (
           <Button
             size="lg"
             className="mt-8"
@@ -88,7 +94,7 @@ export function WorkPipeline({
             onClick={onAnalyze}
           >
             <Sparkles size={18} />
-            Извлечь сведения
+            Обновить сведения
           </Button>
         )}
       </section>
@@ -118,18 +124,24 @@ export function WorkPipeline({
             <StatusPill tone={runTones[current.status]}>
               {runStatusLabels[current.status]}
             </StatusPill>
-            {!running && (
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={busy}
-                disabled={analyzeDisabled}
-                onClick={onAnalyze}
-              >
-                <Sparkles size={15} />
-                Извлечь заново
-              </Button>
-            )}
+            {!running &&
+              (refreshSources ||
+                current.status === 'failed' ||
+                current.status === 'partial' ||
+                current.status === 'cancelled') && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  loading={busy}
+                  disabled={analyzeDisabled}
+                  onClick={onAnalyze}
+                >
+                  <Sparkles size={15} />
+                  {refreshSources
+                    ? 'Обновить сведения'
+                    : 'Повторить извлечение'}
+                </Button>
+              )}
           </div>
         </div>
         <Progress.Root value={percent} aria-label="Ход извлечения">

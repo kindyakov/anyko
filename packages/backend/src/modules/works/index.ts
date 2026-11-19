@@ -88,7 +88,32 @@ export interface WorkStore extends WorkDeletionStore {
     workspaceId: string,
     workId: string,
     documents: readonly WorkSourceAttachment[],
+    actorId: string,
   ): Promise<number>;
+  closeOpenUploadGroup(
+    workspaceId: string,
+    workId: string,
+  ): Promise<bigint | null>;
+  pendingUploadWorks(): Promise<{ workspaceId: string; workId: string }[]>;
+  pendingUploadCount(workspaceId: string, workId: string): Promise<number>;
+  readyUploadGroup(
+    workspaceId: string,
+    workId: string,
+  ): Promise<{
+    id: bigint;
+    actorId: string;
+    documentIds: string[];
+  } | null>;
+  dispatchUploadGroup(
+    workspaceId: string,
+    workId: string,
+    id: bigint,
+  ): Promise<void>;
+  unlinkPendingUpload(
+    workspaceId: string,
+    workId: string,
+    documentId: string,
+  ): Promise<boolean>;
   documents(workspaceId: string, workId: string): Promise<WorkSourceRow[]>;
   activeDocument(
     workspaceId: string,
@@ -203,6 +228,12 @@ export interface WorksPorts {
     | 'pinPending'
     | 'updateRecognition'
     | 'removeSource'
+    | 'closeOpenUploadGroup'
+    | 'pendingUploadWorks'
+    | 'pendingUploadCount'
+    | 'readyUploadGroup'
+    | 'dispatchUploadGroup'
+    | 'unlinkPendingUpload'
     | 'dirty'
     | 'touch'
     | 'lockRevision'

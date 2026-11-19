@@ -38,6 +38,11 @@ export interface AcceptedRunCandidates {
   contextAccepted: boolean;
   missingFields: FieldKey[];
   discrepancyFields: FieldKey[];
+  proposalOutcomes: {
+    candidate: WorkFacts['candidates'][number];
+    stage: 'extraction' | 'reconciliation';
+    status: 'applied' | 'matched' | 'retained' | 'review' | 'rejected';
+  }[];
 }
 
 interface FactsCommands {

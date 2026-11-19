@@ -10,6 +10,7 @@ import type {
 import type { FactsModule } from '../modules/facts';
 import type { GenerationModule } from '../modules/generation';
 import type { ProcessingIo, ProcessingModule } from '../modules/processing';
+import type { ReadTemplatePlaceholders } from '../modules/templates';
 import type { WorksModule } from '../modules/works';
 import type { UnitOfWork } from '../platform/transactions';
 
@@ -21,6 +22,7 @@ export interface WorkDependencies {
   works: WorksModule;
   facts: FactsModule;
   generation: GenerationModule;
+  templatePlaceholders: ReadTemplatePlaceholders;
   processing: ProcessingModule;
   connections: ConnectionsModule;
   agents: AgentsModule;

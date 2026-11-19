@@ -9,7 +9,10 @@ import {
 } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
-import { requirePackage } from '../../modules/templates';
+import {
+  type ReadTemplatePlaceholders,
+  requirePackage,
+} from '../../modules/templates';
 import type { WorksModule } from '../../modules/works';
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
@@ -26,6 +29,7 @@ export const getWork =
     processing: ProcessingModule;
     connections: ConnectionsModule;
     generation: GenerationModule;
+    templatePlaceholders: ReadTemplatePlaceholders;
     documents: DocumentsModule;
     agents: AgentsModule;
     locks: ResourceLocks;
@@ -37,6 +41,10 @@ export const getWork =
       const work = await requireWork(deps.works.queries, scope, workId);
       const sources = await deps.works.queries.sources(scope, workId);
       const { documents: rows, cleanupPending } = sources;
+      const pendingUploadCount = await deps.works.internal.pendingUploadCount(
+        scope.workspaceId,
+        workId,
+      );
       const documents = [];
       for (const row of rows)
         if (!row.deleted) {
@@ -62,13 +70,16 @@ export const getWork =
         workId,
         sources,
         !!facts.needsReview?.length,
+        pendingUploadCount > 0,
       );
       return {
         work,
         session: cleanupPending
           ? null
           : await deps.agents.internal.get(scope.workspaceId, workId),
-        package: requirePackage(work.packageVersion),
+        package: await deps.templatePlaceholders(
+          requirePackage(work.packageVersion),
+        ),
         documents,
         facts: { ...facts, candidates: markSelectedCandidates(facts) },
         discrepancyFields: findFactDiscrepancies(facts),
@@ -80,6 +91,7 @@ export const getWork =
           : await deps.generation.queries.list(scope, workId),
         cursor,
         cleanupPending,
+        pendingUploadCount,
         availability,
       };
     });

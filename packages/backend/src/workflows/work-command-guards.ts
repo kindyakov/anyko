@@ -1,4 +1,5 @@
 import type { ConnectionsModule } from '../modules/connections';
+import type { ProcessingModule } from '../modules/processing';
 import {
   WorkError,
   type WorkSourceRow,
@@ -14,7 +15,7 @@ export const workCommandPolicy = {
   confirm: { right: 'works.edit', idle: true, clean: true },
   upload: { right: 'documents.upload', idle: false, clean: true },
   remove: { right: 'documents.delete', idle: false, clean: false },
-  attach: { right: 'documents.upload', idle: true, clean: true },
+  attach: { right: 'documents.upload', idle: false, clean: true },
   updateRecognition: { right: 'works.edit', idle: true, clean: true },
   edit: { right: 'works.edit', idle: false, clean: true },
 } as const satisfies Record<
@@ -42,6 +43,25 @@ export class WorkInputBlock extends WorkError {
 
 export function requireIdleWork(active: boolean): void {
   if (active) throw new WorkError('WORK_BUSY');
+}
+
+export async function selectAnalysisRecovery(
+  processing: Pick<ProcessingModule['internal'], 'latestAnalysisRecovery'>,
+  workspaceId: string,
+  workId: string,
+  documents: readonly WorkSourceRow[],
+  uploadPending: boolean,
+) {
+  const recovery = await processing.latestAnalysisRecovery(workspaceId, workId);
+  if (
+    recovery?.documentIds.length &&
+    recovery.documentIds.every((id) =>
+      documents.some((doc) => doc.id === id && !doc.deleted),
+    )
+  )
+    return recovery;
+  if (uploadPending) throw new WorkError('WORK_BUSY');
+  return null;
 }
 
 export async function requireAnalysisInputs(

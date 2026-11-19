@@ -1,3 +1,5 @@
+import { LlmError } from '@anyko/llm';
+
 import {
   type AgentSessionContext,
   type FieldDefinition,
@@ -8,6 +10,7 @@ import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
+import { analysisContextRevision } from '../work-execution/run-state';
 import { guardWorkRevision, workLockKey } from '../work-guards';
 
 import { locateEvidence } from './locate-evidence';
@@ -73,6 +76,18 @@ export function createWorkContinuation(deps: WorkDependencies) {
       );
       let output:
         Awaited<ReturnType<typeof deps.agents.model.reconcile>> | undefined;
+      const historyRef = {
+        workspaceId: run.workspaceId,
+        workId: run.workId,
+        runId: run.id,
+        sessionId: snapshot.session.id,
+      };
+      const interaction = {
+        interactionId: snapshot.threadId,
+        stage: 'reconciliation' as const,
+      };
+      const history = deps.agents.internal.history.record(historyRef);
+      let reconciliationError: string | undefined;
       try {
         if (!input.sources.length) throw new Error('NO_READABLE_SOURCES');
         await workAttempt.step({
@@ -87,7 +102,10 @@ export function createWorkContinuation(deps: WorkDependencies) {
         const assertCurrent = async () => {
           input.signal.throwIfAborted();
           await input.readConnection();
-          if ((await input.current()).revision !== snapshot.work.revision)
+          if (
+            analysisContextRevision(await input.current()) !==
+            analysisContextRevision(snapshot.work)
+          )
             throw new Error('CONTEXT_REVISION_CHANGED');
         };
         const config = await input.readConnection();
@@ -101,6 +119,12 @@ export function createWorkContinuation(deps: WorkDependencies) {
           model: config.extractionModel,
           execute: () =>
             deps.agents.model.reconcile({
+              traceTool: (event) => history.tool({ ...interaction, ...event }),
+              observe: history.observe({
+                ...interaction,
+                provider: config.connection.id,
+                model: config.extractionModel,
+              }),
               sessionId: snapshot.session.id,
               threadId: snapshot.threadId,
               resource: `${run.workspaceId}:${run.workId}`,
@@ -137,20 +161,46 @@ export function createWorkContinuation(deps: WorkDependencies) {
         });
         output.candidates = locateEvidence(output.candidates, input.sources);
       } catch (error) {
+        output = undefined;
+        reconciliationError =
+          error instanceof LlmError
+            ? error.code
+            : 'CONTEXT_RECONCILIATION_FAILED';
         if (isAppError(error) && error.code === 'CONNECTION_REVOKED')
           throw error;
         await input.readConnection();
         input.signal.throwIfAborted();
         await input.current();
       }
+      const supersededProposals = () =>
+        (output?.candidates ?? []).map((candidate) => ({
+          stage: 'reconciliation',
+          candidate,
+          status: 'superseded',
+        }));
       const accepted = await deps.locks.run(
         workLockKey(run.workspaceId, run.workId),
         async (signal) => {
           const work = await input.current();
-          if (work.revision !== snapshot.work.revision && attempt === 0)
+          const contextChanged =
+            analysisContextRevision(work) !==
+            analysisContextRevision(snapshot.work);
+          if (contextChanged && attempt === 0) {
+            await workAttempt.write(
+              (tx) =>
+                deps.agents.in(tx).internal.history.outcome(historyRef, {
+                  ...interaction,
+                  status: 'superseded',
+                  output: JSON.stringify({
+                    proposalOutcomes: supersededProposals(),
+                  }),
+                  errorCode: 'CONTEXT_REVISION_CHANGED',
+                }),
+              signal,
+            );
             return false;
-          let validOutput =
-            work.revision === snapshot.work.revision ? output : undefined;
+          }
+          let validOutput = contextChanged ? undefined : output;
           await workAttempt.write(async (tx, attemptWrite) => {
             const facts = deps.facts.in(tx).commands;
             const works = deps.works.in(tx).internal;
@@ -165,12 +215,29 @@ export function createWorkContinuation(deps: WorkDependencies) {
               ...(validOutput && { contextCandidates: validOutput.candidates }),
             });
             if (!acceptedFacts.contextAccepted) validOutput = undefined;
+            await sessions.history.outcome(historyRef, {
+              ...interaction,
+              status: validOutput ? 'accepted' : 'rejected',
+              output: JSON.stringify({
+                summary: validOutput?.summary,
+                proposalOutcomes: [
+                  ...acceptedFacts.proposalOutcomes,
+                  ...(contextChanged ? supersededProposals() : []),
+                ],
+                missingFields: acceptedFacts.missingFields,
+                discrepancyFields: acceptedFacts.discrepancyFields,
+              }),
+              ...(!validOutput && {
+                errorCode:
+                  reconciliationError ?? 'CONTEXT_PROPOSALS_NOT_ACCEPTED',
+              }),
+            });
             if (validOutput && settingsRevision !== null) {
               const context: AgentSessionContext = {
                 version: 1,
                 promptVersion: 'work-context-v1',
                 workRevision: work.revision + 1,
-                inputRevision: work.inputRevision,
+                inputRevision: run.inputRevision,
                 settingsRevision,
                 summary: validOutput.summary,
                 documents: input.sources.map(({ id, digest }) => ({
@@ -200,10 +267,9 @@ export function createWorkContinuation(deps: WorkDependencies) {
               status: validOutput ? 'succeeded' : 'failed',
               ...(!validOutput
                 ? {
-                    errorCode:
-                      work.revision !== snapshot.work.revision
-                        ? 'CONTEXT_REVISION_CHANGED'
-                        : 'CONTEXT_RECONCILIATION_FAILED',
+                    errorCode: contextChanged
+                      ? 'CONTEXT_REVISION_CHANGED'
+                      : 'CONTEXT_RECONCILIATION_FAILED',
                   }
                 : { usage: validOutput.usage }),
             });

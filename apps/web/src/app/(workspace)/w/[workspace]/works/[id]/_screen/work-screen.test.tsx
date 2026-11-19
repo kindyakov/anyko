@@ -58,6 +58,78 @@ function renderWork() {
   );
 }
 
+test('work history can open a retained analysis run outside the recent work view', async () => {
+  const run = {
+    id: crypto.randomUUID(),
+    status: 'succeeded',
+    createdAt: source.createdAt,
+  };
+  const usage = {
+    calls: 2,
+    inputTokens: 14,
+    outputTokens: 8,
+    cachedInputTokens: null,
+    reasoningTokens: null,
+    unknownInputCalls: 1,
+    unknownOutputCalls: 1,
+  };
+  const requests = serveApi(({ url }) => {
+    if (url === workAddress) return json(200, workView);
+    if (url.startsWith(`${workAddress}/runs?`))
+      return json(200, { items: [run], page: 1, pageSize: 10, total: 1 });
+    if (url.startsWith(`${workAddress}/runs/${run.id}/agent-history?`))
+      return json(200, {
+        items: [
+          {
+            id: crypto.randomUUID(),
+            interactionId: crypto.randomUUID(),
+            documentId: null,
+            stage: 'reconciliation',
+            kind: 'decision',
+            status: 'accepted',
+            provider: null,
+            model: null,
+            inputTokens: null,
+            outputTokens: null,
+            cachedInputTokens: null,
+            reasoningTokens: null,
+            input: null,
+            output: JSON.stringify({ summary: 'Проверены сведения' }),
+            errorCode: null,
+            durationMs: null,
+            createdAt: run.createdAt,
+          },
+        ],
+        page: 1,
+        pageSize: 5,
+        total: 1,
+        runUsage: usage,
+        workUsage: usage,
+        steps: [],
+      });
+    throw new Error(`Unexpected request ${url}`);
+  });
+  renderWork();
+  const user = userEvent.setup();
+  await user.click(
+    await screen.findByRole('button', { name: 'История анализа' }),
+  );
+  const dialog = await screen.findByRole('dialog', { name: 'История анализа' });
+  expect(await within(dialog).findByText('Выбранный запуск')).toBeTruthy();
+  expect(
+    within(dialog).getAllByText('2 вызовов · Вход 14 · Выход 8'),
+  ).toHaveLength(2);
+  await user.click(
+    within(dialog).getByRole('button', {
+      name: 'Сопоставление · Результат сохранён',
+    }),
+  );
+  expect(within(dialog).getByText(/Проверены сведения/)).toBeTruthy();
+  expect(
+    requests.some(({ url }) => url.includes(`/runs/${run.id}/agent-history`)),
+  ).toBe(true);
+});
+
 test('upload confirmation is visible when returning to Files after a pending upload', async () => {
   const response = Promise.withResolvers<undefined>();
   const document = { ...source, status: 'queued' };
@@ -270,20 +342,18 @@ test('server availability disables analysis and shows the revoked connection eve
   const blocked = {
     ...workView,
     documents: [source],
+    pendingUploadCount: 1,
     availability: {
       ...workView.availability,
       analyze: { available: false, reason: 'CONNECTION_REVOKED' },
     },
   } satisfies WorkView;
   const requests = serveApi(() => json(200, blocked));
-  const user = userEvent.setup();
   renderWork();
 
   expect(await screen.findByText(connectionRevoked)).toBeTruthy();
   const files = within(await screen.findByRole('tabpanel'));
-  const analyze = files.getByRole('button', { name: 'Извлечь сведения' });
-  expect(analyze).toHaveProperty('disabled', true);
-  await user.click(analyze);
+  expect(files.queryByRole('button', { name: 'Извлечь сведения' })).toBeNull();
   expect(requests.some(({ method }) => method === 'POST')).toBe(false);
   expect(
     (await files.findByLabelText<HTMLInputElement>('Файлы клиента')).disabled,
@@ -302,6 +372,7 @@ test('an analysis command rejected because the connection was revoked shows guid
     return json(200, {
       ...workView,
       documents: [source],
+      pendingUploadCount: 0,
       availability: {
         ...workView.availability,
         analyze: revoked
@@ -312,9 +383,10 @@ test('an analysis command rejected because the connection was revoked shows guid
   });
   const user = userEvent.setup();
   renderWork();
-  const files = within(await screen.findByRole('tabpanel'));
+  await user.click(await screen.findByRole('tab', { name: /Извлечение/ }));
+  const extraction = within(await screen.findByRole('tabpanel'));
   await user.click(
-    await files.findByRole('button', { name: 'Извлечь сведения' }),
+    await extraction.findByRole('button', { name: 'Обновить сведения' }),
   );
 
   const message = within(await screen.findByRole('alert'));
@@ -325,7 +397,7 @@ test('an analysis command rejected because the connection was revoked shows guid
   });
   await waitFor(() => {
     expect(
-      files.getByRole('button', { name: 'Извлечь сведения' }),
+      extraction.getByRole('button', { name: 'Обновить сведения' }),
     ).toHaveProperty('disabled', true);
   });
 });
@@ -390,7 +462,11 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
           field: 'firstName',
           value: 'Анна',
           selected: false,
-          evidence: [{ documentId: source.id, imagePath: null, quote: 'Анна' }],
+          origin: 'inference',
+          explanation: 'Имя предположено по инициалам в исходнике.',
+          evidence: [
+            { documentId: source.id, imagePath: null, quote: 'А. Петрова' },
+          ],
         },
         {
           field: 'lastName',
@@ -448,6 +524,13 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
   ).toBeTruthy();
   expect(review.getByRole('heading', { name: 'Поле Имя' })).toBeTruthy();
   expect(review.queryByRole('heading', { name: 'Поле Фамилия' })).toBeNull();
+  expect(review.getByText('Вывод агента')).toBeTruthy();
+  expect(review.getByText('Без независимой проверки')).toBeTruthy();
+  expect(
+    review.getByText('Имя предположено по инициалам в исходнике.'),
+  ).toBeTruthy();
+  expect(review.getByText('Основания для вывода')).toBeTruthy();
+  expect(review.getByText('А. Петрова')).toBeTruthy();
   await user.click(
     review.getByRole('button', { name: 'Подставить это значение' }),
   );
@@ -456,7 +539,7 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
   ).toBeTruthy();
   expect(review.getByText('Расхождение')).toBeTruthy();
   expect(review.getByText('Не сохранено')).toBeTruthy();
-  expect(review.getByText('Модель нашла это значение')).toBeTruthy();
+  expect(review.getByText('Вывод агента')).toBeTruthy();
   expect(
     review.queryByRole('button', { name: 'Подставить это значение' }),
   ).toBeNull();
@@ -474,7 +557,11 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
     },
   );
   await user.click(review.getByRole('button', { name: 'Посмотреть все поля' }));
+  const firstName = within(review.getByRole('article', { name: 'Поле Имя' }));
+  expect(firstName.getByText('Вывод агента')).toBeTruthy();
+  expect(firstName.getByText('Без независимой проверки')).toBeTruthy();
   const surname = within(review.getByRole('article', { name: 'Поле Фамилия' }));
+  expect(surname.getByText('Из документа')).toBeTruthy();
   expect(surname.getByText('Петрова', { exact: true })).toBeTruthy();
   expect(
     surname.getByRole('button', {

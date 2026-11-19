@@ -15,7 +15,7 @@ export function workAnalysisJob(
     kind: 'run',
     connection,
     maxRunAttempts: null,
-    redeliverQueued: false,
+    redeliverQueued: true,
     name: 'work.analysis',
     version: 1,
     queue: 'llm',

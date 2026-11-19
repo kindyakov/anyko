@@ -1,10 +1,4 @@
-import {
-  ArrowRight,
-  Download,
-  FileSearch,
-  PackageCheck,
-  Sparkles,
-} from 'lucide-react';
+import { ArrowRight, Download, FileSearch, PackageCheck } from 'lucide-react';
 
 import { Button } from '@anyko/ui';
 
@@ -15,19 +9,15 @@ export function Hero({
   stage,
   step,
   busy,
-  analyzeDisabled,
   generateDisabled,
   onStep,
-  onAnalyze,
   onGenerate,
 }: {
   stage: WorkStage;
   step: StepKey;
   busy: boolean;
-  analyzeDisabled: boolean;
   generateDisabled: boolean;
   onStep: (step: StepKey) => void;
-  onAnalyze: () => void;
   onGenerate: () => void;
 }) {
   const content: {
@@ -54,21 +44,8 @@ export function Hero({
         };
       case 'ready':
         return {
-          title: 'Файлы готовы — запустите извлечение',
-          text: !stage.first
-            ? `Новых файлов, ещё не прочитанных Anyko: ${String(stage.pending)}. Извлечение найдёт в них сведения и дополнит работу.`
-            : 'Anyko распознает текст, изучит изображения и найдёт сведения с цитатами из источников.',
-          action: (
-            <Button
-              size="lg"
-              loading={busy}
-              disabled={analyzeDisabled}
-              onClick={onAnalyze}
-            >
-              <Sparkles size={18} />
-              Извлечь сведения
-            </Button>
-          ),
+          title: 'Подготавливаем файлы к извлечению',
+          text: 'Anyko автоматически продолжит после распознавания файлов. Если файл не прочитан, повторите распознавание или уберите его из работы.',
         };
       case 'processing':
         return {

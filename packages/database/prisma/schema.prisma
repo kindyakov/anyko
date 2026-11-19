@@ -120,6 +120,7 @@ model Work {
  updatedAt DateTime @updatedAt
  deletedAt DateTime?
  documents WorkDocument[]
+ uploadGroups WorkUploadGroup[]
  runs Run[]
  facts WorkFacts?
  generations WorkGeneration[]
@@ -152,12 +153,27 @@ model WorkDocument {
  ocrRevision Int?
  removed Boolean @default(false)
  uploaded Boolean @default(false)
+ uploadGroupId BigInt?
+ uploadGroup WorkUploadGroup? @relation(fields:[workspaceId,workId,uploadGroupId],references:[workspaceId,workId,id],onDelete:Cascade)
  work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
  document SourceDocument @relation(fields:[workspaceId,documentId],references:[workspaceId,id],onDelete:Restrict)
  ocrRun Run? @relation(fields:[workspaceId,documentId,ocrRevision],references:[workspaceId,documentId,revision],onDelete:Restrict)
  @@id([workId,documentId])
  @@index([workspaceId,workId])
  @@index([workspaceId,documentId])
+ @@index([workspaceId,workId,uploadGroupId])
+}
+model WorkUploadGroup {
+ id BigInt @id @default(autoincrement())
+ workspaceId String
+ workId String
+ work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
+ actorId String
+ closedAt DateTime?
+ dispatchedAt DateTime?
+ documents WorkDocument[]
+ @@unique([workspaceId,workId,id])
+ @@index([dispatchedAt,id])
 }
 model WorkFacts {
  workId String @id
@@ -205,6 +221,15 @@ model DocumentTemplateVersion {
  title String
  checksum String
  packages PackageDocument[]
+ placeholders DocumentTemplatePlaceholder[]
+}
+model DocumentTemplatePlaceholder {
+ templateVersion String
+ template DocumentTemplateVersion @relation(fields:[templateVersion],references:[version],onDelete:Cascade)
+ tag String
+ field String
+ placeholder String
+ @@id([templateVersion,tag])
 }
 model PackageDocument {
  packageVersion String
@@ -353,6 +378,7 @@ model WorkAgentSession {
  context Json?
  updatedAt DateTime @updatedAt
  turns WorkAgentTurn[]
+ events WorkAgentEvent[]
  @@unique([workspaceId,workId])
  @@unique([workspaceId,workId,id])
 }
@@ -374,6 +400,34 @@ model WorkAgentTurn {
  @@index([workspaceId,workId])
 }
 
+model WorkAgentEvent {
+ id String @id
+ workspaceId String
+ workId String
+ sessionId String
+ session WorkAgentSession @relation(fields:[workspaceId,workId,sessionId],references:[workspaceId,workId,id],onDelete:Cascade,map:"WorkAgentEvent_session_fkey")
+ runId String
+ run Run @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade,map:"WorkAgentEvent_run_fkey")
+ interactionId String
+ documentId String?
+ stage String
+ kind String
+ status String
+ provider String?
+ model String?
+ inputTokens Int?
+ outputTokens Int?
+ cachedInputTokens Int?
+ reasoningTokens Int?
+ input String?
+ output String?
+ errorCode String?
+ durationMs Int?
+ createdAt DateTime @default(now())
+ @@index([workspaceId,workId,runId,createdAt,id])
+ @@index([workspaceId,workId,sessionId])
+}
+
 model Run {
  id String @id
  workspaceId String
@@ -389,6 +443,7 @@ model Run {
  kind String
  status String @default("queued")
  inputRevision Int?
+ automaticUpload Boolean @default(false)
  settingsRevision Int?
  generationId String?
  documentIds Json?
@@ -404,6 +459,7 @@ model Run {
  attemptHistory RunAttempt[]
  outbox RunOutbox?
  pinnedSources WorkDocument[]
+ agentEvents WorkAgentEvent[]
  @@unique([workspaceId,id])
  @@unique([workspaceId,documentId,revision])
  @@index([workspaceId,documentId,createdAt])

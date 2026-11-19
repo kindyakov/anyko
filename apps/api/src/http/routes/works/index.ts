@@ -25,14 +25,17 @@ import {
   editWorkDocumentRecognition,
   generateWork,
   getWork,
+  getWorkAgentHistory,
   getWorkDeletion,
   getWorkDocumentImage,
   getWorkDocumentResult,
   getWorkDocumentSource,
+  listWorkAnalysisRuns,
   listWorks,
   removeWorkDocument,
   streamWorkEvents,
   uploadWorkDocument,
+  workRunSchema,
   type WorkView,
 } from '@anyko/contracts/works';
 
@@ -107,6 +110,30 @@ export function worksRoutes(
   });
   route(app, getWork, async ({ scope, params }) =>
     presentWork(await views.get(scope, brandWorkId(params.workId))),
+  );
+  route(app, listWorkAnalysisRuns, async ({ scope, params, query }) => {
+    const page = await views.listAgentHistoryRuns(
+      scope,
+      brandWorkId(params.workId),
+      query.page,
+      query.pageSize,
+    );
+    return {
+      ...page,
+      items: page.items.map((run) => ({
+        ...run,
+        status: workRunSchema.shape.status.parse(run.status),
+      })),
+    };
+  });
+  route(app, getWorkAgentHistory, ({ scope, params, query }) =>
+    views.agentHistory(
+      scope,
+      brandWorkId(params.workId),
+      params.runId,
+      query.page,
+      query.pageSize,
+    ),
   );
   route(
     app,

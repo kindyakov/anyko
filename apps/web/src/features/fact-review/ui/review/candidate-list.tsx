@@ -1,4 +1,4 @@
-import { Check, Crosshair } from 'lucide-react';
+import { Crosshair } from 'lucide-react';
 
 import type {
   FieldKey,
@@ -11,6 +11,8 @@ import { Button, StatusPill } from '@anyko/ui';
 import { sameFieldValue } from '@/features/fact-review/model/field-value';
 import {
   candidateSelection,
+  invalidReviewDate,
+  normalizedReviewValue,
   type ReviewField,
 } from '@/features/fact-review/model/review';
 
@@ -21,6 +23,59 @@ import {
   type OpenSource,
   SourceFragments,
 } from './source-fragments';
+
+type Origin = NonNullable<ReviewField['candidates'][number]['origin']>;
+type Findings = {
+  origin: Origin;
+  evidence: Evidence[];
+  explanations: Set<string>;
+};
+
+const originLabels: Record<Origin, string> = {
+  document: 'Из документа',
+  context: 'Сопоставление файлов',
+  inference: 'Вывод агента',
+};
+
+function FindingSources({
+  findings,
+  documents,
+  onOpen,
+}: {
+  findings: Findings;
+  documents: WorkView['documents'];
+  onOpen: OpenSource;
+}) {
+  const isInference = findings.origin === 'inference';
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusPill tone={isInference ? 'warning' : 'success'}>
+          {originLabels[findings.origin]}
+        </StatusPill>
+        {isInference && (
+          <span className="text-xs text-white/70">
+            Без независимой проверки
+          </span>
+        )}
+      </div>
+      {[...findings.explanations].map((explanation) => (
+        <p
+          key={explanation}
+          className="text-sm leading-5 break-words text-white/85"
+        >
+          {explanation}
+        </p>
+      ))}
+      <SourceFragments
+        evidence={findings.evidence}
+        documents={documents}
+        onOpen={onOpen}
+        {...(isInference && { title: 'Основания для вывода' })}
+      />
+    </div>
+  );
+}
 
 export function CandidateList({
   visible,
@@ -46,39 +101,44 @@ export function CandidateList({
           const saved = view.facts.values[field.key];
           const current = values[field.key];
           const changed = !sameFieldValue(current, saved);
-          const isSelected = candidateSelection(current, saved);
-          const matching: Evidence[] = [];
-          let matchingFromFile = false;
-          const options: {
+          const comparable = normalizedReviewValue(field, current);
+          const isSelected = candidateSelection(
+            comparable,
+            normalizedReviewValue(field, saved),
+          );
+          const groups: (Findings & {
             value: FieldValue;
             included: boolean;
-            fromFile: boolean;
-            evidence: Evidence[];
-          }[] = [];
+          })[] = [];
 
           for (const candidate of candidates) {
-            const fromFile = candidate.origin !== 'context';
-            if (sameFieldValue(current, candidate.value)) {
-              matchingFromFile ||= fromFile;
-              matching.push(...candidate.evidence);
-              continue;
-            }
-            const option = options.find(({ value }) =>
-              sameFieldValue(value, candidate.value),
+            const origin = candidate.origin ?? 'document';
+            const value = normalizedReviewValue(field, candidate.value);
+            const existing = groups.find(
+              (group) =>
+                group.origin === origin && sameFieldValue(group.value, value),
             );
-            if (option) {
-              option.included ||= isSelected(candidate);
-              option.fromFile ||= fromFile;
-              option.evidence.push(...candidate.evidence);
-            } else {
-              options.push({
-                value: candidate.value,
-                included: isSelected(candidate),
-                fromFile,
-                evidence: [...candidate.evidence],
-              });
-            }
+            const group = existing ?? {
+              origin,
+              value,
+              included: false,
+              evidence: [],
+              explanations: new Set<string>(),
+            };
+            if (!existing) groups.push(group);
+            group.included ||= isSelected({ ...candidate, value });
+            group.evidence.push(...candidate.evidence);
+            if (candidate.explanation)
+              group.explanations.add(candidate.explanation);
           }
+          const { matching = [], options = [] } = Object.groupBy(
+            groups,
+            ({ value }) =>
+              !invalidReviewDate(field, value) &&
+              sameFieldValue(comparable, value)
+                ? 'matching'
+                : 'options',
+          );
 
           return (
             <li key={field.key}>
@@ -141,21 +201,18 @@ export function CandidateList({
                       <CandidateValue value={current} />
                     )}
                   </div>
-                  {matching.length > 0 && (
-                    <div className="mt-3 border-t border-white/[0.08] pt-3">
-                      <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-emerald-200">
-                        <Check size={14} aria-hidden />
-                        {matchingFromFile
-                          ? 'Модель нашла это значение'
-                          : 'Модель предложила значение после сопоставления файлов'}
-                      </p>
-                      <SourceFragments
-                        evidence={matching}
+                  {matching.map((findings, index) => (
+                    <div
+                      key={index}
+                      className="mt-3 border-t border-white/[0.08] pt-3"
+                    >
+                      <FindingSources
+                        findings={findings}
                         documents={view.documents}
                         onOpen={onOpen}
                       />
                     </div>
-                  )}
+                  ))}
                 </div>
                 {options.length > 0 && (
                   <section
@@ -167,54 +224,51 @@ export function CandidateList({
                         ? 'Другие варианты модели'
                         : 'Варианты модели'}
                     </p>
-                    {options.map(
-                      ({ value, included, evidence, fromFile }, index) => (
-                        <div
-                          key={index}
-                          className="rounded-xl border border-white/[0.08] bg-black/20 p-3.5"
-                        >
-                          <div className="flex flex-wrap items-start justify-between gap-2.5">
-                            <div className="min-w-0 text-sm font-medium">
-                              <CandidateValue value={value} />
-                              {!fromFile && (
-                                <p className="text-muted mt-1 text-xs">
-                                  Предложено при сопоставлении файлов
-                                </p>
-                              )}
-                            </div>
-                            {included ? (
-                              <StatusPill tone="success">
-                                Совпадает полностью или частично
-                              </StatusPill>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant={
-                                  current == null ? 'primary' : 'secondary'
-                                }
-                                disabled={busy}
-                                onClick={(event) => {
-                                  event.currentTarget
-                                    .closest('article')
-                                    ?.querySelector('h3')
-                                    ?.focus({ preventScroll: true });
-                                  onApply(field.key, value);
-                                }}
-                              >
-                                Подставить это значение
-                              </Button>
-                            )}
+                    {options.map((option, index) => (
+                      <div
+                        key={index}
+                        className="rounded-xl border border-white/[0.08] bg-black/20 p-3.5"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2.5">
+                          <div className="min-w-0 text-sm font-medium">
+                            <CandidateValue value={option.value} />
                           </div>
-                          <div className="mt-3 border-t border-white/[0.08] pt-3">
-                            <SourceFragments
-                              evidence={evidence}
-                              documents={view.documents}
-                              onOpen={onOpen}
-                            />
-                          </div>
+                          {invalidReviewDate(field, option.value) ? (
+                            <StatusPill tone="warning">
+                              Непроверенная дата
+                            </StatusPill>
+                          ) : option.included ? (
+                            <StatusPill tone="success">
+                              Совпадает полностью или частично
+                            </StatusPill>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant={
+                                current == null ? 'primary' : 'secondary'
+                              }
+                              disabled={busy}
+                              onClick={(event) => {
+                                event.currentTarget
+                                  .closest('article')
+                                  ?.querySelector('h3')
+                                  ?.focus({ preventScroll: true });
+                                onApply(field.key, option.value);
+                              }}
+                            >
+                              Подставить это значение
+                            </Button>
+                          )}
                         </div>
-                      ),
-                    )}
+                        <div className="mt-3 border-t border-white/[0.08] pt-3">
+                          <FindingSources
+                            findings={option}
+                            documents={view.documents}
+                            onOpen={onOpen}
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </section>
                 )}
                 {(evidenceLost || !candidates.length) && (

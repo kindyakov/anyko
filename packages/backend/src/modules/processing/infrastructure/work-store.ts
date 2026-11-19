@@ -58,6 +58,31 @@ export function createWorkProcessingStore(
     if (change.count !== 1) throw new Error('STALE_WORK_ATTEMPT');
   };
   return {
+    async latestAnalysisRecovery(workspaceId, workId) {
+      const row = await db.run.findFirst({
+        where: { workspaceId, workId, kind: 'work.analysis' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          status: true,
+          inputRevision: true,
+          documentIds: true,
+          automaticUpload: true,
+        },
+      });
+      if (
+        !row ||
+        row.inputRevision === null ||
+        !['partial', 'failed', 'cancelled'].includes(row.status)
+      )
+        return null;
+      const documentIds = z.array(z.uuid()).safeParse(row.documentIds);
+      if (!documentIds.success) return null;
+      return {
+        inputRevision: row.inputRevision,
+        automaticUpload: row.automaticUpload,
+        documentIds: documentIds.data,
+      };
+    },
     async start(input) {
       await db.run.create({
         data: {
@@ -66,6 +91,7 @@ export function createWorkProcessingStore(
           workId: input.workId,
           kind: `work.${input.kind}`,
           inputRevision: input.inputRevision,
+          automaticUpload: input.automaticUpload ?? false,
           settingsRevision: input.settingsRevision,
           generationId: input.generationId,
           documentIds: input.documentIds,
@@ -95,6 +121,7 @@ export function createWorkProcessingStore(
           workId: row.workId,
           kind: workKind(row.kind),
           inputRevision: row.inputRevision,
+          automaticUpload: row.automaticUpload,
           settingsRevision: row.settingsRevision,
           generationId: row.generationId,
           documentIds: z.array(z.uuid()).parse(row.documentIds),

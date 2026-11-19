@@ -2,10 +2,11 @@ import type { FieldDefinition } from '../../profiles/bfl/fields';
 
 import type { AgentSessionContext, WorkFacts } from './schemas';
 export type { FieldDefinition, AgentSessionContext, WorkFacts };
-import type { ModelConnection } from '@anyko/llm';
+import type { ModelConnection, ProviderCallObserver } from '@anyko/llm';
 
 import type { Tx } from '../../platform/transactions';
 
+import type { AgentToolEvent } from './application/history';
 import type { AgentSessionStore } from './application/session';
 
 interface AgentDocument {
@@ -23,6 +24,7 @@ export const visionPromptRevision = 2;
 export interface DocumentAgents {
   ready(): Promise<void>;
   describe(input: {
+    observe?: ProviderCallObserver;
     connection: ModelConnection;
     modelId: string;
     resource: string;
@@ -34,6 +36,7 @@ export interface DocumentAgents {
     signal: AbortSignal;
   }): Promise<{ description: string; usage: AgentUsage }>;
   extract(input: {
+    observe?: ProviderCallObserver;
     fields?: FieldDefinition[];
     connection: ModelConnection;
     modelId: string;
@@ -44,6 +47,8 @@ export interface DocumentAgents {
     signal: AbortSignal;
   }): Promise<{ candidates: WorkFacts['candidates']; usage: AgentUsage }>;
   reconcile(input: {
+    observe?: ProviderCallObserver;
+    traceTool?(event: AgentToolEvent): Promise<void>;
     connection: ModelConnection;
     modelId: string;
     resource: string;

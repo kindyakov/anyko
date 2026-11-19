@@ -16,6 +16,7 @@ import { FieldEditor, TextSlot } from '../work-fields';
 
 import { CollectionNote } from './collection-note';
 import { paperMargins, paragraphStyle, signerName } from './paper-format';
+import { ScalarSlot } from './scalar-slot';
 import { renderStatementSignature } from './statement-signature';
 
 export function PreviewPaper({
@@ -70,7 +71,6 @@ export function PreviewPaper({
             </span>
           );
         }
-        const field = pack.fields.find((item) => item.key === key);
         const column = pack.fields
           .find((item) => item.key === rowField)
           ?.columns.find((item) => item.key === key);
@@ -97,26 +97,16 @@ export function PreviewPaper({
             slot
           );
         }
-        if (!field || field.columns.length)
-          return (
-            <span key={index} className="text-zinc-400">
-              [не заполнено]{suffix}
-            </span>
-          );
-        const value = values[field.key];
         return (
-          <TextSlot
+          <ScalarSlot
             key={index}
-            fieldKey={field.key}
-            label={field.label}
-            maxLength={field.limits.maxLength}
-            value={typeof value === 'string' ? value : null}
+            tag={key}
+            fields={pack.fields}
+            formats={document.placeholders}
+            values={values}
             disabled={disabled}
-            multiline={field.multiline}
             suffix={suffix}
-            onChange={(next) => {
-              onChange(field.key, next);
-            }}
+            onChange={onChange}
           />
         );
       });

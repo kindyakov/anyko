@@ -1,3 +1,5 @@
+import { formatCalendarDate } from '@anyko/document-values/calendar-date';
+
 import {
   emptyFieldValues,
   fieldDefinitions,
@@ -5,17 +7,21 @@ import {
   readFieldValues,
 } from '../../profiles/bfl/fields';
 
+import type { TemplatePlaceholder } from './schemas';
+
 /** Projection only: unknown values stay visibly unknown; no legal or financial inference. */
 export function templateData(
   input: FieldValues,
   templateVersion?: string,
+  placeholders: readonly TemplatePlaceholder[] = [],
 ): FieldValues & { signerName: string } {
   const values = readFieldValues(input);
   const output = emptyFieldValues();
   for (const field of fieldDefinitions) {
     const value = values[field.key];
     if (
-      templateVersion === 'bfl-statement-v4' &&
+      (templateVersion === 'bfl-statement-v4' ||
+        templateVersion === 'bfl-statement-v5') &&
       Array.isArray(value) &&
       !value.length &&
       ['debts', 'businessDebts', 'attachments'].includes(field.key)
@@ -48,6 +54,16 @@ export function templateData(
       ),
       rowNumber: String(index + 1),
     }));
+  }
+  for (const { tag, field, placeholder } of placeholders) {
+    if (placeholder === 'identity') continue;
+    const value = values[field];
+    Object.assign(output, {
+      [tag]:
+        typeof value === 'string'
+          ? formatCalendarDate(value, placeholder)
+          : '[не заполнено]',
+    });
   }
   const surname =
     typeof values.lastName === 'string' ? values.lastName.trim() : '';

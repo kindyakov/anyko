@@ -1,19 +1,16 @@
 import type { z } from 'zod';
 
+import {
+  canonicalCalendarDate,
+  datesInText,
+} from '@anyko/document-values/calendar-date';
+
 import type { candidateSchema } from './candidate';
-import { fieldIdentity, type FieldValue } from './fields';
+import { fieldIdentity, type FieldValue, isCalendarDateField } from './fields';
 
 type Candidate = z.infer<typeof candidateSchema>;
 
-const dateFields = new Set([
-  'documentDate',
-  'birthDate',
-  'passportIssuedAt',
-  'debtAsOfDate',
-]);
 const moneyColumns = new Set(['amount', 'arrears', 'penalties']);
-const datesInQuote =
-  /(?<!\d)(?:\d{4}-\d{2}-\d{2}|\d{1,2}[./]\d{1,2}[./]\d{4})(?!\d)/g;
 
 function digits(value: string) {
   return value.normalize('NFKC').replace(/[\s‐‑-]/g, '');
@@ -51,29 +48,11 @@ function attestedIdentifier(value: string, quote: string) {
   return candidates.some((item) => digits(item) === value);
 }
 
-function date(value: string): string | undefined {
-  const text = value.trim();
-  const local = /^(\d{1,2})[./](\d{1,2})[./](\d{4})$/.exec(text);
-  const iso = local
-    ? [local[3], local[2]?.padStart(2, '0'), local[1]?.padStart(2, '0')].join(
-        '-',
-      )
-    : text;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return;
-  const calendar = new Date(iso + 'T00:00:00.000Z');
-  if (
-    Number.isNaN(calendar.valueOf()) ||
-    !calendar.toISOString().startsWith(iso)
-  )
-    return;
-  return iso;
-}
-
 function attestedDate(value: string, quote: string) {
-  const expected = date(value);
-  const found = quote.match(datesInQuote) ?? [];
+  const expected = canonicalCalendarDate(value);
   return (
-    expected !== undefined && found.some((item) => date(item) === expected)
+    expected !== undefined &&
+    datesInText(quote).some((item) => canonicalCalendarDate(item) === expected)
   );
 }
 
@@ -92,10 +71,11 @@ function amount(value: string): string | undefined {
 
 function attestedAmount(value: string, quote: string) {
   const expected = amount(value);
-  const found =
-    quote
-      .replace(datesInQuote, ' ')
-      .match(/-?\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?/g) ?? [];
+  const text = datesInText(quote).reduce(
+    (remaining, date) => remaining.replace(date, ' '),
+    quote.normalize('NFKC'),
+  );
+  const found = text.match(/-?\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?/g) ?? [];
   return (
     expected !== undefined && found.some((item) => amount(item) === expected)
   );
@@ -146,7 +126,7 @@ function supportedValue(
         ? value
         : null;
     }
-    const matches = dateFields.has(field)
+    const matches = isCalendarDateField(field)
       ? attestedDate
       : field === 'debtTotal'
         ? attestedAmount

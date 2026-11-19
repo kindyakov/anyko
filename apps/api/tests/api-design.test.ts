@@ -15,6 +15,7 @@ const collections = new Map([
   ['workspaces', 'workspace'],
   ['document-packages', 'document-package'],
   ['works', 'work'],
+  ['runs', 'run'],
   ['connections', 'connection'],
   ['recognitions', 'document'],
   ['documents', 'document'],
@@ -30,6 +31,7 @@ const singletons = new Set([
   'fields',
   'deletion',
   'deletion-impact',
+  'agent-history',
   'llm',
 ]);
 const actions = new Set(['analyze', 'attach', 'confirm', 'generate', 'retry']);

@@ -164,8 +164,18 @@ test('work goes from list through upload, automatic status and editable facts', 
     'Имя: Анна',
   );
   await page.getByRole('button', { name: 'Закрыть просмотр' }).click();
-  await page.getByRole('button', { name: 'Извлечь сведения' }).first().click();
   await expect(page.getByText('Проверьте найденные сведения')).toBeVisible();
+  await page.getByRole('button', { name: 'История анализа' }).click();
+  const history = page.getByRole('dialog', { name: 'История анализа' });
+  await history
+    .getByRole('button', { name: 'Сопоставление · Результат сохранён' })
+    .click();
+  await expect(history.getByText(/Тестовый контекст/)).toBeVisible();
+  await history.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  await page.getByRole('tab', { name: /Проверка/ }).click();
+  await page
+    .getByRole('button', { name: 'Черновики документов', exact: true })
+    .click();
   await page
     .getByRole('textbox', { name: 'Фамилия', exact: true })
     .first()
@@ -179,6 +189,9 @@ test('work goes from list through upload, automatic status and editable facts', 
   expect((await saved).status()).toBe(200);
   await expect(page.getByText('Есть несохранённые правки')).toHaveCount(0);
   await page.reload();
+  await page
+    .getByRole('button', { name: 'Черновики документов', exact: true })
+    .click();
   await expect(
     page.getByRole('textbox', { name: 'Фамилия', exact: true }).first(),
   ).toHaveValue('Иванова');

@@ -56,10 +56,12 @@ test('real extraction preserves supported candidates when the model also returns
       { preconnect: fetch.preconnect },
     ),
   });
-  const threads = Array.from({ length: 4 }, () => crypto.randomUUID());
+  const threads: string[] = [];
   const fields = requirePackage('bfl-bankruptcy-v3').fields;
-  const extract = (threadId: string, text: string) =>
-    agents.extract({
+  const extract = (text: string) => {
+    const threadId = crypto.randomUUID();
+    threads.push(threadId);
+    return agents.extract({
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -72,21 +74,25 @@ test('real extraction preserves supported candidates when the model also returns
       document: { id: documentId, text, visuals: [] },
       signal: AbortSignal.timeout(10000),
     });
+  };
+  const expectInvalid = async (text: string) => {
+    try {
+      await extract(text);
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'LLM_INVALID_RESPONSE' });
+      return;
+    }
+    throw new Error('EXPECTED_INVALID_EXTRACTION');
+  };
   try {
     await agents.ready();
-    const result = await extract(threads[0]!, 'Регистрация: г. Тула, ул. Мира');
+    const result = await extract('Регистрация: г. Тула, ул. Мира');
     expect(result.candidates).toEqual([{ ...candidate, origin: 'document' }]);
-    await expect(
-      extract(threads[1]!, 'Регистрация: г. Калуга'),
-    ).rejects.toMatchObject({
-      code: 'LLM_INVALID_RESPONSE',
-    });
+    await expectInvalid('Регистрация: г. Калуга');
     returnedCandidates = [extra];
-    await expect(
-      extract(threads[2]!, 'Регистрация: г. Тула, ул. Мира'),
-    ).rejects.toMatchObject({ code: 'LLM_INVALID_RESPONSE' });
+    await expectInvalid('Регистрация: г. Тула, ул. Мира');
     returnedCandidates = [];
-    const empty = await extract(threads[3]!, 'Сведения отсутствуют.');
+    const empty = await extract('Сведения отсутствуют.');
     expect(empty.candidates).toEqual([]);
   } finally {
     for (const threadId of threads) await agents.eraseThread(threadId);
@@ -104,6 +110,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
     .parse(process.env.TEST_DATABASE_URL);
   const pool = createDatabasePool(databaseUrl);
   const documentId = crypto.randomUUID();
+  let origin: 'document' | 'inference' = 'document';
   let quote = 'Анна',
     referencedId = documentId,
     valid = true,
@@ -127,6 +134,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
                     summary: 'Сопоставлены сведения',
                     candidates: [
                       {
+                        origin,
                         field: 'personName',
                         value: 'Анна',
                         evidence: [
@@ -196,8 +204,11 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
   try {
     await agents.ready();
     const result = await invoke();
-    expect(result.candidates[0]?.origin).toBe('context');
+    expect(result.candidates[0]?.origin).toBe('document');
     expect(checks).toBeGreaterThan(0);
+    origin = 'inference';
+    expect(await failure(invoke())).toBe('LLM_INVALID_RESPONSE');
+    origin = 'document';
     quote = 'Нет такой цитаты';
     expect(await failure(invoke())).toBe('LLM_INVALID_RESPONSE');
     quote = 'Анна';

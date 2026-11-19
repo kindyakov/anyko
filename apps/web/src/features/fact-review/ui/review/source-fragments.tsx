@@ -14,10 +14,12 @@ export function SourceFragments({
   evidence,
   documents,
   onOpen,
+  title = 'Фрагменты для сверки',
 }: {
   evidence: Evidence[];
   documents: WorkView['documents'];
   onOpen: OpenSource;
+  title?: string;
 }) {
   const unique = new Map(evidence.map((item) => [JSON.stringify(item), item]));
   const byDocument = Map.groupBy(
@@ -27,7 +29,7 @@ export function SourceFragments({
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium text-white/65">Фрагменты для сверки</p>
+      <p className="text-xs font-medium text-white/65">{title}</p>
       {[...byDocument].map(([documentId, [first, ...rest]]) => {
         if (!first) return null;
         const file = documents.find(({ id }) => id === documentId);

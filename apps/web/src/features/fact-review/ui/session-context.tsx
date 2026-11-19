@@ -6,14 +6,20 @@ import { Disclosure, Notice, RelativeTime } from '@anyko/ui';
 export function SessionContext({
   session,
   revision,
+  inputRevision,
+  sourceIds,
   fields,
 }: {
   session: AgentSession | null;
   revision: number;
+  inputRevision: number;
+  sourceIds: readonly string[];
   fields: FieldDefinition[];
 }) {
   const context = session?.context;
   const saved = context ? session : null;
+  const analyzed = new Set(context?.documents.map(({ id }) => id));
+  const pendingSources = sourceIds.some((id) => !analyzed.has(id));
   const label = (key: string) =>
     fields.find((f) => f.key === key)?.label ?? key;
   return (
@@ -47,7 +53,9 @@ export function SessionContext({
         </p>
       ) : (
         <div className="mt-4 grid gap-4">
-          {context.workRevision !== revision && (
+          {(context.workRevision !== revision ||
+            context.inputRevision !== inputRevision ||
+            pendingSources) && (
             <Notice tone="neutral" role="status">
               Документы или сведения изменились. Контекст будет обновлён при
               следующем извлечении.

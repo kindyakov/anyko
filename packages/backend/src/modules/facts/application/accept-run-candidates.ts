@@ -3,8 +3,12 @@ import type {
   AcceptRunCandidatesInput,
   FactsStore,
 } from '..';
-import { combineCandidates } from '../domain/candidates';
-import { findFactDiscrepancies, mergeCandidates } from '../domain/values';
+import { candidateIdentity, combineCandidates } from '../domain/candidates';
+import {
+  findFactDiscrepancies,
+  markSelectedCandidates,
+  mergeCandidates,
+} from '../domain/values';
 // Вызывается внутри транзакции после ограждения попытки запуска сценарием.
 export const acceptRunCandidates =
   ({ store }: { store: Pick<FactsStore, 'get' | 'save'> }) =>
@@ -38,8 +42,38 @@ export const acceptRunCandidates =
       }
     }
     await store.save(workspaceId, workId, next);
+    const proposalOutcomes: AcceptedRunCandidates['proposalOutcomes'] = [];
+    const applied = new Set<string>();
+    for (const [stage, proposals, rejected] of [
+      ['extraction', candidates, false],
+      ['reconciliation', contextCandidates ?? [], !contextAccepted],
+    ] as const) {
+      const before = markSelectedCandidates({
+        ...existing,
+        candidates: proposals,
+      });
+      const after = markSelectedCandidates({ ...next, candidates: proposals });
+      for (const [
+        index,
+        { selected: included, ...candidate },
+      ] of after.entries()) {
+        const key = candidateIdentity(candidate);
+        const status = rejected
+          ? 'rejected'
+          : !included
+            ? 'review'
+            : before[index]?.selected
+              ? 'retained'
+              : candidate.origin === 'inference' || applied.has(key)
+                ? 'matched'
+                : 'applied';
+        proposalOutcomes.push({ stage, candidate, status });
+        if (status === 'applied') applied.add(key);
+      }
+    }
     return {
       contextAccepted,
+      proposalOutcomes,
       missingFields: fields.filter((field) => next.values[field] === null),
       discrepancyFields: findFactDiscrepancies(next).filter((field) =>
         fields.includes(field),

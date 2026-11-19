@@ -43,7 +43,9 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       run.generationId,
     );
     if (!record) throw new Error('GENERATION_MISSING');
-    const pack = requirePackage(record.packageVersion);
+    const pack = await deps.templatePlaceholders(
+      requirePackage(record.packageVersion),
+    );
     let completed = 0;
     await step({ stage: 'generation', status: 'running' });
     for (const file of record.files) {
@@ -64,7 +66,7 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       try {
         bytes = generateDocument(
           source,
-          templateData(record.values, template.version),
+          templateData(record.values, template.version, template.placeholders),
         );
       } catch {
         await write(async (tx) => {

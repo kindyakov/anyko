@@ -6,6 +6,10 @@ import { fieldDefinitions } from '../../profiles/bfl/fields';
 import manifest from './assets/package.json';
 import { type DocumentPackage, documentPackageSchema } from './schemas';
 import { technicalBytes, technicalPackage } from './technical';
+export type { DocumentPackage } from './schemas';
+export type ReadTemplatePlaceholders = (
+  pack: DocumentPackage,
+) => Promise<DocumentPackage>;
 export { templateData } from './render-data';
 
 const historicalPackage: DocumentPackage = documentPackageSchema.parse({
@@ -35,10 +39,17 @@ const thirdPackage: DocumentPackage = documentPackageSchema.parse({
     (version) => manifest.find((doc) => doc.version === version),
   ),
 });
-const bankruptcyPackage: DocumentPackage = documentPackageSchema.parse({
+const fourthPackage: DocumentPackage = documentPackageSchema.parse({
   ...historicalPackage,
   version: 'bfl-bankruptcy-v4',
   documents: ['bfl-statement-v4', 'bfl-inventory-v1', 'bfl-creditors-v1'].map(
+    (version) => manifest.find((doc) => doc.version === version),
+  ),
+});
+const bankruptcyPackage: DocumentPackage = documentPackageSchema.parse({
+  ...historicalPackage,
+  version: 'bfl-bankruptcy-v5',
+  documents: ['bfl-statement-v5', 'bfl-inventory-v1', 'bfl-creditors-v1'].map(
     (version) => manifest.find((doc) => doc.version === version),
   ),
 });
@@ -47,6 +58,7 @@ export function availablePackages(): DocumentPackage[] {
 }
 const knownPackages = [
   bankruptcyPackage,
+  fourthPackage,
   thirdPackage,
   previousPackage,
   historicalPackage,

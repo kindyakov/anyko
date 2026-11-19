@@ -81,7 +81,9 @@ let imageFixture: { path: string; contentType: string; bytes: Uint8Array }[] =
 let describeCount = 0;
 let waitForVision: (() => Promise<void>) | undefined;
 let extractionModel: string | undefined;
-let waitForExtraction: (() => Promise<void>) | undefined;
+let waitForExtraction:
+  | ((input: Parameters<DocumentAgents['extract']>[0]) => Promise<void>)
+  | undefined;
 let extractFixture: DocumentAgents['extract'] | undefined;
 let parseFixture: DocumentParser['parseDocument'] | undefined;
 const agents: DocumentAgents = {
@@ -115,7 +117,7 @@ const agents: DocumentAgents = {
     extractionCount++;
     extractionModel = input.modelId;
     threads.add(input.threadId);
-    await waitForExtraction?.();
+    await waitForExtraction?.(input);
     if (failExtraction || failDocument === input.document.id)
       throw new LlmError('LLM_RATE_LIMITED');
     return {
@@ -183,11 +185,12 @@ const workerBackend = createBackend(testConfig, {
   },
 });
 let worker: Awaited<ReturnType<typeof startJobWorker>> | undefined;
+const workerPrefix = `test-work-${crypto.randomUUID()}`;
 async function ready() {
   if (worker) return;
   await workerBackend.ready();
   worker = await startJobWorker(workerBackend.jobs, {
-    prefix: `test-work-${crypto.randomUUID()}`,
+    prefix: workerPrefix,
   });
 }
 async function create() {
@@ -211,7 +214,7 @@ async function create() {
 }
 async function until(
   input: { workspaceId: string; workId: string },
-  predicate: (view: WorkView) => boolean,
+  predicate: (view: WorkView) => boolean | Promise<boolean>,
 ) {
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
@@ -219,12 +222,13 @@ async function until(
       memberScope(input.workspaceId),
       brandWorkId(input.workId),
     );
-    if (predicate(view)) return view;
+    if (await predicate(view)) return view;
     await Bun.sleep(30);
   }
   throw new Error('WORK_STATUS_TIMEOUT');
 }
 const terminal = (view: WorkView) =>
+  view.pendingUploadCount === 0 &&
   !!view.runs.length &&
   view.runs.every((run) => !['queued', 'running'].includes(run.status));
 
@@ -289,7 +293,11 @@ test('reprocesses an older PDF, traces its quote to the page and renders only th
         usage: { inputTokens: null, outputTokens: null },
       });
     };
-    await analyze(input);
+    await apiBackend.documentHttp.documents.commands.retry(
+      scope,
+      brandDocumentId(document.id),
+      crypto.randomUUID(),
+    );
     const view = await until(input, terminal);
     expect(view.documents[0]?.status).toBe('succeeded');
     expect(view.facts.values.personName).toBe(name);
@@ -324,13 +332,16 @@ test('reprocesses an older PDF, traces its quote to the page and renders only th
     extractFixture = undefined;
   }
 });
-async function upload(input: { workspaceId: string; workId: string }) {
+async function upload(
+  input: { workspaceId: string; workId: string },
+  marker = 'synthetic',
+) {
   return apiBackend.workHttp.intake.uploadDocument(
     memberScope(input.workspaceId, 'fixture'),
     {
       workId: brandWorkId(input.workId),
       filename: 'fixture.pdf',
-      bytes: new TextEncoder().encode('%PDF-1.7\n synthetic'),
+      bytes: new TextEncoder().encode(`%PDF-1.7\n ${marker}`),
       correlationId: crypto.randomUUID(),
       requestKey: crypto.randomUUID(),
     },
@@ -381,7 +392,6 @@ afterAll(async () => {
 test('persistent pipeline extracts facts, caches successful files, generates saved DOCX and denies foreign scope', async () => {
   const input = await create();
   const doc = await upload(input);
-  await analyze(input);
   const view = await until(input, terminal);
   expect(view.runs[0]?.status).toBe('succeeded');
   expect(view.facts.values.personName).toBe('Анна');
@@ -509,6 +519,7 @@ test('a shared source pins the latest ready OCR in each work and survives unlink
     title: 'Другая работа',
   });
   const target = { ...input, workId: destination };
+  let analyzedText = '';
   const ocr = pauseStep();
   const image = new Uint8Array([1, 2, 3, 4]);
   parseFixture = async () => {
@@ -569,6 +580,14 @@ test('a shared source pins the latest ready OCR in each work and survives unlink
     expect(
       (await apiBackend.workHttp.views.get(scope, destination)).documents,
     ).toEqual([]);
+    extractFixture = (args) => {
+      if (args.resource === `${input.workspaceId}:${destination}`)
+        analyzedText = args.document.text;
+      return Promise.resolve({
+        candidates: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      });
+    };
     await intake.attachDocuments(scope, {
       workId: destination,
       documentIds: [documentId],
@@ -579,14 +598,14 @@ test('a shared source pins the latest ready OCR in each work and survives unlink
       status: 'succeeded',
       processingRevision: 1,
     });
-    expect(linked.runs).toEqual([]);
     await intake.attachDocuments(scope, {
       workId: destination,
       documentIds: [documentId],
     });
     expect(
-      (await apiBackend.workHttp.views.get(scope, destination)).work.revision,
-    ).toBe(linked.work.revision);
+      (await apiBackend.workHttp.views.get(scope, destination)).work
+        .inputRevision,
+    ).toBe(linked.work.inputRevision);
   } finally {
     waiting.release();
     parseFixture = undefined;
@@ -611,16 +630,7 @@ test('a shared source pins the latest ready OCR in each work and survives unlink
         .bytes,
     ).toEqual(image);
   }
-  let analyzedText = '';
-  extractFixture = (args) => {
-    analyzedText = args.document.text;
-    return Promise.resolve({
-      candidates: [],
-      usage: { inputTokens: 1, outputTokens: 1 },
-    });
-  };
   try {
-    await analyze(target);
     expect((await until(target, terminal)).runs[0]?.status).toBe('succeeded');
     expect(analyzedText).toBe('Имя: Анна. Номер: 42.');
   } finally {
@@ -651,14 +661,7 @@ test('updating OCR in one work preserves the other pin and marks only unsupporte
   const revised = `Номер: 1000\nНомер: -100\n${stableText}`;
   parseFixture = () =>
     Promise.resolve({ markdown: original, processorVersion: 'fixture' });
-  const documentId = brandDocumentId((await upload(input)).id);
   try {
-    await until(input, (view) => view.documents[0]?.status === 'succeeded');
-    const other = await intake.createWork(scope, {
-      packageVersion: 'technical-document-v1',
-      title: 'Другая работа с тем же файлом',
-      documentIds: [documentId],
-    });
     extractFixture = ({ document }) =>
       Promise.resolve({
         candidates: [
@@ -686,12 +689,18 @@ test('updating OCR in one work preserves the other pin and marks only unsupporte
         ],
         usage: { inputTokens: 1, outputTokens: 1 },
       });
-    await analyze(input);
+    const documentId = brandDocumentId((await upload(input)).id);
+    await until(input, (view) => view.documents[0]?.status === 'succeeded');
+    const other = await intake.createWork(scope, {
+      packageVersion: 'technical-document-v1',
+      title: 'Другая работа с тем же файлом',
+      documentIds: [documentId],
+    });
     const analyzed = await until(input, terminal);
     expect(analyzed.facts.values).toMatchObject({
       personName: 'Анна',
       documentNumber: '100',
-      documentDate: '2020-06-01',
+      documentDate: '01.06.2020',
     });
     await review.confirmFacts(scope, {
       workId: input.workId,
@@ -741,7 +750,7 @@ test('updating OCR in one work preserves the other pin and marks only unsupporte
     expect(changed.facts.values).toMatchObject({
       personName: 'Анна',
       documentNumber: '100',
-      documentDate: '2020-06-01',
+      documentDate: '01.06.2020',
     });
     expect(changed.facts.needsReview?.slice().sort()).toEqual([
       'documentNumber',
@@ -789,6 +798,11 @@ test('global source deletion confirms live links, refuses running works, and kee
   ]);
   const { views, review, generation } = apiBackend.workHttp;
   const catalog = apiBackend.documentHttp.documents;
+  const pause = pauseStep();
+  waitForExtraction = ({ resource }) =>
+    resource === `${input.workspaceId}:${input.workId}`
+      ? pause.wait()
+      : Promise.resolve();
   const documentId = brandDocumentId((await upload(input)).id);
   await until(input, (state) => state.documents[0]?.status === 'succeeded');
   const original = await catalog.queries.deletionImpact(scope, documentId);
@@ -845,10 +859,7 @@ test('global source deletion confirms live links, refuses running works, and kee
     catalog.commands.remove(member, documentId, impact.token),
     'FORBIDDEN',
   );
-  const pause = pauseStep();
-  waitForExtraction = () => pause.wait();
   try {
-    await analyze(input);
     await pause.entered();
     expect(
       (await catalog.queries.deletionImpact(scope, documentId)).works.find(
@@ -864,6 +875,7 @@ test('global source deletion confirms live links, refuses running works, and kee
     waitForExtraction = undefined;
   }
   const analyzed = await until(input, terminal);
+  await until({ ...input, workId: other }, terminal);
   await review.confirmFacts(scope, {
     workId: input.workId,
     revision: analyzed.work.revision,
@@ -1073,10 +1085,7 @@ test('a package generates three individually scoped DOCX files from one snapshot
   );
   const input = { workspaceId: legacy.workspaceId, workId: createdId };
   const doc = await upload(input);
-  const uploaded = await apiBackend.workHttp.views.get(
-    memberScope(input.workspaceId),
-    brandWorkId(input.workId),
-  );
+  const uploaded = await until(input, terminal);
   await apiBackend.workHttp.review.editValues(memberScope(input.workspaceId), {
     workId: brandWorkId(input.workId),
     revision: uploaded.work.revision,
@@ -1174,7 +1183,6 @@ test('a package generates three individually scoped DOCX files from one snapshot
 
 test('manual edits during model execution survive acceptance of the result', async () => {
   const input = await create();
-  await upload(input);
   let release: () => void = () => {};
   let started: () => void = () => {};
   const entered = new Promise<void>((resolve) => {
@@ -1188,7 +1196,7 @@ test('manual edits during model execution survive acceptance of the result', asy
     return barrier;
   };
   try {
-    await analyze(input);
+    await upload(input);
     await entered;
     const view = await apiBackend.workHttp.views.get(
       memberScope(input.workspaceId),
@@ -1214,10 +1222,9 @@ test('manual edits during model execution survive acceptance of the result', asy
 
 test('provider failure is persisted and a user retry can recover without losing the work', async () => {
   const input = await create();
-  await upload(input);
   failExtraction = true;
   try {
-    await analyze(input);
+    await upload(input);
     const view = await until(input, terminal);
     expect(view.runs[0]?.status).toBe('failed');
     expect(
@@ -1230,17 +1237,336 @@ test('provider failure is persisted and a user retry can recover without losing 
   expect((await until(input, terminal)).facts.values.personName).toBe('Анна');
 });
 
+test('upload groups close on OCR failure and pass to one agent session in order after file retry', async () => {
+  const input = await create();
+  const scope = memberScope(input.workspaceId);
+  const heldOcr = pauseStep();
+  const heldAgent = pauseStep();
+  let fail = true;
+  const requests: { sessionId: string; ids: string[] }[] = [];
+  parseFixture = async (bytes) => {
+    const marker = new TextDecoder().decode(bytes);
+    if (marker.endsWith('held')) await heldOcr.wait();
+    if (fail && marker.endsWith('retry')) throw new Error('OCR_FAILED');
+    return { markdown: 'Имя: Анна. Номер: 42.', processorVersion: 'fixture' };
+  };
+  reconcileHook = async ({ sessionId, documents }) => {
+    requests.push({ sessionId, ids: documents.map(({ id }) => id).sort() });
+    if (requests.length === 1) await heldAgent.wait();
+    return {
+      summary: 'Группа принята',
+      candidates: [],
+      usage: { inputTokens: 3, outputTokens: 2 },
+    };
+  };
+  try {
+    const first = await upload(input, 'held');
+    await heldOcr.entered();
+    const second = await upload(input, 'retry');
+    await until(input, (view) => view.pendingUploadCount === 2);
+    expect(await db.workUploadGroup.count({ where: input })).toBe(1);
+    heldOcr.release();
+    const failed = await until(
+      input,
+      (view) =>
+        view.documents.some(
+          (item) => item.id === first.id && item.status === 'succeeded',
+        ) &&
+        view.documents.some(
+          (item) => item.id === second.id && item.status === 'failed',
+        ),
+    );
+    expect(failed.runs).toEqual([]);
+    await until(input, async () => {
+      const group = await db.workUploadGroup.findFirstOrThrow({ where: input });
+      return group.closedAt !== null;
+    });
+    if (!worker) throw new Error('EXPECTED_RUNNING_WORKER');
+    await worker.stop();
+    worker = undefined;
+    await ready();
+    fail = false;
+    await apiBackend.documentHttp.documents.commands.retry(
+      scope,
+      brandDocumentId(second.id),
+      crypto.randomUUID(),
+    );
+    await heldAgent.entered();
+    const third = await upload(input, 'next');
+    const waiting = await until(input, (view) =>
+      view.documents.some(
+        (item) => item.id === third.id && item.status === 'succeeded',
+      ),
+    );
+    expect(waiting.pendingUploadCount).toBe(1);
+    expect(waiting.runs).toMatchObject([
+      { kind: 'analysis', status: 'running' },
+    ]);
+    expect(requests.map(({ ids }) => ids)).toEqual([
+      [first.id, second.id].sort(),
+    ]);
+    heldAgent.release();
+    const completed = await until(input, terminal);
+    expect(completed.runs.map(({ status }) => status)).toEqual([
+      'succeeded',
+      'succeeded',
+    ]);
+    const sessionId = completed.session?.id;
+    if (!sessionId) throw new Error('EXPECTED_WORK_SESSION');
+    expect(requests).toEqual([
+      { sessionId, ids: [first.id, second.id].sort() },
+      {
+        sessionId,
+        ids: [first.id, second.id, third.id].sort(),
+      },
+    ]);
+    const groups = await db.workUploadGroup.findMany({
+      where: input,
+      orderBy: { id: 'asc' },
+      include: { documents: true },
+    });
+    expect(
+      groups.map(({ documents }) =>
+        documents.map(({ documentId }) => documentId).sort(),
+      ),
+    ).toEqual([[first.id, second.id].sort(), [third.id]]);
+    expect(
+      groups.every(({ closedAt, dispatchedAt }) => closedAt && dispatchedAt),
+    ).toBe(true);
+  } finally {
+    heldOcr.release();
+    heldAgent.release();
+    parseFixture = undefined;
+    reconcileHook = undefined;
+  }
+}, 20000);
+
+test('removing an unread file from a closed group automatically starts analysis of the remaining file', async () => {
+  const input = await create();
+  const held = pauseStep();
+  parseFixture = async (bytes) => {
+    if (new TextDecoder().decode(bytes).endsWith('unreadable'))
+      throw new Error('OCR_FAILED');
+    await held.wait();
+    return { markdown: 'Имя: Анна. Номер: 42.', processorVersion: 'fixture' };
+  };
+  try {
+    const good = await upload(input, 'good');
+    await held.entered();
+    const bad = await upload(input, 'unreadable');
+    held.release();
+    const blocked = await until(
+      input,
+      (view) =>
+        view.documents.some(
+          ({ id, status }) => id === good.id && status === 'succeeded',
+        ) &&
+        view.documents.some(
+          ({ id, status }) => id === bad.id && status === 'failed',
+        ),
+    );
+    expect(blocked.runs).toEqual([]);
+    await apiBackend.workHttp.intake.removeDocument(
+      memberScope(input.workspaceId),
+      {
+        workId: input.workId,
+        documentId: brandDocumentId(bad.id),
+      },
+    );
+    const completed = await until(input, terminal);
+    expect(completed.documents.map(({ id }) => id)).toEqual([good.id]);
+    expect(completed.runs).toMatchObject([
+      { kind: 'analysis', status: 'succeeded' },
+    ]);
+    expect(completed.facts.values.personName).toBe('Анна');
+  } finally {
+    held.release();
+    parseFixture = undefined;
+  }
+}, 15000);
+
+test('a failed analysis retries its own sources while the next group is blocked by OCR', async () => {
+  const input = await create();
+  const extraction = pauseStep();
+  failExtraction = true;
+  waitForExtraction = ({ resource }) =>
+    resource === `${input.workspaceId}:${input.workId}`
+      ? extraction.wait()
+      : Promise.resolve();
+  parseFixture = (bytes) => {
+    if (new TextDecoder().decode(bytes).endsWith('unreadable'))
+      return Promise.reject(new Error('OCR_FAILED'));
+    return Promise.resolve({
+      markdown: 'Имя: Анна. Номер: 42.',
+      processorVersion: 'fixture',
+    });
+  };
+  try {
+    const first = await upload(input, 'first');
+    await extraction.entered();
+    const second = await upload(input, 'unreadable');
+    await until(input, (view) =>
+      view.documents.some(
+        ({ id, status }) => id === second.id && status === 'failed',
+      ),
+    );
+    extraction.release();
+    const blocked = await until(
+      input,
+      (view) => view.runs[0]?.status === 'failed',
+    );
+    expect(blocked.pendingUploadCount).toBe(1);
+    expect(blocked.availability.analyze).toEqual({ available: true });
+    failExtraction = false;
+    await analyze(input);
+    const recovered = await until(
+      input,
+      (view) => view.runs.length === 2 && view.runs[0]?.status === 'succeeded',
+    );
+    expect(recovered.pendingUploadCount).toBe(1);
+    expect(recovered.runs.map(({ status }) => status)).toEqual([
+      'succeeded',
+      'failed',
+    ]);
+    expect(recovered.availability.analyze).toEqual({
+      available: false,
+      reason: 'WORK_BUSY',
+    });
+    expect(recovered.documents.find(({ id }) => id === second.id)?.status).toBe(
+      'failed',
+    );
+    const runs = await db.run.findMany({
+      where: { ...input, kind: 'work.analysis' },
+      select: { documentIds: true },
+    });
+    expect(runs.map(({ documentIds }) => documentIds)).toEqual([
+      [first.id],
+      [first.id],
+    ]);
+    expect(
+      await db.run.count({
+        where: { workspaceId: input.workspaceId, documentId: second.id },
+      }),
+    ).toBe(1);
+    await rejects(analyze(input), 'WORK_BUSY');
+  } finally {
+    extraction.release();
+    failExtraction = false;
+    waitForExtraction = undefined;
+    parseFixture = undefined;
+  }
+}, 15000);
+
+test('a legacy unread source without an OCR run closes its group before another attachment', async () => {
+  const input = await create();
+  const actor = 'fixture';
+  const legacyId = crypto.randomUUID();
+  await db.sourceDocument.create({
+    data: {
+      id: legacyId,
+      workspaceId: input.workspaceId,
+      filename: 'legacy.pdf',
+      sourceKey: `fixture/${legacyId}.pdf`,
+      sourceChecksum: 'fixture',
+      requestKey: crypto.randomUUID(),
+      size: 1,
+      createdBy: actor,
+    },
+  });
+  await db.$transaction(async (tx) => {
+    const group = await tx.workUploadGroup.create({
+      data: { ...input, actorId: actor },
+    });
+    await tx.workDocument.create({
+      data: {
+        ...input,
+        documentId: legacyId,
+        uploadGroupId: group.id,
+        uploaded: true,
+      },
+    });
+  });
+  await until(input, (view) =>
+    view.documents.some(
+      ({ id, errorCode, status }) =>
+        id === legacyId &&
+        status === 'failed' &&
+        errorCode === 'OCR_RETRY_REQUIRED',
+    ),
+  );
+  const next = await upload(input, 'next');
+  const groups = await db.workUploadGroup.findMany({
+    where: input,
+    orderBy: { id: 'asc' },
+    include: { documents: true },
+  });
+  expect(
+    groups.map(({ documents }) =>
+      documents.map(({ documentId }) => documentId),
+    ),
+  ).toEqual([[legacyId], [next.id]]);
+  expect(groups[0]?.closedAt).toBeInstanceOf(Date);
+  const waiting = await until(input, (view) =>
+    view.documents.some(
+      ({ id, status }) => id === next.id && status === 'succeeded',
+    ),
+  );
+  expect(waiting.runs).toEqual([]);
+}, 15000);
+
+test('a dispatched upload analysis is redelivered with the same run after the queue is lost', async () => {
+  const input = await create();
+  if (!worker) throw new Error('EXPECTED_RUNNING_WORKER');
+  await worker.stop();
+  worker = await startJobWorker(workerBackend.jobs, {
+    prefix: workerPrefix,
+    queues: 'ocr,maintenance',
+  });
+  const source = await upload(input, 'before-restart');
+  const enqueued = await until(input, async (view) => {
+    const run = view.runs[0];
+    if (!run || run.status !== 'queued') return false;
+    const outbox = await db.runOutbox.findUnique({ where: { runId: run.id } });
+    return !!outbox?.deliveredAt;
+  });
+  const runId = enqueued.runs[0]?.id;
+  if (!runId) throw new Error('EXPECTED_QUEUED_RUN');
+  await worker.stop();
+  // The new namespace has no copy of the first worker's Redis delivery.
+  await db.runOutbox.update({
+    where: { runId },
+    data: { deliveredAt: new Date(Date.now() - 31000) },
+  });
+  worker = await startJobWorker(workerBackend.jobs, {
+    prefix: `${workerPrefix}-restarted`,
+  });
+  const completed = await until(input, terminal);
+  expect(completed.runs).toMatchObject([{ id: runId, status: 'succeeded' }]);
+  expect(
+    await db.run.findUnique({
+      where: { id: runId },
+      select: { attempts: true, documentIds: true },
+    }),
+  ).toEqual({ attempts: 1, documentIds: [source.id] });
+  expect(await db.workUploadGroup.count({ where: input })).toBe(1);
+}, 25000);
+
 test('a failed file does not stop another file; retry reuses the successful extraction', async () => {
   const input = await create();
-  const first = await upload(input);
-  await upload(input);
-  failDocument = first.id;
+  const ocr = pauseStep();
+  pauseOcr = ocr.wait;
   try {
-    await analyze(input);
+    const first = await upload(input);
+    await ocr.entered();
+    await upload(input);
+    failDocument = first.id;
+    ocr.release();
     const state = await until(input, terminal);
     expect(state.runs[0]?.status).toBe('partial');
     expect(state.facts.values.personName).toBe('Анна');
   } finally {
+    ocr.release();
+    pauseOcr = undefined;
     failDocument = undefined;
   }
   const before = extractionCount;
@@ -1251,7 +1577,6 @@ test('a failed file does not stop another file; retry reuses the successful extr
 
 test('deletion during model execution hides derivatives immediately and fences the late reply', async () => {
   const input = await create();
-  const doc = await upload(input);
   let release: () => void = () => {};
   let entered: () => void = () => {};
   const started = new Promise<void>((resolve) => {
@@ -1265,7 +1590,7 @@ test('deletion during model execution hides derivatives immediately and fences t
     return barrier;
   };
   try {
-    await analyze(input);
+    const doc = await upload(input);
     await started;
     await apiBackend.workHttp.intake.removeDocument(
       memberScope(input.workspaceId),
@@ -1302,7 +1627,6 @@ test('deletion during model execution hides derivatives immediately and fences t
 test('confirmation survives added sources and repeated analysis; only the new file calls the model', async () => {
   const input = await create();
   await upload(input);
-  await analyze(input);
   const initial = await until(input, terminal);
   await apiBackend.workHttp.review.confirmFacts(
     memberScope(input.workspaceId),
@@ -1315,7 +1639,6 @@ test('confirmation survives added sources and repeated analysis; only the new fi
   extractedName = 'Ирина';
   try {
     await upload(input);
-    await analyze(input);
     const changed = await until(input, terminal);
     expect(changed.facts.values.personName).toBe('Анна');
     expect(changed.work.confirmedRevision).toBeNull();
@@ -1555,7 +1878,6 @@ test('owner deletion fences a running writer, purges the work, and retains its s
     correlationId: crypto.randomUUID(),
     requestKey: crypto.randomUUID(),
   });
-  await analyze(input);
   const analyzed = await until(input, terminal);
   expect(analyzed.facts.values.personName).toBe('Анна');
   const responses = apiBackend.workHttp.idempotency;
@@ -1770,13 +2092,13 @@ test('standalone images use cloud recognition once and work analysis reuses the 
     bytes: fixtureImage,
   };
   const modes: unknown[] = [];
-  parseFixture = async (...args) => {
-    modes.push(Reflect.get(args, 3));
-    return {
+  parseFixture = (_bytes, _format, _attemptId, mode) => {
+    modes.push(mode);
+    return Promise.resolve({
       markdown: 'Локальный результат',
       processorVersion: 'fixture',
       images: [image],
-    };
+    });
   };
   try {
     const document = await apiBackend.workHttp.intake.uploadDocument(scope, {
@@ -1797,7 +2119,6 @@ test('standalone images use cloud recognition once and work analysis reuses the 
     expect(modes).toEqual(['visual-inputs']);
     expect(describeCount - before).toBe(1);
 
-    await analyze(input);
     expect((await until(input, terminal)).runs[0]?.status).toBe('succeeded');
     expect(describeCount - before).toBe(1);
   } finally {
@@ -1931,7 +2252,6 @@ test('rotating the workspace connection during analysis preserves the recorded r
   const visual = holdFirstVisual();
   try {
     await upload(input);
-    await analyze(input);
     await visual.started();
     await runtime.saveSettings(input.workspaceId, rotatedConnection());
     visual.release();
@@ -1954,7 +2274,6 @@ test('revoking the recorded revision stops analysis before another model call ev
   const before = extractionCount;
   try {
     await upload(input);
-    await analyze(input);
     await visual.started();
     await apiBackend.workHttp.settings.revoke(scopes);
     await apiBackend.workHttp.settings.revoke(scopes);
@@ -2086,7 +2405,6 @@ test('rotation followed by revocation stops a run pinned to the old revision bef
   const before = extractionCount;
   try {
     await upload(input);
-    await analyze(input);
     await visual.started();
     await runtime.saveSettings(input.workspaceId, rotatedConnection());
     await apiBackend.workHttp.settings.revoke(scope);
@@ -2145,7 +2463,6 @@ test('deletion during the first visual prevents a second provider request', asyn
   const before = describeCount;
   try {
     const doc = await upload(input);
-    await analyze(input);
     await started;
     await apiBackend.workHttp.intake.removeDocument(
       memberScope(input.workspaceId),
@@ -2170,9 +2487,13 @@ test('deletion during the first visual prevents a second provider request', asyn
 test('Mastra sends the extraction text directly, keeps reconciliation tools, and erases persisted messages on cleanup', async () => {
   const input = await create();
   const lastLine = 'ФИО заявителя: Анна';
-  const markdown = `${'Строка исходника.\n'.repeat(3000)}\n${lastLine}`;
+  const signing = 'Подписано за день до регистрации от 22.08.2026';
+  const debt = 'Два платежа: 100 рублей и 200 рублей';
+  const markdown = `${'Строка исходника.\n'.repeat(3000)}\n${lastLine}\n${signing}\n${debt}`;
   const encodedMarkdown = JSON.stringify(markdown).slice(1, -1);
   let documentId = '';
+  let providerCalls = 0;
+  let rateLimited = false;
   let sawImage = false,
     sawCompleteExtraction = false,
     extractionOfferedTools = false,
@@ -2193,6 +2514,7 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
     hostname: '127.0.0.1',
     port: 0,
     async fetch(request) {
+      providerCalls++;
       const value: unknown = await request.json();
       const body = requestSchema.parse(value);
       const messages = JSON.stringify(body.messages);
@@ -2200,10 +2522,20 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
       const visual = messages.includes('image_url');
       sawImage ||= visual;
       if (!coordinator && !visual) {
+        if (!rateLimited) {
+          rateLimited = true;
+          return Response.json(
+            { error: { message: 'Retry fixture' } },
+            {
+              status: 429,
+              headers: { 'retry-after': '0' },
+            },
+          );
+        }
         sawCompleteExtraction ||= body.messages.some(
           ({ role, content }) =>
             role === 'user' &&
-            JSON.stringify(content)?.includes(encodedMarkdown),
+            JSON.stringify(content).includes(encodedMarkdown),
         );
         extractionOfferedTools ||= Boolean(body.tools?.length);
         sawStructured ||= body.response_format !== undefined;
@@ -2220,7 +2552,25 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
       sawReconciliationTool ||= coordinator && toolResult;
       const text = JSON.stringify(
         coordinator
-          ? { summary: 'Сохранён контекст SDK', candidates: [] }
+          ? {
+              summary: 'Сохранён контекст SDK',
+              candidates: [
+                {
+                  origin: 'inference',
+                  field: 'documentDate',
+                  value: '2026-08-21',
+                  explanation: 'Дата подписания на день раньше регистрации.',
+                  evidence: [{ documentId, imagePath: null, quote: signing }],
+                },
+                {
+                  origin: 'inference',
+                  field: 'observations',
+                  value: 'Совокупный платёж 300 рублей',
+                  explanation: 'Сложены два платежа из документа.',
+                  evidence: [{ documentId, imagePath: null, quote: debt }],
+                },
+              ],
+            }
           : visual
             ? { description: 'Белый шкаф.' }
             : {
@@ -2320,22 +2670,133 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
         bytes: fixtureImage,
       },
     ];
-    parseFixture = async () => ({
-      markdown,
-      images: imageFixture,
-      processorVersion: 'fixture',
-    });
+    parseFixture = () =>
+      Promise.resolve({
+        markdown,
+        images: imageFixture,
+        processorVersion: 'fixture',
+      });
     const doc = await upload(input);
     documentId = doc.id;
-    await analyze(input);
     const state = await until(input, terminal);
     expect(state.runs[0]?.status).toBe('succeeded');
     expect(state.facts.values.personName).toBe('Анна');
+    expect(state.facts.values.documentDate).toBeNull();
+    expect(state.facts.values.observations).toBeNull();
+    const proposals = state.facts.candidates.filter(
+      ({ origin }) => origin === 'inference',
+    );
+    expect(proposals).toMatchObject([
+      {
+        field: 'documentDate',
+        value: '2026-08-21',
+        selected: false,
+        explanation: 'Дата подписания на день раньше регистрации.',
+        evidence: [{ documentId, imagePath: null, quote: signing }],
+      },
+      {
+        field: 'observations',
+        value: 'Совокупный платёж 300 рублей',
+        selected: false,
+        explanation: 'Сложены два платежа из документа.',
+        evidence: [{ documentId, imagePath: null, quote: debt }],
+      },
+    ]);
+    const scope = memberScope(input.workspaceId);
+    const workId = brandWorkId(input.workId);
+    await apiBackend.workHttp.review.editValues(scope, {
+      workId,
+      revision: state.work.revision,
+      values: {
+        ...state.facts.values,
+        documentDate: '2026-08-21',
+        observations: 'Совокупный платёж 300 рублей',
+      },
+    });
+    const selected = await apiBackend.workHttp.views.get(scope, workId);
+    await apiBackend.workHttp.review.confirmFacts(scope, {
+      workId,
+      revision: selected.work.revision,
+    });
+    const confirmed = await apiBackend.workHttp.views.get(scope, workId);
+    expect(
+      confirmed.facts.candidates.filter(({ origin }) => origin === 'inference'),
+    ).toEqual(proposals.map((proposal) => ({ ...proposal, selected: true })));
     expect(sawImage).toBe(true);
     expect(sawCompleteExtraction).toBe(true);
     expect(extractionOfferedTools).toBe(false);
     expect(sawReconciliationTool).toBe(true);
     expect(sawStructured).toBe(true);
+    const runId = state.runs[0]?.id;
+    if (!runId) throw new Error('MISSING_ANALYSIS');
+    expect(
+      await apiBackend.workHttp.views.listAgentHistoryRuns(scope, workId, 1, 1),
+    ).toMatchObject({
+      items: [{ id: runId, status: 'succeeded' }],
+      total: 1,
+    });
+    const history = await apiBackend.workHttp.views.agentHistory(
+      scope,
+      workId,
+      runId,
+      1,
+      10,
+    );
+    expect(history.runUsage).toMatchObject({
+      calls: providerCalls,
+      inputTokens: (providerCalls - 1) * 10,
+      outputTokens: (providerCalls - 1) * 5,
+      unknownInputCalls: 1,
+      unknownOutputCalls: 1,
+    });
+    expect(history.workUsage).toEqual(history.runUsage);
+    expect(history.steps.map(({ stage }) => stage)).toEqual([
+      'extraction',
+      'reconciliation',
+      'vision',
+    ]);
+    const extraction = history.items.find(
+      ({ kind, stage, status }) =>
+        kind === 'provider' && stage === 'extraction' && status === 'responded',
+    );
+    const failedExtraction = history.items.find(
+      ({ kind, stage, status }) =>
+        kind === 'provider' && stage === 'extraction' && status === 'failed',
+    );
+    expect(failedExtraction).toMatchObject({
+      errorCode: 'HTTP_429',
+      interactionId: extraction?.interactionId,
+      inputTokens: null,
+    });
+    expect(extraction?.input).toContain(lastLine);
+    expect(extraction?.output).toContain('personName');
+    const tool = history.items.find(({ kind }) => kind === 'tool');
+    expect(tool?.input).toContain('read-work-field');
+    expect(tool?.input).toContain('personName');
+    expect(tool?.output).toContain('Анна');
+    const decision = history.items.find(
+      ({ kind, status, stage }) =>
+        kind === 'decision' &&
+        status === 'accepted' &&
+        stage === 'reconciliation',
+    );
+    expect(decision?.output).toContain('Сохранён контекст SDK');
+    expect(decision?.output).toContain('"proposalOutcomes"');
+    expect(decision?.output).toContain(
+      '"stage":"extraction","candidate":{"field":"personName"',
+    );
+    expect(decision?.output).toContain('"status":"applied"');
+    expect(decision?.output).toContain('"status":"review"');
+    await rejects(
+      apiBackend.workHttp.views.agentHistory(
+        memberScope(crypto.randomUUID()),
+        workId,
+        runId,
+        1,
+        10,
+      ),
+      'NOT_FOUND',
+    );
     const vision = await db.runStep.findFirstOrThrow({
       where: { run: { workId: input.workId }, stage: 'vision' },
     });
@@ -2353,10 +2814,12 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
         documentId: brandDocumentId(doc.id),
       },
     );
-    await until(
+    const cleaned = await until(
       input,
       (view) => !view.cleanupPending && !view.documents.length,
     );
+    expect(cleaned.facts.candidates).toEqual([]);
+    expect(await db.workAgentEvent.count({ where: { workId } })).toBe(0);
     for (const threadId of threadIds) {
       expect(await memory.getThreadById({ threadId })).toBeNull();
       expect((await memory.listMessages({ threadId })).messages).toEqual([]);
@@ -2383,7 +2846,6 @@ test('rerunning analysis refreshes old visual descriptions and reuses the refres
   ];
   try {
     await upload(input);
-    await analyze(input);
     const first = await until(input, terminal);
     const run = first.runs[0];
     expect(run?.status).toBe('succeeded');
@@ -2415,7 +2877,6 @@ test('rerunning analysis refreshes old visual descriptions and reuses the refres
 test('logical session survives reopening, extends context with a new source, and keeps extraction cached', async () => {
   const input = await create();
   const first = await upload(input);
-  await analyze(input);
   const initial = await until(input, terminal);
   const sessionId = initial.session?.id;
   if (!sessionId) throw Error('Expected saved session');
@@ -2464,7 +2925,6 @@ test('logical session survives reopening, extends context with a new source, and
     };
   };
   try {
-    await analyze(input);
     const next = await until(input, terminal);
     expect(next.session?.id).toBe(sessionId);
     expect(next.session?.revision).toBe(2);
@@ -2485,12 +2945,10 @@ test('logical session survives reopening, extends context with a new source, and
 test('failed context continuation preserves previous facts and marks its old summary stale', async () => {
   const input = await create();
   await upload(input);
-  await analyze(input);
   const before = await until(input, terminal);
   reconcileHook = () => Promise.reject(new LlmError('LLM_UNAVAILABLE'));
   try {
     await upload(input);
-    await analyze(input);
     const next = await until(input, terminal);
     expect(next.runs[0]?.status).toBe('partial');
     expect(next.facts.values.personName).toBe('Анна');
@@ -2503,7 +2961,6 @@ test('failed context continuation preserves previous facts and marks its old sum
 
 test('manual edit during contextual reasoning retries from fresh facts and fences the stale summary', async () => {
   const input = await create();
-  await upload(input);
   let calls = 0;
   reconcileHook = async (request) => {
     calls++;
@@ -2529,7 +2986,7 @@ test('manual edit during contextual reasoning retries from fresh facts and fence
     };
   };
   try {
-    await analyze(input);
+    await upload(input);
     const state = await until(input, terminal);
     expect(calls).toBe(2);
     expect(state.facts.values.personName).toBe('Ручное имя');
@@ -2546,7 +3003,6 @@ test('manual edit during contextual reasoning retries from fresh facts and fence
 
 test('deleting during contextual reasoning removes its session, turns, and all registered threads', async () => {
   const input = await create();
-  const doc = await upload(input);
   let release = () => {};
   let signalStarted = () => {};
   const started = new Promise<void>((resolve) => {
@@ -2565,7 +3021,7 @@ test('deleting during contextual reasoning removes its session, turns, and all r
     };
   };
   try {
-    await analyze(input);
+    const doc = await upload(input);
     await started;
     await apiBackend.workHttp.intake.removeDocument(
       memberScope(input.workspaceId),
@@ -2660,6 +3116,7 @@ test.each(
     const { workspaceId, workId } = await create();
     const document =
       state !== 'empty' && (await upload({ workspaceId, workId }));
+    if (state === 'ready') await until({ workspaceId, workId }, terminal);
     const owner = memberScope(workspaceId);
     const scope =
       state === 'read-only'

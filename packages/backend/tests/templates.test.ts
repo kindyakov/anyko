@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 
 import PizZip from 'pizzip';
 
+import { formatCalendarDate } from '@anyko/document-values/calendar-date';
+
 import { generateDocument } from '../src/modules/generation';
 import {
   availablePackages,
@@ -10,6 +12,7 @@ import {
   templateBytes,
   templateData,
 } from '../src/modules/templates';
+import { templatePlaceholderSchema } from '../src/modules/templates/schemas';
 import { candidateSchema } from '../src/profiles/bfl/candidate';
 import {
   emptyFieldValues,
@@ -20,7 +23,7 @@ test('the selectable package contains three real versioned templates; archived s
   const packages = availablePackages();
   expect(packages).toHaveLength(1);
   expect(packages[0]?.technical).toBe(false);
-  expect(packages[0]?.version).toBe('bfl-bankruptcy-v4');
+  expect(packages[0]?.version).toBe('bfl-bankruptcy-v5');
   expect(packages[0]?.documents.map((doc) => doc.id)).toEqual([
     'statement',
     'inventory',
@@ -28,6 +31,119 @@ test('the selectable package contains three real versioned templates; archived s
   ]);
   expect(requirePackage('technical-document-v1').documents).toHaveLength(1);
   expect(() => requirePackage('not-a-package')).toThrow('PACKAGE_NOT_FOUND');
+});
+
+test.each([
+  [
+    '30.08.2003',
+    'D_WORDS MMMM YYYY_WORDS года',
+    'тридцатое августа две тысячи третьего года',
+  ],
+  [
+    '03.09.2000',
+    'D_WORDS MMMM YYYY_WORDS года',
+    'третье сентября двухтысячного года',
+  ],
+  [
+    '31.12.1900',
+    'D_GENITIVE_WORDS MMMM YYYY_WORDS года',
+    'тридцать первого декабря тысяча девятисотого года',
+  ],
+  [
+    '09.11.2026',
+    'D_GENITIVE_WORDS MMMM YYYY_WORDS года',
+    'девятого ноября две тысячи двадцать шестого года',
+  ],
+  [
+    '21.05.1945',
+    'D_WORDS MMMM YYYY_WORDS года',
+    'двадцать первое мая тысяча девятьсот сорок пятого года',
+  ],
+  ['29.02.2023', 'D_WORDS MMMM YYYY_WORDS года', '29.02.2023'],
+])('formats %s with %s', (value, placeholder, expected) => {
+  expect(formatCalendarDate(value, placeholder)).toBe(expected);
+});
+
+test('slot aliases read original facts even when a previous slot uses the same name', () => {
+  const values = {
+    ...emptyFieldValues(),
+    birthDate: '02.03.2024',
+    passportIssuedAt: '04.05.2025',
+  };
+  const output = templateData(values, 'bfl-statement-v5', [
+    {
+      tag: 'birthDate',
+      field: 'passportIssuedAt',
+      placeholder: 'D MMMM YYYY года',
+    },
+    { tag: 'documentDate', field: 'birthDate', placeholder: 'DD.MM.YYYY' },
+  ]);
+  expect(output.birthDate).toBe('4 мая 2025 года');
+  expect(output.documentDate).toBe('02.03.2024');
+});
+
+test('identity metadata preserves raw dates, collections and computed bindings in archived templates', () => {
+  const values = {
+    ...emptyFieldValues(),
+    passportIssuedAt: '30/08/2003',
+    lastName: 'Иванова',
+    firstName: 'Анна',
+    debts: [{ amount: '100.00' }],
+  };
+  const slots = ['passportIssuedAt', 'debts', 'debts.amount', 'signerName'].map(
+    (key) =>
+      templatePlaceholderSchema.parse({
+        tag: key,
+        field: key,
+        placeholder: 'identity',
+      }),
+  );
+  const version = 'bfl-statement-v4';
+  const output = templateData(values, version, slots);
+  expect(output).toEqual(templateData(values, version));
+  const xml = new PizZip(generateDocument(templateBytes(version), output))
+    .file('word/document.xml')
+    ?.asText();
+  expect(xml).toContain('30/08/2003');
+  expect(xml).toContain('100.00');
+  expect(xml).toContain('Иванова А.');
+});
+
+test('one saved date uses the format of each statement slot and old statement versions preserve their substitution', () => {
+  const values = { ...emptyFieldValues(), passportIssuedAt: '30/08/2003' };
+  const formats = [
+    {
+      field: 'passportIssuedAt',
+      tag: 'passportIssuedAt',
+      placeholder: 'DD.MM.YYYY',
+    },
+    {
+      field: 'passportIssuedAt',
+      tag: 'passportIssuedAtText',
+      placeholder: 'D MMMM YYYY года',
+    },
+  ] as const;
+  const current = requirePackage('bfl-bankruptcy-v5').documents[0];
+  const historical = requirePackage('bfl-bankruptcy-v4').documents[0];
+  if (!current || !historical) throw new Error('Statement missing');
+  const rendered = (
+    version: string,
+    slots: readonly (typeof formats)[number][] = formats,
+  ) =>
+    new PizZip(
+      generateDocument(
+        templateBytes(version),
+        templateData(values, version, slots),
+      ),
+    )
+      .file('word/document.xml')
+      ?.asText();
+  expect(rendered(current.version)).toContain('30.08.2003');
+  expect(rendered(current.version)).toContain('30 августа 2003 года');
+  expect(rendered(current.version)).not.toContain('passportIssuedAtText');
+  expect(rendered(historical.version, [])?.match(/30\/08\/2003/g)).toHaveLength(
+    2,
+  );
 });
 
 test('each DOCX keeps its source styles, page geometry and structured tables and renders the shared identity and repeated rows', () => {

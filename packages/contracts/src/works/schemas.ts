@@ -24,7 +24,8 @@ export const evidenceSchema = z
   .strict();
 export const candidateSchema = z
   .object({
-    origin: z.enum(['document', 'context']).optional(),
+    origin: z.enum(['document', 'context', 'inference']).optional(),
+    explanation: z.string().trim().min(1).max(2000).optional(),
     field: fieldKeySchema,
     selected: z
       .boolean()
@@ -144,6 +145,7 @@ export const workResponseSchema = z.object({
   generations: z.array(generationSchema),
   cursor: z.string().regex(/^\d+$/),
   cleanupPending: z.boolean(),
+  pendingUploadCount: z.number().int().nonnegative().optional(),
   availability: workAvailabilitySchema,
 });
 export type WorkView = z.infer<typeof workResponseSchema>;

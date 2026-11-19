@@ -81,7 +81,12 @@ export function PackagePreview(props: Props) {
     const host = pack.documents.find((item) => {
       const fields = mentions(item.blocks);
       return (
-        fields.includes(`{${focus.key}}`) || fields.includes(`{#${focus.key}}`)
+        fields.includes(`{${focus.key}}`) ||
+        fields.includes(`{#${focus.key}}`) ||
+        item.placeholders?.some(
+          ({ field, tag }) =>
+            field === focus.key && fields.includes(`{${tag}}`),
+        )
       );
     });
     setHandledFocus({

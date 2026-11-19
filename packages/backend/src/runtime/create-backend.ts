@@ -68,6 +68,7 @@ import {
 } from '../modules/processing/infrastructure/run-engine';
 import { createDocumentProcessingStore } from '../modules/processing/infrastructure/store';
 import { hasPackage } from '../modules/templates';
+import { createTemplatePlaceholders } from '../modules/templates/infrastructure/template-placeholders';
 import type { WorksModule } from '../modules/works';
 import {
   createWorkStore,
@@ -87,6 +88,7 @@ import {
   type WorkGeneration,
 } from '../workflows/work-generation';
 import { createWorkIntake, type WorkIntake } from '../workflows/work-intake';
+import { advanceUploadGroups } from '../workflows/work-intake/advance-upload-groups';
 import {
   createWorkCleanup,
   createWorkDeletionApi,
@@ -242,6 +244,7 @@ export function createBackend(
     newId: uuidV7,
   });
   const processingFacade = createWorkProcessing(db, uow);
+  const templatePlaceholders = createTemplatePlaceholders(db);
 
   let agentsDelegate: DocumentAgents | undefined = dependencies.agents;
   const agents = () => (agentsDelegate ??= createDocumentAgents({ pool }));
@@ -257,7 +260,7 @@ export function createBackend(
     },
   };
   const agentsFacade = createAgentsModule({
-    store: createAgentSessionStore(db, uuidV7),
+    store: createAgentSessionStore(db, uuidV7, logger),
     storeFor: (tx) => agentSessionStoreFor(tx, uuidV7),
     model,
   });
@@ -268,6 +271,7 @@ export function createBackend(
     works,
     facts,
     generation,
+    templatePlaceholders,
     processing: processingFacade,
     connections,
     agents: agentsFacade,
@@ -327,6 +331,7 @@ export function createBackend(
       processing: processingFacade,
       connections,
       generation,
+      templatePlaceholders,
       audit,
       storage,
       locks,
@@ -413,6 +418,11 @@ export function createBackend(
   });
   const ocrTimeoutMs = worker.mineru.timeoutMs + 60000;
   const jobProcessing = createJobProcessing(createJobRunReader(db));
+  const cleanupWorks = createWorkCleanup(work, {
+    clock: systemClock,
+    sourcesDeleted: documentDeletions.completed,
+  });
+  const advanceUploads = advanceUploadGroups(work);
   const registry = createJobRegistry({
     processing: jobProcessing,
     ocr: {
@@ -438,10 +448,10 @@ export function createBackend(
       }),
     },
     execute: createWorkExecution(work),
-    maintain: createWorkCleanup(work, {
-      clock: systemClock,
-      sourcesDeleted: documentDeletions.completed,
-    }),
+    maintain: async () => {
+      await cleanupWorks();
+      await advanceUploads();
+    },
     documents: {
       processing,
       storage,

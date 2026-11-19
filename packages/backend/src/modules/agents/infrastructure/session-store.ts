@@ -1,4 +1,5 @@
 import type { Database } from '@anyko/database';
+import type { Logger } from '@anyko/logger';
 
 import { transactionHandle, type Tx } from '../../../platform/transactions';
 import {
@@ -7,7 +8,12 @@ import {
 } from '../application/session';
 import { agentSessionContextSchema, agentSessionSchema } from '../schemas';
 
-type Connection = Pick<Database, 'workAgentSession' | 'workAgentTurn'>;
+import { createAgentHistoryStore } from './history-store';
+
+type Connection = Pick<
+  Database,
+  'workAgentSession' | 'workAgentTurn' | 'workAgentEvent' | 'run'
+>;
 // Сессия работы внутри транзакции действия (создание работы): токен превращается в клиент транзакции.
 export function agentSessionStoreFor(
   tx: Tx,
@@ -18,6 +24,7 @@ export function agentSessionStoreFor(
 export function createAgentSessionStore(
   db: Connection,
   newId: () => string,
+  logger?: Pick<Logger, 'warn'>,
 ): AgentSessionStore {
   const view = (row: {
     id: string;
@@ -32,6 +39,7 @@ export function createAgentSessionStore(
       updatedAt: row.updatedAt.toISOString(),
     });
   return {
+    history: createAgentHistoryStore(db, newId, logger),
     async get(workspaceId, workId) {
       const row = await db.workAgentSession.findFirst({
         where: { workspaceId, workId },

@@ -4,9 +4,13 @@ import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
 import type { FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
-import { availablePackages } from '../../modules/templates';
+import {
+  availablePackages,
+  type ReadTemplatePlaceholders,
+} from '../../modules/templates';
 import type { WorksModule } from '../../modules/works';
 
+import { agentHistoryQueries } from './get-agent-history';
 import { getImage } from './get-image';
 import { getResult } from './get-result';
 import { getSource } from './get-source';
@@ -18,6 +22,7 @@ export interface WorkViewDeps {
   processing: ProcessingModule;
   connections: ConnectionsModule;
   generation: GenerationModule;
+  templatePlaceholders: ReadTemplatePlaceholders;
   documents: DocumentsModule;
   agents: AgentsModule;
   locks: ResourceLocks;
@@ -26,8 +31,10 @@ export interface WorkViewDeps {
 // Процесс «просмотр работы»: представление, исходники, результаты распознавания и каталог пакетов для создания работы.
 export function createWorkView(deps: WorkViewDeps) {
   return {
-    packages: availablePackages,
+    packages: () =>
+      Promise.all(availablePackages().map(deps.templatePlaceholders)),
     get: getWork(deps),
+    ...agentHistoryQueries(deps),
     source: getSource(deps),
     image: getImage(deps),
     result: getResult(deps),

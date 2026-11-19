@@ -43,6 +43,17 @@ export function createWorkAnalysis(deps: WorkDependencies) {
   ) => {
     const { run } = attempt;
     const { current, step } = createRunState(deps, attempt);
+    const session = await attempt.write(
+      (tx) => deps.agents.in(tx).internal.ensure(run.workspaceId, run.workId),
+      signal,
+    );
+    const historyRef = {
+      workspaceId: run.workspaceId,
+      workId: run.workId,
+      runId: run.id,
+      sessionId: session.id,
+    };
+    const history = deps.agents.internal.history.record(historyRef);
     const parse = async (documentId: string) => {
       await step({ stage: 'parsing', documentId, status: 'running' });
       const { workspaceId, workId } = run;
@@ -60,7 +71,11 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         return { revision, status: doc.status };
       };
       let source = await load();
-      if (source.status === 'failed' && source.revision === null) {
+      if (
+        !run.automaticUpload &&
+        source.status === 'failed' &&
+        source.revision === null
+      ) {
         try {
           await deps.documents.internal.commands.retry({
             workspaceId,
@@ -77,7 +92,10 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         }
         source = await load();
       }
-      while (source.status === 'queued' || source.status === 'running') {
+      while (
+        !run.automaticUpload &&
+        (source.status === 'queued' || source.status === 'running')
+      ) {
         signal.throwIfAborted();
         await current();
         await delay(signal);
@@ -114,7 +132,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         const source = await parse(documentId);
         // The extraction cache depends on the visual instructions as well as the OCR result.
         const cacheSourceDigest = source.images.length
-          ? `vision-${visionPromptRevision}:${source.sourceDigest}`
+          ? `vision-${String(visionPromptRevision)}:${source.sourceDigest}`
           : source.sourceDigest;
         stage = 'vision';
         let output = await attempt.cached(
@@ -148,6 +166,14 @@ export function createWorkAnalysis(deps: WorkDependencies) {
               model: stepConnection.visionModel,
               execute: () =>
                 deps.agents.model.describe({
+                  observe: history.observe({
+                    interactionId: callId,
+                    stage: 'vision',
+                    documentId,
+                    imagePath: image.path,
+                    provider: stepConnection.connection.id,
+                    model: stepConnection.visionModel,
+                  }),
                   assertCurrent,
                   connection: stepConnection.connection,
                   modelId: stepConnection.visionModel,
@@ -219,6 +245,13 @@ export function createWorkAnalysis(deps: WorkDependencies) {
               model: stepConnection.extractionModel,
               execute: () =>
                 deps.agents.model.extract({
+                  observe: history.observe({
+                    interactionId: threadId,
+                    stage: 'extraction',
+                    documentId,
+                    provider: stepConnection.connection.id,
+                    model: stepConnection.extractionModel,
+                  }),
                   assertCurrent,
                   connection: stepConnection.connection,
                   modelId: stepConnection.extractionModel,

@@ -10,5 +10,7 @@ export function catalogRoutes(
   app: Elysia,
   options: Pick<WorkViews, 'packages'>,
 ) {
-  route(app, listDocumentPackages, () => ({ packages: options.packages() }));
+  route(app, listDocumentPackages, async () => ({
+    packages: await options.packages(),
+  }));
 }

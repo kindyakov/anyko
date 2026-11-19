@@ -19,20 +19,32 @@ export interface ProcessingDeps {
 }
 
 export function createProcessingModule(deps: ProcessingDeps): ProcessingModule {
-  const bind = (store: WorkProcessingStore): ProcessingPorts => ({
-    internal: {
-      thread: store.thread,
-      threads: store.threads,
-      cancel: store.cancel,
-      erase: store.erase,
-      eraseThreads: store.eraseThreads,
-    },
-    commands: { start: startRun({ store, newId: deps.newId }) },
-    queries: {
-      isActive: isActive({ store }),
-      runs: listRuns({ store }),
-    },
-  });
+  const bind = (store: WorkProcessingStore): ProcessingPorts => {
+    const start = startRun({ store, newId: deps.newId });
+    return {
+      internal: {
+        thread: store.thread,
+        threads: store.threads,
+        cancel: store.cancel,
+        erase: store.erase,
+        eraseThreads: store.eraseThreads,
+        active: (workspaceId, workId) => store.active(workspaceId, workId),
+        latestAnalysisRecovery: (workspaceId, workId) =>
+          store.latestAnalysisRecovery(workspaceId, workId),
+        startUploadAnalysis: (workspaceId, userId, input) =>
+          start(
+            { workspaceId, userId },
+            { ...input, kind: 'analysis', generationId: null },
+            true,
+          ),
+      },
+      commands: { start },
+      queries: {
+        isActive: isActive({ store }),
+        runs: listRuns({ store }),
+      },
+    };
+  };
   return {
     ...bind(deps.store),
     claimAttempt: claimWorkAttempt(deps),

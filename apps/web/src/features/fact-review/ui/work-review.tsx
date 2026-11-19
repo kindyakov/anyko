@@ -1,5 +1,5 @@
 'use client';
-import { FileSearch, Wand2 } from 'lucide-react';
+import { Wand2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import { type FieldKey } from '@anyko/contracts/catalog';
@@ -24,16 +24,12 @@ export function WorkReview({
   view,
   facts,
   busy,
-  analyzeDisabled,
   onOpen,
-  onExtract,
 }: {
   view: WorkView;
   facts: FactsForm;
   busy: boolean;
-  analyzeDisabled: boolean;
   onOpen: (document: Document, page?: number) => void;
-  onExtract: () => void;
 }) {
   const { values } = facts;
   const [filter, setFilter] = useState<ReviewFilter>('attention');
@@ -166,21 +162,9 @@ export function WorkReview({
             <EventHorizon state="calm" className="size-36" />
             <p className="mt-6 font-medium">Сведений пока нет</p>
             <p className="text-muted mt-2 max-w-md text-sm leading-6">
-              Запустите извлечение — найденные значения с цитатами появятся
-              здесь. Поля также можно заполнить в черновиках документов.
+              Найденные значения с цитатами появятся здесь после извлечения.
+              Поля также можно заполнить в черновиках документов.
             </p>
-            {view.documents.length > 0 && (
-              <Button
-                variant="secondary"
-                className="mt-6"
-                loading={busy}
-                disabled={analyzeDisabled}
-                onClick={onExtract}
-              >
-                <FileSearch size={16} />
-                Извлечь сведения
-              </Button>
-            )}
           </div>
         ) : !visible.length ? (
           <div className="glass rounded-2xl border border-white/10 px-6 py-8 text-center text-sm">
@@ -219,6 +203,8 @@ export function WorkReview({
             <SessionContext
               session={view.session}
               revision={view.work.revision}
+              inputRevision={view.work.inputRevision}
+              sourceIds={view.documents.map(({ id }) => id)}
               fields={view.package.fields}
             />
           </Disclosure>

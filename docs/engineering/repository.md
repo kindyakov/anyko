@@ -136,7 +136,7 @@ Dependency-cruiser разрешает workspace-алиасы через `package
 
 | Откуда                  | Что разрешено                                                                                                                             |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/web`              | `contracts`, `ui`, свои features и средовые конфигурации                                                                                  |
+| `apps/web`              | `contracts`, `document-values`, `ui`, свои features и средовые конфигурации                                                               |
 | `apps/api`              | `contracts`, публичные интерфейсы `backend`; `backend/runtime` только в bootstrap                                                         |
 | `apps/worker`           | публичные интерфейсы `backend`; `backend/runtime` только в bootstrap                                                                      |
 | Будущий `apps/admin`    | административные HTTP-контракты, `ui`, свои features; доступ через API                                                                    |
@@ -148,6 +148,7 @@ Dependency-cruiser разрешает workspace-алиасы через `package
 | `module/infrastructure` | собственные порты, `database`, необходимые технические адаптеры                                                                           |
 | `backend/runtime`       | сборка всех серверных адаптеров; без бизнес-решений                                                                                       |
 | `contracts`             | Zod и переносимые значения; без `backend`, Prisma и секретов                                                                              |
+| `document-values`       | Разбор и форматирование значений, общие для backend и предпросмотра; без I/O, HTTP и зависимостей среды                                   |
 | `database`              | Prisma и технические зависимости; без `backend`                                                                                           |
 | `ui`                    | React и UI-зависимости; без API, БД и предметных сценариев                                                                                |
 

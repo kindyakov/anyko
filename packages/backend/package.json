@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@anyko/database": "workspace:*",
+    "@anyko/document-values": "workspace:*",
     "@anyko/llm": "workspace:*",
     "@anyko/logger": "workspace:*",
     "@aws-sdk/client-s3": "3.1162.0",

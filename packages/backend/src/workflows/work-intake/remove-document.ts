@@ -27,7 +27,7 @@ export const removeDocument =
         command: 'remove',
         event: 'sources.deleting',
       },
-      async () => {
+      async ({ work }) => {
         const source = await requireWorkDocument(
           deps.works.queries,
           scope,
@@ -35,12 +35,26 @@ export const removeDocument =
           documentId,
         );
         return async (tx) => {
+          const works = deps.works.in(tx).internal;
           if (
-            !(await deps.works
-              .in(tx)
-              .internal.removeSource(scope.workspaceId, workId, documentId))
-          )
+            await works.unlinkPendingUpload(
+              scope.workspaceId,
+              workId,
+              documentId,
+            )
+          ) {
+            // A source that never entered an analysis has no work artifacts to purge.
+            await works.closeOpenUploadGroup(scope.workspaceId, workId);
+            await works.touch(scope.workspaceId, workId, {
+              expectedRevision: work.revision,
+              inputChanged: true,
+              confirmed: work.confirmedRevision === work.revision,
+            });
+          } else if (
+            !(await works.removeSource(scope.workspaceId, workId, documentId))
+          ) {
             throw new WorkError('NOT_FOUND');
+          }
           if (source.uploaded)
             await deps.redactWorkUploadResponses(tx, scope.workspaceId, [
               documentId,

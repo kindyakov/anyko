@@ -173,8 +173,6 @@ function FactsEditor({ view }: { view: WorkView }) {
         facts={facts}
         busy={busy}
         onOpen={() => undefined}
-        analyzeDisabled={false}
-        onExtract={() => undefined}
       />
       <UnsavedFactsBar facts={facts} busy={busy} />
       <UnsavedNavigation dirty={facts.hasEdits} />

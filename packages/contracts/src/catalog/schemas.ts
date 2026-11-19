@@ -50,6 +50,22 @@ export const documentTemplateSchema = z.object({
     })
     .optional(),
   blocks: z.array(previewBlockSchema),
+  placeholders: z
+    .array(
+      z.union([
+        z.object({
+          tag: z.string(),
+          field: fieldKeySchema,
+          placeholder: z.string(),
+        }),
+        z.object({
+          tag: z.string(),
+          field: z.string(),
+          placeholder: z.literal('identity'),
+        }),
+      ]),
+    )
+    .optional(),
 });
 export const documentPackageSchema = z.object({
   id: z.string(),
@@ -62,6 +78,7 @@ export const documentPackageSchema = z.object({
       label: z.string(),
       multiline: z.boolean(),
       kind: z.enum(['text', 'rows']),
+      valueType: z.literal('date').optional(),
       limits: z.object({
         maxLength: z.number().int().positive().optional(),
         maxRows: z.number().int().positive().optional(),

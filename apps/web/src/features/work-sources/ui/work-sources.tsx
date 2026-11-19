@@ -1,5 +1,5 @@
 'use client';
-import { Check, Eye, FolderOpen, Sparkles, Trash2, X } from 'lucide-react';
+import { Check, Eye, FolderOpen, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 
 import { type WorkView } from '@anyko/contracts/works';
@@ -21,7 +21,7 @@ import {
   recognitionFailureText,
   recognitionRetryCode,
 } from '@/features/document-recognition';
-import type { Upload, WorkStage } from '@/features/works';
+import type { Upload } from '@/features/works';
 import { useWorkspaceId } from '@/lib/api/workspace';
 
 import { DocumentPicker } from './document-picker';
@@ -39,38 +39,31 @@ const labels: Record<Document['status'], [string, Tone]> = {
 
 export function WorkSources({
   view,
-  stage,
   disabled,
   retryDisabled,
   removing,
-  busy,
   uploads,
   onUpload,
   onDelete,
   onOpen,
   onRetry,
   retryingId,
-  onAnalyze,
 }: {
   view: WorkView;
-  stage: WorkStage;
   disabled: {
     upload: boolean;
     remove: boolean;
-    analyze: boolean;
     attach: boolean;
     updateRecognition: boolean;
   };
   retryDisabled: boolean;
   removing: boolean;
-  busy: boolean;
   uploads: Upload[];
   onUpload: (files: File[]) => Promise<number>;
   onDelete: (document: Document) => Promise<void>;
   onOpen: (document: Document) => void;
   onRetry: (documentId: string) => void;
   retryingId: string | undefined;
-  onAnalyze: () => void;
 }) {
   const workspaceId = useWorkspaceId();
   const [picking, setPicking] = useState(false);
@@ -238,39 +231,6 @@ export function WorkSources({
           }}
         />
       )}
-      {view.documents.length > 0 && (
-        <section className="glass flex flex-col gap-5 rounded-3xl border border-white/[0.08] bg-[radial-gradient(120%_160%_at_0%_0%,#2a0a1288,transparent_60%)] p-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="font-heading text-lg font-bold">
-              {stage.kind === 'ready'
-                ? !stage.first
-                  ? stage.pending
-                    ? `Новых файлов: ${String(stage.pending)}. Обновите сведения`
-                    : 'Источники изменились. Обновите сведения'
-                  : 'Файлы на месте. Можно извлекать сведения'
-                : stage.kind === 'processing'
-                  ? 'Anyko читает файлы'
-                  : 'Сведения уже извлечены'}
-            </p>
-            <p className="text-muted mt-1.5 max-w-xl text-sm leading-6">
-              Anyko распознает текст, изучит изображения и найдёт сведения для
-              документов. Каждое значение будет со ссылкой на источник.
-            </p>
-          </div>
-          <Button
-            size="lg"
-            variant={stage.kind === 'ready' ? 'primary' : 'secondary'}
-            loading={busy && !uploading && !deleting}
-            disabled={disabled.analyze}
-            onClick={onAnalyze}
-          >
-            <Sparkles size={18} />
-            {view.runs.some((run) => run.kind === 'analysis')
-              ? 'Извлечь заново'
-              : 'Извлечь сведения'}
-          </Button>
-        </section>
-      )}
       <Confirm
         open={!!deleting}
         title={`Убрать «${deleting?.filename ?? ''}» из работы?`}
@@ -286,8 +246,9 @@ export function WorkSources({
           setDeleting(undefined);
         }}
       >
-        Файл и распознавание сохранятся в каталоге и других работах. Сведения и
-        сформированные документы этой работы очистятся.
+        Файл и распознавание сохранятся в каталоге и других работах. Если файл
+        уже был прочитан или участвовал в извлечении, сведения и сформированные
+        документы этой работы очистятся.
       </Confirm>
     </div>
   );

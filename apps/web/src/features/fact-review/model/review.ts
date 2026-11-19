@@ -1,5 +1,6 @@
 import type { FieldValue, FieldValues } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
+import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
 
 import { sameFieldValue } from './field-value';
 
@@ -11,6 +12,26 @@ export type ReviewField = {
   evidenceLost: boolean;
   attention: boolean;
 };
+
+export function normalizedReviewValue<T extends FieldValue | undefined>(
+  field: ReviewField['field'],
+  value: T,
+): FieldValue | T {
+  return field.valueType === 'date' && typeof value === 'string'
+    ? (canonicalCalendarDate(value) ?? value)
+    : value;
+}
+
+export function invalidReviewDate(
+  field: ReviewField['field'],
+  value: FieldValue,
+): boolean {
+  return (
+    field.valueType === 'date' &&
+    typeof value === 'string' &&
+    canonicalCalendarDate(value) === undefined
+  );
+}
 
 export function candidateSelection(
   value: FieldValue | undefined,
@@ -62,8 +83,14 @@ export function reviewFields(
       !evidenceLost &&
       values[field.key] == null &&
       candidates.length > 0 &&
-      candidates.every(({ value }) =>
-        sameFieldValue(value, candidates[0]?.value),
+      candidates.every(
+        ({ origin, value }) =>
+          origin !== 'inference' &&
+          !invalidReviewDate(field, value) &&
+          sameFieldValue(
+            normalizedReviewValue(field, value),
+            normalizedReviewValue(field, candidates[0]?.value),
+          ),
       ),
   );
   const total = view.package.fields.length;

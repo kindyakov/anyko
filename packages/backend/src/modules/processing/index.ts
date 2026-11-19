@@ -37,12 +37,24 @@ export interface ProcessingQueries {
 // Управление запусками при удалении работы и учёт зарегистрированных потоков модели.
 type WorkMaintenance = Pick<
   WorkProcessingStore,
-  'thread' | 'threads' | 'cancel' | 'erase' | 'eraseThreads'
+  | 'thread'
+  | 'threads'
+  | 'cancel'
+  | 'erase'
+  | 'eraseThreads'
+  | 'latestAnalysisRecovery'
 >;
 export interface ProcessingPorts {
   readonly commands: ProcessingCommands;
   readonly queries: ProcessingQueries;
-  readonly internal: WorkMaintenance;
+  readonly internal: WorkMaintenance & {
+    active(workspaceId: string, workId: string): Promise<boolean>;
+    startUploadAnalysis(
+      workspaceId: string,
+      actorId: string,
+      input: Omit<WorkRunStart, 'kind' | 'generationId'>,
+    ): Promise<void>;
+  };
 }
 export interface ProcessingModule extends ProcessingPorts {
   claimAttempt: (

@@ -82,11 +82,16 @@ export interface WorkRunSnapshot {
   workId: string;
   kind: 'analysis' | 'generation';
   inputRevision: number;
+  automaticUpload?: boolean;
   documentIds: string[];
   settingsRevision: number | null;
   generationId: string | null;
   correlationId: string;
 }
+export type AnalysisRecovery = Pick<
+  WorkRunSnapshot,
+  'documentIds' | 'inputRevision' | 'automaticUpload'
+>;
 export interface ClaimedWorkRun {
   snapshot: WorkRunSnapshot;
   attemptToken: string;
@@ -106,6 +111,10 @@ export interface WorkRunOutcome {
   errorCode?: string;
 }
 export interface WorkProcessingStore {
+  latestAnalysisRecovery(
+    workspaceId: string,
+    workId: string,
+  ): Promise<AnalysisRecovery | null>;
   start(
     input: WorkRunSnapshot & {
       actorId: string;

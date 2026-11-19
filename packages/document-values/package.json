@@ -1,0 +1,16 @@
+{
+  "name": "@anyko/document-values",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./calendar-date": "./src/calendar-date.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@anyko/typescript-config": "workspace:*",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
+  }
+}

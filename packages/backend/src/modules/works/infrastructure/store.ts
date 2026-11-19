@@ -5,10 +5,16 @@ import type { WorkStore } from '..';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
 
 import { createWorkDeletionStore } from './deletion-store';
+import { createUploadGroupsStore } from './upload-groups';
 
 type Connection = Pick<
   Database,
-  'work' | 'workDocument' | 'workEvent' | 'workDeletion' | '$queryRaw'
+  | 'work'
+  | 'workDocument'
+  | 'workEvent'
+  | 'workDeletion'
+  | 'workUploadGroup'
+  | '$queryRaw'
 >;
 // Хранилище внутри транзакции действия: токен превращается в клиент транзакции драйвера.
 export function worksStoreFor(tx: Tx): WorkStore {
@@ -17,6 +23,7 @@ export function worksStoreFor(tx: Tx): WorkStore {
 export function createWorkStore(
   db: Connection & Partial<Pick<Database, '$transaction'>>,
 ): WorkStore {
+  const uploads = createUploadGroupsStore(db);
   const summary = (row: {
     id: string;
     title: string;
@@ -34,6 +41,7 @@ export function createWorkStore(
     });
   return {
     ...createWorkDeletionStore(db),
+    ...uploads,
     async list(workspaceId, { q, status, page, pageSize }) {
       const revision = db.work.fields.revision;
       const where = {
@@ -99,7 +107,13 @@ export function createWorkStore(
         },
       });
     },
-    async attach(workspaceId, workId, documents) {
+    async attach(workspaceId, workId, documents, actorId) {
+      if (!documents.length) return 0;
+      const uploadGroupId = await uploads.joinUploadGroup(
+        workspaceId,
+        workId,
+        actorId,
+      );
       const { count } = await db.workDocument.createMany({
         data: documents.map(({ id, revision, uploaded = false }) => ({
           workspaceId,
@@ -107,6 +121,7 @@ export function createWorkStore(
           documentId: id,
           ocrRevision: revision,
           uploaded,
+          uploadGroupId,
         })),
         skipDuplicates: true,
       });

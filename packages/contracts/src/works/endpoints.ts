@@ -16,6 +16,7 @@ import {
   uploadFileSchema,
 } from '../documents';
 
+import { agentHistoryPage, agentHistoryRunPage } from './agent-history';
 import {
   createdWorkResponseSchema,
   createWorkSchema,
@@ -124,6 +125,31 @@ export const streamWorkEvents = endpoint({
   response: eventStream(),
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT', 'STREAM_LIMIT'],
+  invalid: 'INVALID_WORK_INPUT',
+});
+
+export const listWorkAnalysisRuns = endpoint({
+  summary: 'Возвращает страницу запусков автоматического анализа работы',
+  method: 'GET',
+  path: '/workspaces/:workspaceId/works/:workId/runs',
+  params: workParams,
+  query: pageQuery(z.number().int().min(1).max(20), 10, {}),
+  response: json(agentHistoryRunPage),
+  status: 200,
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'CLEANUP_PENDING', 'INVALID_WORK_INPUT'],
+  invalid: 'INVALID_WORK_INPUT',
+});
+
+export const getWorkAgentHistory = endpoint({
+  summary:
+    'Возвращает историю вызовов модели и решений по запуску анализа работы',
+  method: 'GET',
+  path: '/workspaces/:workspaceId/works/:workId/runs/:runId/agent-history',
+  params: workParams.extend({ runId: uuid }),
+  query: pageQuery(z.number().int().min(1).max(10), 5, {}),
+  response: json(agentHistoryPage),
+  status: 200,
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'CLEANUP_PENDING', 'INVALID_WORK_INPUT'],
   invalid: 'INVALID_WORK_INPUT',
 });
 

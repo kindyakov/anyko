@@ -1,3 +1,5 @@
+import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
+
 import {
   automaticValue,
   valueWithRemainingEvidence,
@@ -9,6 +11,7 @@ import {
   type FieldRow,
   type FieldValue,
   type FieldValues,
+  isCalendarDateField,
   readFieldValues,
 } from '../../../profiles/bfl/fields';
 import { factsSchema, type WorkFacts } from '../schemas';
@@ -37,7 +40,9 @@ export function mergeCandidates(
       current.manual.includes(key)
     )
       continue;
-    const found = candidates.filter((candidate) => candidate.field === key);
+    const proposals = candidates.filter((candidate) => candidate.field === key);
+    const found = proposals.filter(({ origin }) => origin !== 'inference');
+    if (!found.length && proposals.length) continue;
     values[key] =
       reconcileCandidates(key, found) === null
         ? null
@@ -50,7 +55,9 @@ export function mergeCandidates(
 export function findFactDiscrepancies(current: WorkFacts) {
   return fieldDefinitions
     .filter(({ key }) => {
-      const candidates = current.candidates.filter((c) => c.field === key);
+      const candidates = current.candidates.filter(
+        (c) => c.field === key && reconcile(key, [c.value]) !== null,
+      );
       if (!candidates.length) return false;
       const original = reconcileCandidates(key, candidates);
       if (original === null) return true;
@@ -88,7 +95,8 @@ export function markSelectedCandidates({
       !needsReview?.includes(field) &&
       (includesFactValue(field, saved, value) ||
         // Автозаполнение может опустить ячейку. Оно не скрывает сохранённое противоречие.
-        (reconcile(field, [saved, value]) !== null &&
+        (candidate.origin !== 'inference' &&
+          reconcile(field, [saved, value]) !== null &&
           includesFactValue(field, saved, automaticValue(candidate))));
     return { ...candidate, selected };
   });
@@ -100,7 +108,7 @@ function includesFactValue(
   proposed: FieldValue,
 ) {
   if (!Array.isArray(saved) || !Array.isArray(proposed))
-    return saved === proposed;
+    return saved === reconcile(key, [proposed]);
   return (
     comparableFactValue(reconcile(key, [saved, proposed])) ===
     comparableFactValue(saved)
@@ -126,9 +134,16 @@ function comparableFactValue(value: FieldValue): string {
 export function editFacts(current: WorkFacts, values: FieldValues): WorkFacts {
   const manual = new Set(current.manual);
   const next = readFieldValues(values);
-  for (const { key } of fieldDefinitions)
-    if (stable(next[key] ?? null) !== stable(current.values[key] ?? null))
-      manual.add(key);
+  for (const { key } of fieldDefinitions) {
+    const previous = current.values[key] ?? null;
+    const value = next[key] ?? null;
+    if (typeof value === 'string' && isCalendarDateField(key)) {
+      const date = canonicalCalendarDate(value);
+      if (date)
+        next[key] = date === reconcile(key, [previous]) ? previous : date;
+    }
+    if (stable(next[key] ?? null) !== stable(previous)) manual.add(key);
+  }
   return factsSchema.parse({ ...current, values: next, manual: [...manual] });
 }
 
@@ -167,8 +182,15 @@ function supportedParts(
         );
       return reviewed ? candidate.value : automaticValue(candidate);
     });
-  if (!Array.isArray(saved))
-    return new Set(proposals.includes(saved) ? ['value'] : []);
+  if (!Array.isArray(saved)) {
+    const comparable = reconcile(field, [saved]);
+    return new Set(
+      comparable !== null &&
+        proposals.some((value) => includesFactValue(field, comparable, value))
+        ? ['value']
+        : [],
+    );
+  }
   if (!saved.length)
     return new Set(
       proposals.some((value) => Array.isArray(value) && !value.length)
@@ -216,6 +238,7 @@ export function refreshFactEvidence(
     const refreshed = { ...candidate, evidence };
     if (evidence.length < candidate.evidence.length) {
       lost.add(candidate.field);
+      if (candidate.origin === 'inference') return [];
       reduced.add(refreshed);
     }
     return evidence.length ? [refreshed] : [];
@@ -255,7 +278,15 @@ function reconcile(key: string, found: FieldValue[]): FieldValue {
     Array.isArray(value);
   if (!found.every(isRows)) {
     const distinct = [
-      ...new Set(found.filter((value) => typeof value === 'string')),
+      ...new Set(
+        found.flatMap((value) => {
+          if (typeof value !== 'string') return [];
+          const comparable = isCalendarDateField(key)
+            ? canonicalCalendarDate(value)
+            : value;
+          return comparable === undefined ? [] : [comparable];
+        }),
+      ),
     ];
     return distinct.length === 1 ? (distinct[0] ?? null) : null;
   }

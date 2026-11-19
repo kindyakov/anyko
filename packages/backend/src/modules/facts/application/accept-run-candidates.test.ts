@@ -90,14 +90,64 @@ test('accepts context additions without overriding or duplicating contradictory 
   });
 
   const saved = await facts.saved();
-  expect(result).toEqual({
+  expect(result).toMatchObject({
     contextAccepted: true,
     missingFields: ['personName'],
     discrepancyFields: ['personName'],
   });
+  expect(
+    result.proposalOutcomes.map(({ stage, status }) => [stage, status]),
+  ).toEqual([
+    ['extraction', 'review'],
+    ['extraction', 'review'],
+    ['reconciliation', 'review'],
+    ['reconciliation', 'applied'],
+  ]);
   expect(saved.values.personName).toBeNull();
   expect(saved.values.documentNumber).toBe('42');
   expect(saved.candidates).toEqual([first, second, contextOnly]);
+});
+
+test('one calendar day from different sources fills one fact and preserves both original citations', async () => {
+  const facts = runFacts();
+  const candidates = [
+    textCandidate('birthDate', '30.08.2003'),
+    textCandidate('birthDate', '30 августа 2003 года', otherDocumentId),
+  ];
+  const result = await facts.accept({
+    fields: ['birthDate'],
+    confirmed: false,
+    candidates,
+  });
+  const saved = await facts.saved();
+  expect(result.discrepancyFields).toEqual([]);
+  expect(result.missingFields).toEqual([]);
+  expect(saved.values.birthDate).toBe('30.08.2003');
+  expect(markSelectedCandidates(saved)).toEqual(
+    candidates.map((candidate) => ({ ...candidate, selected: true })),
+  );
+});
+
+test('a different calendar day is a discrepancy, an impossible date remains an unfilled proposal', async () => {
+  const facts = runFacts();
+  const invalid = textCandidate('passportIssuedAt', '29 февраля 2023 года');
+  const result = await facts.accept({
+    fields: ['birthDate', 'passportIssuedAt'],
+    confirmed: false,
+    candidates: [
+      textCandidate('birthDate', '30.08.2003'),
+      textCandidate('birthDate', '31 августа 2003 года', otherDocumentId),
+      invalid,
+    ],
+  });
+  const saved = await facts.saved();
+  expect(result.discrepancyFields).toEqual(['birthDate']);
+  expect(saved.values.birthDate).toBeNull();
+  expect(saved.values.passportIssuedAt).toBeNull();
+  expect(markSelectedCandidates(saved)).toContainEqual({
+    ...invalid,
+    selected: false,
+  });
 });
 
 test('the command merges different obligations and returns a discrepancy for incompatible cells', async () => {
@@ -147,6 +197,46 @@ test('the command merges different obligations and returns a discrepancy for inc
   expect((await cleared.saved()).values.debts).toEqual([]);
 });
 
+test('keeps inferred scalar and table values for review while saving direct evidence automatically', async () => {
+  const facts = runFacts();
+  const quoted = textCandidate('personName', 'Анна');
+  const proposals = [
+    {
+      ...textCandidate('documentDate', 'Дата регистрации: 22.08.2026'),
+      origin: 'inference',
+      value: '2026-08-21',
+      explanation: 'Документ подписан за день до регистрации.',
+    },
+    {
+      ...tableCandidate('Договор А', '300.00'),
+      origin: 'inference',
+      explanation: 'Сложены платежи по одному договору.',
+    },
+  ] satisfies Candidate[];
+  const result = await facts.accept({
+    fields: ['personName', 'documentDate', 'debts'],
+    confirmed: false,
+    candidates: [quoted],
+    contextCandidates: proposals,
+  });
+
+  const saved = await facts.saved();
+  expect(result.missingFields).toEqual(['documentDate', 'debts']);
+  expect(result.discrepancyFields).toEqual([]);
+  expect(result.proposalOutcomes.map(({ status }) => status)).toEqual([
+    'applied',
+    'review',
+    'review',
+  ]);
+  expect(saved.values.personName).toBe('Анна');
+  expect(saved.values.documentDate).toBeNull();
+  expect(saved.values.debts).toBeNull();
+  expect(saved.candidates).toEqual([quoted, ...proposals]);
+  expect(markSelectedCandidates(saved).map(({ selected }) => selected)).toEqual(
+    [true, false, false],
+  );
+});
+
 test('only a partial stage keeps an unproposed field from the run', async () => {
   const initial = emptyFacts();
   initial.values.firstName = 'Мария';
@@ -156,7 +246,7 @@ test('only a partial stage keeps an unproposed field from the run', async () => 
   const partial = runFacts(initial);
   expect(
     await partial.accept({ fields, confirmed: false, candidates }),
-  ).toEqual({
+  ).toMatchObject({
     contextAccepted: false,
     missingFields: ['lastName'],
     discrepancyFields: [],
@@ -174,12 +264,38 @@ test('only a partial stage keeps an unproposed field from the run', async () => 
       candidates,
       contextCandidates: [],
     }),
-  ).toEqual({
+  ).toMatchObject({
     contextAccepted: true,
     missingFields: ['firstName', 'lastName'],
     discrepancyFields: [],
   });
   expect((await complete.saved()).values.firstName).toBeNull();
+});
+
+test('history credits the applied document proposal separately from matching proposals', async () => {
+  const facts = runFacts();
+  const document = textCandidate('personName', 'Анна');
+  const result = await facts.accept({
+    fields: ['personName'],
+    confirmed: false,
+    candidates: [document],
+    contextCandidates: [
+      { ...document, origin: 'context' },
+      { ...document, origin: 'inference', explanation: 'Совпавший вывод.' },
+    ],
+  });
+  expect((await facts.saved()).values.personName).toBe('Анна');
+  expect(result.proposalOutcomes.map(({ status }) => status)).toEqual([
+    'applied',
+    'matched',
+    'matched',
+  ]);
+  const repeated = await facts.accept({
+    fields: ['personName'],
+    confirmed: false,
+    candidates: [document],
+  });
+  expect(repeated.proposalOutcomes[0]?.status).toBe('retained');
 });
 
 test.each(['previous', 'context'] as const)(
@@ -200,13 +316,20 @@ test.each(['previous', 'context'] as const)(
       contextCandidates: source === 'context' ? [optional] : [],
     });
     const saved = await facts.saved();
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       contextAccepted: false,
       missingFields: ['personName'],
       discrepancyFields: ['personName'],
     });
     expect(saved.values.firstName).toBe('Мария');
     expect(saved.candidates).toEqual(candidates);
+    expect(
+      result.proposalOutcomes.filter(({ stage }) => stage === 'reconciliation'),
+    ).toEqual(
+      source === 'context'
+        ? [{ candidate: optional, stage: 'reconciliation', status: 'rejected' }]
+        : [],
+    );
   },
 );
 

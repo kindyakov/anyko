@@ -1,5 +1,12 @@
 import type { WorkAttempt } from '../../modules/processing';
+import type { WorkSummary } from '../../modules/works';
 import type { WorkDependencies } from '../work-dependencies';
+
+export function analysisContextRevision(work: WorkSummary) {
+  // Source membership is fixed for the run, so additions to later groups
+  // do not invalidate the current context. Fact edits still change this revision.
+  return work.revision - work.inputRevision;
+}
 
 // Входы работы могут измениться независимо от состояния попытки.
 export function createRunState(
@@ -16,8 +23,11 @@ export function createRunState(
       );
       if (
         !work ||
-        work.inputRevision !== run.inputRevision ||
-        docs.some((doc) => doc.deleted)
+        (run.kind === 'generation' &&
+          work.inputRevision !== run.inputRevision) ||
+        docs.some((doc) => doc.deleted) ||
+        (run.kind === 'analysis' &&
+          run.documentIds.some((id) => !docs.some((doc) => doc.id === id)))
       )
         throw new Error('STALE_WORK_ATTEMPT');
       await attempt.assertCurrent();

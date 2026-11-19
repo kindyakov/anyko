@@ -2,7 +2,7 @@
 import { Field } from '@base-ui/react/field';
 import { Fieldset } from '@base-ui/react/fieldset';
 import { Ban, CircleHelp, Plus, Trash2 } from 'lucide-react';
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 import {
   type FieldDefinition,
@@ -23,6 +23,7 @@ export function TextSlot({
   label,
   placeholder,
   value,
+  displayValue,
   disabled,
   multiline,
   maxLength,
@@ -35,6 +36,7 @@ export function TextSlot({
   label: string;
   placeholder?: string;
   value: string | null;
+  displayValue?: string | undefined;
   disabled: boolean;
   multiline: boolean;
   maxLength?: number | undefined;
@@ -45,14 +47,16 @@ export function TextSlot({
   tone?: 'paper' | 'panel';
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const [focused, setFocused] = useState(false);
+  const shown = (!focused && displayValue) || value;
   useLayoutEffect(() => {
     const node = textarea.current;
     if (!node || CSS.supports('field-sizing', 'content')) return;
     node.style.height = 'auto';
     node.style.height = `${String(Math.max(node.scrollHeight, 22))}px`;
-  }, [value, multiline]);
+  }, [shown, multiline]);
   const block = (multiline && !inline) || tone === 'panel';
-  const text = value || placeholder || label;
+  const text = shown || placeholder || label;
   return (
     <span
       data-field={fieldKey}
@@ -70,9 +74,15 @@ export function TextSlot({
         title={label}
         disabled={disabled}
         maxLength={maxLength}
-        value={value ?? ''}
+        value={shown ?? ''}
         placeholder={placeholder ?? label}
         data-empty={!value || undefined}
+        onFocus={() => {
+          setFocused(true);
+        }}
+        onBlur={() => {
+          setFocused(false);
+        }}
         onKeyDown={(event: React.KeyboardEvent) => {
           if (!multiline && event.key === 'Enter') event.preventDefault();
         }}

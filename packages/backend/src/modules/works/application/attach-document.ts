@@ -10,5 +10,10 @@ export const attachDocuments =
     input: { workId: WorkId; documents: readonly WorkSourceAttachment[] },
   ) => {
     scope.require('documents.upload');
-    return deps.store.attach(scope.workspaceId, input.workId, input.documents);
+    return deps.store.attach(
+      scope.workspaceId,
+      input.workId,
+      input.documents,
+      scope.userId,
+    );
   };

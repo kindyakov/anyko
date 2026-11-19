@@ -8,6 +8,7 @@ import type { UnitOfWork } from '../../platform/transactions';
 import { changeWork } from '../change-work';
 import {
   requireAnalysisInputs,
+  selectAnalysisRecovery,
   workCommandPolicy,
 } from '../work-command-guards';
 
@@ -39,20 +40,43 @@ export const analyzeWork =
           scope.workspaceId,
           documents,
         );
-        return (tx) =>
-          deps.processing.in(tx).commands.start(scope, {
+        return async (tx) => {
+          const processing = deps.processing.in(tx);
+          const count = await deps.works
+            .in(tx)
+            .internal.pendingUploadCount(scope.workspaceId, input.workId);
+          const recovery = await selectAnalysisRecovery(
+            processing.internal,
+            scope.workspaceId,
+            input.workId,
+            documents,
+            count > 0,
+          );
+          const snapshot = {
             workId: input.workId,
-            kind: 'analysis',
-            inputRevision: work.inputRevision,
-            documentIds: documents.map((doc) => doc.id),
+            inputRevision: recovery?.inputRevision ?? work.inputRevision,
+            documentIds:
+              recovery?.documentIds ?? documents.map((doc) => doc.id),
             settingsRevision: settings.revision,
-            generationId: null,
             correlationId: input.correlationId,
             modelSnapshot: {
               vision: settings.visionModel,
               extraction: settings.extractionModel,
             },
-          });
+          };
+          if (recovery?.automaticUpload)
+            await processing.internal.startUploadAnalysis(
+              scope.workspaceId,
+              scope.userId,
+              snapshot,
+            );
+          else
+            await processing.commands.start(scope, {
+              ...snapshot,
+              kind: 'analysis',
+              generationId: null,
+            });
+        };
       },
     );
   };

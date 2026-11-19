@@ -48,9 +48,11 @@ export function workStage(view: WorkView): WorkStage {
   if (view.runs.some((run) => run.kind === 'generation' && active(run)))
     return { kind: 'generating' };
   const last = newest(analyses);
-  const pending = last
-    ? view.documents.filter((doc) => doc.createdAt > last.createdAt).length
-    : view.documents.length;
+  const pending =
+    view.pendingUploadCount ??
+    (last
+      ? view.documents.filter((doc) => doc.createdAt > last.createdAt).length
+      : view.documents.length);
   if (
     !last ||
     pending ||

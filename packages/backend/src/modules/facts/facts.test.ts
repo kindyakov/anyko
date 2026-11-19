@@ -71,7 +71,7 @@ test('an accepted date loses confirmation when its image proof disappears', () =
     ),
   );
   const next = refreshFactEvidence(initial, () => null);
-  expect(next.values.documentDate).toBe('2020-06-01');
+  expect(next.values.documentDate).toBe(initial.values.documentDate);
   expect(next.confirmed).not.toContain('documentDate');
   expect(next.needsReview).toEqual(['documentDate']);
 });

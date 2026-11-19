@@ -9,6 +9,7 @@ import {
   requireIdleWork,
   requireRemovalSource,
   requireUploadCapacity,
+  selectAnalysisRecovery,
   workCommandPolicy,
   workCommandSources,
   WorkInputBlock,
@@ -33,6 +34,7 @@ export async function workAvailability(
   workId: WorkId,
   sources: WorkSources,
   factsNeedReview: boolean,
+  uploadPending: boolean,
 ): Promise<Record<Command, Availability>> {
   let active: Promise<boolean> | undefined;
   const decide = async (command: Command): Promise<Availability> => {
@@ -41,12 +43,21 @@ export async function workAvailability(
       scope.require(policy.right);
       if (command === 'attach') scope.require('recognitions.use');
       const documents = workCommandSources(command, sources);
-      if (command === 'analyze')
+      if (command === 'analyze') {
         await requireAnalysisInputs(
           deps.connections,
           scope.workspaceId,
           documents,
         );
+        if (uploadPending)
+          await selectAnalysisRecovery(
+            deps.processing.internal,
+            scope.workspaceId,
+            workId,
+            documents,
+            true,
+          );
+      }
       if (command === 'upload' || command === 'attach')
         requireUploadCapacity(documents);
       if (command === 'remove') requireRemovalSource(documents);

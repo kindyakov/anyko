@@ -1,6 +1,13 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 
+import {
+  observeProviderFetch,
+  type ProviderCallObserver,
+} from './provider-calls';
+
+export type { ProviderCallObserver } from './provider-calls';
+
 const connectionSchema = z.object({
   id: z.string().regex(/^[\w-]{1,80}$/),
   baseURL: z.url().refine((value) => {
@@ -69,18 +76,25 @@ export function llmError(error: unknown, signal?: AbortSignal): LlmError {
 
 export function createModelGateway(options: { fetch?: typeof fetch } = {}) {
   return {
-    model(connection: ModelConnection, selection: ModelSelection) {
+    model(
+      connection: ModelConnection,
+      selection: ModelSelection,
+      observe?: ProviderCallObserver,
+    ) {
       const parsedConnection = connectionSchema.safeParse(connection);
       const parsedModel = modelSchema.safeParse(selection);
       if (!parsedConnection.success || !parsedModel.success)
         throw new LlmError('LLM_REQUEST_REJECTED');
       const config = parsedConnection.data;
+      const transport = observe
+        ? observeProviderFetch(options.fetch ?? fetch, observe)
+        : options.fetch;
       return createOpenAICompatible({
         name: config.id,
         baseURL: config.baseURL,
         apiKey: config.apiKey,
         supportsStructuredOutputs: parsedModel.data.structuredOutput,
-        ...(options.fetch ? { fetch: options.fetch } : {}),
+        ...(transport ? { fetch: transport } : {}),
       }).chatModel(parsedModel.data.id);
     },
   };

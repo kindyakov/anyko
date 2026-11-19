@@ -59,6 +59,63 @@ const pack = documentPackageSchema.parse({
   })),
 });
 
+test('the preview renders two slots for one date and edits the underlying fact', () => {
+  const editable = documentPackageSchema.parse({
+    ...pack,
+    fields: [
+      {
+        key: 'passportIssuedAt',
+        label: 'Дата выдачи',
+        multiline: false,
+        kind: 'text',
+        valueType: 'date',
+        limits: {},
+        columns: [],
+      },
+    ],
+    documents: [
+      {
+        ...pack.documents[0],
+        placeholders: [
+          {
+            field: 'passportIssuedAt',
+            tag: 'passportIssuedAtDigits',
+            placeholder: 'DD.MM.YYYY',
+          },
+          {
+            field: 'passportIssuedAt',
+            tag: 'passportIssuedAtText',
+            placeholder: 'D MMMM YYYY года',
+          },
+        ],
+        blocks: [
+          {
+            kind: 'paragraph',
+            paragraph: paragraph(
+              '{passportIssuedAtDigits}; {passportIssuedAtText}',
+            ),
+          },
+        ],
+      },
+    ],
+  });
+  const changes: unknown[][] = [];
+  render(
+    <PackagePreview
+      pack={editable}
+      values={{ passportIssuedAt: '30/08/2003' }}
+      disabled={false}
+      onChange={(...args) => changes.push(args)}
+    />,
+  );
+  expect(screen.getByDisplayValue('30.08.2003')).toBeTruthy();
+  const written = screen.getByDisplayValue('30 августа 2003 года');
+  fireEvent.focus(written);
+  expect(screen.getAllByDisplayValue('30/08/2003')).toContain(written);
+  fireEvent.change(written, { target: { value: '31.08.2003' } });
+  expect(changes).toEqual([['passportIssuedAt', '31.08.2003']]);
+});
+
 test.each([
   '______________________  {lastName} {firstName} {middleName}',
   '______________________  {signerName}',

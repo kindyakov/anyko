@@ -75,3 +75,38 @@ test('attention includes lost evidence and quick apply excludes competing values
   ]);
   expect(result.quick).toEqual([]);
 });
+
+test('a sole inferred proposal stays in individual review and is excluded from bulk filling', () => {
+  const values = { district: null, firstName: null };
+  const view: WorkView = {
+    ...workView,
+    package: { ...workView.package, fields: fields('district', 'firstName') },
+    facts: {
+      ...workView.facts,
+      values,
+      candidates: [
+        {
+          field: 'district',
+          value: 'Тестовый район',
+          selected: false,
+          origin: 'inference',
+          explanation: 'Район предполагается по городу.',
+          evidence: [],
+        },
+        {
+          field: 'firstName',
+          value: 'Анна',
+          selected: false,
+          origin: 'document',
+          evidence: [],
+        },
+      ],
+    },
+  };
+  const result = reviewFields(view, values, 'attention');
+  expect(result.visible.map(({ field }) => field.key)).toEqual([
+    'district',
+    'firstName',
+  ]);
+  expect(result.quick.map(({ field }) => field.key)).toEqual(['firstName']);
+});
