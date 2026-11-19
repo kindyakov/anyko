@@ -8,7 +8,7 @@ import {
 } from '@anyko/database';
 import type { Logger } from '@anyko/logger';
 
-import { createAccess } from '../modules/access';
+import { createAccess, createWorkspaceActorScope } from '../modules/access';
 import type { DocumentAgents } from '../modules/agents';
 import { createDocumentAgents } from '../modules/agents/infrastructure/mastra';
 import {
@@ -451,7 +451,7 @@ export function createBackend(
         logger,
       }),
     },
-    execute: createWorkExecution(work),
+    execute: createWorkExecution(work, createWorkspaceActorScope(db)),
     maintain: async () => {
       await cleanupWorks();
       await advanceUploads();

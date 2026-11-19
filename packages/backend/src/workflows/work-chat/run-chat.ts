@@ -1,12 +1,21 @@
+import { LlmError } from '@anyko/llm';
+
+import type { WorkspaceActorScope } from '../../modules/access';
 import type { WorkAttempt } from '../../modules/processing';
 import { requirePackage } from '../../modules/templates';
 import { WorkError } from '../../modules/works';
+import { isAppError } from '../../platform/errors';
 import { callModel } from '../work-analysis/model-call';
 import type { WorkDependencies } from '../work-dependencies';
 import { createRunState } from '../work-execution/run-state';
 import { workLockKey } from '../work-guards';
 
-export function createWorkChatRun(deps: WorkDependencies) {
+import { prepareChatFieldWriter, requireChatActor } from './write-field';
+
+export function createWorkChatRun(
+  deps: WorkDependencies,
+  actorScope: WorkspaceActorScope,
+) {
   return async function runChat(attempt: WorkAttempt, signal: AbortSignal) {
     const { run } = attempt;
     const { workspaceId, workId, id: runId, settingsRevision } = run;
@@ -15,10 +24,11 @@ export function createWorkChatRun(deps: WorkDependencies) {
     const { current } = createRunState(deps, attempt);
     const readConnection = () =>
       deps.connections.internal.connection(workspaceId, settingsRevision);
-    const assertCurrent = async () => {
+    const assertRunCurrent = async () => {
       signal.throwIfAborted();
-      await current();
+      const work = await current();
       await readConnection();
+      return work.revision;
     };
     const work = await current();
     const config = await readConnection();
@@ -26,6 +36,12 @@ export function createWorkChatRun(deps: WorkDependencies) {
     const chat = await deps.agents.internal.chat.get(ref);
     if (!session || !chat || session.id !== chat.sessionId)
       throw new WorkError('NOT_FOUND');
+    const requireActor = requireChatActor(actorScope, workspaceId, chat.userId);
+    await requireActor();
+    const assertCurrent = async () => {
+      await assertRunCurrent();
+      await requireActor();
+    };
     const [facts, messages, links] = await Promise.all([
       deps.facts.queries.forAnalysis(scope),
       deps.agents.internal.chat.context({ ...scope, sessionId: session.id }),
@@ -70,7 +86,22 @@ export function createWorkChatRun(deps: WorkDependencies) {
       sessionId: session.id,
     });
     const interaction = { interactionId: deps.newId(), stage: 'chat' as const };
-    const { answer } = await callModel({
+    const observe = history.observe({
+      ...interaction,
+      provider: config.connection.id,
+      model: config.extractionModel,
+    });
+    const fields = requirePackage(work.packageVersion).fields;
+    const writer = await prepareChatFieldWriter(deps, {
+      attempt,
+      requireActor,
+      initialRevision: work.revision,
+      sessionId: session.id,
+      interactionId: interaction.interactionId,
+      fields,
+      assertCurrent: assertRunCurrent,
+    });
+    const result = await callModel({
       logger: deps.logger,
       callId: interaction.interactionId,
       runId,
@@ -80,15 +111,14 @@ export function createWorkChatRun(deps: WorkDependencies) {
       model: config.extractionModel,
       execute: () =>
         deps.agents.model.chat({
-          observe: history.observe({
-            ...interaction,
-            provider: config.connection.id,
-            model: config.extractionModel,
-          }),
+          observe: async (request) => {
+            await assertCurrent();
+            return observe(request);
+          },
           traceTool: (event) => history.tool({ ...interaction, ...event }),
           modelId: config.extractionModel,
           connection: config.connection,
-          fields: requirePackage(work.packageVersion).fields,
+          fields,
           facts,
           currentFacts: () => deps.facts.queries.forAnalysis(scope),
           previousContext: session.context,
@@ -96,6 +126,8 @@ export function createWorkChatRun(deps: WorkDependencies) {
           messages,
           userText: chat.userText,
           signal,
+          appliedFields: writer.appliedFields,
+          writeField: writer.writeField,
           assertCurrent,
           listSourceImages: async (documentId) =>
             (await sourceFor(documentId)).visuals.map(({ path }) => path),
@@ -107,18 +139,41 @@ export function createWorkChatRun(deps: WorkDependencies) {
             return visual.description;
           },
         }),
-    });
+    }).then(
+      ({ answer }) => ({ answer }),
+      (error: unknown) => {
+        if (signal.aborted) throw error;
+        const code =
+          error instanceof LlmError || isAppError(error)
+            ? error.code
+            : 'WORK_PROCESSING_FAILED';
+        const failure = writer.failure(code);
+        if (!failure) throw error;
+        return { failure };
+      },
+    );
+    const failure = 'failure' in result ? result.failure : writer.failure();
     await deps.locks.run(
       workLockKey(workspaceId, workId),
       async (lockSignal) => {
-        await assertCurrent();
-        await attempt.write(async (tx, write) => {
-          await deps.agents.in(tx).internal.chat.answer(ref, answer);
-          await write.finish({ status: 'succeeded' });
-          await deps.works
-            .in(tx)
-            .internal.event(workspaceId, workId, 'processing.changed');
-        }, lockSignal);
+        signal.throwIfAborted();
+        if (failure) await current();
+        else await assertCurrent();
+        await attempt.write(
+          async (tx, write) => {
+            if (!failure && 'answer' in result)
+              await deps.agents.in(tx).internal.chat.answer(ref, result.answer);
+            await write.finish(failure ?? { status: 'succeeded' });
+            await deps.works
+              .in(tx)
+              .internal.event(
+                workspaceId,
+                workId,
+                failure ? 'processing.failed' : 'processing.changed',
+              );
+          },
+          AbortSignal.any([signal, lockSignal]),
+        );
       },
       signal,
     );

@@ -95,6 +95,7 @@ test('work history can open a retained analysis run outside the recent work view
             reasoningTokens: null,
             input: null,
             output: JSON.stringify({ summary: 'Проверены сведения' }),
+            fieldChange: null,
             errorCode: null,
             durationMs: null,
             createdAt: run.createdAt,
@@ -194,6 +195,42 @@ test('work chat sends a message and reopens with the saved reply and system entr
   await open();
   expect(await screen.findByText(question)).toBeTruthy();
   expect(await screen.findByText(answer)).toBeTruthy();
+});
+
+test('chat shows a failed or partial write with guidance instead of a success reply', async () => {
+  serveApi(({ url }) => {
+    if (url === workAddress) return json(200, workView);
+    if (!url.startsWith(`${workAddress}/messages?`))
+      throw new Error(`Unexpected request ${url}`);
+    return json(200, {
+      items: ['failed', 'partial'].map((status) => ({
+        runId: crypto.randomUUID(),
+        kind: 'chat',
+        status,
+        createdAt: source.createdAt,
+        errorCode: 'REVISION_CONFLICT',
+        userText: 'Исправьте сведения',
+        answer: 'Все сведения обновлены.',
+      })),
+      page: 1,
+      pageSize: 15,
+      total: 2,
+      canSend: true,
+    });
+  });
+  renderWork();
+  const user = userEvent.setup();
+  await user.click(
+    await screen.findByRole('button', { name: 'Чат с агентом' }),
+  );
+  const chat = within(screen.getByRole('dialog', { name: 'Чат с агентом' }));
+  const [partial, failed] = await chat.findAllByRole('alert');
+  expect(partial?.textContent).toContain('Готово частично');
+  expect(partial?.textContent).toContain('проверить сохранённые правки');
+  expect(failed?.textContent).toContain(
+    'Сведения изменились во время запроса.',
+  );
+  expect(chat.queryByText('Все сведения обновлены.')).toBeNull();
 });
 
 test('upload confirmation is visible when returning to Files after a pending upload', async () => {

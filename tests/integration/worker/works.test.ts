@@ -6,6 +6,7 @@ import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
 import { rightCatalog } from '@anyko/backend/scope';
+import { getWorkAgentHistory } from '@anyko/contracts/works';
 import { createDatabase, createDatabasePool } from '@anyko/database';
 import { LlmError } from '@anyko/llm';
 import { createLogger } from '@anyko/logger';
@@ -368,9 +369,23 @@ async function rejects(operation: Promise<unknown>, code: string) {
   expect(failure instanceof Error ? failure.message : '').toContain(code);
 }
 
+async function createChatActor(workspaceId: string) {
+  const id = crypto.randomUUID();
+  await db.user.create({
+    data: {
+      id,
+      name: 'Fixture lawyer',
+      email: id + '@example.test',
+      memberships: { create: { workspaceId, role: 'member' } },
+    },
+  });
+  return id;
+}
+
 test('chat shares the work session, waits for the current turn and retains read-only replies', async () => {
   const input = await create();
-  const scope = memberScope(input.workspaceId);
+  const userId = await createChatActor(input.workspaceId);
+  const scope = memberScope(input.workspaceId, userId);
   const { workId } = input;
   const chat = apiBackend.workHttp.chat;
   const readTimeline = () =>
@@ -412,8 +427,8 @@ test('chat shares the work session, waits for the current turn and retains read-
   ).toEqual([]);
   const priorVisionCalls = describeCount;
   const initial = await db.workAgentSession.findFirstOrThrow({ where: input });
-  const waiting = Promise.withResolvers<void>();
-  const reached = Promise.withResolvers<void>();
+  const waiting = Promise.withResolvers<undefined>();
+  const reached = Promise.withResolvers<undefined>();
   const firstQuestion =
     'Что стоит в поле имени и что на вложенном изображении?';
   const firstAnswer = 'В поле указано имя Анна. На изображении белый шкаф.';
@@ -434,9 +449,9 @@ test('chat shares the work session, waits for the current turn and retains read-
           tools?: { function: { name: string } }[];
         };
         const prompt = JSON.stringify(body.messages);
-        const lastMessage = body.messages.findLast(
-          ({ role }) => role === 'user',
-        )?.content;
+        const lastMessage = [...body.messages]
+          .reverse()
+          .find(({ role }) => role === 'user')?.content;
         const lastQuestion = z
           .object({ message: z.string() })
           .parse(JSON.parse(lastMessage ?? '{}')).message;
@@ -450,11 +465,12 @@ test('chat shares the work session, waits for the current turn and retains read-
           'listImages',
           'readField',
           'readSource',
+          'setWorkField',
         ]);
         expect(prompt).toContain('Сохранён контекст работы');
         if (firstStep) {
           expect(lastQuestion).toBe(firstQuestion);
-          reached.resolve();
+          reached.resolve(undefined);
           await waiting.promise;
         } else if (isFollowUp) {
           expect(prompt).toContain(firstQuestion);
@@ -565,7 +581,7 @@ test('chat shares the work session, waits for the current turn and retains read-
     expect(
       (await readTimeline()).items.filter(({ kind }) => kind === 'analysis'),
     ).toHaveLength(1);
-    waiting.resolve();
+    waiting.resolve(undefined);
     const completed = await waitForChat((timeline) =>
       timeline.items.some(
         ({ runId, answer }) =>
@@ -614,11 +630,418 @@ test('chat shares the work session, waits for the current turn and retains read-
       (await readTimeline()).items.some(({ kind }) => kind === 'chat'),
     ).toBe(false);
   } finally {
-    waiting.resolve();
+    waiting.resolve(undefined);
     chatHook = undefined;
     await chatModel.stop();
+    await db.user.delete({ where: { id: userId } });
   }
 });
+
+test('chat tool edits one field, records its history, and restores through the work route', async () => {
+  const input = await create();
+  const { workspaceId, workId } = input;
+  const userId = await createChatActor(workspaceId);
+  const app = fixtureApp(workspaceId, userId);
+  const { workHttp } = apiBackend;
+  const scope = memberScope(workspaceId, userId);
+  const request = (path: string, method = 'GET', body?: unknown) =>
+    app.handle(
+      new Request(
+        'http://localhost/api/v1/workspaces/' +
+          workspaceId +
+          '/works/' +
+          workId +
+          path,
+        {
+          method,
+          headers: {
+            origin: workHttp.origin,
+            'content-type': 'application/json',
+            'idempotency-key': crypto.randomUUID(),
+          },
+          body: body === undefined ? null : JSON.stringify(body),
+        },
+      ),
+    );
+  const send = async (userText: string) => {
+    const response = await request('/messages', 'POST', { userText });
+    expect(response.status).toBe(202);
+    return z.object({ runId: z.uuid() }).parse(await response.json()).runId;
+  };
+  const waitForTurn = async (runId: string) => {
+    for (let poll = 0; poll < 300; poll++) {
+      const { items } = await workHttp.chat.list(scope, {
+        workId,
+        page: 1,
+        pageSize: 15,
+      });
+      const turn = items.find((item) => item.runId === runId);
+      if (turn && !['queued', 'running'].includes(turn.status)) return turn;
+      await Bun.sleep(50);
+    }
+    throw new Error('CHAT_STATUS_TIMEOUT');
+  };
+  const second = pauseStep();
+  const third = pauseStep();
+  let firstSteps = 0;
+  const chatModel = createDocumentAgents({
+    pool: actualPool,
+    fetch: Object.assign(
+      async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const body = z
+          .object({
+            messages: z.array(z.object({ role: z.string() })),
+            tools: z
+              .array(z.object({ function: z.object({ name: z.string() }) }))
+              .optional(),
+          })
+          .parse(await new Request(url, init).json());
+        const hasToolResult = body.messages.some(({ role }) => role === 'tool');
+        if (!hasToolResult) {
+          expect(body.tools?.map((tool) => tool.function.name)).toContain(
+            'setWorkField',
+          );
+          firstSteps++;
+          if (firstSteps === 2) {
+            await second.wait();
+          } else if (firstSteps === 3) {
+            await third.wait();
+          }
+        } else if (firstSteps === 1) {
+          const duringReply = await workHttp.views.get(scope, workId);
+          expect(duringReply.facts.values.personName).toBe('Борис');
+        } else if (firstSteps === 4) {
+          return Response.json(
+            { error: { message: 'Fixture provider denial' } },
+            { status: 401 },
+          );
+        }
+        return Response.json({
+          id: 'fixture-field-edit',
+          object: 'chat.completion',
+          created: 1,
+          model: 'fixture',
+          choices: [
+            {
+              index: 0,
+              finish_reason: hasToolResult ? 'stop' : 'tool_calls',
+              message: hasToolResult
+                ? { role: 'assistant', content: 'Готово.' }
+                : {
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: 'set-name',
+                        type: 'function',
+                        function: {
+                          name: 'setWorkField',
+                          arguments: JSON.stringify({
+                            field: 'personName',
+                            value: firstSteps === 1 ? 'Борис' : 'Вера',
+                          }),
+                        },
+                      },
+                    ],
+                  },
+            },
+          ],
+        });
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  chatHook = (turn) => chatModel.chat(turn);
+  try {
+    const source = await upload(input);
+    const analyzed = await until(input, terminal);
+    expect(analyzed.facts.values.personName).toBe('Анна');
+    const extractionCalls = extractionCount;
+    const chatText = 'Что сейчас указано в сведениях?';
+    const runId = await send(chatText);
+    expect(await waitForTurn(runId)).toMatchObject({
+      kind: 'chat',
+      userText: chatText,
+      answer: 'Готово.',
+      status: 'succeeded',
+    });
+    const changed = await workHttp.views.get(scope, workId);
+    expect(changed.facts.values).toEqual({
+      ...analyzed.facts.values,
+      personName: 'Борис',
+    });
+    expect(changed.work.revision).toBe(analyzed.work.revision + 1);
+    const historyResponse = await request(
+      '/runs/' + runId + '/agent-history?pageSize=10',
+    );
+    expect(historyResponse.status).toBe(200);
+    const { items } = getWorkAgentHistory.response.schema.parse(
+      await historyResponse.json(),
+    );
+    const edits = items.filter((event) => event.fieldChange !== null);
+    expect(edits).toHaveLength(1);
+    expect(edits[0]).toMatchObject({
+      kind: 'tool',
+      fieldChange: { field: 'personName', before: 'Анна', after: 'Борис' },
+    });
+    const eventId = edits[0]?.id;
+    if (!eventId) throw new Error('FIELD_CHANGE_MISSING');
+    const restore = { runId, eventId };
+    const restoreAt = (revision: number, from = restore) =>
+      request('/fields', 'PATCH', { revision, restore: from });
+    expect((await restoreAt(analyzed.work.revision)).status).toBe(409);
+    expect(
+      (
+        await request('/fields', 'PATCH', {
+          revision: changed.work.revision,
+          values: changed.facts.values,
+          restore,
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await restoreAt(changed.work.revision, {
+          ...restore,
+          runId: crypto.randomUUID(),
+        })
+      ).status,
+    ).toBe(404);
+    const readOnly = memberScope(workspaceId, userId, ['works.read']);
+    await rejects(
+      workHttp.review.restoreField(readOnly, {
+        workId,
+        revision: changed.work.revision,
+        ...restore,
+      }),
+      'FORBIDDEN',
+    );
+
+    const staleRun = await send('Поменяй ФИО.');
+    await second.entered();
+    await workHttp.review.editValues(scope, {
+      workId,
+      revision: changed.work.revision,
+      values: { ...changed.facts.values, documentNumber: '42' },
+    });
+    second.release();
+    expect(await waitForTurn(staleRun)).toMatchObject({
+      status: 'failed',
+      errorCode: 'REVISION_CONFLICT',
+      answer: null,
+    });
+    const current = await workHttp.views.get(scope, workId);
+    expect(current.facts.values).toMatchObject({
+      personName: 'Борис',
+      documentNumber: '42',
+    });
+    expect(current.work.revision).toBe(changed.work.revision + 1);
+    const staleHistory = await workHttp.views.agentHistory(
+      scope,
+      workId,
+      staleRun,
+      1,
+      10,
+    );
+    expect(
+      staleHistory.items.find(({ kind }) => kind === 'tool'),
+    ).toMatchObject({
+      status: 'failed',
+      errorCode: 'REVISION_CONFLICT',
+      fieldChange: null,
+    });
+
+    const revokedRun = await send('Исправь имя на Вера.');
+    await third.entered();
+    await db.membership.delete({
+      where: { workspaceId_userId: { workspaceId, userId } },
+    });
+    third.release();
+    expect(await waitForTurn(revokedRun)).toMatchObject({
+      status: 'failed',
+      errorCode: 'FORBIDDEN',
+      answer: null,
+    });
+    const afterRevocation = await workHttp.views.get(scope, workId);
+    expect(afterRevocation.work.revision).toBe(current.work.revision);
+    expect(afterRevocation.facts.values.personName).toBe('Борис');
+    const revokedHistory = await workHttp.views.agentHistory(
+      scope,
+      workId,
+      revokedRun,
+      1,
+      10,
+    );
+    expect(
+      revokedHistory.items.find(({ kind }) => kind === 'tool'),
+    ).toMatchObject({
+      status: 'failed',
+      errorCode: 'FORBIDDEN',
+      fieldChange: null,
+    });
+    await db.membership.create({
+      data: { workspaceId, userId, role: 'member' },
+    });
+
+    expect((await restoreAt(current.work.revision)).status).toBe(200);
+    const restored = await workHttp.views.get(scope, workId);
+    expect(restored.facts.values).toMatchObject({
+      personName: 'Анна',
+      documentNumber: '42',
+    });
+    expect(restored.work.revision).toBe(current.work.revision + 1);
+
+    const interruptedRun = await send(
+      'Исправь имя на Вера. Потом сообщи результат.',
+    );
+    expect(await waitForTurn(interruptedRun)).toMatchObject({
+      status: 'partial',
+      errorCode: 'LLM_AUTH_FAILED',
+      answer: null,
+    });
+    const interrupted = await workHttp.views.get(scope, workId);
+    expect(interrupted.facts.values).toMatchObject({
+      personName: 'Вера',
+      documentNumber: '42',
+    });
+    expect(interrupted.work.revision).toBe(restored.work.revision + 1);
+    const interruptedHistory = await workHttp.views.agentHistory(
+      scope,
+      workId,
+      interruptedRun,
+      1,
+      10,
+    );
+    expect(
+      interruptedHistory.items.find(({ kind }) => kind === 'tool')?.fieldChange,
+    ).toMatchObject({
+      field: 'personName',
+      before: 'Анна',
+      after: 'Вера',
+    });
+
+    expect(extractionCount).toBe(extractionCalls);
+    expect(
+      await db.run.count({
+        where: { workspaceId, workId, kind: 'work.analysis' },
+      }),
+    ).toBe(1);
+    await workHttp.intake.removeDocument(scope, {
+      workId,
+      documentId: brandDocumentId(source.id),
+    });
+    const cleaned = await until(input, ({ cleanupPending }) => !cleanupPending);
+    expect((await restoreAt(cleaned.work.revision)).status).toBe(404);
+  } finally {
+    second.release();
+    third.release();
+    chatHook = undefined;
+    await chatModel.stop();
+    await db.user.delete({ where: { id: userId } });
+  }
+});
+
+test('recovery of a chat turn does not reapply a field value superseded before restart', async () => {
+  const { workspaceId, workId } = await create();
+  const userId = await createChatActor(workspaceId);
+  const scope = memberScope(workspaceId, userId);
+  const { chat, views } = apiBackend.workHttp;
+  const initial = await views.get(scope, workId);
+  const beforeRestart = pauseStep();
+  let deliveries = 0;
+  chatHook = async (turn) => {
+    deliveries++;
+    const write = (value: string, callId: string) =>
+      turn.writeField({ field: 'personName', value }, callId, turn.signal);
+    if (deliveries === 1) {
+      expect(await write('Анна', 'first-name')).toMatchObject({
+        before: null,
+        after: 'Анна',
+      });
+      expect(await write('Борис', 'second-name')).toMatchObject({
+        before: 'Анна',
+        after: 'Борис',
+      });
+      await beforeRestart.wait();
+    } else {
+      expect(turn.appliedFields).toContain('personName');
+      expect(await write('Анна', 'replayed-with-a-new-provider-id')).toEqual({
+        errorCode: 'REVISION_CONFLICT',
+      });
+      expect(
+        await write('Борис', 'latest-replayed-with-a-new-provider-id'),
+      ).toMatchObject({
+        before: 'Анна',
+        after: 'Борис',
+      });
+    }
+    return {
+      answer: 'История обработана.',
+      usage: { inputTokens: null, outputTokens: null },
+    };
+  };
+  try {
+    if (!worker) throw new Error('EXPECTED_RUNNING_WORKER');
+    const { runId } = await chat.send(scope, {
+      workId,
+      userText: 'Исправь ФИО.',
+      correlationId: crypto.randomUUID(),
+    });
+    await beforeRestart.entered();
+    const before = await views.get(scope, workId);
+    expect(before.facts.values.personName).toBe('Борис');
+    expect(before.work.revision).toBe(initial.work.revision + 2);
+    const draining = worker.stop();
+    await db.run.update({
+      where: { id: runId },
+      data: { leaseUntil: new Date(0) },
+    });
+    beforeRestart.release();
+    await draining;
+    await workerBackend.jobs.reconcile();
+    expect(
+      await db.runOutbox.findUniqueOrThrow({ where: { runId } }),
+    ).toMatchObject({ deliveredAt: null });
+    worker = await startJobWorker(workerBackend.jobs, {
+      prefix: workerPrefix + '-chat-restarted',
+    });
+    const deadline = Date.now() + 15_000;
+    for (;;) {
+      const { items } = await chat.list(scope, {
+        workId,
+        page: 1,
+        pageSize: 15,
+      });
+      const entry = items.find((item) => item.runId === runId);
+      if (entry && !['queued', 'running'].includes(entry.status)) {
+        expect(entry).toMatchObject({
+          status: 'partial',
+          errorCode: 'REVISION_CONFLICT',
+          answer: null,
+        });
+        break;
+      }
+      if (Date.now() >= deadline) throw new Error('CHAT_RECOVERY_TIMEOUT');
+      await Bun.sleep(50);
+    }
+    expect(deliveries).toBe(2);
+    const after = await views.get(scope, workId);
+    expect(after.facts.values.personName).toBe('Борис');
+    expect(after.work.revision).toBe(before.work.revision);
+    const history = await views.agentHistory(scope, workId, runId, 1, 10);
+    const fieldChanges = history.items.flatMap(({ fieldChange }) =>
+      fieldChange ? [fieldChange] : [],
+    );
+    expect(fieldChanges.sort((a, b) => a.revision - b.revision)).toMatchObject([
+      { field: 'personName', before: null, after: 'Анна' },
+      { field: 'personName', before: 'Анна', after: 'Борис' },
+    ]);
+  } finally {
+    beforeRestart.release();
+    chatHook = undefined;
+    await db.user.delete({ where: { id: userId } });
+  }
+}, 30_000);
 
 afterAll(async () => {
   await workerBackend.stop();
@@ -2086,14 +2509,14 @@ test('numbered search filters the whole workspace and counts only matching revis
   expect(literal.items.map(({ title }) => title)).toEqual(['Дело Анны 100%']);
 });
 
-function fixtureApp(workspaceId: string) {
+function fixtureApp(workspaceId: string, userId = 'fixture') {
   const { workHttp, documentHttp } = apiBackend;
   const access = {
     ...workHttp.access,
     session: () =>
       Promise.resolve({
         user: {
-          id: 'fixture',
+          id: userId,
           name: 'Fixture',
           email: 'fixture@example.test',
         },

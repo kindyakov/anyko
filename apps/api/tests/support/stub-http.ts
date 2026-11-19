@@ -113,6 +113,7 @@ export function stubHttpOptions(): {
   };
   const review: WorkReview = {
     editValues: unused,
+    restoreField: unused,
     confirmFacts: unused,
   };
   const generation: WorkGeneration = {

@@ -13,7 +13,7 @@ export interface AccessSession {
 }
 
 // Выдача области по проверенному участию. Идентификаторы без формата не превращаются в область.
-function issueScope(
+export function issueScope(
   userId: string,
   workspaceId: string,
   rights: readonly Right[],

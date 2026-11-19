@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 
 import { sessionCookieNames } from '@anyko/contracts/session';
+import { workResponseSchema } from '@anyko/contracts/works';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -199,6 +200,129 @@ test('work goes from list through upload, automatic status and editable facts', 
   await expect(page).toHaveURL(new RegExp(`/w/e2e-north/works/${workId}$`));
 });
 
+test('chat field history restores the selected field and keeps other values', async ({
+  page,
+}, testInfo) => {
+  await page.goto('/sign-in');
+  await signIn(page, 'OWNER');
+  await page.getByRole('button', { name: 'Новая работа' }).click();
+  const create = page.getByRole('dialog', { name: 'Новая работа' });
+  await create.getByLabel('Название работы').fill('Правка сведений в чате');
+  await create.getByRole('button', { name: 'Создать и открыть' }).click();
+  await expect(page).toHaveURL(/\/works\/[0-9a-f-]+$/);
+  const workId = new URL(page.url()).pathname.split('/').at(-1);
+  const address = `/api/v1/workspaces/e2e-north/works/${workId ?? ''}`;
+  const loadWork = async () => {
+    const response = await page.request.get(address);
+    expect(response.ok()).toBe(true);
+    return workResponseSchema.parse(await response.json());
+  };
+  const initial = await loadWork();
+  const prepared = await page.request.patch(`${address}/fields`, {
+    headers: { origin: new URL(page.url()).origin },
+    data: {
+      revision: initial.work.revision,
+      values: {
+        ...initial.facts.values,
+        lastName: 'Иванова',
+        firstName: 'Анна',
+      },
+    },
+  });
+  await expect(prepared).toBeOK();
+
+  await page.getByRole('button', { name: 'Чат с агентом' }).click();
+  const chat = page.getByRole('dialog', { name: 'Чат с агентом' });
+  const message = chat.getByRole('textbox', { name: 'Сообщение агенту' });
+  const send = chat.getByRole('button', { name: 'Отправить', exact: true });
+  await message.fill('Поможете проверить сведения?');
+  await send.click();
+  await expect(
+    chat.getByText('Могу помочь проверить сведения работы.'),
+  ).toBeVisible();
+
+  await message.fill('Поменяйте фамилию на Петрова.');
+  await send.click();
+  const entry = chat.getByRole('listitem').filter({
+    hasText: 'Поменяйте фамилию на Петрова.',
+  });
+  await expect(entry.getByText('Фамилия обновлена.')).toBeVisible();
+  const edited = await loadWork();
+  expect(edited.facts.values).toMatchObject({
+    lastName: 'Петрова',
+    firstName: 'Анна',
+  });
+  await entry.getByRole('button', { name: 'Подробности запуска' }).click();
+  const change = entry.getByRole('button', {
+    name: /Диалог с агентом.*Фамилия/,
+  });
+  await change.focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    entry.getByText('Прежнее значение', { exact: true }),
+  ).toBeVisible();
+  await expect(entry.getByText('Иванова', { exact: true })).toBeVisible();
+  await expect(
+    entry.getByText('Новое значение', { exact: true }),
+  ).toBeVisible();
+  await expect(entry.getByText('Петрова', { exact: true })).toBeVisible();
+
+  const restore = entry.getByRole('button', {
+    name: 'Восстановить прежнее значение',
+  });
+  await restore.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: testInfo.outputPath('field-history-desktop.png'),
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await restore.scrollIntoViewIfNeeded();
+  await expect(restore).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath('field-history-mobile.png'),
+  });
+  await page.route(
+    `**${address}/fields`,
+    async (route) => {
+      const updated = await page.request.patch(`${address}/fields`, {
+        headers: { origin: new URL(page.url()).origin },
+        data: {
+          revision: edited.work.revision,
+          values: { ...edited.facts.values, firstName: 'Мария' },
+        },
+      });
+      await expect(updated).toBeOK();
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  await restore.click();
+  await expect(entry.getByRole('alert')).toContainText('Сведения изменились.');
+  expect((await loadWork()).facts.values).toMatchObject({
+    lastName: 'Петрова',
+    firstName: 'Мария',
+  });
+  await restore.click();
+  await expect(entry.getByText('Значение поля восстановлено.')).toBeVisible();
+  const restored = await loadWork();
+  expect(restored.facts.values).toMatchObject({
+    lastName: 'Иванова',
+    firstName: 'Мария',
+  });
+  expect(restored.work.inputRevision).toBe(initial.work.inputRevision);
+  expect(restored.runs).toEqual(initial.runs);
+
+  await message.fill('Запишите таблицу в поле фамилии.');
+  await send.click();
+  const rejected = chat.getByRole('listitem').filter({
+    hasText: 'Запишите таблицу в поле фамилии.',
+  });
+  await expect(rejected.getByRole('alert')).toContainText(
+    'Уточните, какое поле и какое значение нужно сохранить.',
+  );
+  await expect(rejected.getByText('Фамилия обновлена.')).toHaveCount(0);
+  expect((await loadWork()).facts).toEqual(restored.facts);
+});
+
 test('recognition reports a failed file and allows retry', async ({ page }) => {
   await page.goto('/sign-in');
   await signIn(page, 'OWNER');
@@ -284,16 +408,19 @@ test('the catalog picker attaches sources selected on different pages', async ({
   await picker.getByRole('button', { name: 'Форматы' }).click();
   await page.getByRole('checkbox', { name: 'PNG' }).check();
   await expect(
-    picker.getByText('Файлы по этим фильтрам не найдены.'),
+    picker.getByText('Файлы не найдены', { exact: true }),
   ).toBeVisible();
   await page.getByRole('checkbox', { name: 'PDF', exact: true }).check();
   await expect(
     picker.getByRole('checkbox', { name: 'Выбрать Каталог E2E 50.pdf' }),
   ).toBeChecked();
   await page.keyboard.press('Escape');
-  await expect(picker.getByText('Выбрано: 2 из 20')).toBeVisible();
+  await expect(
+    picker.getByText('Свободных мест для файлов: 18', { exact: true }),
+  ).toBeVisible();
   await picker.getByRole('button', { name: 'Добавить файлы' }).click();
   await expect(picker).toBeHidden();
+  await page.getByRole('tab', { name: /Файлы/ }).click();
   const sources = page.getByRole('region', { name: /Файлы работы/ });
   await expect(sources.getByText('Каталог E2E 50.pdf')).toBeVisible();
   await expect(sources.getByText('Каталог E2E 00.pdf')).toBeVisible();
@@ -326,6 +453,8 @@ test('ready catalog files can be used when creating and extending a work', async
     .getByRole('checkbox', { name: 'Выбрать Каталог E2E 30.pdf' })
     .click();
   await creation.getByRole('button', { name: 'Создать и открыть' }).click();
+  const filesTab = page.getByRole('tab', { name: /Файлы/ });
+  await filesTab.click();
   const sources = page.getByRole('region', { name: /Файлы работы/ });
   await expect(sources.getByText('Каталог E2E 30.pdf')).toBeVisible();
   await page.getByRole('link', { name: /Распознавание/ }).click();
@@ -344,6 +473,7 @@ test('ready catalog files can be used when creating and extending a work', async
   await picker.getByRole('button', { name: title }).click();
   await expect(picker.getByText('Уже в работе')).toBeVisible();
   await picker.getByRole('button', { name: 'Добавить файлы' }).click();
+  await filesTab.click();
   await expect(sources.getByText('Каталог E2E 30.pdf')).toBeVisible();
   await expect(sources.getByText('Каталог E2E 31.pdf')).toBeVisible();
   await page.getByRole('link', { name: /Распознавание/ }).click();
@@ -362,6 +492,7 @@ test('ready catalog files can be used when creating and extending a work', async
   ).toBeVisible();
   await creation.getByLabel('Название работы').fill('E2E из распознавания');
   await creation.getByRole('button', { name: 'Создать и открыть' }).click();
+  await filesTab.click();
   await expect(sources.getByText('Каталог E2E 32.pdf')).toBeVisible();
 });
 
@@ -386,6 +517,7 @@ test('linked catalog deletion shows affected works and requires deliberate confi
     await creation.getByRole('checkbox', { name: `Выбрать ${file}` }).click();
   }
   await creation.getByRole('button', { name: 'Создать и открыть' }).click();
+  await page.getByRole('tab', { name: /Файлы/ }).click();
   await expect(
     page.getByRole('region', { name: /Файлы работы/ }).getByText(filename),
   ).toBeVisible();
@@ -574,6 +706,7 @@ test('the source stays on its original OCR until the user confirms the update', 
   await file.getByRole('button', { name: 'Повторить' }).click();
   await queued;
   await page.goto(address);
+  await page.getByRole('tab', { name: /Файлы/ }).click();
   const update = sources.getByRole('button', { name: 'Обновить до версии 2' });
   await expect(update).toBeVisible();
   await expect(

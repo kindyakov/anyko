@@ -88,7 +88,7 @@ export interface WorkRunSnapshot {
   generationId: string | null;
   correlationId: string;
 }
-export type AnalysisRecovery = Pick<
+type AnalysisRecovery = Pick<
   WorkRunSnapshot,
   'documentIds' | 'inputRevision' | 'automaticUpload'
 >;

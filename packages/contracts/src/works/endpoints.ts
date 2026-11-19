@@ -341,7 +341,7 @@ export const editWorkDocumentRecognition = endpoint({
 });
 
 export const editWork = endpoint({
-  summary: 'Сохраняет правки полей работы',
+  summary: 'Сохраняет правки полей работы или восстанавливает поле из истории',
   method: 'PATCH',
   path: '/workspaces/:workspaceId/works/:workId/fields',
   params: workParams,

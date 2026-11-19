@@ -16,6 +16,7 @@ import { describeApiError, sharedCodeTexts } from '@/lib/api/errors';
 import { createIdempotencyKey } from '@/lib/api/idempotency';
 
 import { chatMessagesQuery, useSendChatMessage } from '../api/chat';
+import { chatRunErrorText } from '../model/run-error';
 
 type Entry = WorkChatTimeline['items'][number];
 type Props = { workspaceId: string; view: WorkView };
@@ -158,6 +159,7 @@ function TimelineEntry({ workspaceId, view, entry }: Props & { entry: Entry }) {
     createdAt: entry.createdAt,
   };
   const isAnalysis = entry.kind === 'analysis';
+  const failed = entry.status === 'failed' || entry.status === 'partial';
   return (
     <li
       className={
@@ -173,7 +175,18 @@ function TimelineEntry({ workspaceId, view, entry }: Props & { entry: Entry }) {
           <p className="bg-canvas border-line w-fit max-w-[85%] justify-self-end rounded-2xl border p-3 text-sm wrap-anywhere whitespace-pre-wrap">
             {entry.userText}
           </p>
-          {entry.answer ? (
+          {failed ? (
+            <Notice
+              tone={entry.status === 'partial' ? 'warning' : 'danger'}
+              role="alert"
+              title={statuses[entry.status]}
+            >
+              <p>{chatRunErrorText(entry.errorCode)}</p>
+              {entry.status === 'partial' && (
+                <p>Откройте подробности, чтобы проверить сохранённые правки.</p>
+              )}
+            </Notice>
+          ) : entry.answer ? (
             <p className="text-ink text-sm wrap-anywhere whitespace-pre-wrap">
               {entry.answer}
             </p>
@@ -196,7 +209,7 @@ function TimelineEntry({ workspaceId, view, entry }: Props & { entry: Entry }) {
       </Button>
       {open && (
         <div className="mt-2 grid gap-2">
-          {entry.errorCode && (
+          {entry.errorCode && (isAnalysis || !failed) && (
             <p className="text-muted text-sm">{entry.errorCode}</p>
           )}
           <RunHistory workspaceId={workspaceId} view={view} run={run} />

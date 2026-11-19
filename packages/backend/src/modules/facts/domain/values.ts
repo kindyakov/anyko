@@ -149,10 +149,14 @@ function comparableFactValue(value: FieldValue): string {
     : stable(value);
 }
 
-export function editFacts(current: WorkFacts, values: FieldValues): WorkFacts {
+export function editFacts(
+  current: WorkFacts,
+  values: Partial<FieldValues>,
+): WorkFacts {
   const manual = new Set(current.manual);
-  const next = readFieldValues(values);
+  const next = readFieldValues({ ...current.values, ...values });
   for (const { key } of fieldDefinitions) {
+    if (!Object.hasOwn(values, key)) continue;
     const previous = current.values[key] ?? null;
     const value = next[key] ?? null;
     if (

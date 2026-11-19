@@ -13,6 +13,7 @@ import { Button, Disclosure, Modal } from '@anyko/ui';
 
 import { agentHistoryQuery, analysisRunsQuery } from '../api/queries';
 
+import { FieldChange } from './field-change';
 import { HistoryError, HistoryPagination } from './history-controls';
 
 type Run = AgentHistoryRunPage['items'][number];
@@ -155,6 +156,9 @@ export function RunHistory({
   if (isPending) return <p role="status">Загружаем историю…</p>;
   const documentName = (id: string | null) =>
     view.documents.find((document) => document.id === id)?.filename;
+  const fields = new Map(
+    view.package.fields.map((field) => [field.key, field]),
+  );
   return (
     <div className="grid gap-3 text-sm">
       <Usage title="Вся работа" usage={data.workUsage} />
@@ -180,55 +184,71 @@ export function RunHistory({
       {data.total === 0 && (
         <p className="text-muted">Для запуска пока нет сохранённых событий.</p>
       )}
-      {data.items.map((event) => (
-        <Disclosure
-          key={event.id}
-          className="border-line rounded-xl border px-3"
-          title={[
-            stages[event.stage] ?? event.stage,
-            documentName(event.documentId),
-            statuses[event.status] ?? event.status,
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        >
-          <p className="text-muted">
-            {new Date(event.createdAt).toLocaleString('ru-RU')}
-          </p>
-          {event.model && (
-            <p className="wrap-anywhere">
-              {event.provider} / {event.model}
-            </p>
-          )}
-          {event.kind === 'provider' && (
+      {data.items.map((event) => {
+        const change = event.fieldChange;
+        const field = change ? fields.get(change.field) : undefined;
+        return (
+          <Disclosure
+            key={event.id}
+            className="border-line rounded-xl border px-3"
+            title={[
+              stages[event.stage] ?? event.stage,
+              documentName(event.documentId),
+              statuses[event.status] ?? event.status,
+              change ? (field?.label ?? change.field) : undefined,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          >
             <p className="text-muted">
-              Вход {event.inputTokens ?? 'неизвестно'} · Выход{' '}
-              {event.outputTokens ?? 'неизвестно'}
+              {new Date(event.createdAt).toLocaleString('ru-RU')}
             </p>
-          )}
-          {event.errorCode && <p className="text-muted">{event.errorCode}</p>}
-          {event.input && (
-            <Payload
-              title={
-                event.kind === 'tool' ? 'Вызов инструмента' : 'Вход модели'
-              }
-              value={event.input}
-            />
-          )}
-          {event.output && (
-            <Payload
-              title={
-                event.kind === 'decision'
-                  ? 'Решение по предложениям'
-                  : event.kind === 'tool'
-                    ? 'Результат инструмента'
-                    : 'Ответ модели'
-              }
-              value={event.output}
-            />
-          )}
-        </Disclosure>
-      ))}
+            {event.model && (
+              <p className="wrap-anywhere">
+                {event.provider} / {event.model}
+              </p>
+            )}
+            {event.kind === 'provider' && (
+              <p className="text-muted">
+                Вход {event.inputTokens ?? 'неизвестно'} · Выход{' '}
+                {event.outputTokens ?? 'неизвестно'}
+              </p>
+            )}
+            {event.errorCode && <p className="text-muted">{event.errorCode}</p>}
+            {change && (
+              <FieldChange
+                change={change}
+                field={field}
+                workspaceId={workspaceId}
+                workId={view.work.id}
+                runId={run.id}
+                eventId={event.id}
+                revision={view.work.revision}
+              />
+            )}
+            {event.input && (
+              <Payload
+                title={
+                  event.kind === 'tool' ? 'Вызов инструмента' : 'Вход модели'
+                }
+                value={event.input}
+              />
+            )}
+            {event.output && (
+              <Payload
+                title={
+                  event.kind === 'decision'
+                    ? 'Решение по предложениям'
+                    : event.kind === 'tool'
+                      ? 'Результат инструмента'
+                      : 'Ответ модели'
+                }
+                value={event.output}
+              />
+            )}
+          </Disclosure>
+        );
+      })}
       <HistoryPagination
         page={page}
         pages={Math.ceil(data.total / data.pageSize)}

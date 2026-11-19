@@ -648,6 +648,14 @@ test('unknown PUT remains a durable erasure barrier when updating processing fai
       storage,
       artifacts: createArtifactRegistry(db),
       logger,
+      vision: {
+        describe() {
+          throw new Error('UNEXPECTED_VISION_CALL');
+        },
+      },
+      connection() {
+        throw new Error('UNEXPECTED_LLM_CONNECTION');
+      },
       parser: {
         parseDocument: () =>
           Promise.resolve({

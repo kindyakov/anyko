@@ -256,7 +256,15 @@ export function worksRoutes(
   });
   route(app, editWork, async ({ scope, params, body }) => {
     const workId = brandWorkId(params.workId);
-    await review.editValues(scope, { ...body, workId });
+    if ('restore' in body) {
+      await review.restoreField(scope, {
+        workId,
+        revision: body.revision,
+        ...body.restore,
+      });
+    } else {
+      await review.editValues(scope, { ...body, workId });
+    }
     return presentWork(await views.get(scope, workId));
   });
   route(app, confirmWork, async ({ scope, params, body }) => {

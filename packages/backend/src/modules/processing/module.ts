@@ -28,7 +28,7 @@ export function createProcessingModule(deps: ProcessingDeps): ProcessingModule {
         cancel: store.cancel,
         erase: store.erase,
         eraseThreads: store.eraseThreads,
-        sourceVisuals: store.sourceVisuals,
+        sourceVisuals: (...args) => store.sourceVisuals(...args),
         active: (workspaceId, workId) => store.active(workspaceId, workId),
         latestAnalysisRecovery: (workspaceId, workId) =>
           store.latestAnalysisRecovery(workspaceId, workId),

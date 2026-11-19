@@ -6,7 +6,12 @@ import type { ModelConnection, ProviderCallObserver } from '@anyko/llm';
 
 import type { Tx } from '../../platform/transactions';
 
-import type { AgentChatMessage } from './application/chat';
+import type {
+  AgentChatMessage,
+  AgentFieldChange,
+  AgentFieldWrite,
+} from './application/chat';
+export { fieldWriteTool } from './application/chat';
 import type { AgentToolEvent } from './application/history';
 import type { AgentSessionStore } from './application/session';
 
@@ -94,6 +99,12 @@ export interface DocumentAgents {
       messages: AgentChatMessage[];
       userText: string;
       signal: AbortSignal;
+      appliedFields: AgentFieldChange['field'][];
+      writeField(
+        args: AgentFieldWrite,
+        toolCallId: string,
+        signal: AbortSignal,
+      ): Promise<AgentFieldChange | { errorCode: string }>;
     },
   ): Promise<{ answer: string; usage: AgentUsage }>;
   eraseThread(threadId: string): Promise<void>;

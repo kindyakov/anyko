@@ -232,6 +232,14 @@ test('manual values survive new extraction, including an intentionally cleared f
   expect(result.values.personName).toBeNull();
   expect(findFactDiscrepancies(result)).toEqual(['personName']);
 });
+test('a single-field edit keeps unrelated values and canonicalizes the edited field', () => {
+  const extracted = mergeCandidates(emptyFacts(), [candidate('Анна')], false);
+  const changed = editFacts(extracted, { documentDate: '17 января 2026 года' });
+
+  expect(changed.values.documentDate).toBe('17.01.2026');
+  expect(changed.values.personName).toBe('Анна');
+  expect(changed.manual).toEqual(['documentDate']);
+});
 test('confirmed values survive conflicting extraction while new candidates remain reviewable', () => {
   const initial = mergeCandidates(emptyFacts(), [candidate('Анна')], false);
   const confirmed = confirmFacts(initial);

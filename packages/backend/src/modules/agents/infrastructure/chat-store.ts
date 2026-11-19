@@ -9,11 +9,19 @@ export function createAgentChatStore(
     async create(data) {
       await db.workChatTurn.create({ data, select: { runId: true } });
     },
-    get: (where) =>
-      db.workChatTurn.findFirst({
+    async get(where) {
+      const turn = await db.workChatTurn.findFirst({
         where,
-        select: { sessionId: true, userText: true },
-      }),
+        select: {
+          sessionId: true,
+          userText: true,
+          run: { select: { initiatedBy: true } },
+        },
+      });
+      if (!turn) return null;
+      const { run, ...chat } = turn;
+      return { ...chat, userId: run.initiatedBy };
+    },
     async answer(where, answer) {
       const changed = await db.workChatTurn.updateMany({
         where: { ...where, answer: null },

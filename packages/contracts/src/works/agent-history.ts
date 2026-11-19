@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { fieldKeySchema, fieldValueSchema } from '../catalog';
 import { pageResponseSchema } from '../common';
 
 import { workRunSchema } from './schemas';
@@ -38,6 +39,14 @@ const agentHistoryEvent = z.object({
   errorCode: z.string().nullable(),
   durationMs: count.nullable(),
   createdAt: z.iso.datetime(),
+  fieldChange: z
+    .object({
+      field: fieldKeySchema,
+      before: fieldValueSchema,
+      after: fieldValueSchema,
+      revision: z.number().int().nonnegative(),
+    })
+    .nullable(),
 });
 export const agentHistoryPage = pageResponseSchema(agentHistoryEvent, {
   runUsage: usage,

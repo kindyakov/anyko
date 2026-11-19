@@ -190,13 +190,13 @@ export const createWorkSchema = z
     documentIds: workDocumentSelectionSchema.optional(),
   })
   .strict();
-export const editWorkSchema = z
-  .object({
-    revision: z.number().int().nonnegative(),
-    values: fieldValuesSchema,
-  })
-  .strict();
 export const revisionSchema = z
   .object({ revision: z.number().int().nonnegative() })
   .strict();
+export const editWorkSchema = z.union([
+  revisionSchema.extend({ values: fieldValuesSchema }),
+  revisionSchema.extend({
+    restore: z.strictObject({ runId: z.uuid(), eventId: z.uuid() }),
+  }),
+]);
 export const queuedStatusSchema = z.object({ status: z.literal('queued') });

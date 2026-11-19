@@ -1,9 +1,54 @@
+import { z } from 'zod';
+
 import type { Database } from '@anyko/database';
 import type { Logger } from '@anyko/logger';
 
+import {
+  fieldChangeSchema,
+  fieldWriteSchema,
+  fieldWriteTool,
+} from '../application/chat';
 import type { AgentHistoryStore } from '../application/history';
 
 type HistoryDb = Pick<Database, 'workAgentEvent' | 'run'>;
+
+const fieldWriteInput = z.strictObject({
+  tool: z.literal(fieldWriteTool),
+  toolCallId: z.string().min(1),
+  arguments: fieldWriteSchema,
+});
+const successfulFieldWrite = {
+  stage: 'chat',
+  kind: 'tool',
+  status: 'succeeded',
+  input: { startsWith: `{"tool":"${fieldWriteTool}",` },
+} as const;
+
+function fieldReceipt(event: {
+  stage: string;
+  kind: string;
+  status: string;
+  input: string | null;
+  output: string | null;
+}) {
+  if (
+    event.stage !== successfulFieldWrite.stage ||
+    event.kind !== successfulFieldWrite.kind ||
+    event.status !== successfulFieldWrite.status ||
+    !event.input?.startsWith(successfulFieldWrite.input.startsWith) ||
+    !event.output
+  )
+    return null;
+  try {
+    const input = fieldWriteInput.parse(JSON.parse(event.input));
+    const change = fieldChangeSchema.parse(JSON.parse(event.output));
+    if (change.field === input.arguments.field)
+      return { toolCallId: input.toolCallId, args: input.arguments, change };
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 function usage(
   sums: {
@@ -125,6 +170,27 @@ export function createAgentHistoryStore(
         select: { id: true },
       });
     },
+    async fieldChange({ eventId: id, ...ref }) {
+      const event = await db.workAgentEvent.findFirst({
+        where: {
+          id,
+          ...ref,
+          ...successfulFieldWrite,
+          run: { kind: 'work.chat' },
+        },
+      });
+      return event ? (fieldReceipt(event)?.change ?? null) : null;
+    },
+    async fieldWrites(ref) {
+      const events = await db.workAgentEvent.findMany({
+        where: { ...ref, ...successfulFieldWrite },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      });
+      return events.flatMap((event) => {
+        const receipt = fieldReceipt(event);
+        return receipt ? [receipt] : [];
+      });
+    },
     async runs(scope, page, pageSize) {
       const where = { ...scope, kind: 'work.analysis' };
       const [rows, total] = await Promise.all([
@@ -199,6 +265,7 @@ export function createAgentHistoryStore(
       return {
         items: events.map((event) => ({
           ...event,
+          fieldChange: fieldReceipt(event)?.change ?? null,
           createdAt: event.createdAt.toISOString(),
         })),
         total,

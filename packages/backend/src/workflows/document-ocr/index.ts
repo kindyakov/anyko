@@ -129,7 +129,10 @@ export function createDocumentOcrWorkflow(options: {
             pages.length === 1
               ? pages.join('')
               : pages
-                  .map((page, index) => `## Страница ${index + 1}\n\n${page}`)
+                  .map(
+                    (page, index) =>
+                      `## Страница ${String(index + 1)}\n\n${page}`,
+                  )
                   .join('\n\n'),
           processorVersion: cloudImageOcrVersion,
           images: frames,

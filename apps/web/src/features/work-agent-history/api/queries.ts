@@ -7,6 +7,12 @@ import {
 
 import { callApi } from '@/lib/api/call';
 
+export const agentHistoryRunKey = (
+  workspaceId: string,
+  workId: string,
+  runId: string,
+) => ['work-agent-history', workspaceId, workId, runId] as const;
+
 export function analysisRunsQuery(
   workspaceId: string,
   workId: string,
@@ -41,14 +47,7 @@ export function agentHistoryQuery(
   active: boolean,
 ) {
   return queryOptions({
-    queryKey: [
-      'work-agent-history',
-      workspaceId,
-      workId,
-      runId,
-      page,
-      active,
-    ] as const,
+    queryKey: [...agentHistoryRunKey(workspaceId, workId, runId), page, active],
     queryFn: ({ signal }) =>
       callApi(getWorkAgentHistory, {
         params: { workspaceId, workId, runId },

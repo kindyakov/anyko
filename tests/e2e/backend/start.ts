@@ -5,11 +5,13 @@ import { startJobWorker } from '@anyko/worker/queues';
 
 import { createApp } from '../../../apps/api/src/http/app';
 import type { DocumentAgents } from '../../../packages/backend/src/modules/agents';
+import { createDocumentAgents } from '../../../packages/backend/src/modules/agents/infrastructure/mastra';
 import type {
   DocumentParser,
   SourceStorage,
 } from '../../../packages/backend/src/modules/documents';
 
+import { chatModelFetch } from './chat-model';
 import { E2E_QUEUE_PREFIX, parseE2eConfig } from './config';
 
 const env = parseE2eConfig(process.env);
@@ -68,9 +70,7 @@ const parser: DocumentParser = {
   async eraseAttempt() {},
 };
 const agents: DocumentAgents = {
-  async ready() {},
-  async stop() {},
-  async eraseThread() {},
+  ...createDocumentAgents({ pool: fixturePool, fetch: chatModelFetch }),
   async describe() {
     await delay();
     return {
@@ -120,7 +120,7 @@ const logger = createLogger({
 const api = createBackend(config, {
   logger,
   role: 'api',
-  dependencies: { storage, agents },
+  dependencies: { storage },
 });
 const worker = createBackend(config, {
   logger,

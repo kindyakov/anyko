@@ -1,5 +1,7 @@
 import type { ProviderCallObserver } from '@anyko/llm';
 
+import type { AgentFieldChange, AgentFieldReceipt } from './chat';
+
 type AgentStage = 'vision' | 'extraction' | 'reconciliation' | 'chat';
 interface AgentRunRef {
   workspaceId: string;
@@ -61,6 +63,7 @@ interface HistoryPage {
     input: string | null;
     output: string | null;
     errorCode: string | null;
+    fieldChange: AgentFieldChange | null;
     durationMs: number | null;
     createdAt: string;
   }[];
@@ -74,6 +77,10 @@ interface HistoryPage {
 export interface AgentHistoryStore {
   record(ref: AgentHistoryRef): AgentRunHistory;
   outcome(ref: AgentHistoryRef, outcome: AgentDecision): Promise<void>;
+  fieldChange(
+    ref: AgentRunRef & { eventId: string },
+  ): Promise<AgentFieldChange | null>;
+  fieldWrites(ref: AgentHistoryRef): Promise<AgentFieldReceipt[]>;
   read(
     ref: AgentRunRef,
     page: number,

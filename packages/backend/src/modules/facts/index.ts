@@ -52,8 +52,8 @@ interface FactsCommands {
   ): Promise<AcceptedRunCandidates>;
   edit(
     scope: WorkspaceScope,
-    input: { workId: WorkId; values: FieldValues },
-  ): Promise<void>;
+    input: { workId: WorkId; values: Partial<FieldValues> },
+  ): Promise<{ before: FieldValues; after: FieldValues }>;
   confirm(scope: WorkspaceScope, input: { workId: WorkId }): Promise<void>;
 }
 // Запросы внутренние: право или действующий запуск проверяет вызывающий сценарий.

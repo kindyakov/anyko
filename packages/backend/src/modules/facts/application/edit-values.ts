@@ -8,13 +8,11 @@ export const editValues =
   (deps: { store: FactsStore }) =>
   async (
     scope: WorkspaceScope,
-    input: { workId: WorkId; values: FieldValues },
+    input: { workId: WorkId; values: Partial<FieldValues> },
   ) => {
     scope.require('works.edit');
     const current = await deps.store.get(scope.workspaceId, input.workId);
-    await deps.store.save(
-      scope.workspaceId,
-      input.workId,
-      editFacts(current, input.values),
-    );
+    const next = editFacts(current, input.values);
+    await deps.store.save(scope.workspaceId, input.workId, next);
+    return { before: current.values, after: next.values };
   };

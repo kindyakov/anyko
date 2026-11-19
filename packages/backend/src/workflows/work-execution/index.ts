@@ -1,5 +1,6 @@
 import { LlmError } from '@anyko/llm';
 
+import type { WorkspaceActorScope } from '../../modules/access';
 import type { ExecutionScope } from '../../modules/processing';
 import { isAppError } from '../../platform/errors';
 import type { RunPolicy } from '../../platform/jobs';
@@ -9,9 +10,12 @@ import type { WorkDependencies } from '../work-dependencies';
 import { createWorkGenerationRun } from '../work-generation/run-generation';
 
 // Исполнение запуска работы: захват попытки, блокировки, выбор анализа или генерации и итог при сбое.
-export function createWorkExecution(deps: WorkDependencies) {
+export function createWorkExecution(
+  deps: WorkDependencies,
+  actorScope: WorkspaceActorScope,
+) {
   const analysis = createWorkAnalysis(deps);
-  const chat = createWorkChatRun(deps);
+  const chat = createWorkChatRun(deps, actorScope);
   const generation = createWorkGenerationRun(deps);
 
   return async (
