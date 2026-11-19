@@ -26,7 +26,7 @@ export function createRunState(
         (run.kind === 'generation' &&
           work.inputRevision !== run.inputRevision) ||
         docs.some((doc) => doc.deleted) ||
-        (run.kind === 'analysis' &&
+        (run.kind !== 'generation' &&
           run.documentIds.some((id) => !docs.some((doc) => doc.id === id)))
       )
         throw new Error('STALE_WORK_ATTEMPT');

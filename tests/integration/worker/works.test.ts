@@ -71,6 +71,7 @@ const storage: SourceStorage = {
 };
 const threads = new Set<string>();
 let reconcileHook: DocumentAgents['reconcile'] | undefined;
+let chatHook: DocumentAgents['chat'] | undefined;
 let extractionCount = 0;
 let failExtraction = false;
 let failDocument: string | undefined;
@@ -87,6 +88,10 @@ let waitForExtraction:
 let extractFixture: DocumentAgents['extract'] | undefined;
 let parseFixture: DocumentParser['parseDocument'] | undefined;
 const agents: DocumentAgents = {
+  chat(input) {
+    if (chatHook) return chatHook(input);
+    throw new Error('UNEXPECTED_CHAT');
+  },
   ready: () => Promise.resolve(),
   stop: () => Promise.resolve(),
   async reconcile(input) {
@@ -362,6 +367,258 @@ async function rejects(operation: Promise<unknown>, code: string) {
   expect(failure).toBeInstanceOf(Error);
   expect(failure instanceof Error ? failure.message : '').toContain(code);
 }
+
+test('chat shares the work session, waits for the current turn and retains read-only replies', async () => {
+  const input = await create();
+  const scope = memberScope(input.workspaceId);
+  const { workId } = input;
+  const chat = apiBackend.workHttp.chat;
+  const readTimeline = () =>
+    chat.list(scope, { workId, page: 1, pageSize: 15 });
+  const waitForChat = async (
+    ready: (timeline: Awaited<ReturnType<typeof readTimeline>>) => boolean,
+  ) => {
+    for (let check = 0; check < 300; check++) {
+      const timeline = await readTimeline();
+      if (ready(timeline)) return timeline;
+      await Bun.sleep(50);
+    }
+    throw new Error('CHAT_STATUS_TIMEOUT');
+  };
+  const send = (userText: string) =>
+    chat.send(scope, { workId, userText, correlationId: crypto.randomUUID() });
+  const imagePath = 'images/chat-embedded.png';
+  let source: Awaited<ReturnType<typeof upload>>;
+  try {
+    imageFixture = [
+      {
+        path: imagePath,
+        contentType: 'image/png',
+        bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+      },
+    ];
+    source = await upload(input, 'chat source');
+    await until(input, terminal);
+  } finally {
+    imageFixture = [];
+  }
+  expect(
+    await workProcessing.sourceVisuals(
+      input.workspaceId,
+      workId,
+      source.id,
+      '0'.repeat(64),
+    ),
+  ).toEqual([]);
+  const priorVisionCalls = describeCount;
+  const initial = await db.workAgentSession.findFirstOrThrow({ where: input });
+  const waiting = Promise.withResolvers<void>();
+  const reached = Promise.withResolvers<void>();
+  const firstQuestion =
+    'Что стоит в поле имени и что на вложенном изображении?';
+  const firstAnswer = 'В поле указано имя Анна. На изображении белый шкаф.';
+  const followUpQuestion = 'Откуда взялось это имя?';
+  const followUpAnswer = 'Из предыдущего ответа.';
+  const toolCall = (id: string, name: string, args: object) => ({
+    id,
+    type: 'function',
+    function: { name, arguments: JSON.stringify(args) },
+  });
+  const chatModel = createDocumentAgents({
+    pool: actualPool,
+    fetch: Object.assign(
+      async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const request = new Request(url, init);
+        const body = (await request.json()) as {
+          messages: { role: string; content?: string }[];
+          tools?: { function: { name: string } }[];
+        };
+        const prompt = JSON.stringify(body.messages);
+        const lastMessage = body.messages.findLast(
+          ({ role }) => role === 'user',
+        )?.content;
+        const lastQuestion = z
+          .object({ message: z.string() })
+          .parse(JSON.parse(lastMessage ?? '{}')).message;
+        const isFollowUp = lastQuestion === followUpQuestion;
+        const returnedTools = body.messages.filter(
+          ({ role }) => role === 'tool',
+        );
+        const firstStep = !isFollowUp && !returnedTools.length;
+        const askVisual = !isFollowUp && returnedTools.length === 3;
+        expect(body.tools?.map(({ function: fn }) => fn.name).sort()).toEqual([
+          'listImages',
+          'readField',
+          'readSource',
+        ]);
+        expect(prompt).toContain('Сохранён контекст работы');
+        if (firstStep) {
+          expect(lastQuestion).toBe(firstQuestion);
+          reached.resolve();
+          await waiting.promise;
+        } else if (isFollowUp) {
+          expect(prompt).toContain(firstQuestion);
+          expect(prompt).toContain(firstAnswer);
+        } else if (askVisual) {
+          expect(JSON.stringify(returnedTools)).toContain('Анна');
+          expect(JSON.stringify(returnedTools)).toContain('Имя: Анна');
+          expect(JSON.stringify(returnedTools)).toContain(imagePath);
+        } else {
+          expect(JSON.stringify(returnedTools)).toContain(
+            'Белый шкаф с двумя дверцами.',
+          );
+        }
+        return Response.json({
+          id: 'fixture-chat',
+          object: 'chat.completion',
+          created: 1,
+          model: 'fixture',
+          usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 },
+          choices: [
+            {
+              index: 0,
+              message:
+                firstStep || askVisual
+                  ? {
+                      role: 'assistant',
+                      content: null,
+                      tool_calls: askVisual
+                        ? [
+                            toolCall('visual', 'readSource', {
+                              documentId: source.id,
+                              imagePath,
+                              offset: 0,
+                            }),
+                          ]
+                        : [
+                            toolCall('field', 'readField', {
+                              field: 'personName',
+                              offset: 0,
+                            }),
+                            toolCall('document', 'readSource', {
+                              documentId: source.id,
+                              imagePath: null,
+                              offset: 0,
+                            }),
+                            toolCall('images', 'listImages', {
+                              documentId: source.id,
+                            }),
+                          ],
+                    }
+                  : {
+                      role: 'assistant',
+                      content: isFollowUp ? followUpAnswer : firstAnswer,
+                    },
+              finish_reason: firstStep || askVisual ? 'tool_calls' : 'stop',
+            },
+          ],
+        });
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  chatHook = async (turn) => {
+    if (turn.userText === firstQuestion) {
+      expect(turn.previousContext?.summary).toBe('Сохранён контекст работы');
+      expect(turn.facts.values.personName).toBe('Анна');
+      expect(turn.messages).toEqual([]);
+      expect(turn.documents.map(({ id }) => id)).toEqual([source.id]);
+      await rejects(
+        turn.readSource(crypto.randomUUID(), null),
+        'SOURCE_NOT_ALLOWED',
+      );
+      await rejects(
+        turn.readSource(source.id, 'images/unknown.png'),
+        'SOURCE_NOT_ALLOWED',
+      );
+    } else {
+      expect(turn.messages).toEqual([
+        { userText: firstQuestion, answer: firstAnswer },
+      ]);
+    }
+    return chatModel.chat(turn);
+  };
+  try {
+    const accepted = await send(firstQuestion);
+    await Promise.race([
+      reached.promise,
+      Bun.sleep(10000).then(() => {
+        throw new Error('CHAT_NOT_STARTED');
+      }),
+    ]);
+    const active = await readTimeline();
+    expect(active.canSend).toBe(false);
+    expect(active.items[0]).toMatchObject({
+      runId: accepted.runId,
+      kind: 'chat',
+      status: 'running',
+      userText: firstQuestion,
+      answer: null,
+    });
+    await rejects(send('Вторая отправка'), 'WORK_BUSY');
+    const added = await upload(input, 'during chat');
+    await until(input, (view) =>
+      view.documents.some(
+        ({ id, status }) => id === added.id && status === 'succeeded',
+      ),
+    );
+    expect(
+      (await readTimeline()).items.filter(({ kind }) => kind === 'analysis'),
+    ).toHaveLength(1);
+    waiting.resolve();
+    const completed = await waitForChat((timeline) =>
+      timeline.items.some(
+        ({ runId, answer }) =>
+          runId === accepted.runId && answer === firstAnswer,
+      ),
+    );
+    expect(
+      completed.items.find(({ runId }) => runId === accepted.runId),
+    ).toMatchObject({ answer: firstAnswer });
+    const history = await apiBackend.workHttp.views.agentHistory(
+      scope,
+      workId,
+      accepted.runId,
+      1,
+      10,
+    );
+    expect(history.items.filter(({ kind }) => kind === 'tool')).toHaveLength(4);
+    expect(history.runUsage).toMatchObject({
+      calls: 3,
+      inputTokens: 21,
+      outputTokens: 9,
+    });
+    expect(describeCount).toBe(priorVisionCalls);
+    await until(input, (view) => terminal(view) && view.runs.length === 2);
+    const followUp = await send(followUpQuestion);
+    const reopened = await waitForChat((timeline) =>
+      timeline.items.some(
+        ({ runId, answer }) => runId === followUp.runId && answer !== null,
+      ),
+    );
+    expect(reopened.items[0]).toMatchObject({ answer: followUpAnswer });
+    expect(reopened.items).toHaveLength(4);
+    expect(
+      (await db.workChatTurn.findMany({ where: input })).map(
+        ({ sessionId }) => sessionId,
+      ),
+    ).toEqual([initial.id, initial.id]);
+    expect((await until(input, terminal)).facts.values.personName).toBe('Анна');
+    await apiBackend.workHttp.intake.removeDocument(scope, {
+      workId,
+      documentId: brandDocumentId(source.id),
+    });
+    await until(input, ({ cleanupPending }) => !cleanupPending);
+    expect(await db.workChatTurn.count({ where: input })).toBe(0);
+    expect(
+      (await readTimeline()).items.some(({ kind }) => kind === 'chat'),
+    ).toBe(false);
+  } finally {
+    waiting.resolve();
+    chatHook = undefined;
+    await chatModel.stop();
+  }
+});
 
 afterAll(async () => {
   await workerBackend.stop();
@@ -1648,6 +1905,86 @@ test('confirmation survives added sources and repeated analysis; only the new fi
     expect(extractionCount - before).toBe(1);
   } finally {
     extractedName = 'Анна';
+  }
+});
+
+test('new automatic groups retain prior facts and allow a DOCX with an open discrepancy', async () => {
+  const input = await create();
+  const scope = memberScope(input.workspaceId);
+  const workId = brandWorkId(input.workId);
+  const extracted: string[] = [];
+  extractFixture = ({ document }) => {
+    extracted.push(document.id);
+    const value = extracted.length === 3 ? 'Ирина' : 'Анна';
+    const evidence = (quote: string) => [
+      { documentId: document.id, imagePath: null, quote },
+    ];
+    return Promise.resolve({
+      candidates: [
+        { field: 'personName', value, evidence: evidence(value) },
+        ...(extracted.length === 2
+          ? [
+              {
+                field: 'documentNumber' as const,
+                value: '42',
+                evidence: evidence('42'),
+              },
+            ]
+          : []),
+      ],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+  };
+  try {
+    const first = await upload(input);
+    const initial = await until(input, terminal);
+    await apiBackend.workHttp.review.editValues(scope, {
+      workId,
+      revision: initial.work.revision,
+      values: { ...initial.facts.values, observations: 'Ручная заметка' },
+    });
+    const second = await upload(input);
+    const extended = await until(input, terminal);
+    expect(extended.session?.id).toBe(initial.session?.id);
+    expect(extended.facts.values.documentNumber).toBe('42');
+    expect(
+      extended.facts.candidates
+        .filter(({ field }) => field === 'personName')
+        .flatMap(({ evidence }) => evidence.map(({ documentId }) => documentId))
+        .sort(),
+    ).toEqual([first.id, second.id].sort());
+    const third = await upload(input);
+    const conflict = await until(input, terminal);
+    expect(conflict.session?.id).toBe(initial.session?.id);
+    expect(conflict.session?.revision).toBe(3);
+    expect(extracted).toEqual([first.id, second.id, third.id]);
+    expect(conflict.facts.values).toMatchObject({
+      personName: 'Анна',
+      documentNumber: '42',
+      observations: 'Ручная заметка',
+    });
+    expect(conflict.discrepancyFields).toContain('personName');
+    expect(conflict.availability.generate.available).toBe(true);
+    await apiBackend.workHttp.generation.startGeneration(scope, {
+      workId,
+      revision: conflict.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    const generated = (await until(input, terminal)).generations[0];
+    const file = generated?.files[0];
+    if (!generated || !file) throw new Error('MISSING_DOCUMENT_OUTPUT');
+    const result = await apiBackend.workHttp.generation.downloadResult(scope, {
+      workId,
+      generationId: brandGenerationId(generated.id),
+      fileId: brandFileId(file.id),
+    });
+    const xml = unzipSync(result.bytes)['word/document.xml'];
+    if (!xml) throw new Error('MISSING_DOCUMENT_XML');
+    const text = strFromU8(xml);
+    expect(text).toContain('Анна');
+    expect(text).not.toContain('Ирина');
+  } finally {
+    extractFixture = undefined;
   }
 });
 

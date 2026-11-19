@@ -14,6 +14,7 @@ import {
   legacyFieldKeys,
 } from '../../../profiles/bfl/fields';
 
+import { createChatAgent } from './chat';
 import { createReconciliationAgent } from './reconcile';
 import { retryVisionResponse } from './vision-retry';
 
@@ -57,6 +58,11 @@ export function createDocumentAgents(options: {
     AbortSignal.any([signal, AbortSignal.timeout(options.timeoutMs ?? 120000)]);
   return {
     ready: () => storage.init(),
+    chat: createChatAgent({
+      mastra,
+      gateway,
+      timeoutMs: options.timeoutMs ?? 120000,
+    }),
     reconcile: createReconciliationAgent({
       memory,
       mastra,

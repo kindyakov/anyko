@@ -30,6 +30,7 @@ export interface AnalysisFactsRef {
 export interface AcceptRunCandidatesInput extends AnalysisFactsRef {
   fields: readonly FieldKey[];
   confirmed: boolean;
+  preserveExisting?: boolean;
   candidates: WorkFacts['candidates'];
   contextCandidates?: WorkFacts['candidates'];
 }

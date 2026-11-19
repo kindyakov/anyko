@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { candidateSchema } from '../../../profiles/bfl/candidate';
 import type { AgentSession, AgentSessionContext } from '../schemas';
 
+import type { AgentChatStore } from './chat';
 import type { AgentHistoryStore } from './history';
 
 export const reconciliationSchema = z
@@ -14,6 +15,7 @@ export const reconciliationSchema = z
 type Reconciliation = z.infer<typeof reconciliationSchema>;
 export interface AgentSessionStore {
   history: AgentHistoryStore;
+  chat: AgentChatStore;
   get(workspaceId: string, workId: string): Promise<AgentSession | null>;
   ensure(workspaceId: string, workId: string): Promise<AgentSession>;
   accept(input: {

@@ -1,6 +1,6 @@
 import type { ProviderCallObserver } from '@anyko/llm';
 
-type AgentStage = 'vision' | 'extraction' | 'reconciliation';
+type AgentStage = 'vision' | 'extraction' | 'reconciliation' | 'chat';
 interface AgentRunRef {
   workspaceId: string;
   workId: string;

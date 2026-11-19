@@ -4,12 +4,14 @@ import type { ExecutionScope } from '../../modules/processing';
 import { isAppError } from '../../platform/errors';
 import type { RunPolicy } from '../../platform/jobs';
 import { createWorkAnalysis } from '../work-analysis';
+import { createWorkChatRun } from '../work-chat/run-chat';
 import type { WorkDependencies } from '../work-dependencies';
 import { createWorkGenerationRun } from '../work-generation/run-generation';
 
 // Исполнение запуска работы: захват попытки, блокировки, выбор анализа или генерации и итог при сбое.
 export function createWorkExecution(deps: WorkDependencies) {
   const analysis = createWorkAnalysis(deps);
+  const chat = createWorkChatRun(deps);
   const generation = createWorkGenerationRun(deps);
 
   return async (
@@ -35,13 +37,13 @@ export function createWorkExecution(deps: WorkDependencies) {
           AbortSignal.timeout(1_500_000),
         ]);
         const execute = () => {
-          if ((run.kind === 'analysis') !== (connection === 'required'))
+          if ((run.kind !== 'generation') !== (connection === 'required'))
             throw new Error('RUN_CONNECTION_POLICY_MISMATCH');
-          return connection === 'required'
-            ? analysis(attempt, bounded, (revision) =>
-                deps.connections.internal.connection(run.workspaceId, revision),
-              )
-            : generation(attempt, bounded);
+          if (run.kind === 'chat') return chat(attempt, bounded);
+          if (run.kind === 'generation') return generation(attempt, bounded);
+          return analysis(attempt, bounded, (revision) =>
+            deps.connections.internal.connection(run.workspaceId, revision),
+          );
         };
         const guarded = (index: number): Promise<void> => {
           const id = run.documentIds[index];

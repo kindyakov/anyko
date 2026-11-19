@@ -28,15 +28,17 @@ export function createProcessingModule(deps: ProcessingDeps): ProcessingModule {
         cancel: store.cancel,
         erase: store.erase,
         eraseThreads: store.eraseThreads,
+        sourceVisuals: store.sourceVisuals,
         active: (workspaceId, workId) => store.active(workspaceId, workId),
         latestAnalysisRecovery: (workspaceId, workId) =>
           store.latestAnalysisRecovery(workspaceId, workId),
-        startUploadAnalysis: (workspaceId, userId, input) =>
-          start(
+        startUploadAnalysis: async (workspaceId, userId, input) => {
+          await start(
             { workspaceId, userId },
             { ...input, kind: 'analysis', generationId: null },
             true,
-          ),
+          );
+        },
       },
       commands: { start },
       queries: {

@@ -130,6 +130,72 @@ test('work history can open a retained analysis run outside the recent work view
   ).toBe(true);
 });
 
+test('work chat sends a message and reopens with the saved reply and system entry', async () => {
+  const runId = crypto.randomUUID();
+  const question = 'Какие сведения найдены?';
+  const answer = 'В источнике есть имя.';
+  let sent = false;
+  const requests = serveApi(({ method, url }) => {
+    if (url === workAddress) return json(200, workView);
+    if (method === 'POST' && url === `${workAddress}/messages`) {
+      sent = true;
+      return json(202, { runId, status: 'queued' });
+    }
+    if (url.startsWith(`${workAddress}/messages?`)) {
+      const analysis = {
+        runId: crypto.randomUUID(),
+        kind: 'analysis',
+        status: 'succeeded',
+        createdAt: source.createdAt,
+        errorCode: null,
+        userText: null,
+        answer: null,
+      };
+      return json(200, {
+        items: sent
+          ? [
+              { ...analysis, runId, kind: 'chat', userText: question, answer },
+              analysis,
+            ]
+          : [analysis],
+        page: 1,
+        pageSize: 15,
+        total: sent ? 2 : 1,
+        canSend: true,
+      });
+    }
+    throw new Error(`Unexpected request ${url}`);
+  });
+  renderWork();
+  const user = userEvent.setup();
+  const open = () =>
+    user.click(screen.getByRole('button', { name: 'Чат с агентом' }));
+  await screen.findByRole('button', { name: 'Чат с агентом' });
+  await open();
+  const dialog = within(
+    await screen.findByRole('dialog', { name: 'Чат с агентом' }),
+  );
+  expect(
+    await dialog.findByText('Автоматический анализ · Готово'),
+  ).toBeTruthy();
+  await user.type(dialog.getByLabelText('Сообщение агенту'), question);
+  await user.click(dialog.getByRole('button', { name: 'Отправить' }));
+  expect(await dialog.findByText(answer)).toBeTruthy();
+  const posted = requests.find(({ method }) => method === 'POST');
+  expect(posted).toMatchObject({
+    url: `${workAddress}/messages`,
+    body: { userText: question },
+  });
+  expect(posted?.idempotencyKey).toBeTruthy();
+  await user.keyboard('{Escape}');
+  await waitFor(() => {
+    expect(screen.queryByRole('dialog', { name: 'Чат с агентом' })).toBeNull();
+  });
+  await open();
+  expect(await screen.findByText(question)).toBeTruthy();
+  expect(await screen.findByText(answer)).toBeTruthy();
+});
+
 test('upload confirmation is visible when returning to Files after a pending upload', async () => {
   const response = Promise.withResolvers<undefined>();
   const document = { ...source, status: 'queued' };

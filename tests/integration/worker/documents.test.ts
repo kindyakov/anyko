@@ -667,6 +667,7 @@ test('document formats survive source storage and queue delivery independently o
       },
       extract: () => Promise.reject(new Error('UNEXPECTED_EXTRACTION')),
       reconcile: () => Promise.reject(new Error('UNEXPECTED_RECONCILIATION')),
+      chat: () => Promise.reject(new Error('UNEXPECTED_CHAT')),
     },
     parser: {
       eraseAttempt: () => Promise.resolve(),

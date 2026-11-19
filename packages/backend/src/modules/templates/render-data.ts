@@ -1,4 +1,4 @@
-import { formatCalendarDate } from '@anyko/document-values/calendar-date';
+import { formatTemplateValue } from '@anyko/document-values/template-value';
 
 import {
   emptyFieldValues,
@@ -21,7 +21,8 @@ export function templateData(
     const value = values[field.key];
     if (
       (templateVersion === 'bfl-statement-v4' ||
-        templateVersion === 'bfl-statement-v5') &&
+        templateVersion === 'bfl-statement-v5' ||
+        templateVersion === 'bfl-statement-v6') &&
       Array.isArray(value) &&
       !value.length &&
       ['debts', 'businessDebts', 'attachments'].includes(field.key)
@@ -61,7 +62,7 @@ export function templateData(
     Object.assign(output, {
       [tag]:
         typeof value === 'string'
-          ? formatCalendarDate(value, placeholder)
+          ? formatTemplateValue(value, placeholder)
           : '[не заполнено]',
     });
   }

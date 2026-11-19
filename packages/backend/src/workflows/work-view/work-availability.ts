@@ -15,7 +15,7 @@ import {
   WorkInputBlock,
 } from '../work-command-guards';
 
-type Command = Exclude<keyof typeof workCommandPolicy, 'edit'>;
+type Command = Exclude<keyof typeof workCommandPolicy, 'chat' | 'edit'>;
 type UnavailableReason =
   | WorkInputBlock['reason']
   | 'FACTS_NEED_REVIEW'

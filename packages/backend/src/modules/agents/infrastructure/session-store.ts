@@ -8,11 +8,16 @@ import {
 } from '../application/session';
 import { agentSessionContextSchema, agentSessionSchema } from '../schemas';
 
+import { createAgentChatStore } from './chat-store';
 import { createAgentHistoryStore } from './history-store';
 
 type Connection = Pick<
   Database,
-  'workAgentSession' | 'workAgentTurn' | 'workAgentEvent' | 'run'
+  | 'workAgentSession'
+  | 'workAgentTurn'
+  | 'workAgentEvent'
+  | 'workChatTurn'
+  | 'run'
 >;
 // Сессия работы внутри транзакции действия (создание работы): токен превращается в клиент транзакции.
 export function agentSessionStoreFor(
@@ -39,6 +44,7 @@ export function createAgentSessionStore(
       updatedAt: row.updatedAt.toISOString(),
     });
   return {
+    chat: createAgentChatStore(db),
     history: createAgentHistoryStore(db, newId, logger),
     async get(workspaceId, workId) {
       const row = await db.workAgentSession.findFirst({

@@ -20,6 +20,7 @@ const stages: Record<string, string> = {
   vision: 'Описание вложенного изображения',
   extraction: 'Поиск сведений',
   reconciliation: 'Сопоставление',
+  chat: 'Диалог с агентом',
 };
 const statuses: Record<string, string> = {
   running: 'Исход пока неизвестен',
@@ -131,7 +132,7 @@ function AnalysisRuns({
   );
 }
 
-function RunHistory({
+export function RunHistory({
   workspaceId,
   view,
   run,

@@ -80,7 +80,7 @@ export interface WorkRunSnapshot {
   id: string;
   workspaceId: string;
   workId: string;
-  kind: 'analysis' | 'generation';
+  kind: 'analysis' | 'generation' | 'chat';
   inputRevision: number;
   automaticUpload?: boolean;
   documentIds: string[];
@@ -138,6 +138,12 @@ export interface WorkProcessingStore {
     stage: 'vision' | 'extraction',
     sourceDigest: string,
   ): Promise<StepOutput | null>;
+  sourceVisuals(
+    workspaceId: string,
+    workId: string,
+    documentId: string,
+    sourceDigest: string,
+  ): Promise<StepOutput['visuals']>;
   list(workspaceId: string, workId: string): Promise<WorkRuns>;
   cancel: (workspaceId: string, workId: string) => Promise<void>;
   erase: (workspaceId: string, workId: string) => Promise<void>;

@@ -19,12 +19,17 @@ export const acceptRunCandidates =
     contextCandidates,
     fields,
     confirmed,
+    preserveExisting,
   }: AcceptRunCandidatesInput): Promise<AcceptedRunCandidates> => {
     const existing = await store.get(workspaceId, workId);
-    let selected = combineCandidates(candidates);
+    let selected = preserveExisting
+      ? existing.candidates
+      : combineCandidates(candidates);
+    let extractionAccepted = !preserveExisting;
     let contextAccepted = false;
     try {
-      selected = combineCandidates(selected, existing.candidates);
+      selected = combineCandidates(candidates, existing.candidates);
+      extractionAccepted = true;
       if (contextCandidates !== undefined) {
         selected = combineCandidates(selected, contextCandidates);
         contextAccepted = true;
@@ -33,7 +38,12 @@ export const acceptRunCandidates =
       // При выходе за бюджет остаётся последняя принятая группа кандидатов.
     }
 
-    const next = mergeCandidates(existing, selected, confirmed);
+    const next = mergeCandidates(
+      existing,
+      selected,
+      confirmed,
+      preserveExisting,
+    );
     if (!contextAccepted) {
       // Необязательная стадия не стирает известные значения без новых кандидатов.
       for (const field of fields) {
@@ -45,7 +55,7 @@ export const acceptRunCandidates =
     const proposalOutcomes: AcceptedRunCandidates['proposalOutcomes'] = [];
     const applied = new Set<string>();
     for (const [stage, proposals, rejected] of [
-      ['extraction', candidates, false],
+      ['extraction', candidates, !extractionAccepted],
       ['reconciliation', contextCandidates ?? [], !contextAccepted],
     ] as const) {
       const before = markSelectedCandidates({

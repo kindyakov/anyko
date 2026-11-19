@@ -116,6 +116,58 @@ test('the preview renders two slots for one date and edits the underlying fact',
   expect(changes).toEqual([['passportIssuedAt', '31.08.2003']]);
 });
 
+test('the draft displays one amount with cents and in words', () => {
+  const statement = documentPackageSchema.parse({
+    ...pack,
+    fields: [
+      {
+        key: 'debtTotal',
+        label: 'Сумма',
+        multiline: false,
+        kind: 'text',
+        valueType: 'money',
+        limits: {},
+        columns: [],
+      },
+    ],
+    documents: [
+      {
+        ...pack.documents[0],
+        placeholders: [
+          { field: 'debtTotal', tag: 'debtTotal', placeholder: 'RUB_DECIMAL' },
+          {
+            field: 'debtTotal',
+            tag: 'debtTotalWords',
+            placeholder: 'RUB_WORDS',
+          },
+        ],
+        blocks: [
+          {
+            kind: 'paragraph',
+            paragraph: paragraph('{debtTotal} руб. ({debtTotalWords})'),
+          },
+        ],
+      },
+    ],
+  });
+  const changes: unknown[][] = [];
+  render(
+    <PackagePreview
+      pack={statement}
+      values={{ debtTotal: '1234.05' }}
+      disabled={false}
+      onChange={(...args) => changes.push(args)}
+    />,
+  );
+  expect(screen.getByDisplayValue('1234,05')).toBeTruthy();
+  const words = screen.getByDisplayValue(
+    'одна тысяча двести тридцать четыре рубля пять копеек',
+  );
+  fireEvent.focus(words);
+  fireEvent.change(words, { target: { value: '1234.06' } });
+  expect(changes).toEqual([['debtTotal', '1234.06']]);
+});
+
 test.each([
   '______________________  {lastName} {firstName} {middleName}',
   '______________________  {signerName}',

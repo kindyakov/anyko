@@ -7,6 +7,7 @@ import {
   brandWorkId,
 } from '@anyko/backend/ids';
 import type {
+  WorkChat,
   WorkDeletionApi,
   WorkGeneration,
   WorkIntake,
@@ -19,6 +20,7 @@ import {
   attachWorkDocuments,
   confirmWork,
   createWork,
+  createWorkChatMessage,
   deleteWork,
   downloadGeneratedFile,
   editWork,
@@ -31,10 +33,12 @@ import {
   getWorkDocumentResult,
   getWorkDocumentSource,
   listWorkAnalysisRuns,
+  listWorkChatMessages,
   listWorks,
   removeWorkDocument,
   streamWorkEvents,
   uploadWorkDocument,
+  workChatTimeline,
   workRunSchema,
   type WorkView,
 } from '@anyko/contracts/works';
@@ -56,6 +60,7 @@ export interface WorkHttpOptions
   // Фасад модуля works (запросы списка и событий) и процессы работы из runtime.
   works: WorksModule;
   views: WorkViews;
+  chat: WorkChat;
   intake: WorkIntake;
   deletion: WorkDeletionApi;
   review: WorkReview;
@@ -79,7 +84,7 @@ export function worksRoutes(
   app: Elysia,
   options: WorkHttpOptions,
 ) {
-  const { works, views, intake, review, generation, access, deletion } =
+  const { works, views, chat, intake, review, generation, access, deletion } =
     options;
   route(app, listWorks, async ({ scope, query }) => {
     const page = await works.queries.list(scope, {
@@ -134,6 +139,29 @@ export function worksRoutes(
       query.page,
       query.pageSize,
     ),
+  );
+  route(app, listWorkChatMessages, async ({ scope, params, query }) =>
+    workChatTimeline.parse(
+      await chat.list(scope, {
+        workId: brandWorkId(params.workId),
+        ...query,
+      }),
+    ),
+  );
+  route(
+    app,
+    createWorkChatMessage,
+    async ({ scope, params, body, requestId }) => {
+      const workId = brandWorkId(params.workId);
+      return {
+        body: await chat.send(scope, {
+          workId,
+          ...body,
+          correlationId: requestId,
+        }),
+        resource: { kind: 'work' as const, id: workId, documentIds: [] },
+      };
+    },
   );
   route(
     app,

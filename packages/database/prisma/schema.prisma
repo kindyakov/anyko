@@ -379,6 +379,7 @@ model WorkAgentSession {
  updatedAt DateTime @updatedAt
  turns WorkAgentTurn[]
  events WorkAgentEvent[]
+ chatTurns WorkChatTurn[]
  @@unique([workspaceId,workId])
  @@unique([workspaceId,workId,id])
 }
@@ -428,6 +429,19 @@ model WorkAgentEvent {
  @@index([workspaceId,workId,sessionId])
 }
 
+model WorkChatTurn {
+ runId String @id
+ workspaceId String
+ workId String
+ sessionId String
+ session WorkAgentSession @relation(fields:[workspaceId,workId,sessionId],references:[workspaceId,workId,id],onDelete:Cascade,map:"WorkChatTurn_session_fkey")
+ run Run @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade,map:"WorkChatTurn_run_fkey")
+ userText String
+ answer String?
+ @@unique([workspaceId,runId])
+ @@index([workspaceId,workId,sessionId])
+}
+
 model Run {
  id String @id
  workspaceId String
@@ -460,6 +474,7 @@ model Run {
  outbox RunOutbox?
  pinnedSources WorkDocument[]
  agentEvents WorkAgentEvent[]
+ chatTurn WorkChatTurn?
  @@unique([workspaceId,id])
  @@unique([workspaceId,documentId,revision])
  @@index([workspaceId,documentId,createdAt])

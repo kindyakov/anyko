@@ -128,6 +128,105 @@ test('one calendar day from different sources fills one fact and preserves both 
   );
 });
 
+test('money keeps original citations for equivalent words and numbers and detects one kopeck', async () => {
+  const numeric = textCandidate('debtTotal', '1 234,05', documentId);
+  const written = textCandidate(
+    'debtTotal',
+    'одна тысяча двести тридцать четыре рубля пять копеек',
+    otherDocumentId,
+  );
+  const facts = runFacts();
+  const inputs = {
+    fields: ['debtTotal'] as const,
+    confirmed: false,
+    preserveExisting: true,
+  };
+  const equivalent = await facts.accept({
+    ...inputs,
+    candidates: [numeric, written],
+  });
+  expect(equivalent.discrepancyFields).toEqual([]);
+  expect((await facts.saved()).values.debtTotal).toBe('1234.05');
+  expect((await facts.saved()).candidates).toEqual([numeric, written]);
+  const different = await facts.accept({
+    ...inputs,
+    candidates: [textCandidate('debtTotal', '1234.06')],
+  });
+  expect(different.discrepancyFields).toEqual(['debtTotal']);
+  expect((await facts.saved()).values.debtTotal).toBe('1234.05');
+});
+
+test('a new group keeps its saved facts, adds support and fills unconfirmed gaps', async () => {
+  const initial = emptyFacts();
+  const oldName = textCandidate('personName', 'Анна');
+  const number = textCandidate('documentNumber', '42');
+  const corroboratingNumber = textCandidate(
+    'documentNumber',
+    '42',
+    otherDocumentId,
+  );
+  initial.values.personName = 'Анна';
+  initial.values.documentNumber = '42';
+  initial.values.observations = 'Решение юриста';
+  initial.manual = ['observations'];
+  initial.confirmed = ['documentNumber', 'city'];
+  initial.candidates = [oldName, number];
+  const facts = runFacts(initial);
+  const anotherName = textCandidate('personName', 'Ирина', otherDocumentId);
+  const city = textCandidate('city', 'Тула', otherDocumentId);
+  const result = await facts.accept({
+    fields: ['personName', 'documentNumber', 'city', 'observations'],
+    confirmed: false,
+    preserveExisting: true,
+    candidates: [anotherName, corroboratingNumber, city],
+    contextCandidates: [],
+  });
+  const saved = await facts.saved();
+  expect(result.discrepancyFields).toEqual(['personName']);
+  expect(saved.values).toMatchObject({
+    personName: 'Анна',
+    documentNumber: '42',
+    city: 'Тула',
+    observations: 'Решение юриста',
+  });
+  expect(saved.confirmed).toEqual(['documentNumber']);
+  expect(saved.candidates).toEqual([
+    anotherName,
+    corroboratingNumber,
+    city,
+    oldName,
+    number,
+  ]);
+});
+
+test('overflowing additions leave the previously saved sources and value intact', async () => {
+  const initial = emptyFacts();
+  initial.values.personName = 'Анна';
+  initial.candidates = Array.from({ length: 500 }, (_, index) => ({
+    field: 'personName',
+    value: 'Анна',
+    evidence: [
+      { documentId, imagePath: null, quote: `Анна, пункт ${String(index)}` },
+    ],
+  }));
+  const facts = runFacts(initial);
+  const addition = textCandidate('personName', 'Ирина', otherDocumentId);
+  const result = await facts.accept({
+    fields: ['personName'],
+    confirmed: false,
+    preserveExisting: true,
+    candidates: [addition],
+    contextCandidates: [],
+  });
+  expect(result.contextAccepted).toBe(false);
+  expect(result.proposalOutcomes).toEqual([
+    { candidate: addition, stage: 'extraction', status: 'rejected' },
+  ]);
+  const saved = await facts.saved();
+  expect(saved.values.personName).toBe('Анна');
+  expect(saved.candidates).toEqual(initial.candidates);
+});
+
 test('a different calendar day is a discrepancy, an impossible date remains an unfilled proposal', async () => {
   const facts = runFacts();
   const invalid = textCandidate('passportIssuedAt', '29 февраля 2023 года');

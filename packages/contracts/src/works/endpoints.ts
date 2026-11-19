@@ -17,6 +17,7 @@ import {
 } from '../documents';
 
 import { agentHistoryPage, agentHistoryRunPage } from './agent-history';
+import { workChatMessage, workChatTimeline } from './chat';
 import {
   createdWorkResponseSchema,
   createWorkSchema,
@@ -142,7 +143,7 @@ export const listWorkAnalysisRuns = endpoint({
 
 export const getWorkAgentHistory = endpoint({
   summary:
-    'Возвращает историю вызовов модели и решений по запуску анализа работы',
+    'Возвращает историю вызовов модели и решений по запуску агента работы',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/runs/:runId/agent-history',
   params: workParams.extend({ runId: uuid }),
@@ -151,6 +152,43 @@ export const getWorkAgentHistory = endpoint({
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'CLEANUP_PENDING', 'INVALID_WORK_INPUT'],
   invalid: 'INVALID_WORK_INPUT',
+});
+
+export const listWorkChatMessages = endpoint({
+  summary: 'Возвращает сообщения и автоматические запуски агента работы',
+  method: 'GET',
+  path: '/workspaces/:workspaceId/works/:workId/messages',
+  params: workParams,
+  query: pageQuery(z.number().int().min(1).max(30), 15, {}),
+  response: json(workChatTimeline),
+  status: 200,
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'CLEANUP_PENDING', 'INVALID_WORK_INPUT'],
+  invalid: 'INVALID_WORK_INPUT',
+});
+
+export const createWorkChatMessage = endpoint({
+  summary: 'Ставит сообщение для агента работы в очередь обработки',
+  method: 'POST',
+  path: '/workspaces/:workspaceId/works/:workId/messages',
+  params: workParams,
+  body: json(workChatMessage),
+  response: json(z.object({ status: z.literal('queued'), runId: uuid })),
+  status: 202,
+  errors: [
+    'FORBIDDEN',
+    'NOT_FOUND',
+    'CLEANUP_PENDING',
+    'REVISION_CONFLICT',
+    'INVALID_WORK_INPUT',
+    'LLM_NOT_CONFIGURED',
+    'CONNECTION_REVOKED',
+    'WORK_BUSY',
+    'INVALID_IDEMPOTENCY_KEY',
+    'IDEMPOTENCY_CONFLICT',
+    'IDEMPOTENCY_IN_PROGRESS',
+  ],
+  invalid: 'INVALID_WORK_INPUT',
+  idempotency: 'key',
 });
 
 export const uploadWorkDocument = endpoint({

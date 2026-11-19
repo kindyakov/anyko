@@ -4,6 +4,11 @@ import { createHash } from 'node:crypto';
 import PizZip from 'pizzip';
 
 import { formatCalendarDate } from '@anyko/document-values/calendar-date';
+import {
+  canonicalMoneyAmount,
+  formatMoneyAmount,
+  moneyAmountsInText,
+} from '@anyko/document-values/money';
 
 import { generateDocument } from '../src/modules/generation';
 import {
@@ -12,7 +17,6 @@ import {
   templateBytes,
   templateData,
 } from '../src/modules/templates';
-import { templatePlaceholderSchema } from '../src/modules/templates/schemas';
 import { candidateSchema } from '../src/profiles/bfl/candidate';
 import {
   emptyFieldValues,
@@ -23,7 +27,7 @@ test('the selectable package contains three real versioned templates; archived s
   const packages = availablePackages();
   expect(packages).toHaveLength(1);
   expect(packages[0]?.technical).toBe(false);
-  expect(packages[0]?.version).toBe('bfl-bankruptcy-v5');
+  expect(packages[0]?.version).toBe('bfl-bankruptcy-v6');
   expect(packages[0]?.documents.map((doc) => doc.id)).toEqual([
     'statement',
     'inventory',
@@ -91,12 +95,11 @@ test('identity metadata preserves raw dates, collections and computed bindings i
     debts: [{ amount: '100.00' }],
   };
   const slots = ['passportIssuedAt', 'debts', 'debts.amount', 'signerName'].map(
-    (key) =>
-      templatePlaceholderSchema.parse({
-        tag: key,
-        field: key,
-        placeholder: 'identity',
-      }),
+    (key) => ({
+      tag: key,
+      field: key,
+      placeholder: 'identity' as const,
+    }),
   );
   const version = 'bfl-statement-v4';
   const output = templateData(values, version, slots);
@@ -144,6 +147,68 @@ test('one saved date uses the format of each statement slot and old statement ve
   expect(rendered(historical.version, [])?.match(/30\/08\/2003/g)).toHaveLength(
     2,
   );
+});
+
+test('the same precise ruble amount is rendered numerically and in the requested case', () => {
+  const value = 'одна тысяча двести тридцать четыре рубля, пять копеек';
+  expect(canonicalMoneyAmount(value)).toBe('1234.05');
+  expect(canonicalMoneyAmount('9 007 199 254 740 993,09')).toBe(
+    '9007199254740993.09',
+  );
+  expect(canonicalMoneyAmount('1 234,05 ₽')).toBe('1234.05');
+  expect(canonicalMoneyAmount('100руб.05коп.')).toBe('100.05');
+  expect(canonicalMoneyAmount('− 100 р. 1 к.')).toBe('-100.01');
+  expect(canonicalMoneyAmount('двадцать одиннадцать рублей')).toBeUndefined();
+  expect(moneyAmountsInText('Сумма 100 руб. 01 коп.')).toEqual(['100.01']);
+  expect(moneyAmountsInText('Итого 12 3456 руб.')).toEqual([]);
+  expect(formatMoneyAmount('1234.05', 'RUB_GENITIVE_WORDS')).toBe(
+    'одной тысячи двухсот тридцати четырёх рублей пяти копеек',
+  );
+  const fields = {
+    ...emptyFieldValues(),
+    debtTotal: value,
+    debtTotalWords: 'Независимый старый текст',
+  };
+  const formats = [
+    { tag: 'debtTotal', field: 'debtTotal', placeholder: 'RUB_DECIMAL' },
+    { tag: 'debtTotalWords', field: 'debtTotal', placeholder: 'RUB_WORDS' },
+  ] as const;
+  const version = 'bfl-statement-v6';
+  const output = templateData(fields, version, formats);
+  const xml = new PizZip(generateDocument(templateBytes(version), output))
+    .file('word/document.xml')
+    ?.asText();
+  expect(xml).toContain('1234,05');
+  expect(xml).toContain('одна тысяча двести тридцать четыре рубля пять копеек');
+  expect(xml).not.toContain('Независимый старый текст');
+  expect(templateData(fields, 'bfl-statement-v5').debtTotalWords).toBe(
+    'Независимый старый текст',
+  );
+});
+
+test.each([
+  ['Итого 100 российских рублей 01 копейка', ['100.01']],
+  ['Итого 100 рублей 01 копейку', ['100.01']],
+  ['Итого 100 (сто) рублей 01 копейка', []],
+  ['Итого 100 рублей (сто рублей) 01 копейка', []],
+  ['Итого 100 руб. (сто) 01 коп.', []],
+  ['Итого 100 рублей 01 (одна) копейка', []],
+  ['Итого 100 рублей (01 копейка)', []],
+  ['Итого 100 рублей (сумма (сто) 01 коп.)', []],
+  ['Итого 100 рублей (01 копейка', []],
+  ['Итого 100 рублей, в том числе 01 копейка', []],
+  ['Итого 100 белорусских рублей 01 копейка', []],
+  ['Итого 100 бел.руб.', []],
+  ['Итого 100 долларов 50 центов', []],
+  ['Итого 100 рублей −01 копейка', []],
+  ['Итого 100 рублей 01 копейке', []],
+  ['Итого 01 копейка', []],
+  ['Банк А | 1 200,01', ['1200.01']],
+  ['100 белорусских рублей; итог 100,01', ['100.01']],
+  ['100 рублей, 200 рублей 01 копейка', ['100.00', '200.01']],
+  ['100 рублей | 01 копейка', ['100.00']],
+])('finds exact ruble amounts in %s', (quote, expected) => {
+  expect(moneyAmountsInText(quote)).toEqual(expected);
 });
 
 test('each DOCX keeps its source styles, page geometry and structured tables and renders the shared identity and repeated rows', () => {

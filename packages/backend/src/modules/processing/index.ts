@@ -18,7 +18,7 @@ export { stepOutputSchema } from './application/work-ports';
 // для анализа, works.generate для генерации); поля модели фиксируются в снимке запуска.
 export interface WorkRunStart {
   workId: WorkId;
-  kind: 'analysis' | 'generation';
+  kind: 'analysis' | 'generation' | 'chat';
   inputRevision: number;
   documentIds: string[];
   settingsRevision: number | null;
@@ -27,7 +27,7 @@ export interface WorkRunStart {
   modelSnapshot: { vision: string; extraction: string };
 }
 export interface ProcessingCommands {
-  start(scope: WorkspaceScope, input: WorkRunStart): Promise<void>;
+  start(scope: WorkspaceScope, input: WorkRunStart): Promise<string>;
 }
 // Внутренние запросы: право проверяет вызывающий сценарий.
 export interface ProcessingQueries {
@@ -43,6 +43,7 @@ type WorkMaintenance = Pick<
   | 'erase'
   | 'eraseThreads'
   | 'latestAnalysisRecovery'
+  | 'sourceVisuals'
 >;
 export interface ProcessingPorts {
   readonly commands: ProcessingCommands;

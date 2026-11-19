@@ -150,7 +150,12 @@ export function createAgentHistoryStore(
     async read(ref, page, pageSize) {
       const { workspaceId, workId, runId } = ref;
       const run = await db.run.findFirst({
-        where: { id: runId, workspaceId, workId, kind: 'work.analysis' },
+        where: {
+          id: runId,
+          workspaceId,
+          workId,
+          kind: { in: ['work.analysis', 'work.chat'] },
+        },
         select: { id: true },
       });
       if (!run) return null;

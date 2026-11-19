@@ -9,6 +9,63 @@ import {
 
 import { createModelGateway, llmError } from './index';
 
+test('RouterAI context lookup uses the selected model and the smallest published provider limits', async () => {
+  const requests: { url: string; authorization: string | null }[] = [];
+  const gateway = createModelGateway({
+    fetch: Object.assign(
+      (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const request = new Request(url, init);
+        requests.push({
+          url: request.url,
+          authorization: request.headers.get('authorization'),
+        });
+        const payload = {
+          data: {
+            endpoints: [
+              { context_length: 32768, max_completion_tokens: 8000 },
+              {
+                context_length: 16384,
+                max_prompt_tokens: 14000,
+                max_completion_tokens: 4096,
+              },
+            ],
+          },
+        };
+        return Promise.resolve(Response.json(payload));
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const connection = {
+    id: 'routerai',
+    baseURL: 'https://routerai.ru/api/v1',
+    apiKey: crypto.randomUUID(),
+  };
+  const signal = new AbortController().signal;
+  expect(
+    await gateway.contextLimits(connection, 'example/small', signal),
+  ).toEqual({ context: 16384, prompt: 14000, completion: 4096 });
+  await gateway.contextLimits(connection, 'example/small', signal);
+  await gateway.contextLimits(connection, 'example/large', signal);
+  expect(
+    await gateway.contextLimits(
+      { ...connection, baseURL: 'https://fixture.invalid/v1' },
+      'example/small',
+      signal,
+    ),
+  ).toBeNull();
+  expect(requests).toEqual([
+    {
+      url: 'https://routerai.ru/api/v1/models/example/small/endpoints',
+      authorization: null,
+    },
+    {
+      url: 'https://routerai.ru/api/v1/models/example/large/endpoints',
+      authorization: null,
+    },
+  ]);
+});
+
 test('ready SDK sends OpenAI-compatible request to the selected endpoint and model', async () => {
   const key = crypto.randomUUID();
   const requests: {

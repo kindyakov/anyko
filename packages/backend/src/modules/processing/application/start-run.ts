@@ -10,8 +10,9 @@ export const startRun =
     input: WorkRunStart,
     automaticUpload = false,
   ) => {
+    const id = deps.newId();
     await deps.store.start({
-      id: deps.newId(),
+      id,
       workspaceId: scope.workspaceId,
       workId: input.workId,
       kind: input.kind,
@@ -24,4 +25,5 @@ export const startRun =
       actorId: scope.userId,
       modelSnapshot: input.modelSnapshot,
     });
+    return id;
   };

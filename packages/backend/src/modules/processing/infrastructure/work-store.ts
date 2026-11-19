@@ -31,9 +31,10 @@ export async function eraseWorkAgentThreads(
     });
 }
 
-const workKinds = ['work.analysis', 'work.generation'];
+const pipelineKinds = ['work.analysis', 'work.generation'];
+const workKinds = [...pipelineKinds, 'work.chat'];
 const workKind = (kind: string) =>
-  z.enum(['analysis', 'generation']).parse(kind.slice('work.'.length));
+  z.enum(['analysis', 'generation', 'chat']).parse(kind.slice('work.'.length));
 export function createWorkProcessingStore(
   db: Connection & Partial<Pick<Database, '$transaction'>>,
   deps: { newId(): string; clock: Clock } = {
@@ -215,10 +216,33 @@ export function createWorkProcessingStore(
       });
       return row?.output ? stepOutputSchema.parse(row.output) : null;
     },
+    async sourceVisuals(workspaceId, workId, documentId, sourceDigest) {
+      const row = await db.runStep.findFirst({
+        where: {
+          workspaceId,
+          documentId,
+          stage: 'vision',
+          status: 'succeeded',
+          run: { workId, kind: 'work.analysis' },
+          OR: [
+            { output: { path: ['sourceDigest'], equals: sourceDigest } },
+            {
+              output: {
+                path: ['sourceDigest'],
+                string_ends_with: `:${sourceDigest}`,
+              },
+            },
+          ],
+        },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        select: { output: true },
+      });
+      return row?.output ? stepOutputSchema.parse(row.output).visuals : [];
+    },
     async list(workspaceId, workId) {
       return (
         await db.run.findMany({
-          where: { workspaceId, workId },
+          where: { workspaceId, workId, kind: { in: pipelineKinds } },
           include: { steps: { orderBy: { updatedAt: 'asc' } } },
           orderBy: { createdAt: 'desc' },
           take: 20,

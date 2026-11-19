@@ -5,8 +5,10 @@ import {
   observeProviderFetch,
   type ProviderCallObserver,
 } from './provider-calls';
+import { createRouterContextLimits } from './router-context';
 
 export type { ProviderCallObserver } from './provider-calls';
+export type { ModelContextLimits } from './router-context';
 
 const connectionSchema = z.object({
   id: z.string().regex(/^[\w-]{1,80}$/),
@@ -76,6 +78,7 @@ export function llmError(error: unknown, signal?: AbortSignal): LlmError {
 
 export function createModelGateway(options: { fetch?: typeof fetch } = {}) {
   return {
+    contextLimits: createRouterContextLimits(options.fetch ?? fetch),
     model(
       connection: ModelConnection,
       selection: ModelSelection,

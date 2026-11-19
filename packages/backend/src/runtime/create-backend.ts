@@ -81,6 +81,7 @@ import type { JobRuntime } from '../platform/jobs';
 import { openTransaction, transactionHandle } from '../platform/transactions';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
+import { createWorkChat, type WorkChat } from '../workflows/work-chat';
 import type { WorkDependencies } from '../workflows/work-dependencies';
 import { createWorkExecution } from '../workflows/work-execution';
 import {
@@ -148,6 +149,7 @@ export interface ApiBackend {
     // Фасад модуля works: список работ и события (запросы без сценария).
     works: WorksModule;
     views: WorkViews;
+    chat: WorkChat;
     intake: WorkIntake;
     deletion: WorkDeletionApi;
     review: WorkReview;
@@ -250,6 +252,7 @@ export function createBackend(
   const agents = () => (agentsDelegate ??= createDocumentAgents({ pool }));
   // Внешние вызовы модели доступны только вне транзакционного фасада.
   const model: DocumentAgents = {
+    chat: (input) => agents().chat(input),
     ready: () => agents().ready(),
     describe: (input) => agents().describe(input),
     extract: (input) => agents().extract(input),
@@ -349,6 +352,7 @@ export function createBackend(
       workHttp: {
         works,
         views: createWorkView(workflows),
+        chat: createWorkChat(workflows),
         intake: createWorkIntake({
           ...workflows,
           lockDocumentRevisions,

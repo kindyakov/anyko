@@ -4,7 +4,7 @@ import type {
   FieldKey,
   FieldValues,
 } from '@anyko/contracts/catalog';
-import { formatCalendarDate } from '@anyko/document-values/calendar-date';
+import { formatTemplateValue } from '@anyko/document-values/template-value';
 
 import { TextSlot } from '../work-fields';
 
@@ -33,7 +33,7 @@ export function ScalarSlot({
   const value = typeof raw === 'string' ? raw : null;
   const displayValue =
     format && format.placeholder !== 'identity' && value !== null
-      ? formatCalendarDate(value, format.placeholder)
+      ? formatTemplateValue(value, format.placeholder)
       : undefined;
   return (
     <TextSlot

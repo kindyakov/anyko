@@ -1,6 +1,7 @@
 import type { FieldValue, FieldValues } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
+import { canonicalMoneyAmount } from '@anyko/document-values/money';
 
 import { sameFieldValue } from './field-value';
 
@@ -17,19 +18,22 @@ export function normalizedReviewValue<T extends FieldValue | undefined>(
   field: ReviewField['field'],
   value: T,
 ): FieldValue | T {
-  return field.valueType === 'date' && typeof value === 'string'
-    ? (canonicalCalendarDate(value) ?? value)
-    : value;
+  if (typeof value !== 'string') return value;
+  if (field.valueType === 'date') return canonicalCalendarDate(value) ?? value;
+  if (field.valueType === 'money') return canonicalMoneyAmount(value) ?? value;
+  return value;
 }
 
-export function invalidReviewDate(
+export function invalidReviewValue(
   field: ReviewField['field'],
   value: FieldValue,
 ): boolean {
   return (
-    field.valueType === 'date' &&
     typeof value === 'string' &&
-    canonicalCalendarDate(value) === undefined
+    ((field.valueType === 'date' &&
+      canonicalCalendarDate(value) === undefined) ||
+      (field.valueType === 'money' &&
+        canonicalMoneyAmount(value) === undefined))
   );
 }
 
@@ -86,7 +90,7 @@ export function reviewFields(
       candidates.every(
         ({ origin, value }) =>
           origin !== 'inference' &&
-          !invalidReviewDate(field, value) &&
+          !invalidReviewValue(field, value) &&
           sameFieldValue(
             normalizedReviewValue(field, value),
             normalizedReviewValue(field, candidates[0]?.value),

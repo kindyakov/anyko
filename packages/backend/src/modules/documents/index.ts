@@ -70,6 +70,13 @@ export interface DocumentAnalysis {
   sourceDigest: string;
 }
 
+export type DocumentAnalysisSource = Pick<
+  DocumentAnalysis,
+  'text' | 'sourceDigest'
+> & {
+  imagePaths: string[];
+};
+
 export type DocumentDeletionStatus = 'deleting' | 'deleted' | 'needs-recovery';
 
 export interface PendingDocumentDeletion {
@@ -153,6 +160,7 @@ export interface DocumentsInternal {
     source(input: InternalDocumentRef): Promise<DocumentSourceFile>;
     image(input: InternalResultRef & { index: number }): Promise<DocumentImage>;
     analysis(input: InternalResultRef): Promise<DocumentAnalysis>;
+    analysisSource(input: InternalResultRef): Promise<DocumentAnalysisSource>;
   };
 }
 

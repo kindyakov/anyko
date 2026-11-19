@@ -11,6 +11,7 @@ import { cleanWorkSources } from './work-guards';
 
 export const workCommandPolicy = {
   analyze: { right: 'works.edit', idle: true, clean: true },
+  chat: { right: 'works.edit', idle: true, clean: true },
   generate: { right: 'works.generate', idle: true, clean: true },
   confirm: { right: 'works.edit', idle: true, clean: true },
   upload: { right: 'documents.upload', idle: false, clean: true },

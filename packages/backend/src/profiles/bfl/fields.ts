@@ -266,7 +266,7 @@ export interface FieldDefinition {
   label: string;
   multiline: boolean;
   kind: 'text' | 'rows';
-  valueType?: 'date' | undefined;
+  valueType?: 'date' | 'money' | undefined;
   limits: { maxLength?: number | undefined; maxRows?: number | undefined };
   columns: { key: string; label: string; maxLength: number }[];
 }
@@ -277,6 +277,9 @@ const dateFields = new Set([
   'debtAsOfDate',
 ]);
 export const isCalendarDateField = (field: string) => dateFields.has(field);
+export const isRublesField = (field: string) => field === 'debtTotal';
+export const isRublesColumn = (field: string, column: string) =>
+  field !== 'valuables' && ['amount', 'arrears', 'penalties'].includes(column);
 export const fieldDefinitions: FieldDefinition[] = [
   ...Object.entries(scalarLabels).map(([key, label]) => ({
     ...scalar(
@@ -285,6 +288,7 @@ export const fieldDefinitions: FieldDefinition[] = [
       key.endsWith('Details') || key === 'observations',
     ),
     ...(isCalendarDateField(key) && { valueType: 'date' as const }),
+    ...(isRublesField(key) && { valueType: 'money' as const }),
   })),
   ...Object.entries(collectionLabels).map(([key, definition]) => ({
     ...scalar(fieldKeySchema.parse(key), definition.label),

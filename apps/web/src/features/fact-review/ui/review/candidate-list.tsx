@@ -11,7 +11,7 @@ import { Button, StatusPill } from '@anyko/ui';
 import { sameFieldValue } from '@/features/fact-review/model/field-value';
 import {
   candidateSelection,
-  invalidReviewDate,
+  invalidReviewValue,
   normalizedReviewValue,
   type ReviewField,
 } from '@/features/fact-review/model/review';
@@ -134,7 +134,7 @@ export function CandidateList({
           const { matching = [], options = [] } = Object.groupBy(
             groups,
             ({ value }) =>
-              !invalidReviewDate(field, value) &&
+              !invalidReviewValue(field, value) &&
               sameFieldValue(comparable, value)
                 ? 'matching'
                 : 'options',
@@ -233,9 +233,11 @@ export function CandidateList({
                           <div className="min-w-0 text-sm font-medium">
                             <CandidateValue value={option.value} />
                           </div>
-                          {invalidReviewDate(field, option.value) ? (
+                          {invalidReviewValue(field, option.value) ? (
                             <StatusPill tone="warning">
-                              Непроверенная дата
+                              {field.valueType === 'date'
+                                ? 'Непроверенная дата'
+                                : 'Непроверенная сумма'}
                             </StatusPill>
                           ) : option.included ? (
                             <StatusPill tone="success">

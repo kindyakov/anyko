@@ -16,6 +16,7 @@ const collections = new Map([
   ['document-packages', 'document-package'],
   ['works', 'work'],
   ['runs', 'run'],
+  ['messages', 'message'],
   ['connections', 'connection'],
   ['recognitions', 'document'],
   ['documents', 'document'],

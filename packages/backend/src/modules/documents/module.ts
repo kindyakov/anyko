@@ -1,7 +1,7 @@
 import { listDocuments } from './application/list-documents';
 import { listPendingDeletions } from './application/list-pending-deletions';
 import type { DocumentDeps } from './application/ports';
-import { readAnalysis } from './application/read-analysis';
+import { readAnalysis, readAnalysisSource } from './application/read-analysis';
 import { readDeletion } from './application/read-deletion';
 import { readDeletionImpact } from './application/read-deletion-impact';
 import { readDocument } from './application/read-document';
@@ -51,6 +51,7 @@ export function createDocumentsModule(deps: DocumentDeps): DocumentsModule {
         source: source.internal,
         image: image.internal,
         analysis: readAnalysis(deps),
+        analysisSource: readAnalysisSource(deps),
       },
     },
   };

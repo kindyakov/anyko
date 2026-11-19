@@ -3,7 +3,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./calendar-date": "./src/calendar-date.ts"
+    "./calendar-date": "./src/calendar-date.ts",
+    "./money": "./src/money.ts",
+    "./template-value": "./src/template-value.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

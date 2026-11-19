@@ -19,6 +19,7 @@ import {
   WorkReview,
 } from '@/features/fact-review';
 import { WorkAgentHistory } from '@/features/work-agent-history';
+import { WorkChat } from '@/features/work-chat';
 import { WorkResults } from '@/features/work-generation';
 import { WorkPipeline } from '@/features/work-processing';
 import { WorkSources } from '@/features/work-sources';
@@ -171,6 +172,7 @@ function WorkBody({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <WorkAgentHistory workspaceId={workspaceId} view={view} />
+            <WorkChat workspaceId={workspaceId} view={view} />
             {view.work.confirmedRevision === view.work.revision ? (
               <StatusPill tone="success">Подтверждена</StatusPill>
             ) : (

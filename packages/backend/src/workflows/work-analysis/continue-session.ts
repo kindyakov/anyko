@@ -211,6 +211,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
               workId: run.workId,
               fields: input.fields.map(({ key }) => key),
               confirmed: work.confirmedRevision === work.revision,
+              preserveExisting: run.automaticUpload === true,
               candidates,
               ...(validOutput && { contextCandidates: validOutput.candidates }),
             });

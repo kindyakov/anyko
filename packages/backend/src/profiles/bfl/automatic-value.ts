@@ -4,13 +4,21 @@ import {
   canonicalCalendarDate,
   datesInText,
 } from '@anyko/document-values/calendar-date';
+import {
+  canonicalMoneyAmount,
+  moneyAmountsInText,
+} from '@anyko/document-values/money';
 
 import type { candidateSchema } from './candidate';
-import { fieldIdentity, type FieldValue, isCalendarDateField } from './fields';
+import {
+  fieldIdentity,
+  type FieldValue,
+  isCalendarDateField,
+  isRublesColumn,
+  isRublesField,
+} from './fields';
 
 type Candidate = z.infer<typeof candidateSchema>;
-
-const moneyColumns = new Set(['amount', 'arrears', 'penalties']);
 
 function digits(value: string) {
   return value.normalize('NFKC').replace(/[\s‐‑-]/g, '');
@@ -56,29 +64,18 @@ function attestedDate(value: string, quote: string) {
   );
 }
 
-function amount(value: string): string | undefined {
-  const match = /^(-?)(\d+)(?:[.,](\d{1,2}))?$/.exec(
-    value.trim().replace(/[ \u00a0\u202f]/g, ''),
-  );
-  if (!match || match[2] === undefined) return;
-  return (
-    (match[1] ?? '') +
-    match[2].replace(/^0+(?=\d)/, '') +
-    '.' +
-    (match[3] ?? '').padEnd(2, '0')
-  );
-}
-
-function attestedAmount(value: string, quote: string) {
-  const expected = amount(value);
+function attestedAmount(value: string, quote: string, rubles = true) {
+  const expected = canonicalMoneyAmount(value);
   const text = datesInText(quote).reduce(
     (remaining, date) => remaining.replace(date, ' '),
     quote.normalize('NFKC'),
   );
-  const found = text.match(/-?\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?/g) ?? [];
-  return (
-    expected !== undefined && found.some((item) => amount(item) === expected)
-  );
+  if (expected === undefined) return false;
+  if (rubles) return moneyAmountsInText(text).includes(expected);
+  // The valuables register may give a value in a different currency.
+  const values =
+    text.match(/-?\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?/g) ?? [];
+  return values.some((amount) => canonicalMoneyAmount(amount) === expected);
 }
 
 function proofLines(evidence: Candidate['evidence']) {
@@ -128,7 +125,7 @@ function supportedValue(
     }
     const matches = isCalendarDateField(field)
       ? attestedDate
-      : field === 'debtTotal'
+      : isRublesField(field)
         ? attestedAmount
         : requireText
           ? (text: string, line: string) => mentions(line, text)
@@ -155,10 +152,15 @@ function supportedValue(
     const supported = Object.fromEntries(
       Object.entries(row).map(([column, cell]) => {
         if (cell === null) return [column, cell];
-        if (moneyColumns.has(column))
+        const rubles = isRublesColumn(field, column);
+        if (rubles || (field === 'valuables' && column === 'amount'))
           return [
             column,
-            matching.some((line) => attestedAmount(cell, line)) ? cell : null,
+            matching.some((line) => attestedAmount(cell, line, rubles))
+              ? rubles
+                ? (canonicalMoneyAmount(cell) ?? null)
+                : cell
+              : null,
           ];
         if (column === 'inn') {
           const identifier = digits(cell);

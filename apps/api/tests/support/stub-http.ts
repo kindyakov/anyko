@@ -49,6 +49,7 @@ export function stubHttpOptions(): {
         source: unused,
         image: unused,
         analysis: unused,
+        analysisSource: unused,
       },
     },
   };
@@ -136,6 +137,7 @@ export function stubHttpOptions(): {
       ...documentHttp,
       works,
       views,
+      chat: { list: unused, send: unused },
       intake,
       deletion: { request: unused, status: unused, pending: unused },
       review,

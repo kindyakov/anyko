@@ -1,8 +1,13 @@
 import { z } from 'zod';
 
 import { calendarDatePlaceholders } from '@anyko/document-values/calendar-date';
+import { moneyPlaceholders } from '@anyko/document-values/money';
 
-import { fieldKeySchema, isCalendarDateField } from '../../profiles/bfl/fields';
+import {
+  fieldKeySchema,
+  isCalendarDateField,
+  isRublesField,
+} from '../../profiles/bfl/fields';
 
 const paragraph = z.object({
   text: z.string(),
@@ -46,6 +51,11 @@ export const templatePlaceholderSchema = z.discriminatedUnion('placeholder', [
     field: fieldKeySchema.refine(isCalendarDateField),
     placeholder: z.enum(calendarDatePlaceholders),
   }),
+  z.object({
+    tag: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/),
+    field: fieldKeySchema.refine(isRublesField),
+    placeholder: z.enum(moneyPlaceholders),
+  }),
   z
     .object({
       tag: bindingKey,
@@ -83,7 +93,7 @@ export const documentPackageSchema = z.object({
       label: z.string(),
       multiline: z.boolean(),
       kind: z.enum(['text', 'rows']),
-      valueType: z.literal('date').optional(),
+      valueType: z.enum(['date', 'money']).optional(),
       limits: z.object({
         maxLength: z.number().int().positive().optional(),
         maxRows: z.number().int().positive().optional(),

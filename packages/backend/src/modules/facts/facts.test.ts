@@ -94,11 +94,11 @@ test('a surviving quote without the accepted amount does not keep its confirmati
       false,
     ),
   );
-  expect(initial.values.debtTotal).toBe('100');
+  expect(initial.values.debtTotal).toBe('100.00');
   const next = refreshFactEvidence(initial, (entry) =>
     entry.quote === 'Сумма долга' ? entry : null,
   );
-  expect(next.values.debtTotal).toBe('100');
+  expect(next.values.debtTotal).toBe('100.00');
   expect(next.candidates[0]?.evidence[0]?.quote).toBe('Сумма долга');
   expect(next.confirmed).not.toContain('debtTotal');
   expect(next.needsReview).toEqual(['debtTotal']);
@@ -335,16 +335,32 @@ test.each([
   {
     field: 'birthDate',
     value: '01.02.2020',
+    canonical: '01.02.2020',
     quote: 'Дата рождения 2020-02-01',
   },
-  { field: 'debtTotal', value: '5 200,1', quote: 'Итого 5200.10 руб.' },
-  { field: 'inn', value: '5001 0073 2259', quote: 'ИНН 500100732259' },
-  { field: 'snils', value: '112-233-445 95', quote: 'СНИЛС 112 233 445 95' },
+  {
+    field: 'debtTotal',
+    value: '5 200,1',
+    canonical: '5200.10',
+    quote: 'Итого 5200.10 руб.',
+  },
+  {
+    field: 'inn',
+    value: '5001 0073 2259',
+    canonical: '5001 0073 2259',
+    quote: 'ИНН 500100732259',
+  },
+  {
+    field: 'snils',
+    value: '112-233-445 95',
+    canonical: '112-233-445 95',
+    quote: 'СНИЛС 112 233 445 95',
+  },
 ] as const)(
   'confirming the automatic value of $field works with or without evidence',
-  ({ field, value, quote }) => {
+  ({ field, value, canonical, quote }) => {
     for (const [citation, expected] of [
-      [quote, value],
+      [quote, canonical],
       ['Значение отсутствует', null],
     ] as const) {
       const saved = mergeCandidates(
@@ -369,6 +385,41 @@ test.each([
     }
   },
 );
+
+test.each([
+  ['Итого −100 руб.', '100.00', null],
+  ['Итого 100 рублей 1 копейка', '100.00', null],
+  ['Итого 100,00 руб. 01 коп.', '100.00', null],
+  ['Итого 100 долларов', '100.00', null],
+  ['Итого €100', '100.00', null],
+  ['Итого 100 российских рублей 01 копейка', '100.00', null],
+  ['Итого 100 российских рублей 01 копейка', '100.01', '100.01'],
+  ['Итого 100 (сто) рублей 01 копейка', '100.00', null],
+  ['Итого 100 (сто) рублей 01 копейка', '1.00', null],
+  ['Итого 100 рублей (сто рублей) 01 копейка', '100.00', null],
+  ['Итого 100 руб. (сто) 01 коп.', '100.00', null],
+  ['Итого 100 рублей 01 (одна) копейка', '100.00', null],
+  ['Итого 100 рублей, в том числе 01 копейка', '100.00', null],
+  ['Итого 100 бел. руб.', '100.00', null],
+  ['Итого 100 рублей 01 копейку', '100.00', null],
+  ['Итого 100 рублей 01 копейку', '100.01', '100.01'],
+  ['Итого 100 белорусских рублей', '100.00', null],
+  ['Итого 100,01', '100.01', '100.01'],
+])('uses the exact total from %s for proposal %s', (quote, value, expected) => {
+  const saved = mergeCandidates(
+    emptyFacts(),
+    [
+      {
+        field: 'debtTotal',
+        value,
+        evidence: [{ documentId: crypto.randomUUID(), imagePath: null, quote }],
+      },
+    ],
+    false,
+  );
+  expect(saved.values.debtTotal).toBe(expected);
+  expect(saved.candidates).toHaveLength(1);
+});
 
 test('confirming a suggested table without a supported amount only compares the saved columns', () => {
   const saved = mergeCandidates(

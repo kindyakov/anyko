@@ -10,6 +10,7 @@ import type { JobRegistry, RunPolicy } from '../platform/jobs';
 import { documentMaintenanceJob } from '../workflows/document-maintenance/jobs';
 import { documentOcrJob } from '../workflows/document-ocr/jobs';
 import { workAnalysisJob } from '../workflows/work-analysis/jobs';
+import { workChatJob } from '../workflows/work-chat/jobs';
 import { workGenerationJob } from '../workflows/work-generation/jobs';
 import { workMaintenanceJob } from '../workflows/work-maintenance/jobs';
 
@@ -29,6 +30,7 @@ export function createJobRegistry(input: {
     definitions: [
       documentOcrJob(input.ocr),
       workAnalysisJob(input.execute),
+      workChatJob(input.execute),
       workGenerationJob(input.execute),
       workMaintenanceJob(input.maintain),
       documentMaintenanceJob(input.documents),

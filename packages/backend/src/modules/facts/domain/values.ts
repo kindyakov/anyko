@@ -1,4 +1,5 @@
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
+import { canonicalMoneyAmount } from '@anyko/document-values/money';
 
 import {
   automaticValue,
@@ -12,6 +13,8 @@ import {
   type FieldValue,
   type FieldValues,
   isCalendarDateField,
+  isRublesColumn,
+  isRublesField,
   readFieldValues,
 } from '../../../profiles/bfl/fields';
 import { factsSchema, type WorkFacts } from '../schemas';
@@ -30,12 +33,15 @@ export function mergeCandidates(
   current: WorkFacts,
   candidates: WorkFacts['candidates'],
   confirmed: boolean,
+  preserveExisting = false,
 ): WorkFacts {
   const values = { ...current.values };
+  const confirmedFields = new Set(current.confirmed);
   for (const { key } of fieldDefinitions) {
+    const saved = values[key] ?? null;
+    const isConfirmed = confirmed || confirmedFields.has(key);
     if (
-      confirmed ||
-      current.confirmed.includes(key) ||
+      (isConfirmed && (!preserveExisting || saved !== null)) ||
       current.needsReview?.includes(key) ||
       current.manual.includes(key)
     )
@@ -43,12 +49,24 @@ export function mergeCandidates(
     const proposals = candidates.filter((candidate) => candidate.field === key);
     const found = proposals.filter(({ origin }) => origin !== 'inference');
     if (!found.length && proposals.length) continue;
-    values[key] =
+    const proposed =
       reconcileCandidates(key, found) === null
         ? null
         : reconcileCandidates(key, found, automaticValue);
+    if (preserveExisting && saved !== null) {
+      if (Array.isArray(saved) && Array.isArray(proposed))
+        values[key] = reconcile(key, [saved, proposed]) ?? saved;
+      continue;
+    }
+    values[key] = proposed;
+    if (preserveExisting && proposed !== null) confirmedFields.delete(key);
   }
-  return factsSchema.parse({ ...current, values, candidates });
+  return factsSchema.parse({
+    ...current,
+    values,
+    candidates,
+    confirmed: [...confirmedFields],
+  });
 }
 
 /** Расхождения определяются по сохранённым сведениям и сведённым кандидатам. */
@@ -63,9 +81,9 @@ export function findFactDiscrepancies(current: WorkFacts) {
       if (original === null) return true;
 
       const manual = current.manual.includes(key);
-      if (!manual && !current.confirmed.includes(key)) return false;
       const saved = current.values[key] ?? null;
       if (manual && saved === null) return true;
+      if (saved === null) return false;
 
       const comparableSaved = comparableFactValue(reconcile(key, [saved]));
       if (
@@ -137,10 +155,23 @@ export function editFacts(current: WorkFacts, values: FieldValues): WorkFacts {
   for (const { key } of fieldDefinitions) {
     const previous = current.values[key] ?? null;
     const value = next[key] ?? null;
-    if (typeof value === 'string' && isCalendarDateField(key)) {
-      const date = canonicalCalendarDate(value);
-      if (date)
-        next[key] = date === reconcile(key, [previous]) ? previous : date;
+    if (
+      typeof value === 'string' &&
+      (isCalendarDateField(key) || isRublesField(key))
+    ) {
+      const comparable = reconcile(key, [value]);
+      if (comparable !== null)
+        next[key] =
+          comparable === reconcile(key, [previous]) ? previous : comparable;
+    }
+    if (Array.isArray(value)) {
+      const normalized = value.map((row) => comparableRow(key, row));
+      next[key] =
+        Array.isArray(previous) &&
+        stable(normalized) ===
+          stable(previous.map((row) => comparableRow(key, row)))
+          ? previous
+          : normalized;
     }
     if (stable(next[key] ?? null) !== stable(previous)) manual.add(key);
   }
@@ -198,7 +229,7 @@ function supportedParts(
         : [],
     );
   const rows = proposals.flatMap((value) =>
-    Array.isArray(value) ? value : [],
+    Array.isArray(value) ? value.map((row) => comparableRow(field, row)) : [],
   );
   const identity = fieldIdentity(field);
   const rowKey = (row: FieldRow) => {
@@ -212,7 +243,8 @@ function supportedParts(
         ]);
   };
   const supported = new Set<string>();
-  for (const [index, row] of saved.entries()) {
+  for (const [index, original] of saved.entries()) {
+    const row = comparableRow(field, original);
     const key = rowKey(row);
     const matching = rows.filter((candidate) => rowKey(candidate) === key);
     for (const [column, cell] of Object.entries(row))
@@ -272,6 +304,16 @@ function stable(value: FieldValue): string {
     );
   return JSON.stringify(value);
 }
+function comparableRow(field: string, row: FieldRow): FieldRow {
+  return Object.fromEntries(
+    Object.entries(row).map(([column, value]) => [
+      column,
+      value !== null && isRublesColumn(field, column)
+        ? (canonicalMoneyAmount(value) ?? value)
+        : value,
+    ]),
+  );
+}
 function reconcile(key: string, found: FieldValue[]): FieldValue {
   if (!found.length) return null;
   const isRows = (value: FieldValue): value is FieldRow[] =>
@@ -283,7 +325,9 @@ function reconcile(key: string, found: FieldValue[]): FieldValue {
           if (typeof value !== 'string') return [];
           const comparable = isCalendarDateField(key)
             ? canonicalCalendarDate(value)
-            : value;
+            : isRublesField(key)
+              ? canonicalMoneyAmount(value)
+              : value;
           return comparable === undefined ? [] : [comparable];
         }),
       ),
@@ -297,7 +341,8 @@ function reconcile(key: string, found: FieldValue[]): FieldValue {
   )
     return null;
   for (const table of found)
-    for (const row of table) {
+    for (const supplied of table) {
+      const row = comparableRow(key, supplied);
       const identity = fieldIdentity(key);
       const id =
         identity.length && identity.every((column) => row[column]?.trim())

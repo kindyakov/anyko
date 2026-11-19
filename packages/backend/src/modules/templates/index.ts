@@ -53,10 +53,24 @@ const bankruptcyPackage: DocumentPackage = documentPackageSchema.parse({
     (version) => manifest.find((doc) => doc.version === version),
   ),
 });
+// The binding format changed. The document body and its approved asset are the same.
+const amountPackage: DocumentPackage = documentPackageSchema.parse({
+  ...bankruptcyPackage,
+  version: 'bfl-bankruptcy-v6',
+  fields: bankruptcyPackage.fields.filter(
+    ({ key }) => key !== 'debtTotalWords',
+  ),
+  documents: bankruptcyPackage.documents.map((document) =>
+    document.version === 'bfl-statement-v5'
+      ? { ...document, version: 'bfl-statement-v6' }
+      : document,
+  ),
+});
 export function availablePackages(): DocumentPackage[] {
-  return [bankruptcyPackage];
+  return [amountPackage];
 }
 const knownPackages = [
+  amountPackage,
   bankruptcyPackage,
   fourthPackage,
   thirdPackage,
@@ -74,7 +88,9 @@ export function requirePackage(version: string): DocumentPackage {
 }
 export function templateBytes(version: string): Uint8Array {
   if (version === technicalPackage.version) return technicalBytes(version);
-  const template = manifest.find((item) => item.version === version);
+  const assetVersion =
+    version === 'bfl-statement-v6' ? 'bfl-statement-v5' : version;
+  const template = manifest.find((item) => item.version === assetVersion);
   if (!template) throw new Error('TEMPLATE_NOT_FOUND');
   const bytes = readFileSync(
     new URL(
