@@ -9,6 +9,12 @@ export const previewParagraphSchema = z.object({
   fontSize: z.number(),
   indent: z.number(),
   after: z.number(),
+  italic: z.boolean().optional(),
+  underline: z.boolean().optional(),
+  boldFields: z.array(z.string()).optional(),
+  left: z.number().optional(),
+  right: z.number().optional(),
+  marker: z.object({ list: z.string(), pattern: z.string() }).optional(),
 });
 export const previewCellSchema = z.object({
   paragraphs: z.array(previewParagraphSchema),
@@ -35,6 +41,14 @@ export const documentTemplateSchema = z.object({
   title: z.string(),
   filename: z.string(),
   checksum: z.string().regex(/^[a-f0-9]{64}$/),
+  margins: z
+    .object({
+      top: z.number().nonnegative(),
+      right: z.number().nonnegative(),
+      bottom: z.number().nonnegative(),
+      left: z.number().nonnegative(),
+    })
+    .optional(),
   blocks: z.array(previewBlockSchema),
 });
 export const documentPackageSchema = z.object({

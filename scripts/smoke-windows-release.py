@@ -243,7 +243,7 @@ try:
     threading.Thread(target=provider.serve_forever, daemon=True).start()
     request('/v1/workspaces/local/settings/llm', {'baseURL': f'http://127.0.0.1:{provider.server_port}/v1',
                               'visionModel': 'fixture', 'extractionModel': 'fixture', 'apiKey': 'synthetic-key'})
-    created = json.loads(request('/v1/workspaces/local/works', {'packageVersion': 'bfl-bankruptcy-v3', 'title': 'Synthetic test'}))
+    created = json.loads(request('/v1/workspaces/local/works', {'packageVersion': 'bfl-bankruptcy-v4', 'title': 'Synthetic test'}))
     work = created['work']['id']
     boundary = 'anyko-' + uuid.uuid4().hex
     payload = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="synthetic.pdf"\r\n'

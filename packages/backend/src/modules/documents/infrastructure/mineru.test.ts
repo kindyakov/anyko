@@ -116,6 +116,32 @@ test('a successful response from the old processor is rejected for PDF', async (
   }
 });
 
+test('visual input preparation never calls the local OCR route on an older processor', async () => {
+  const paths: string[] = [];
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch(request) {
+      paths.push(new URL(request.url).pathname);
+      return new Response(null, { status: 404 });
+    },
+  });
+  try {
+    const parser = createMineruParser({
+      baseUrl: `http://127.0.0.1:${String(server.port)}`,
+      timeoutMs: 1000,
+    });
+    const png = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    await rejected(
+      parser.parseDocument(png, 'png', identity, 'visual-inputs'),
+      'MINERU_VISUAL_INPUTS_OUTDATED',
+    );
+    expect(paths).toEqual([`/v1/attempts/${identity}/visual-inputs`]);
+  } finally {
+    await server.stop(true);
+  }
+});
+
 test('invalid ZIP and mislabeled rasters never become published artifacts', async () => {
   for (const archive of [
     strToU8('invalid ZIP'),

@@ -20,6 +20,7 @@ test('the selectable package contains three real versioned templates; archived s
   const packages = availablePackages();
   expect(packages).toHaveLength(1);
   expect(packages[0]?.technical).toBe(false);
+  expect(packages[0]?.version).toBe('bfl-bankruptcy-v4');
   expect(packages[0]?.documents.map((doc) => doc.id)).toEqual([
     'statement',
     'inventory',
@@ -30,7 +31,7 @@ test('the selectable package contains three real versioned templates; archived s
 });
 
 test('each DOCX keeps its source styles, page geometry and structured tables and renders the shared identity and repeated rows', () => {
-  const pack = requirePackage('bfl-bankruptcy-v3');
+  const pack = requirePackage('bfl-bankruptcy-v4');
   const values = emptyFieldValues();
   Object.assign(values, {
     lastName: 'Тестовый',
@@ -38,6 +39,10 @@ test('each DOCX keeps its source styles, page geometry and structured tables and
     middleName: 'Сергеевич',
     documentNumber: '0000 123456',
     documentDate: '05.11.2026',
+    attachments: [
+      { description: 'Синтетическое приложение А' },
+      { description: 'Синтетическое приложение Б' },
+    ],
     debts: [
       {
         name: 'Синтетический кредитор А',
@@ -61,7 +66,9 @@ test('each DOCX keeps its source styles, page geometry and structured tables and
       template.checksum,
     );
     const zip = new PizZip(source);
-    const rendered = new PizZip(generateDocument(source, templateData(values)));
+    const rendered = new PizZip(
+      generateDocument(source, templateData(values, template.version)),
+    );
     const xml = rendered.file('word/document.xml')?.asText() ?? '';
     expect(xml).toContain('Тестовый');
     expect(xml).toContain('Пётр');
@@ -88,7 +95,35 @@ test('each DOCX keeps its source styles, page geometry and structured tables and
       expect(xml).toContain('Синтетическая квартира А');
       expect(xml).toContain('Синтетическая квартира Б');
     }
+    if (template.id === 'statement') {
+      expect(xml).toContain('Тестовый Пётр Сергеевич');
+      expect(xml).toContain('______________________  Тестовый П.С.');
+      expect(xml).not.toContain(
+        '______________________  Тестовый Пётр Сергеевич',
+      );
+      const attachments = (xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).filter(
+        (paragraph) => paragraph.includes('Синтетическое приложение'),
+      );
+      expect(attachments).toHaveLength(2);
+      expect(
+        attachments.every((paragraph) => paragraph.includes('<w:numPr>')),
+      ).toBe(true);
+    }
   }
+});
+
+test('a statement signature uses only available initials without changing the name in the facts', () => {
+  const values = {
+    ...emptyFieldValues(),
+    lastName: 'Иванова',
+    firstName: ' ёлка ',
+  };
+  const data = templateData(values);
+  expect(data.signerName).toBe('Иванова Ё.');
+  expect(values.firstName).toBe(' ёлка ');
+  expect(templateData({ ...values, lastName: null }).signerName).toBe(
+    '[не заполнено]',
+  );
 });
 
 test('unknown collections do not become absence, and an empty package never contains source-case defaults', () => {
@@ -149,7 +184,10 @@ test('the chosen request and explicit absence of attachments cannot be contradic
   };
   const xml =
     new PizZip(
-      generateDocument(templateBytes('bfl-statement-v3'), templateData(values)),
+      generateDocument(
+        templateBytes('bfl-statement-v4'),
+        templateData(values, 'bfl-statement-v4'),
+      ),
     )
       .file('word/document.xml')
       ?.asText() ?? '';
@@ -159,4 +197,5 @@ test('the chosen request and explicit absence of attachments cannot be contradic
   );
   expect(xml).not.toContain('прилагаю');
   expect(xml).not.toContain('подтверждаются приложенными документами');
+  expect(xml).not.toContain('Отсутствует');
 });

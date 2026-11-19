@@ -1,6 +1,6 @@
 'use client';
 import { Tabs } from '@base-ui/react/tabs';
-import { FileText, Minus, Plus, Table2 } from 'lucide-react';
+import { ArrowLeft, FileText, Minus, Plus, Table2 } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import {
@@ -35,17 +35,22 @@ interface Props {
   values: FieldValues;
   disabled: boolean;
   onChange: (key: FieldKey, value: FieldValue) => void;
+  onBack?: () => void;
   /** Bring this field into view and highlight it; a new nonce repeats the jump. */
   focus?: { key: FieldKey; nonce: number } | undefined;
 }
 
 export function PackagePreview(props: Props) {
-  const { pack, values, disabled, onChange, focus } = props;
+  const { pack, values, disabled, onChange, onBack, focus } = props;
   const [selected, select] = useState(pack.documents[0]?.version);
-  const [handledFocus, setHandledFocus] = useState<typeof focus>();
+  const [handledFocus, setHandledFocus] = useState<
+    NonNullable<typeof focus> & { version: string | undefined; inForm: boolean }
+  >();
+  const [formOpen, setFormOpen] = useState(false);
   const [zoom, setZoom] = useState<number | 'fit'>('fit');
   const [fit, setFit] = useState(1);
   const frame = useRef<HTMLDivElement>(null);
+  const form = useRef<HTMLDivElement>(null);
   const document =
     pack.documents.find((item) => item.version === selected) ??
     pack.documents[0];
@@ -73,36 +78,48 @@ export function PackagePreview(props: Props) {
     focus &&
     (focus.key !== handledFocus?.key || focus.nonce !== handledFocus.nonce)
   ) {
-    setHandledFocus(focus);
-    const host = pack.documents.find((item) =>
-      new RegExp(`\\{[#]?${focus.key}\\}`).test(mentions(item.blocks)),
-    );
+    const host = pack.documents.find((item) => {
+      const fields = mentions(item.blocks);
+      return (
+        fields.includes(`{${focus.key}}`) || fields.includes(`{#${focus.key}}`)
+      );
+    });
+    setHandledFocus({
+      ...focus,
+      version: host?.version ?? document?.version,
+      inForm: !host,
+    });
     if (host && host.version !== selected) select(host.version);
+    if (!host) setFormOpen(true);
   }
   const focusKey = focus?.key;
   const focusNonce = focus?.nonce;
+  const focusMatchesDraft =
+    !!handledFocus &&
+    document?.version === handledFocus.version &&
+    (!handledFocus.inForm || formOpen);
   useEffect(() => {
-    if (!focusKey || focusNonce === undefined) return;
+    if (!focusKey || focusNonce === undefined || !focusMatchesDraft) return;
     const target =
       frame.current?.querySelector<HTMLElement>(`[data-field="${focusKey}"]`) ??
-      window.document.querySelector<HTMLElement>(
+      form.current?.querySelector<HTMLElement>(
         `[data-field-editor="${focusKey}"]`,
       );
     if (!target) return;
     target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // Re-adding the class on the next frame restarts the highlight animation.
-    target.classList.remove('animate-flash');
-    requestAnimationFrame(() => {
-      target.classList.add('animate-flash');
-    });
+    target.setAttribute('data-review-highlight', '');
     const input = target.querySelector('textarea');
     input?.focus({ preventScroll: true });
     input?.setSelectionRange(input.value.length, input.value.length);
-  }, [focusKey, focusNonce]);
+    return () => {
+      target.removeAttribute('data-review-highlight');
+    };
+  }, [focusKey, focusNonce, focusMatchesDraft]);
   if (!document) return null;
   const scale = zoom === 'fit' ? fit : zoom;
   const zoomIndex = zooms.findIndex((item) => item.value === scale);
   const zoomClass = zooms[zoomIndex]?.className ?? '';
+  const focusedField = pack.fields.find(({ key }) => key === focusKey);
   return (
     <Tabs.Root
       value={document.version}
@@ -112,6 +129,23 @@ export function PackagePreview(props: Props) {
       render={<section className="min-w-0" aria-label="Пакет документов" />}
     >
       <div className="z-10 -mx-1 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.07] bg-[#0d0d10]/70 p-1.5 backdrop-blur-xl md:sticky md:top-3">
+        {(onBack || (focusMatchesDraft && focusedField)) && (
+          <div className="flex basis-full flex-wrap items-center gap-2 border-b border-white/[0.07] pb-1.5">
+            {onBack && (
+              <Button variant="ghost" size="sm" onClick={onBack}>
+                <ArrowLeft size={15} aria-hidden /> К сведениям
+              </Button>
+            )}
+            {focusMatchesDraft && focusedField && (
+              <p
+                role="status"
+                className="rounded-lg border border-rose-400/25 bg-rose-500/[0.08] px-2.5 py-1.5 text-xs text-rose-100"
+              >
+                Выделено поле: <strong>{focusedField.label}</strong>
+              </p>
+            )}
+          </div>
+        )}
         <Tabs.List
           aria-label="Документы пакета"
           className="relative flex min-w-0 flex-wrap gap-1"
@@ -183,7 +217,7 @@ export function PackagePreview(props: Props) {
         </div>
         <div
           ref={frame}
-          className="max-w-full overflow-x-auto rounded-3xl bg-[radial-gradient(80%_60%_at_50%_0%,#26262c,#141417)] px-4 py-8 shadow-[inset_0_0_0_1px_#ffffff0d]"
+          className="max-w-full overflow-x-auto rounded-3xl bg-[radial-gradient(80%_60%_at_50%_0%,#26262c,#141417)] px-4 py-8 shadow-[inset_0_0_0_1px_#ffffff0d] [&_[data-review-highlight]]:outline-2 [&_[data-review-highlight]]:outline-offset-2 [&_[data-review-highlight]]:outline-rose-500"
         >
           <div className={`mx-auto w-fit ${zoomClass}`}>
             <PreviewPaper
@@ -196,6 +230,8 @@ export function PackagePreview(props: Props) {
           </div>
         </div>
         <Disclosure
+          open={formOpen}
+          onOpenChange={setFormOpen}
           className="glass mt-6 rounded-3xl border border-white/[0.08] px-5 py-2 sm:px-6"
           title={
             <span className="flex items-center gap-3">
@@ -212,7 +248,10 @@ export function PackagePreview(props: Props) {
             </span>
           }
         >
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div
+            ref={form}
+            className="grid gap-4 sm:grid-cols-2 [&_[data-review-highlight]]:outline-2 [&_[data-review-highlight]]:outline-offset-2 [&_[data-review-highlight]]:outline-rose-500"
+          >
             {[...pack.fields]
               .sort(
                 (a, b) =>

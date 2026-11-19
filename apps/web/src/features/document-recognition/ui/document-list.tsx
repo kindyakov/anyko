@@ -234,6 +234,7 @@ export function DocumentList({
           {documents.map((document, index) => (
             <DocumentRow
               key={document.id}
+              workspaceId={workspaceId}
               document={document}
               index={index}
               checked={selection.has(document.id)}

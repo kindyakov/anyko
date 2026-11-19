@@ -281,6 +281,9 @@ function renderFacts() {
 // Поле есть дважды: в бумаге документа и в редакторе под ним. Оба связаны с одним значением;
 // тест работает с первым, в порядке документа.
 async function findField(label: string) {
+  await userEvent
+    .setup()
+    .click(await screen.findByRole('button', { name: 'Черновики документов' }));
   return (await screen.findAllByLabelText(label))[0] as HTMLTextAreaElement;
 }
 const fieldNamed = (label: string) =>
@@ -331,9 +334,7 @@ test('a dotted field supplied only by the server catalogue is submitted as one l
     },
   });
   renderFacts();
-  const input = (
-    await screen.findAllByLabelText('Новое поле профиля')
-  )[0] as HTMLTextAreaElement;
+  const input = await findField('Новое поле профиля');
   await typeInto(input, 'После');
   await userEvent.setup().click(saveButton());
   await waitFor(() => {
@@ -416,12 +417,7 @@ test('a removed profile field shows its edit conflict with only the server actio
     },
   });
   renderFacts();
-  await typeInto(
-    (
-      await screen.findAllByLabelText('Удаляемое поле')
-    )[0] as HTMLTextAreaElement,
-    'Моя правка',
-  );
+  await typeInto(await findField('Удаляемое поле'), 'Моя правка');
   server.change(viewWith({}, { revision: 2 }));
   server.announceChange();
   const conflicts = await screen.findByRole('region', {

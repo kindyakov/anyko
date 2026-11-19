@@ -397,7 +397,17 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
           value: 'Петрова',
           selected: true,
           evidence: [
-            { documentId: source.id, imagePath: null, quote: 'Петрова' },
+            {
+              documentId: source.id,
+              imagePath: null,
+              page: 1,
+              quote: 'Петрова Мария',
+            },
+            {
+              documentId: source.id,
+              imagePath: 'image.png',
+              quote: 'М. Петрова',
+            },
           ],
         },
       ],
@@ -433,22 +443,29 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
   const review = within(
     screen.getByRole('region', { name: 'Найденные сведения' }),
   );
-  await user.click(review.getByRole('button', { name: 'Расхождения · 1' }));
-  expect(review.getByRole('heading', { name: 'Имя' })).toBeTruthy();
-  expect(review.queryByRole('heading', { name: 'Фамилия' })).toBeNull();
-  await user.click(review.getByRole('button', { name: 'Применить' }));
-  expect(review.getByRole('button', { name: 'Расхождения · 1' })).toBeTruthy();
+  expect(
+    review.getByRole('button', { name: 'Требуют внимания · 1', pressed: true }),
+  ).toBeTruthy();
+  expect(review.getByRole('heading', { name: 'Поле Имя' })).toBeTruthy();
+  expect(review.queryByRole('heading', { name: 'Поле Фамилия' })).toBeNull();
+  await user.click(
+    review.getByRole('button', { name: 'Подставить это значение' }),
+  );
+  expect(
+    review.getByRole('button', { name: 'Требуют внимания · 1' }),
+  ).toBeTruthy();
   expect(review.getByText('Расхождение')).toBeTruthy();
-  expect(review.getByText('Выбрано')).toBeTruthy();
-  expect(review.queryByRole('button', { name: 'Применить' })).toBeNull();
+  expect(review.getByText('Не сохранено')).toBeTruthy();
+  expect(review.getByText('Модель нашла это значение')).toBeTruthy();
+  expect(
+    review.queryByRole('button', { name: 'Подставить это значение' }),
+  ).toBeNull();
 
   await user.click(screen.getByRole('button', { name: 'Сохранить' }));
   expect(
-    await review.findByRole('button', { name: 'Расхождения · 0' }),
+    await review.findByRole('button', { name: 'Требуют внимания · 0' }),
   ).toBeTruthy();
-  expect(
-    review.getByText('В сохранённых сведениях нет расхождений.'),
-  ).toBeTruthy();
+  expect(review.getByText('Поля для проверки не отмечены')).toBeTruthy();
   expect(screen.getByText('Проверьте найденные сведения')).toBeTruthy();
   expect(requests.find(({ method }) => method === 'PATCH')?.body).toMatchObject(
     {
@@ -456,9 +473,29 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
       values: { firstName: 'Анна', lastName: 'Петрова' },
     },
   );
+  await user.click(review.getByRole('button', { name: 'Посмотреть все поля' }));
+  const surname = within(review.getByRole('article', { name: 'Поле Фамилия' }));
+  expect(surname.getByText('Петрова', { exact: true })).toBeTruthy();
+  expect(
+    surname.getByRole('button', {
+      name: `Открыть стр. 1 — ${source.filename}`,
+    }),
+  ).toBeTruthy();
+  expect(
+    surname.queryByRole('button', {
+      name: `Открыть файл — ${source.filename}`,
+    }),
+  ).toBeNull();
+  await user.click(
+    surname.getByRole('button', { name: 'Ещё из этого файла · 1' }),
+  );
+  expect(surname.getByText('М. Петрова')).toBeTruthy();
+  expect(
+    surname.getByRole('button', { name: `Открыть файл — ${source.filename}` }),
+  ).toBeTruthy();
 });
 
-test('saved candidate marks keep a merged field out of pending review and hide its apply actions', async () => {
+test('merged values show their included findings and keep them out of attention', async () => {
   const first = { name: 'Банк А', basis: 'Договор А' };
   const second = { name: 'Банк Б', basis: 'Договор Б' };
   const view: WorkView = {
@@ -498,6 +535,7 @@ test('saved candidate marks keep a merged field out of pending review and hide i
     facts: {
       ...workView.facts,
       values: { debts: [first, second], firstName: 'Мария' },
+      discrepancyFields: ['firstName'],
       candidates: [
         {
           field: 'debts',
@@ -531,10 +569,15 @@ test('saved candidate marks keep a merged field out of pending review and hide i
   const review = within(
     await screen.findByRole('region', { name: 'Найденные сведения' }),
   );
-  expect(review.getAllByText('Выбрано')).toHaveLength(2);
-  expect(review.getAllByRole('button', { name: 'Применить' })).toHaveLength(1);
-  await user.click(review.getByRole('button', { name: 'Не применены · 1' }));
-  expect(review.queryByRole('heading', { name: 'Обязательства' })).toBeNull();
-  expect(review.getByRole('heading', { name: 'Имя' })).toBeTruthy();
-  expect(review.queryByText('Выбрано')).toBeNull();
+  expect(
+    review.queryByRole('heading', { name: 'Поле Обязательства' }),
+  ).toBeNull();
+  expect(review.getByRole('heading', { name: 'Поле Имя' })).toBeTruthy();
+  await user.click(review.getByRole('button', { name: 'Все поля · 2' }));
+  expect(review.getAllByText('Совпадает полностью или частично')).toHaveLength(
+    2,
+  );
+  expect(
+    review.getAllByRole('button', { name: 'Подставить это значение' }),
+  ).toHaveLength(1);
 });

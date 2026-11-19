@@ -11,6 +11,7 @@ import {
 import type { DocumentSummary } from '@anyko/contracts/documents';
 import { workSourceLimit } from '@anyko/contracts/works';
 import { Button, FileIcon, Notice, StatusPill } from '@anyko/ui';
+import { HorizonLoader } from '@anyko/ui/brand';
 
 import { type DocumentFilters, documentsQueryOptions } from '../../api/queries';
 import {
@@ -58,23 +59,19 @@ export function CatalogSelection({
     setCursors([]);
   }, []);
   return (
-    <div>
-      <DocumentSearch filters={filters} onChange={changeFilters} />
+    <div className="grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+      <DocumentSearch
+        filters={filters}
+        onChange={changeFilters}
+        catalog
+        empty={query.isSuccess && rows.length === 0 && !cursors.length}
+      />
       {query.error && (
         <Notice role="alert" tone="danger" title="Каталог недоступен">
           {describeDocumentError(query.error)}
         </Notice>
       )}
-      {query.isPending && (
-        <p className="text-muted py-4 text-sm" role="status">
-          Загружаем файлы…
-        </p>
-      )}
-      {query.isSuccess && rows.length === 0 && (
-        <p className="text-muted py-4 text-sm">
-          Файлы по этим фильтрам не найдены.
-        </p>
-      )}
+      {query.isPending && <HorizonLoader label="Загружаем файлы" />}
       {rows.length > 0 && (
         <ul
           className="grid max-h-[42dvh] gap-2 overflow-y-auto pr-1"
@@ -126,10 +123,7 @@ export function CatalogSelection({
         </ul>
       )}
       {(cursors.length > 0 || !!next) && (
-        <nav
-          className="mt-3 flex items-center gap-2"
-          aria-label="Страницы каталога"
-        >
+        <nav className="flex items-center gap-2" aria-label="Страницы каталога">
           <Button
             variant="secondary"
             size="sm"
@@ -155,8 +149,8 @@ export function CatalogSelection({
           </Button>
         </nav>
       )}
-      <p className="text-muted mt-3 text-sm" role="status">
-        Выбрано: {selected.size} из {remaining}
+      <p className="text-muted text-xs" role="status">
+        Свободных мест для файлов: {Math.max(0, remaining - selected.size)}
       </p>
     </div>
   );

@@ -28,7 +28,10 @@ export type {
 export { StorageWriteOutcomeUnknown } from './application/ports';
 export { checksum } from './application/checksum';
 export { documentLockKey } from './application/document-lock-key';
-export { documentResultSchema } from './application/result-schema';
+export {
+  cloudImageOcrVersion,
+  documentResultSchema,
+} from './application/result-schema';
 export type { SourceFormat } from './application/source-format';
 export { sourceFormatFromKey } from './application/source-format';
 export { DocumentError, DocumentErrors } from './errors';

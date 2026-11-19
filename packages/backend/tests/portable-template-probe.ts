@@ -4,6 +4,7 @@ for (const version of [
   'bfl-statement-v1',
   'bfl-statement-v2',
   'bfl-statement-v3',
+  'bfl-statement-v4',
   'bfl-inventory-v1',
   'bfl-creditors-v1',
 ]) {

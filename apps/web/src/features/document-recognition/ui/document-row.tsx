@@ -17,6 +17,7 @@ import {
   recognitionRetryCode,
 } from '../model/error-texts';
 
+import { LinkedWorks } from './linked-works';
 import { DocumentRetryButton } from './retry-button';
 
 const labels: Record<DocumentSummary['status'], string> = {
@@ -65,6 +66,7 @@ export function SelectionCheckbox({
 }
 
 export function DocumentRow({
+  workspaceId,
   document,
   index,
   checked,
@@ -75,6 +77,7 @@ export function DocumentRow({
   onRetry,
   onDelete,
 }: {
+  workspaceId: string;
   document: DocumentSummary;
   index: number;
   checked: boolean;
@@ -111,6 +114,9 @@ export function DocumentRow({
         <p className="text-muted mt-1 text-xs">
           Загружен <RelativeTime value={document.createdAt} />
         </p>
+        {!!document.linkedWorks?.length && (
+          <LinkedWorks workspaceId={workspaceId} works={document.linkedWorks} />
+        )}
       </div>
       <StatusPill tone={tones[document.status]}>
         {(document.status === 'failed' &&

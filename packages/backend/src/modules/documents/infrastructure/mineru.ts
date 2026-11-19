@@ -139,10 +139,12 @@ export function createMineruParser(options: {
       bytes: Uint8Array,
       format: SourceFormat,
       attemptId: string,
+      mode?: 'visual-inputs',
     ): Promise<DocumentResult> {
       if (bytes.length < 5 || bytes.length > 20 * 1024 * 1024)
         throw new Error('MINERU_INPUT_TOO_LARGE');
       const url = target(attemptId);
+      if (mode === 'visual-inputs') url.pathname += '/visual-inputs';
       url.searchParams.set('format', format);
       const signal = AbortSignal.timeout(options.timeoutMs);
       try {
@@ -155,6 +157,8 @@ export function createMineruParser(options: {
         });
         if (!response.ok) {
           await response.body?.cancel();
+          if (mode === 'visual-inputs' && response.status === 404)
+            throw new Error('MINERU_VISUAL_INPUTS_OUTDATED');
           throw new Error(
             response.status === 409 || response.status === 410
               ? 'MINERU_CANCELLED'
@@ -167,6 +171,10 @@ export function createMineruParser(options: {
         if (!version || !/^\d+\.\d+\.\d+(?:[\w.+-]*)$/.test(version)) {
           await response.body?.cancel();
           throw new Error('MINERU_INVALID_RESPONSE');
+        }
+        if (mode === 'visual-inputs' && !version.endsWith('+visual-inputs.1')) {
+          await response.body?.cancel();
+          throw new Error('MINERU_VISUAL_INPUTS_OUTDATED');
         }
         const reader = response.body?.getReader();
         if (!reader) throw new Error('MINERU_INVALID_RESPONSE');

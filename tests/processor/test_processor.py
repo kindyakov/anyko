@@ -255,6 +255,24 @@ class ProcessorReview(unittest.IsolatedAsyncioTestCase):
         self.processor.lock.close()
         self.temporary.cleanup()
 
+    async def test_visual_only_normalizes_tiff_frames_without_running_ocr(self):
+        from PIL import Image
+
+        source = io.BytesIO()
+        first = Image.new('RGB', (60, 40), 'white')
+        second = Image.new('RGB', (60, 40), 'red')
+        first.save(source, format='TIFF', save_all=True, append_images=[second])
+        result = await self.processor.submit(
+            self.identity, source.getvalue(), 'tiff', visual_only=True,
+        )
+        with zipfile.ZipFile(io.BytesIO(result)) as archive:
+            self.assertEqual(archive.read('markdown.md'), b'')
+            self.assertEqual(archive.namelist(), [
+                'markdown.md', 'images/anyko-source-000.jpg', 'images/anyko-source-001.jpg',
+            ])
+        self.assertFalse(self.started.is_set())
+        self.assertFalse(self.processor.job_dir(self.identity).exists())
+
     async def begin(self):
         task = asyncio.create_task(self.processor.submit(self.identity, b'%PDF-fixture', 'pdf'))
         self.assertTrue(await asyncio.to_thread(self.started.wait, 1))

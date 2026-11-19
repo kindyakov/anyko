@@ -6,6 +6,7 @@ import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 import { createQueueProbe } from '@anyko/worker/testing';
 
+import type { DocumentAgents } from '../../../packages/backend/src/modules/agents';
 import type {
   DocumentParser,
   DocumentView,
@@ -74,6 +75,7 @@ const recognition = api.documentHttp.documents;
 const startDocumentWorker = (options: {
   queueName: string;
   parser: DocumentParser;
+  agents?: DocumentAgents;
 }) => startDocumentConsumer(testConfig, { logger, storage, ...options });
 async function expectRejected(operation: Promise<unknown>, code?: string) {
   let caught: unknown;
@@ -141,6 +143,7 @@ afterAll(async () => {
   await db.resultUpload.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.run.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.sourceDocument.deleteMany({ where: { workspaceId: { in: owned } } });
+  await db.llmSettings.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.auditEvent.deleteMany({ where: { workspaceId: { in: owned } } });
   await db.anykoWorkspace.deleteMany({ where: { id: { in: owned } } });
   await api.stop();
@@ -642,14 +645,45 @@ test('document formats survive source storage and queue delivery independently o
     });
     documents.push({ document, format: item.format });
   }
+  await api.workHttp.settings.save(memberScope(own), {
+    baseURL: 'http://127.0.0.1:1/v1',
+    visionModel: 'fixture-vision',
+    extractionModel: 'fixture-extraction',
+    apiKey: crypto.randomUUID(),
+  });
   const worker = await startDocumentWorker({
     queueName: `document-formats-${crypto.randomUUID()}`,
+    agents: {
+      ready: () => Promise.resolve(),
+      stop: () => Promise.resolve(),
+      eraseThread: () => Promise.resolve(),
+      describe: ({ bytes, modelId, purpose }) => {
+        expect(modelId).toBe('fixture-vision');
+        expect(purpose).toBe('transcription');
+        return Promise.resolve({
+          description: new TextDecoder().decode(bytes),
+          usage: { inputTokens: 4, outputTokens: 3 },
+        });
+      },
+      extract: () => Promise.reject(new Error('UNEXPECTED_EXTRACTION')),
+      reconcile: () => Promise.reject(new Error('UNEXPECTED_RECONCILIATION')),
+    },
     parser: {
       eraseAttempt: () => Promise.resolve(),
-      parseDocument(_bytes, format) {
+      parseDocument(_bytes, format, _attemptId, mode) {
+        expect(mode).toBe(format === 'docx' ? undefined : 'visual-inputs');
         return Promise.resolve({
           markdown: `Extracted ${format}`,
           processorVersion: 'test-format-parser',
+          ...(mode && {
+            images: [
+              {
+                path: 'images/anyko-source-000.jpg',
+                contentType: 'image/jpeg',
+                bytes: new TextEncoder().encode(`Extracted ${format}`),
+              },
+            ],
+          }),
         });
       },
     },

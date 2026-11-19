@@ -1,10 +1,12 @@
 'use client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Check, Search, SearchX } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { workSourceLimit } from '@anyko/contracts/works';
 import { Button, Input, Modal, Notice } from '@anyko/ui';
+import { HorizonLoader } from '@anyko/ui/brand';
 
 import {
   describeDocumentError,
@@ -20,6 +22,7 @@ import { workQueryOptions, worksQueryOptions } from '../../api/queries';
 import { workCommandReasons } from '../../model/command-errors';
 
 import { CreateWorkDialog } from './create-work-dialog';
+import { DestinationWorkList } from './destination-work-list';
 
 export function AddRecognitionsToWork({
   selected: initialSelection,
@@ -62,6 +65,7 @@ export function AddRecognitionsToWork({
     selected.size > workSourceLimit ||
     (newCount > 0 && attached.size + newCount > workSourceLimit);
   const works = list.data?.items ?? [];
+  const loadingWorks = list.isPending || list.isPlaceholderData;
   const totalPages = Math.ceil((list.data?.total ?? 0) / 6);
 
   function submit() {
@@ -107,48 +111,68 @@ export function AddRecognitionsToWork({
     >
       <div className="grid gap-4">
         {canRead && !workId && (
-          <>
-            <Input
-              type="search"
-              aria-label="Поиск работы"
-              placeholder="Найти работу"
-              value={q}
-              maxLength={200}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(1);
-              }}
-            />
-            {list.isPending && (
-              <p className="text-muted text-sm" role="status">
-                Загружаем работы…
-              </p>
-            )}
+          <section aria-label="Куда добавить" className="grid gap-2.5">
+            <h3 className="text-sm font-semibold">Куда добавить</h3>
+            <div className="relative">
+              <Search
+                size={16}
+                aria-hidden
+                className="text-muted pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
+              />
+              <Input
+                type="search"
+                aria-label="Поиск работы"
+                placeholder="Найти работу"
+                value={q}
+                maxLength={200}
+                className="pl-9"
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+            {loadingWorks && <HorizonLoader label="Загружаем работы" />}
             {list.isError && (
               <Notice tone="danger" role="alert">
                 Не удалось загрузить работы.
               </Notice>
             )}
-            {list.isSuccess && !works.length && (
-              <p className="text-muted text-sm">Работы не найдены.</p>
-            )}
-            <ul aria-label="Доступные работы" className="grid gap-2">
-              {works.map((item) => (
-                <li key={item.id}>
+            {list.isSuccess && !loadingWorks && !works.length && (
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/10 bg-white/[0.035] p-3">
+                <SearchX
+                  size={20}
+                  aria-hidden
+                  className="shrink-0 text-rose-300"
+                />
+                <div className="min-w-0 flex-1 basis-36" role="status">
+                  <p className="text-sm font-semibold">
+                    {q.trim() ? 'Работы не найдены' : 'Пока нет работ'}
+                  </p>
+                  {q.trim() && (
+                    <p className="text-muted mt-0.5 text-xs">
+                      Попробуйте другое название.
+                    </p>
+                  )}
+                </div>
+                {q.trim() && (
                   <Button
                     variant="secondary"
-                    className="w-full justify-start"
-                    disabled={list.isPlaceholderData}
+                    size="sm"
                     onClick={() => {
-                      setWorkId(item.id);
+                      setQuery('');
+                      setPage(1);
                     }}
                   >
-                    {item.title}
+                    Очистить поиск
                   </Button>
-                </li>
-              ))}
-            </ul>
-            {totalPages > 1 && (
+                )}
+              </div>
+            )}
+            {!loadingWorks && works.length > 0 && (
+              <DestinationWorkList works={works} onSelect={setWorkId} />
+            )}
+            {!loadingWorks && totalPages > 1 && (
               <nav
                 aria-label="Страницы работ"
                 className="flex items-center gap-3"
@@ -178,13 +202,19 @@ export function AddRecognitionsToWork({
                 </Button>
               </nav>
             )}
-          </>
+          </section>
         )}
         {workId && (
-          <div className="flex items-center justify-between gap-3">
-            <p className="min-w-0 text-sm font-medium wrap-anywhere">
-              {work.data?.work.title ?? 'Выбранная работа'}
-            </p>
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-rose-400/25 bg-rose-400/[0.07] p-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-rose-400/10 text-rose-300">
+              <Check size={17} aria-hidden />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-muted text-xs">Куда добавятся файлы</p>
+              <p className="mt-0.5 text-sm font-semibold wrap-anywhere">
+                {work.data?.work.title ?? 'Выбранная работа'}
+              </p>
+            </div>
             <Button
               variant="ghost"
               size="sm"
@@ -202,6 +232,9 @@ export function AddRecognitionsToWork({
           <Notice tone="danger" role="alert">
             Не удалось загрузить выбранную работу.
           </Notice>
+        )}
+        {workId && work.isPending && (
+          <HorizonLoader label="Загружаем выбранную работу" />
         )}
         <SelectedCatalogFiles
           selected={selected}

@@ -27,6 +27,8 @@ export const pdfOcrSchema = z.object({
     .max(1000),
 });
 
+export const cloudImageOcrVersion = 'vision-ocr.1';
+
 export const documentResultSchema = z.object({
   version: z.literal(2),
   markdown: z.string().max(4 * 1024 * 1024),

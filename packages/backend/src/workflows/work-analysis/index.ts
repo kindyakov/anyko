@@ -1,5 +1,6 @@
 import { LlmError } from '@anyko/llm';
 
+import { visionPromptRevision } from '../../modules/agents';
 import { DocumentError } from '../../modules/documents';
 import type { WorkFacts } from '../../modules/facts';
 import { stepOutputSchema, type WorkAttempt } from '../../modules/processing';
@@ -111,11 +112,15 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         signal.throwIfAborted();
         await current();
         const source = await parse(documentId);
+        // The extraction cache depends on the visual instructions as well as the OCR result.
+        const cacheSourceDigest = source.images.length
+          ? `vision-${visionPromptRevision}:${source.sourceDigest}`
+          : source.sourceDigest;
         stage = 'vision';
         let output = await attempt.cached(
           documentId,
           'vision',
-          source.sourceDigest,
+          cacheSourceDigest,
         );
         if (!output) {
           await step({ stage, documentId, status: 'running' });
@@ -165,7 +170,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           }
           output = {
             version: 1,
-            sourceDigest: source.sourceDigest,
+            sourceDigest: cacheSourceDigest,
             visuals,
             candidates: [],
           };
@@ -181,7 +186,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         let extracted = await attempt.cached(
           documentId,
           stage,
-          source.sourceDigest,
+          cacheSourceDigest,
         );
         if (!extracted) {
           await step({ stage, documentId, status: 'running' });
@@ -234,7 +239,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           }
           extracted = stepOutputSchema.parse({
             version: 1,
-            sourceDigest: source.sourceDigest,
+            sourceDigest: cacheSourceDigest,
             visuals: output.visuals,
             candidates: found,
           });

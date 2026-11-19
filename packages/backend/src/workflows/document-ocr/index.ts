@@ -1,12 +1,16 @@
 import type { Logger } from '@anyko/logger';
 
+import type { DocumentAgents } from '../../modules/agents';
+import type { ConnectionsModule } from '../../modules/connections';
 import type {
   ArtifactRegistry,
   DocumentParser,
+  DocumentResult,
   SourceStorage,
 } from '../../modules/documents';
 import {
   checksum,
+  cloudImageOcrVersion,
   documentResultSchema,
   sourceFormatFromKey,
   StorageWriteOutcomeUnknown,
@@ -17,8 +21,11 @@ import type {
 } from '../../modules/processing';
 import { documentImageLimit } from '../../platform/document-output';
 
+const visionFrameConcurrency = 4;
+
 const failureCodes = new Map([
   ['MINERU_PDF_OCR_OUTDATED', 'OCR_PROCESSOR_OUTDATED'],
+  ['MINERU_VISUAL_INPUTS_OUTDATED', 'OCR_PROCESSOR_OUTDATED'],
   ['MINERU_TOO_MANY_IMAGES', 'OCR_TOO_MANY_IMAGES'],
   ['MINERU_RESULT_TOO_LARGE', 'OCR_RESULT_TOO_LARGE'],
   ['OCR_RESULT_TOO_LARGE', 'OCR_RESULT_TOO_LARGE'],
@@ -29,6 +36,14 @@ const failureCodes = new Map([
   ['MINERU_TIMEOUT', 'OCR_TIMEOUT'],
   ['MINERU_UNAVAILABLE', 'OCR_PROCESSOR_UNAVAILABLE'],
   ['MINERU_INVALID_RESPONSE', 'OCR_INVALID_RESULT'],
+  ['LLM_NOT_CONFIGURED', 'OCR_VISION_NOT_CONFIGURED'],
+  ['CONNECTION_REVOKED', 'OCR_VISION_NOT_CONFIGURED'],
+  ['LLM_AUTH_FAILED', 'OCR_VISION_NOT_CONFIGURED'],
+  ['LLM_TIMEOUT', 'OCR_TIMEOUT'],
+  ['LLM_UNAVAILABLE', 'OCR_PROCESSOR_UNAVAILABLE'],
+  ['LLM_RATE_LIMITED', 'OCR_VISION_RATE_LIMITED'],
+  ['LLM_INVALID_RESPONSE', 'OCR_INVALID_RESULT'],
+  ['OCR_NO_READABLE_TEXT', 'OCR_NO_READABLE_TEXT'],
 ]);
 export function createDocumentOcrWorkflow(options: {
   processing: Pick<DocumentArtifacts, 'stageResult' | 'forgetResult'>;
@@ -38,6 +53,8 @@ export function createDocumentOcrWorkflow(options: {
   ): Promise<DocumentAttempt | null>;
   storage: SourceStorage;
   parser: DocumentParser;
+  vision: Pick<DocumentAgents, 'describe'>;
+  connection: ConnectionsModule['internal']['connection'];
   artifacts: ArtifactRegistry;
   logger: Logger;
 }) {
@@ -61,11 +78,65 @@ export function createDocumentOcrWorkflow(options: {
         jobId: run.id,
         correlationId: run.correlationId,
       });
-      const parsed = await options.parser.parseDocument(
-        source,
-        format,
-        attemptId,
-      );
+      const raster = format !== 'pdf' && format !== 'docx';
+      let parsed: DocumentResult;
+      if (raster) {
+        const config = await options.connection(run.workspaceId, null);
+        const inputs = await options.parser.parseDocument(
+          source,
+          format,
+          attemptId,
+          'visual-inputs',
+        );
+        const frames = inputs.images ?? [];
+        const pages = [];
+        const assertCurrent = async () => {
+          signal.throwIfAborted();
+          await options.connection(run.workspaceId, config.revision);
+        };
+        for (
+          let offset = 0;
+          offset < frames.length;
+          offset += visionFrameConcurrency
+        ) {
+          const batch = frames.slice(offset, offset + visionFrameConcurrency);
+          // Drain the current batch before publishing or failing the attempt.
+          const results = await Promise.allSettled(
+            batch.map(async (image) => {
+              await assertCurrent();
+              return options.vision.describe({
+                assertCurrent,
+                connection: config.connection,
+                modelId: config.visionModel,
+                resource: `${run.workspaceId}:${run.documentId}`,
+                threadId: attemptId,
+                bytes: image.bytes,
+                mediaType: image.contentType,
+                purpose: 'transcription',
+                signal,
+              });
+            }),
+          );
+          for (const result of results) {
+            if (result.status === 'rejected') throw result.reason;
+            pages.push(result.value.description.trim());
+          }
+        }
+        await assertCurrent();
+        if (!pages.some(Boolean)) throw new Error('OCR_NO_READABLE_TEXT');
+        parsed = {
+          markdown:
+            pages.length === 1
+              ? pages.join('')
+              : pages
+                  .map((page, index) => `## Страница ${index + 1}\n\n${page}`)
+                  .join('\n\n'),
+          processorVersion: cloudImageOcrVersion,
+          images: frames,
+        };
+      } else {
+        parsed = await options.parser.parseDocument(source, format, attemptId);
+      }
       signal.throwIfAborted();
       const images = [];
       let total = 0;

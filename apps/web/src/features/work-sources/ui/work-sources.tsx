@@ -146,6 +146,10 @@ export function WorkSources({
           <ul className="grid gap-3 lg:grid-cols-2">
             {view.documents.map((doc, index) => {
               const [label, tone] = labels[doc.status];
+              const failure =
+                doc.status === 'failed'
+                  ? recognitionFailureText(doc.errorCode)
+                  : undefined;
               const requiresRetry =
                 doc.status === 'failed' &&
                 doc.errorCode === recognitionRetryCode;
@@ -161,11 +165,7 @@ export function WorkSources({
                       {doc.filename}
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <StatusPill tone={tone}>
-                        {(doc.status === 'failed' &&
-                          recognitionFailureText(doc.errorCode)) ||
-                          label}
-                      </StatusPill>
+                      <StatusPill tone={tone}>{label}</StatusPill>
                       <span className="text-muted text-xs">
                         <RelativeTime value={doc.createdAt} />
                       </span>
@@ -206,6 +206,11 @@ export function WorkSources({
                       <Trash2 size={16} />
                     </Button>
                   </div>
+                  {failure && (
+                    <p className="min-w-0 basis-full rounded-lg border border-red-400/15 bg-red-500/[0.06] px-3 py-2 text-xs leading-relaxed wrap-anywhere text-red-200">
+                      {failure}
+                    </p>
+                  )}
                   {doc.status === 'succeeded' &&
                     doc.processingRevision != null && (
                       <OcrRevisionAction

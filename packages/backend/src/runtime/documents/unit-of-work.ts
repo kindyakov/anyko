@@ -16,8 +16,11 @@ import {
 export function createDocumentUnitOfWork(db: Database): DocumentStore {
   const reads = createDocumentReadModel(db);
   const documents = createDocumentCommands(db);
+  const links = createCatalogWorkLinks(db);
   return {
     ...reads,
+    linkedWorks: (workspaceId, documentIds) =>
+      links.listForDocuments(workspaceId, documentIds),
     assertUploadAllowed: (scope, key) =>
       documents.assertUploadAllowed(scope, key),
     forgetSource: (key) => documents.forgetSource(key),

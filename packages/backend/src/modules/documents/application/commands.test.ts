@@ -5,6 +5,7 @@ import { memberScope } from '../../../../tests/support/scope';
 import { isAppError } from '../../../platform/errors';
 import { brandDocumentId } from '../../../platform/ids';
 
+import { listDocuments } from './list-documents';
 import { readDocument } from './read-document';
 import { removeDocument } from './remove';
 import { retryDocument } from './retry';
@@ -30,6 +31,7 @@ function store(overrides: Partial<DocumentStore>): DocumentStore {
     forgetSource: unused,
     register: unused,
     list: unused,
+    linkedWorks: unused,
     pendingDeletions: unused,
     get: unused,
     readyResult: unused,
@@ -42,6 +44,42 @@ function store(overrides: Partial<DocumentStore>): DocumentStore {
     ...overrides,
   };
 }
+
+test('the catalogue only loads work links for the visible page and users allowed to read works', async () => {
+  const next = { ...queued, id: '0190f0a0-0000-7000-8000-000000000003' };
+  const work = {
+    id: '0190f0a0-0000-7000-8000-000000000004',
+    title: 'Тестовая работа',
+  };
+  const list = listDocuments({
+    store: store({
+      list: () => Promise.resolve([queued, next]),
+      linkedWorks: (workspaceId, ids) => {
+        expect(workspaceId).toBe(WORKSPACE);
+        expect(ids).toEqual([queued.id]);
+        return Promise.resolve(new Map([[queued.id, [work]]]));
+      },
+    }),
+  });
+  const page = await list(
+    memberScope(WORKSPACE, 'reader', ['recognitions.use', 'works.read']),
+    { limit: 1 },
+  );
+  expect(page.items).toEqual([{ ...queued, linkedWorks: [work] }]);
+  expect(page.nextCursor).toBe(`${queued.createdAt}~${queued.id}`);
+
+  const restricted = listDocuments({
+    store: store({ list: () => Promise.resolve([queued, next]) }),
+  });
+  expect(
+    (
+      await restricted(
+        memberScope(WORKSPACE, 'recognition-only', ['recognitions.use']),
+        { limit: 1 },
+      )
+    ).items,
+  ).toEqual([queued]);
+});
 
 async function failureOf(operation: Promise<unknown>) {
   try {

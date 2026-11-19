@@ -44,7 +44,6 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
     );
     if (!record) throw new Error('GENERATION_MISSING');
     const pack = requirePackage(record.packageVersion);
-    const data = templateData(record.values);
     let completed = 0;
     await step({ stage: 'generation', status: 'running' });
     for (const file of record.files) {
@@ -63,7 +62,10 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
         throw new Error('TEMPLATE_CHECKSUM_MISMATCH');
       let bytes: Uint8Array;
       try {
-        bytes = generateDocument(source, data);
+        bytes = generateDocument(
+          source,
+          templateData(record.values, template.version),
+        );
       } catch {
         await write(async (tx) => {
           await deps.generation

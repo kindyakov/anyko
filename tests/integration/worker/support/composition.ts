@@ -1,6 +1,7 @@
 import type { Logger } from '@anyko/logger';
 import { startJobWorker } from '@anyko/worker/queues';
 
+import type { DocumentAgents } from '../../../../packages/backend/src/modules/agents';
 import type {
   DocumentParser,
   SourceStorage,
@@ -18,13 +19,18 @@ export async function startDocumentConsumer(
     logger: Logger;
     storage: SourceStorage;
     parser: DocumentParser;
+    agents?: DocumentAgents;
     queueName: string;
   },
 ) {
   const backend = createBackend(config, {
     logger: options.logger,
     role: 'worker',
-    dependencies: { storage: options.storage, parser: options.parser },
+    dependencies: {
+      storage: options.storage,
+      parser: options.parser,
+      ...(options.agents && { agents: options.agents }),
+    },
   });
   await backend.ready();
   const worker = await startJobWorker(backend.jobs, {

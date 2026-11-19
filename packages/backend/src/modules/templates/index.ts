@@ -28,10 +28,17 @@ const previousPackage: DocumentPackage = documentPackageSchema.parse({
     (version) => manifest.find((doc) => doc.version === version),
   ),
 });
-const bankruptcyPackage: DocumentPackage = documentPackageSchema.parse({
+const thirdPackage: DocumentPackage = documentPackageSchema.parse({
   ...historicalPackage,
   version: 'bfl-bankruptcy-v3',
   documents: ['bfl-statement-v3', 'bfl-inventory-v1', 'bfl-creditors-v1'].map(
+    (version) => manifest.find((doc) => doc.version === version),
+  ),
+});
+const bankruptcyPackage: DocumentPackage = documentPackageSchema.parse({
+  ...historicalPackage,
+  version: 'bfl-bankruptcy-v4',
+  documents: ['bfl-statement-v4', 'bfl-inventory-v1', 'bfl-creditors-v1'].map(
     (version) => manifest.find((doc) => doc.version === version),
   ),
 });
@@ -40,6 +47,7 @@ export function availablePackages(): DocumentPackage[] {
 }
 const knownPackages = [
   bankruptcyPackage,
+  thirdPackage,
   previousPackage,
   historicalPackage,
   technicalPackage,

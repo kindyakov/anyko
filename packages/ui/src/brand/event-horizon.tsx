@@ -123,3 +123,15 @@ export function EventHorizon({
     </span>
   );
 }
+
+export function HorizonLoader({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      className="relative flex h-24 items-center justify-center overflow-hidden rounded-xl border border-white/[0.07] bg-[radial-gradient(ellipse_at_center,#2a0a1266,transparent_70%)] [&_canvas]:duration-150"
+    >
+      <EventHorizon state="active" className="size-36" />
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}

@@ -3,6 +3,7 @@ import type { DocumentAnalysis, InternalResultRef } from '../index';
 import { checksum } from './checksum';
 import type { DocumentDeps } from './ports';
 import { readArtifact } from './read-artifact';
+import { cloudImageOcrVersion } from './result-schema';
 
 // Вход анализа работы: текст и изображения распознанного документа с проверкой контрольных сумм.
 // Вызывает только процесс исполнения (worker), право проверено при постановке запуска.
@@ -11,7 +12,10 @@ export const readAnalysis = (deps: Pick<DocumentDeps, 'store' | 'storage'>) => {
   return async (input: InternalResultRef): Promise<DocumentAnalysis> => {
     const { result } = await artifact(input);
     const images = [];
-    for (const image of result.images) {
+    // These frames already contributed to the saved transcription.
+    for (const image of result.processorVersion === cloudImageOcrVersion
+      ? []
+      : result.images) {
       const bytes = await deps.storage.get(image.key);
       if (
         bytes.length !== image.size ||

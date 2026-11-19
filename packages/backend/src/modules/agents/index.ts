@@ -17,6 +17,9 @@ interface AgentUsage {
   inputTokens: number | null;
   outputTokens: number | null;
 }
+// Bump when the visual instructions change the context passed to extraction.
+export const visionPromptRevision = 2;
+
 export interface DocumentAgents {
   ready(): Promise<void>;
   describe(input: {
@@ -27,6 +30,7 @@ export interface DocumentAgents {
     assertCurrent?(): Promise<void>;
     bytes: Uint8Array;
     mediaType: string;
+    purpose?: 'transcription';
     signal: AbortSignal;
   }): Promise<{ description: string; usage: AgentUsage }>;
   extract(input: {

@@ -15,6 +15,7 @@ import {
   editWork,
 } from '@anyko/contracts/works';
 
+import { invalidateDocumentCatalog } from '@/features/document-recognition';
 import { callApi } from '@/lib/api/call';
 import { useIdempotencyKey, withIdempotencyKey } from '@/lib/api/idempotency';
 
@@ -62,8 +63,13 @@ export function useCreateWork(workspaceId: string) {
         },
         idempotencyKey,
       }),
-    onSuccess: () =>
-      client.invalidateQueries({ queryKey: workKeys.list(workspaceId) }),
+    onSuccess: (_, { documentIds }) =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: workKeys.list(workspaceId) }),
+        ...(documentIds?.length
+          ? [invalidateDocumentCatalog(client, workspaceId)]
+          : []),
+      ]),
   });
 }
 
@@ -81,7 +87,11 @@ export function useAttachWorkDocuments(workspaceId: string) {
         params: { workspaceId, workId },
         body: { documentIds },
       }),
-    onSuccess: (_, { workId }) => invalidateWork(client, workspaceId, workId),
+    onSuccess: (_, { workId }) =>
+      Promise.all([
+        invalidateWork(client, workspaceId, workId),
+        invalidateDocumentCatalog(client, workspaceId),
+      ]),
   });
 }
 
@@ -92,7 +102,10 @@ export function useDeleteWork(workspaceId: string) {
       callApi(deleteWork, { params: { workspaceId, workId } }),
     onSuccess: (status, workId) => {
       client.setQueryData(workKeys.deletion(workspaceId, workId), status);
-      return invalidateWork(client, workspaceId, workId);
+      return Promise.all([
+        invalidateWork(client, workspaceId, workId),
+        invalidateDocumentCatalog(client, workspaceId),
+      ]);
     },
   });
 }

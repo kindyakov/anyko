@@ -26,12 +26,16 @@ REPORTED_ERRORS = {
 }
 
 
-def primary_image_png(data, extension):
-    from PIL import Image, ImageOps
-
+def register_image_format(extension):
     if extension == 'heif':
         from pillow_heif import register_heif_opener
         register_heif_opener(decode_threads=2)
+
+
+def primary_image_png(data, extension):
+    from PIL import Image, ImageOps
+
+    register_image_format(extension)
     with Image.open(io.BytesIO(data), formats=[CONTAINER_IMAGES[extension]]) as image:
         if image.width * image.height > 25_000_000:
             raise ValueError('IMAGE_TOO_LARGE')
@@ -70,12 +74,12 @@ def visual_inputs(writer, data, extension, recognize=None):
                         continue
                     seen.add(identity)
                 normalized = oriented.convert('RGB')
+                if extension in RASTER_FORMATS and ('A' in oriented.getbands() or 'transparency' in oriented.info):
+                    transparent = oriented.convert('RGBA')
+                    background = Image.new('RGB', transparent.size, 'white')
+                    background.paste(transparent, mask=transparent.getchannel('A'))
+                    normalized = background
                 if recognize is not None:
-                    if 'A' in oriented.getbands() or 'transparency' in oriented.info:
-                        transparent = oriented.convert('RGBA')
-                        background = Image.new('RGB', transparent.size, 'white')
-                        background.paste(transparent, mask=transparent.getchannel('A'))
-                        normalized = background
                     normalized.thumbnail((2600, 2600))
                     frames.append(recognize(normalized))
                 normalized.thumbnail((2400, 2400))
@@ -84,6 +88,7 @@ def visual_inputs(writer, data, extension, recognize=None):
                 writer.write(f'{name}-{index:03d}.jpg', output.getvalue())
 
     if extension in RASTER_FORMATS:
+        register_image_format(extension)
         add('images/anyko-source', data)
     elif extension == 'docx':
         from docx_media import media_entries
@@ -196,13 +201,18 @@ class Processor:
         for path in self.jobs.iterdir():
             self.erase_dir(path.name)
 
-    async def run(self, identity, data, extension):
+    async def run(self, identity, data, extension, visual_only=False):
         path = self.job_dir(identity)
         path.mkdir()
         try:
-            source = path / ('source.' + extension)
-            source.write_bytes(data)
             async with self.capacity:
+                if visual_only:
+                    writer = ZipWriter()
+                    writer.write_string('markdown.md', '')
+                    visual_inputs(writer, data, extension)
+                    return writer.archive()
+                source = path / ('source.' + extension)
+                source.write_bytes(data)
                 temporary = path / 'temp'
                 temporary.mkdir()
                 previous = {key: os.environ.get(key) for key in ('TEMP', 'TMP', 'TMPDIR')}
@@ -259,14 +269,14 @@ class Processor:
         finally:
             self.erase_dir(identity)
 
-    async def submit(self, identity, data, extension):
+    async def submit(self, identity, data, extension, visual_only=False):
         self.job_dir(identity)
         async with self.guard:
             if (self.cancelled / identity).exists():
                 raise HTTPException(410, 'ATTEMPT_ERASED')
             if identity in self.active:
                 raise HTTPException(409, 'ATTEMPT_ACTIVE')
-            task = asyncio.create_task(self.run(identity, data, extension))
+            task = asyncio.create_task(self.run(identity, data, extension, visual_only))
             self.active[identity] = task
             task.add_done_callback(lambda finished: self.completed(identity, finished))
         try:
@@ -333,12 +343,13 @@ def save_raster_text(writer, data, extension):
 async def health():
     return {'status': 'ok', 'mode': 'stateless-sdk', 'pdfOcrVersion': 1, 'pdfPageLayoutVersion': 1, 'imageOcrVersion': 1, 'docxVisualExportVersion': 1,
             'imageFormats': sorted(RASTER_FORMATS), 'maxImages': MAX_IMAGES,
-            'pdfFormulaVersion': 1, 'docxLegacyVisualVersion': 1}
+            'pdfFormulaVersion': 1, 'docxLegacyVisualVersion': 1, 'visualInputsVersion': 1}
 
 
-@app.put('/v1/attempts/{identity}')
-async def parse(identity: uuid.UUID, request: Request, format: str):
+async def parse_source(identity: uuid.UUID, request: Request, format: str, visual_only: bool):
     if format not in RASTER_FORMATS and format not in {'pdf', 'docx'}:
+        raise HTTPException(400, 'UNSUPPORTED_FORMAT')
+    if visual_only and format not in RASTER_FORMATS:
         raise HTTPException(400, 'UNSUPPORTED_FORMAT')
     data = bytearray()
     async for chunk in request.stream():
@@ -348,9 +359,11 @@ async def parse(identity: uuid.UUID, request: Request, format: str):
     if len(data) < 5:
         raise HTTPException(400, 'INVALID_DOCUMENT')
     try:
-        result = await processor.submit(str(identity), bytes(data), format)
+        result = await processor.submit(str(identity), bytes(data), format, visual_only)
         processor_version = version('mineru')
-        if format in RASTER_FORMATS:
+        if visual_only:
+            processor_version += '+visual-inputs.1'
+        elif format in RASTER_FORMATS:
             processor_version += '+eslav-image.1'
         return Response(result, media_type='application/zip', headers={'x-mineru-version': processor_version})
     except asyncio.CancelledError:
@@ -362,6 +375,16 @@ async def parse(identity: uuid.UUID, request: Request, format: str):
         logger.error('document_parse_failed attempt_id=%s format=%s error_type=%s error_code=%s',
                      identity, format, type(error).__name__, code)
         raise HTTPException(422, code, headers={'x-anyko-processor-error': code})
+
+
+@app.put('/v1/attempts/{identity}')
+async def parse(identity: uuid.UUID, request: Request, format: str):
+    return await parse_source(identity, request, format, visual_only=False)
+
+
+@app.put('/v1/attempts/{identity}/visual-inputs')
+async def prepare_visual_inputs(identity: uuid.UUID, request: Request, format: str):
+    return await parse_source(identity, request, format, visual_only=True)
 
 
 @app.delete('/v1/attempts/{identity}')

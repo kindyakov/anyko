@@ -62,7 +62,11 @@ export function useDeleteWorkDocument(workspaceId: string, workId: string) {
       callApi(removeWorkDocument, {
         params: { workspaceId, workId, documentId },
       }),
-    onSuccess: () => invalidateWork(client, workspaceId, workId),
+    onSuccess: () =>
+      Promise.all([
+        invalidateWork(client, workspaceId, workId),
+        invalidateDocumentCatalog(client, workspaceId),
+      ]),
   });
 }
 

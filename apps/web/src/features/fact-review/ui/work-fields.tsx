@@ -11,7 +11,7 @@ import {
 } from '@anyko/contracts/catalog';
 import { Button, fieldSurface } from '@anyko/ui';
 const paper =
-  'rounded-[2px] border-0 border-b px-0.5 py-px text-zinc-900 transition-[background-color,box-shadow] duration-200 outline-none focus-visible:bg-white focus-visible:shadow-[0_0_0_2px_#db143c] border-dotted border-zinc-400 bg-sky-50/70 hover:bg-sky-100/80 data-[empty]:border-dashed data-[empty]:border-[#db143c]/70 data-[empty]:bg-rose-50 data-[empty]:hover:bg-rose-100/80 placeholder:text-rose-700/55 placeholder:italic disabled:opacity-70';
+  'rounded-[2px] border-0 border-b px-0.5 py-0 indent-0 text-zinc-900 transition-[background-color,box-shadow] duration-200 outline-none focus-visible:bg-white focus-visible:shadow-[0_0_0_2px_#db143c] border-dotted border-zinc-400 bg-sky-50/70 hover:bg-sky-100/80 data-[empty]:border-dashed data-[empty]:border-[#db143c]/70 data-[empty]:bg-rose-50 data-[empty]:hover:bg-rose-100/80 placeholder:text-rose-700/55 placeholder:italic disabled:opacity-70';
 const panel = `${fieldSurface} min-h-9 px-2.5 py-1.5 text-[13px] leading-5`;
 
 /**
@@ -28,6 +28,8 @@ export function TextSlot({
   maxLength,
   onChange,
   fieldKey,
+  inline = false,
+  suffix,
   tone = 'paper',
 }: {
   label: string;
@@ -38,6 +40,8 @@ export function TextSlot({
   maxLength?: number | undefined;
   onChange: (value: string | null) => void;
   fieldKey?: string;
+  inline?: boolean;
+  suffix?: string;
   tone?: 'paper' | 'panel';
 }) {
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -47,12 +51,12 @@ export function TextSlot({
     node.style.height = 'auto';
     node.style.height = `${String(Math.max(node.scrollHeight, 22))}px`;
   }, [value, multiline]);
-  const block = multiline || tone === 'panel';
+  const block = (multiline && !inline) || tone === 'panel';
   const text = value || placeholder || label;
   return (
     <span
       data-field={fieldKey}
-      className={`max-w-full rounded-[3px] ${block ? 'block w-full' : 'inline-block align-bottom'}`}
+      className={`max-w-full rounded-[3px] ${tone === 'paper' ? 'relative focus-within:z-20 data-[review-highlight]:z-10' : ''} ${block ? 'block w-full' : suffix ? 'inline-flex items-end indent-0 align-bottom' : 'inline-block align-bottom'}`}
     >
       <Field.Control
         render={
@@ -82,6 +86,7 @@ export function TextSlot({
         }}
         className={`block [field-sizing:content] max-w-full min-w-[3ch] resize-none overflow-hidden wrap-anywhere [font:inherit] ${block ? 'w-full' : ''} ${tone === 'paper' ? paper : panel}`}
       />
+      {suffix}
     </span>
   );
 }

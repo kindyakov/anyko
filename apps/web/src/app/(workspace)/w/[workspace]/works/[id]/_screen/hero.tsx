@@ -92,7 +92,7 @@ export function Hero({
           title: stage.conflicts
             ? 'Проверьте сведения и разрешите расхождения'
             : 'Проверьте найденные сведения',
-          text: `Найдено полей: ${String(stage.fields)}${stage.conflicts ? `, расхождений: ${String(stage.conflicts)}` : ''}. Примените значения, поправьте документы и подтвердите.${stage.run.status === 'partial' || stage.run.status === 'failed' ? ' Часть этапов извлечения не выполнена.' : ''}`,
+          text: `Найдено полей: ${String(stage.fields)}${stage.conflicts ? `, расхождений: ${String(stage.conflicts)}` : ''}. Сверьте значения с источниками и при необходимости исправьте черновики.${stage.run.status === 'partial' || stage.run.status === 'failed' ? ' Часть этапов извлечения не выполнена.' : ''}`,
           action:
             step === 'review' ? (
               <Button
@@ -100,7 +100,7 @@ export function Hero({
                   onStep('documents');
                 }}
               >
-                Всё верно, дальше <ArrowRight size={16} />
+                К шагу «Документы» <ArrowRight size={16} />
               </Button>
             ) : (
               <Button

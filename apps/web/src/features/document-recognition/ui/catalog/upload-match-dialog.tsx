@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import type { DocumentSummary } from '@anyko/contracts/documents';
 import { Button, FileIcon, Modal, Notice, StatusPill } from '@anyko/ui';
+import { HorizonLoader } from '@anyko/ui/brand';
 
 import { findUploadMatches } from '../../api/upload-matches';
 import { describeDocumentError } from '../../model/error-texts';
@@ -116,9 +117,7 @@ export function UploadMatchDialog({
         ))}
       </fieldset>
       {after && page.isPending && (
-        <p role="status" className="text-muted mt-3 text-sm">
-          Загружаем совпадения…
-        </p>
+        <HorizonLoader label="Загружаем совпадения" />
       )}
       {page.error && (
         <Notice role="alert" tone="danger">

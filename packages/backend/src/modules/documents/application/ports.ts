@@ -8,6 +8,7 @@ import type { pdfOcrSchema } from './result-schema';
 import type { SourceFormat } from './source-format';
 
 type DocumentStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+type LinkedWork = { id: string; title: string };
 export interface DocumentView {
   id: string;
   filename: string;
@@ -16,6 +17,7 @@ export interface DocumentView {
   errorCode: string | null;
   processingRevision?: number;
   readyRevision?: number | null;
+  linkedWorks?: LinkedWork[];
 }
 export interface DocumentDeletionImpact {
   token: string;
@@ -75,6 +77,7 @@ export interface DocumentParser {
     bytes: Uint8Array,
     format: SourceFormat,
     attemptId: string,
+    mode?: 'visual-inputs',
   ): Promise<DocumentResult>;
   eraseAttempt(attemptId: string): Promise<void>;
 }
@@ -127,6 +130,10 @@ export interface DocumentStore {
     workspaceId: string,
     input: DocumentListFilters & { limit: number; after?: DocumentPosition },
   ): Promise<DocumentView[]>;
+  linkedWorks(
+    workspaceId: string,
+    documentIds: string[],
+  ): Promise<Map<string, LinkedWork[]>>;
   pendingDeletions(workspaceId: string): Promise<
     {
       id: string;

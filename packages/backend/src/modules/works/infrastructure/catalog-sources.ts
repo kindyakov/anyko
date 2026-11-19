@@ -2,6 +2,28 @@ import type { Database } from '@anyko/database';
 
 export function createCatalogWorkLinks(db: Pick<Database, 'workDocument'>) {
   return {
+    async listForDocuments(workspaceId: string, documentIds: string[]) {
+      const links = await db.workDocument.findMany({
+        where: {
+          workspaceId,
+          documentId: { in: documentIds },
+          removed: false,
+          work: { deletedAt: null },
+        },
+        orderBy: [{ work: { title: 'asc' } }, { workId: 'asc' }],
+        select: {
+          documentId: true,
+          work: { select: { id: true, title: true } },
+        },
+      });
+      const byDocument = new Map<string, { id: string; title: string }[]>();
+      for (const { documentId, work } of links) {
+        const group = byDocument.get(documentId);
+        if (group) group.push(work);
+        else byDocument.set(documentId, [work]);
+      }
+      return byDocument;
+    },
     async list(workspaceId: string, documentId: string) {
       const links = await db.workDocument.findMany({
         where: {

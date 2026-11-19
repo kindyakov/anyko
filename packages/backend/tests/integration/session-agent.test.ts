@@ -8,7 +8,92 @@ import { llmError } from '@anyko/llm';
 
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 import { emptyFacts } from '../../src/modules/facts';
+import { requirePackage } from '../../src/modules/templates';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
+
+test('real extraction preserves supported candidates when the model also returns a field outside the package', async () => {
+  const databaseUrl = z
+    .url()
+    .refine((url) =>
+      /^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(url).pathname),
+    )
+    .parse(process.env.TEST_DATABASE_URL);
+  const pool = createDatabasePool(databaseUrl);
+  const documentId = crypto.randomUUID();
+  const candidate = {
+    field: 'city' as const,
+    value: 'Тула',
+    evidence: [{ documentId, imagePath: null, quote: 'г. Тула' }],
+  };
+  const extra = {
+    field: 'registrationAddress',
+    value: 'г. Тула, ул. Мира',
+    evidence: [{ documentId, imagePath: null, quote: 'г. Тула, ул. Мира' }],
+  };
+  let returnedCandidates = [extra, candidate];
+  const agents = createDocumentAgents({
+    pool,
+    fetch: Object.assign(
+      () =>
+        Promise.resolve(
+          Response.json({
+            id: 'fixture',
+            object: 'chat.completion',
+            created: 1,
+            model: 'fixture',
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: 'assistant',
+                  content: JSON.stringify({ candidates: returnedCandidates }),
+                },
+                finish_reason: 'stop',
+              },
+            ],
+          }),
+        ),
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const threads = Array.from({ length: 4 }, () => crypto.randomUUID());
+  const fields = requirePackage('bfl-bankruptcy-v3').fields;
+  const extract = (threadId: string, text: string) =>
+    agents.extract({
+      connection: {
+        id: 'fixture',
+        baseURL: 'https://fixture.invalid/v1',
+        apiKey: crypto.randomUUID(),
+      },
+      modelId: 'fixture',
+      resource: crypto.randomUUID(),
+      threadId,
+      fields,
+      document: { id: documentId, text, visuals: [] },
+      signal: AbortSignal.timeout(10000),
+    });
+  try {
+    await agents.ready();
+    const result = await extract(threads[0]!, 'Регистрация: г. Тула, ул. Мира');
+    expect(result.candidates).toEqual([{ ...candidate, origin: 'document' }]);
+    await expect(
+      extract(threads[1]!, 'Регистрация: г. Калуга'),
+    ).rejects.toMatchObject({
+      code: 'LLM_INVALID_RESPONSE',
+    });
+    returnedCandidates = [extra];
+    await expect(
+      extract(threads[2]!, 'Регистрация: г. Тула, ул. Мира'),
+    ).rejects.toMatchObject({ code: 'LLM_INVALID_RESPONSE' });
+    returnedCandidates = [];
+    const empty = await extract(threads[3]!, 'Сведения отсутствуют.');
+    expect(empty.candidates).toEqual([]);
+  } finally {
+    for (const threadId of threads) await agents.eraseThread(threadId);
+    await agents.stop();
+    await pool.end();
+  }
+});
 
 test('real coordinator validates source evidence, keeps its scope, and removes persisted attempt messages', async () => {
   const databaseUrl = z

@@ -23,6 +23,9 @@ export const documentSchema = z.object({
   errorMessage: z.string().optional(),
   processingRevision: z.number().int().positive().optional(),
   readyRevision: z.number().int().positive().nullable().optional(),
+  linkedWorks: z
+    .array(z.object({ id: z.string().min(1), title: z.string() }))
+    .optional(),
 });
 export const documentResponseSchema = z.object({ document: documentSchema });
 export const sourceChecksumSchema = z

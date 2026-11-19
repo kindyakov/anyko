@@ -35,7 +35,20 @@ export const listDocuments =
       limit: limit + 1,
       ...(after === undefined ? {} : { after: readPosition(after) }),
     });
-    const items = rows.slice(0, limit);
+    const page = rows.slice(0, limit);
+    const links =
+      page.length && scope.has('works.read')
+        ? await deps.store.linkedWorks(
+            scope.workspaceId,
+            page.map(({ id }) => id),
+          )
+        : undefined;
+    const items = links
+      ? page.map((document) => ({
+          ...document,
+          linkedWorks: links.get(document.id) ?? [],
+        }))
+      : page;
     const last = items.at(-1);
     return {
       items,

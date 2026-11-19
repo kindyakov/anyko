@@ -432,6 +432,8 @@ export function createBackend(
         artifacts: createArtifactRegistry(db),
         storage,
         parser,
+        vision: model,
+        connection: connections.internal.connection,
         logger,
       }),
     },

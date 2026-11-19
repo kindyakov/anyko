@@ -1,20 +1,16 @@
-import type {
-  FieldKey,
-  FieldValue,
-  FieldValues,
-} from '@anyko/contracts/catalog';
+import type { FieldValue, FieldValues } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 
 import { sameFieldValue } from './field-value';
 
-export type ReviewFilter = 'all' | 'conflicts' | 'pending';
+export type ReviewFilter = 'all' | 'attention';
 export type ReviewField = {
   field: WorkView['package']['fields'][number];
   candidates: WorkView['facts']['candidates'];
+  conflict: boolean;
+  evidenceLost: boolean;
+  attention: boolean;
 };
-
-const filled = (value: FieldValue | undefined) =>
-  Array.isArray(value) ? value.length > 0 : !!value;
 
 export function candidateSelection(
   value: FieldValue | undefined,
@@ -31,37 +27,48 @@ export function reviewFields(
   filter: ReviewFilter,
 ) {
   const conflicts = new Set(view.facts.discrepancyFields);
-  const fields = view.package.fields
-    .map((field) => ({
+  const evidenceLost = new Set(view.facts.needsReview);
+  const fields: ReviewField[] = view.package.fields.map((field) => {
+    const candidates = view.facts.candidates.filter(
+      ({ field: key }) => key === field.key,
+    );
+    const conflict = conflicts.has(field.key);
+    const lost = evidenceLost.has(field.key);
+    return {
       field,
-      candidates: view.facts.candidates.filter(
-        (candidate) => candidate.field === field.key,
-      ),
-    }))
-    .filter((item) => item.candidates.length);
-  const appliedFields = new Set(
-    view.facts.candidates
-      .filter(({ selected }) => selected)
-      .map(({ field }) => field),
+      candidates,
+      conflict,
+      evidenceLost: lost,
+      attention:
+        conflict ||
+        lost ||
+        (view.facts.values[field.key] == null && candidates.length > 0),
+    };
+  });
+  const attention = fields.filter((item) => item.attention);
+  const withFindings = fields.filter(
+    (item) => !item.attention && item.candidates.length,
   );
-  const applied = (key: FieldKey) => appliedFields.has(key);
-  const visible = fields.filter(({ field }) =>
-    filter === 'conflicts'
-      ? conflicts.has(field.key)
-      : filter === 'pending'
-        ? !applied(field.key)
-        : true,
+  const withoutFindings = fields.filter(
+    (item) => !item.attention && !item.candidates.length,
   );
+  const visible =
+    filter === 'attention'
+      ? attention
+      : [...attention, ...withFindings, ...withoutFindings];
   const quick = fields.filter(
-    ({ field, candidates }) =>
-      !conflicts.has(field.key) &&
-      !applied(field.key) &&
-      !filled(values[field.key]) &&
-      candidates[0] !== undefined,
+    ({ field, candidates, conflict, evidenceLost }) =>
+      !conflict &&
+      !evidenceLost &&
+      values[field.key] == null &&
+      candidates.length > 0 &&
+      candidates.every(({ value }) =>
+        sameFieldValue(value, candidates[0]?.value),
+      ),
   );
   const total = view.package.fields.length;
-  const complete = view.package.fields.filter((field) =>
-    filled(values[field.key]),
+  const complete = view.package.fields.filter(
+    (field) => values[field.key] != null,
   ).length;
-  return { fields, applied, visible, quick, total, complete, conflicts };
+  return { attention, visible, quick, total, complete };
 }

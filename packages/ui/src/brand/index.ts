@@ -2,4 +2,4 @@
 export { CosmicBackground } from './cosmic-background';
 export { DeepSkyBackdrop } from './deep-sky-backdrop';
 export { DropZone } from './drop-zone';
-export { EventHorizon } from './event-horizon';
+export { EventHorizon, HorizonLoader } from './event-horizon';

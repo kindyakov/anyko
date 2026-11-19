@@ -59,6 +59,47 @@ const pack = documentPackageSchema.parse({
   })),
 });
 
+test.each([
+  '______________________  {lastName} {firstName} {middleName}',
+  '______________________  {signerName}',
+])(
+  'the statement signature follows the name in the draft for %s',
+  (signature) => {
+    const statement = documentPackageSchema.parse({
+      ...pack,
+      documents: [
+        {
+          ...pack.documents[0],
+          id: 'statement',
+          blocks: [{ kind: 'paragraph', paragraph: paragraph(signature) }],
+        },
+      ],
+    });
+    const values = {
+      ...emptyFieldValues(),
+      lastName: 'Иванова',
+      firstName: 'Елена',
+      middleName: 'Андреевна',
+    };
+    const props = {
+      pack: statement,
+      values,
+      disabled: false,
+      onChange: () => undefined,
+    };
+    const view = render(<PackagePreview {...props} />);
+    expect(
+      screen.getByLabelText('Фамилия и инициалы подписанта').textContent,
+    ).toBe('Иванова Е.А.');
+    view.rerender(
+      <PackagePreview {...props} values={{ ...values, firstName: 'Юлия' }} />,
+    );
+    expect(
+      screen.getByLabelText('Фамилия и инициалы подписанта').textContent,
+    ).toBe('Иванова Ю.А.');
+  },
+);
+
 test('a find request opens the matching document, preserves it on data refresh and permits later tab selection', async () => {
   const scroll = spyOn(HTMLElement.prototype, 'scrollIntoView');
   const twoDocuments = documentPackageSchema.parse({
@@ -96,7 +137,7 @@ test('a find request opens the matching document, preserves it on data refresh a
   const target = scroll.mock.contexts[0] as HTMLElement;
   expect(target.getAttribute('data-field')).toBe('lastName');
   await waitFor(() => {
-    expect(target.classList.contains('animate-flash')).toBe(true);
+    expect(target.hasAttribute('data-review-highlight')).toBe(true);
   });
   view.rerender(
     <PackagePreview

@@ -102,7 +102,10 @@ const agents: DocumentAgents = {
     if (actualAgents) return actualAgents.describe(input);
     await waitForVision?.();
     return {
-      description: 'Белый шкаф с двумя дверцами.',
+      description:
+        input.purpose === 'transcription'
+          ? 'Заявитель: Анна\nКонтроль: 42'
+          : 'Белый шкаф с двумя дверцами.',
       usage: { inputTokens: 3, outputTokens: 4 },
     };
   },
@@ -1757,6 +1760,51 @@ const fixtureImage = Uint8Array.fromBase64(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=',
 );
 
+test('standalone images use cloud recognition once and work analysis reuses the saved text', async () => {
+  const input = await create();
+  const scope = memberScope(input.workspaceId, 'fixture');
+  const before = describeCount;
+  const image = {
+    path: 'images/anyko-source-000.jpg',
+    contentType: 'image/jpeg',
+    bytes: fixtureImage,
+  };
+  const modes: unknown[] = [];
+  parseFixture = async (...args) => {
+    modes.push(Reflect.get(args, 3));
+    return {
+      markdown: 'Локальный результат',
+      processorVersion: 'fixture',
+      images: [image],
+    };
+  };
+  try {
+    const document = await apiBackend.workHttp.intake.uploadDocument(scope, {
+      workId: brandWorkId(input.workId),
+      filename: 'scan.png',
+      bytes: fixtureImage,
+      correlationId: crypto.randomUUID(),
+      requestKey: crypto.randomUUID(),
+    });
+    await until(input, (view) =>
+      view.documents.some((doc) => doc.status === 'succeeded'),
+    );
+    const result = await apiBackend.documentHttp.documents.queries.result(
+      scope,
+      brandDocumentId(document.id),
+    );
+    expect(result.markdown).toBe('Заявитель: Анна\nКонтроль: 42');
+    expect(modes).toEqual(['visual-inputs']);
+    expect(describeCount - before).toBe(1);
+
+    await analyze(input);
+    expect((await until(input, terminal)).runs[0]?.status).toBe('succeeded');
+    expect(describeCount - before).toBe(1);
+  } finally {
+    parseFixture = undefined;
+  }
+});
+
 test('work document source, recognition result and image share the same access matrix', async () => {
   const { workspaceId, workId } = await create();
   const scope = memberScope(workspaceId, 'fixture', ['works.read']);
@@ -2119,11 +2167,16 @@ test('deletion during the first visual prevents a second provider request', asyn
   }
 });
 
-test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases its persisted messages', async () => {
+test('Mastra sends the extraction text directly, keeps reconciliation tools, and erases persisted messages on cleanup', async () => {
   const input = await create();
+  const lastLine = 'ФИО заявителя: Анна';
+  const markdown = `${'Строка исходника.\n'.repeat(3000)}\n${lastLine}`;
+  const encodedMarkdown = JSON.stringify(markdown).slice(1, -1);
   let documentId = '';
   let sawImage = false,
-    sawTool = false,
+    sawCompleteExtraction = false,
+    extractionOfferedTools = false,
+    sawReconciliationTool = false,
     sawStructured = false;
   const requestSchema = z.object({
     stream: z.boolean().optional(),
@@ -2142,19 +2195,29 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
     async fetch(request) {
       const value: unknown = await request.json();
       const body = requestSchema.parse(value);
-      const coordinator = JSON.stringify(body.messages).includes(
-        'documents.analyzed',
-      );
-      const visual = JSON.stringify(body.messages).includes('image_url');
+      const messages = JSON.stringify(body.messages);
+      const coordinator = messages.includes('documents.analyzed');
+      const visual = messages.includes('image_url');
       sawImage ||= visual;
-      sawStructured ||= body.response_format !== undefined;
+      if (!coordinator && !visual) {
+        sawCompleteExtraction ||= body.messages.some(
+          ({ role, content }) =>
+            role === 'user' &&
+            JSON.stringify(content)?.includes(encodedMarkdown),
+        );
+        extractionOfferedTools ||= Boolean(body.tools?.length);
+        sawStructured ||= body.response_format !== undefined;
+      }
+      const toolResult = body.messages.some(
+        (message) => message.role === 'tool',
+      );
       const toolName =
-        !coordinator &&
-        !visual &&
-        !body.messages.some((message) => message.role === 'tool')
-          ? body.tools?.[0]?.function.name
+        coordinator && !toolResult
+          ? body.tools?.find(({ function: tool }) =>
+              /read[-_]?field/i.test(tool.name),
+            )?.function.name
           : undefined;
-      sawTool ||= body.messages.some((message) => message.role === 'tool');
+      sawReconciliationTool ||= coordinator && toolResult;
       const text = JSON.stringify(
         coordinator
           ? { summary: 'Сохранён контекст SDK', candidates: [] }
@@ -2175,7 +2238,10 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
             {
               id: 'call_fixture',
               type: 'function',
-              function: { name: toolName, arguments: '{"offset":0}' },
+              function: {
+                name: toolName,
+                arguments: '{"field":"personName","offset":0}',
+              },
             },
           ]
         : undefined;
@@ -2254,6 +2320,11 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
         bytes: fixtureImage,
       },
     ];
+    parseFixture = async () => ({
+      markdown,
+      images: imageFixture,
+      processorVersion: 'fixture',
+    });
     const doc = await upload(input);
     documentId = doc.id;
     await analyze(input);
@@ -2261,7 +2332,9 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
     expect(state.runs[0]?.status).toBe('succeeded');
     expect(state.facts.values.personName).toBe('Анна');
     expect(sawImage).toBe(true);
-    expect(sawTool).toBe(true);
+    expect(sawCompleteExtraction).toBe(true);
+    expect(extractionOfferedTools).toBe(false);
+    expect(sawReconciliationTool).toBe(true);
     expect(sawStructured).toBe(true);
     const vision = await db.runStep.findFirstOrThrow({
       where: { run: { workId: input.workId }, stage: 'vision' },
@@ -2293,8 +2366,49 @@ test('actual Mastra uses image/tool/structured SDK protocol and cleanup erases i
     await actualAgents.stop();
     actualAgents = undefined;
     imageFixture = [];
+    parseFixture = undefined;
     await inspection.close();
     await server.stop(true);
+  }
+});
+
+test('rerunning analysis refreshes old visual descriptions and reuses the refreshed result', async () => {
+  const input = await create();
+  imageFixture = [
+    {
+      path: 'images/picture.png',
+      contentType: 'image/png',
+      bytes: fixtureImage,
+    },
+  ];
+  try {
+    await upload(input);
+    await analyze(input);
+    const first = await until(input, terminal);
+    const run = first.runs[0];
+    expect(run?.status).toBe('succeeded');
+    if (!run) throw new Error('MISSING_ANALYSIS');
+    // Older runs used the OCR digest alone as the cache key.
+    expect(
+      await db.$executeRaw`
+        UPDATE "RunStep"
+        SET output = jsonb_set(output, '{sourceDigest}', to_jsonb(split_part(output->>'sourceDigest', ':', 2)))
+        WHERE "runId" = ${run.id} AND stage IN ('vision', 'extraction')
+          AND output->>'sourceDigest' LIKE 'vision-%:%'
+      `,
+    ).toBe(2);
+    const before = { describe: describeCount, extract: extractionCount };
+    await analyze(input);
+    expect((await until(input, terminal)).runs[0]?.status).toBe('succeeded');
+    expect(describeCount - before.describe).toBe(1);
+    expect(extractionCount - before.extract).toBe(1);
+
+    await analyze(input);
+    expect((await until(input, terminal)).runs[0]?.status).toBe('succeeded');
+    expect(describeCount - before.describe).toBe(1);
+    expect(extractionCount - before.extract).toBe(1);
+  } finally {
+    imageFixture = [];
   }
 });
 
