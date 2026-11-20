@@ -4,6 +4,7 @@ import type {
   FieldKey,
   FieldValues,
 } from '@anyko/contracts/catalog';
+import { hasEmploymentFields } from '@anyko/document-values/employment';
 import { formatTemplateValue } from '@anyko/document-values/template-value';
 
 import { TextSlot } from '../work-fields';
@@ -27,6 +28,15 @@ export function ScalarSlot({
 }) {
   const format = formats?.find((slot) => slot.tag === tag);
   const field = fields.find(({ key }) => key === (format?.field ?? tag));
+  if (!field && tag === 'employmentDetails' && hasEmploymentFields(fields)) {
+    const text = values[tag];
+    return (
+      <span>
+        {typeof text === 'string' ? text : '[не заполнено]'}
+        {suffix}
+      </span>
+    );
+  }
   if (!field || field.columns.length)
     return <span className="text-zinc-400">[не заполнено]{suffix}</span>;
   const raw = values[field.key];

@@ -676,3 +676,81 @@ test('a work that is already being cleaned up opens without edits and with locke
   expect(personName().hasAttribute('disabled')).toBe(true);
   expect(strip()).toBeNull();
 });
+
+test('employment review exposes the calculation inputs and the statement uses one employer', async () => {
+  const initial = viewWith({
+    documentDate: '14.03.2026',
+    employmentHistory: [
+      { employer: 'ООО Север', date: '05.04.2025', event: 'Приём' },
+      { employer: 'ООО Север', date: '10.02.2026', event: 'Увольнение' },
+      { employer: 'ООО Юг', date: '23.02.2026', event: 'Приём' },
+    ],
+    employmentIncome: [
+      { employer: 'ООО Север', month: '2026-01', amount: '90000.01' },
+      { employer: 'ООО Север', month: '2026-02', amount: '30000.00' },
+      { employer: 'ООО Юг', month: '2026-02', amount: '10000.00' },
+      {
+        employer: 'ООО Юг',
+        month: '2026-03',
+        amount: '70000.00',
+        code: '2000',
+      },
+      {
+        employer: 'ООО Юг',
+        month: '2026-03',
+        amount: '10000.00',
+        code: '2002',
+      },
+    ],
+  });
+  const employmentPackage = documentPackageSchema.parse({
+    ...pack,
+    fields: ['employmentHistory', 'employmentIncome'].map((key) => ({
+      key,
+      label: key,
+      kind: 'rows',
+      multiline: false,
+      limits: {},
+      columns: [{ key: 'employer', label: 'Работодатель', maxLength: 4000 }],
+    })),
+    documents: [
+      {
+        ...pack.documents[0],
+        id: 'statement',
+        blocks: [
+          { kind: 'paragraph', paragraph: paragraph('{employmentDetails}') },
+        ],
+      },
+    ],
+  });
+  installEventSource();
+  serveApi(() => json(200, { ...initial, package: employmentPackage }));
+  renderFacts();
+
+  const calculation = await screen.findByRole('region', {
+    name: 'Работа и средний доход',
+  });
+  expect(
+    within(calculation).getByText(/Учтено месяцев — 3/).textContent,
+  ).toContain('2026-01, 2026-02, 2026-03');
+  expect(
+    within(calculation).getByText(/2026-01 · ООО Север · 90000,01/),
+  ).toBeDefined();
+  expect(
+    within(calculation).getByText(/2026-02 · ООО Юг · 10000,00/),
+  ).toBeDefined();
+  expect(
+    within(calculation).getByText(/2026-03 · ООО Юг · 10000,00/).textContent,
+  ).toContain('код 2002');
+  expect(within(calculation).getByText('60900,00 руб.')).toBeDefined();
+
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Черновики документов' }),
+  );
+  const statement = await screen.findByRole('article', { name: 'Заявление' });
+  expect(statement.textContent).toContain(
+    'В настоящее время работаю в ООО Юг.',
+  );
+  expect(statement.textContent).toContain('60900,00 руб.');
+  expect(statement.textContent).not.toContain('ООО Север');
+});
