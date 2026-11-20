@@ -10,7 +10,10 @@ import type {
   PreviewRow,
 } from '@anyko/contracts/catalog';
 
-import { previewEntries } from '@/features/fact-review/model/preview';
+import {
+  previewEntries,
+  previewObligations,
+} from '@/features/fact-review/model/preview';
 
 import { FieldEditor, TextSlot } from '../work-fields';
 
@@ -34,7 +37,12 @@ export function PreviewPaper({
 }) {
   const listNumbers = new Map<string, number>();
   const margins = document.margins;
+  const obligations = previewObligations(document.version, values);
+  const collectionValue =
+    obligations?.value ?? ((key: FieldKey) => values[key]);
   const collectionNote = (key: FieldKey, collection: FieldValue) => {
+    if (obligations?.isCollection(key))
+      return obligations.emptyNote(key, collection);
     const field = pack.fields.find((item) => item.key === key);
     return (
       <CollectionNote
@@ -76,6 +84,10 @@ export function PreviewPaper({
           ?.columns.find((item) => item.key === key);
         if (key === 'rowNumber' && row && !column)
           return `${String(rowNumber ?? 1)}${suffix}`;
+        if (row && obligations?.isCollection(rowField))
+          return (row[key] ?? '[не заполнено]') + suffix;
+        const total = !row && obligations?.text(key);
+        if (total) return total + suffix;
         if (row) {
           const slot = (
             <TextSlot
@@ -121,7 +133,7 @@ export function PreviewPaper({
     const loop = /\{#([^{}]+)\}/.exec(p.text)?.[1];
     const repeat = loop || undefined;
     if (repeat && !row) {
-      const collection = values[repeat];
+      const collection = collectionValue(repeat);
       const rows = Array.isArray(collection) ? collection : [];
       return (
         <div key={id} data-field={repeat} className="rounded-[3px]">
@@ -186,10 +198,10 @@ export function PreviewPaper({
   };
   const tableRow = (row: PreviewRow, index: number) => {
     const repeat = row.repeat;
-    const collection = repeat ? values[repeat] : undefined;
+    const collection = repeat ? collectionValue(repeat) : undefined;
     const entries = previewEntries(row, collection);
     if (repeat && Array.isArray(collection) && !collection.length)
-      return (
+      return obligations?.isCollection(repeat) ? null : (
         <tr key={index} data-field={repeat}>
           <td
             colSpan={row.cells.reduce((sum, cell) => sum + cell.span, 0)}

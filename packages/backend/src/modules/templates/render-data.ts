@@ -1,3 +1,8 @@
+import {
+  obligationAmounts,
+  obligationFields,
+  obligationTemplate,
+} from '@anyko/document-values/obligations';
 import { formatTemplateValue } from '@anyko/document-values/template-value';
 
 import {
@@ -14,15 +19,25 @@ export function templateData(
   input: FieldValues,
   templateVersion?: string,
   placeholders: readonly TemplatePlaceholder[] = [],
-): FieldValues & { signerName: string } {
+): FieldValues & {
+  signerName: string;
+  creditorHeaders?: FieldValues['debts'];
+} {
   const values = readFieldValues(input);
   const output = emptyFieldValues();
+  const obligations = obligationTemplate(templateVersion)
+    ? obligationAmounts(values.debts, values.businessDebts)
+    : null;
+  if (obligations) {
+    for (const field of obligationFields) values[field] = obligations[field];
+  }
   for (const field of fieldDefinitions) {
     const value = values[field.key];
     if (
       (templateVersion === 'bfl-statement-v4' ||
         templateVersion === 'bfl-statement-v5' ||
-        templateVersion === 'bfl-statement-v6') &&
+        templateVersion === 'bfl-statement-v6' ||
+        obligationTemplate(templateVersion)) &&
       Array.isArray(value) &&
       !value.length &&
       ['debts', 'businessDebts', 'attachments'].includes(field.key)
@@ -66,6 +81,10 @@ export function templateData(
           : '[не заполнено]',
     });
   }
+  if (obligations) {
+    output.debtTotal = obligations.total ?? '[не заполнено]';
+    output.debtTotalWords = obligations.totalWords ?? '[не заполнено]';
+  }
   const surname =
     typeof values.lastName === 'string' ? values.lastName.trim() : '';
   const initials = [values.firstName, values.middleName]
@@ -78,6 +97,16 @@ export function templateData(
     .join('');
   return {
     ...output,
+    ...(obligations && {
+      creditorHeaders: obligations.creditorHeaders.map((row) =>
+        Object.fromEntries(
+          ['name', 'inn', 'ogrn', 'address'].map((key) => [
+            key,
+            row[key] ?? '[не заполнено]',
+          ]),
+        ),
+      ),
+    }),
     signerName: surname
       ? `${surname}${initials ? ` ${initials}` : ''}`
       : '[не заполнено]',
