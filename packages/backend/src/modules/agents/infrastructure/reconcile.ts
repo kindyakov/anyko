@@ -10,6 +10,7 @@ import { candidateSchema } from '../../../profiles/bfl/candidate';
 import { employmentInstructions } from '../../../profiles/bfl/employment-instructions';
 import { fieldValueSchema } from '../../../profiles/bfl/fields';
 import { obligationInstructions } from '../../../profiles/bfl/obligation-instructions';
+import { checklistSuggestionSchema } from '../application/checklist';
 import { reconciliationSchema } from '../application/session';
 
 import type { findArbitrationCourt } from './arbitration-court';
@@ -33,6 +34,10 @@ const reconciliationResponseSchema = reconciliationSchema.extend({
     )
     .max(100),
 });
+const checklistReconciliationResponseSchema =
+  reconciliationResponseSchema.extend({
+    checklistSuggestions: z.array(checklistSuggestionSchema).max(150),
+  });
 
 export function createReconciliationAgent(options: {
   memory: Memory;
@@ -104,6 +109,10 @@ export function createReconciliationAgent(options: {
       extracted.push(excerpt);
       remaining -= characters;
     }
+    const withChecklist = !!input.checklistRequirements?.length;
+    const checklistInstructions = withChecklist
+      ? ' Для checklistRequirements предложи связи checklistSuggestions с доступными документами. Один документ может закрыть несколько требований, и наоборот. Используй только проверяемую OCR-цитату или описание изображения из исходника. Укажи imagePath только для описания изображения, иначе null. Используй found для ясного соответствия и review для сомнительного. Оборот, лимит и остаток по счёту сами по себе не делают выписку справкой о задолженности. Не предлагай связь без подтверждения в исходнике.'
+      : '';
     const agent = new Agent({
       id: 'continue-work-session',
       mastra: options.mastra,
@@ -125,12 +134,15 @@ export function createReconciliationAgent(options: {
 В fields.extracted есть часть уже извлечённых кандидатов с цитатами. Используй их и обращайся к инструментам, когда для решения нужны дополнительные детали. Если нужно установить, есть ли у поля конкурирующие значения, проверь его через readField. Посмотри, какие из незаполненных полей можно дополнить, связав уже известные факты. Если источник прямо сообщает новое значение, верни origin="document" и пропусти explanation. Если источник сообщает исходные факты, а значение однозначно следует из связи между ними или устойчивых общих знаний, верни origin="inference" и кратко объясни эту связь в explanation. Такой вывод пойдёт на проверку юристу. Если остаётся несколько правдоподобных вариантов или оснований недостаточно, оставь поле пустым. Отсутствие упоминания не доказывает отсутствие объекта или обстоятельства.
 Для каждой значимой сущности, названной в источниках, проверь, какие пустые поля можно дополнить её однозначно известными свойствами и связями, включая принадлежность к более общей сущности. Верни каждый обоснованный вывод в candidates. Для этого можно использовать устойчивые общие знания без внешнего поиска. Проверь, что исходный факт относится к нужному человеку, объекту, событию и периоду. Например, место одного события само по себе ничего не говорит о месте другого события.
 Когда доступны поля суда и адрес места жительства заявителя, вызови lookupArbitrationCourt для каждого обоснованного субъекта РФ. Если источники расходятся, проверь все варианты. Передавай только наименование субъекта РФ. Если субъект выводится из названия населённого пункта, верни подтверждённый инструментом вариант courtName с объяснением связи населённого пункта и субъекта, а в evidence укажи точную цитату исходного кандидата region, registrationAddress, city или locality. Реквизиты суда вне официального поиска возвращай только при прямом указании в исходном документе.
-В evidence каждого предложения указывай documentId, imagePath и точную quote из исходника. Для origin="document" цитата содержит само значение. Для origin="inference" цитата подтверждает исходный факт, а explanation описывает, как из него получено значение. Поля пакета: ${JSON.stringify(fieldLabels)}. ${obligationInstructions(input.fields)} ${employmentInstructions(input.fields)} Если нужны тип, ограничения или колонки поля, уточни их через readField. В summary пиши простым языком без внутренних ID, названий API и технических полей.`,
+В evidence каждого предложения указывай documentId, imagePath и точную quote из исходника. Для origin="document" цитата содержит само значение. Для origin="inference" цитата подтверждает исходный факт, а explanation описывает, как из него получено значение. Поля пакета: ${JSON.stringify(fieldLabels)}. ${obligationInstructions(input.fields)} ${employmentInstructions(input.fields)} Если нужны тип, ограничения или колонки поля, уточни их через readField. В summary пиши простым языком без внутренних ID, названий API и технических полей.${checklistInstructions}`,
     });
     try {
       const result = await agent.generate(
         JSON.stringify({
           event: 'documents.analyzed',
+          ...(withChecklist && {
+            checklistRequirements: input.checklistRequirements,
+          }),
           previousContext: input.previousContext && {
             summary: input.previousContext.summary,
             missingFields: input.previousContext.missingFields,
@@ -166,12 +178,20 @@ export function createReconciliationAgent(options: {
             maxOutputTokens: budget.maxOutputTokens,
             maxRetries: 1,
           },
-          structuredOutput: { schema: reconciliationResponseSchema },
+          structuredOutput: {
+            schema: withChecklist
+              ? checklistReconciliationResponseSchema
+              : reconciliationResponseSchema,
+          },
         },
       );
       budget.assertFits();
       if (result.error) throw result.error;
-      const output = reconciliationResponseSchema.parse(result.object);
+      const checklistOutput = withChecklist
+        ? checklistReconciliationResponseSchema.parse(result.object)
+        : undefined;
+      const output =
+        checklistOutput ?? reconciliationResponseSchema.parse(result.object);
       const candidates: z.infer<typeof candidateSchema>[] = [];
       const hasValidEvidence = async (candidate: Candidate) => {
         for (const { documentId, imagePath, quote } of candidate.evidence) {
@@ -222,6 +242,9 @@ export function createReconciliationAgent(options: {
       return {
         summary: output.summary,
         candidates: [...verifiedCourts, ...candidates].slice(0, 100),
+        ...(checklistOutput && {
+          checklistSuggestions: checklistOutput.checklistSuggestions,
+        }),
         usage: {
           inputTokens: result.usage.inputTokens ?? null,
           outputTokens: result.usage.outputTokens ?? null,

@@ -108,11 +108,12 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       if (source.status !== 'succeeded' || source.revision === null)
         throw new Error('PARSING_FAILED');
       await step({ stage: 'parsing', documentId, status: 'succeeded' });
-      return deps.documents.internal.queries.analysis({
+      const analysis = await deps.documents.internal.queries.analysis({
         workspaceId,
         documentId,
         revision: source.revision,
       });
+      return { ...analysis, ocrRevision: source.revision };
     };
     const { revision } = await loadConnection(run.settingsRevision);
     const readConnection = () => loadConnection(revision);
@@ -292,6 +293,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
               await deps.works.internal.documents(run.workspaceId, run.workId)
             ).find((d) => d.id === documentId)?.filename ?? documentId,
           digest: source.sourceDigest,
+          ocrRevision: source.ocrRevision,
           text: source.text,
           ...(source.pdfOcr && { pdfOcr: source.pdfOcr }),
           visuals: output.visuals,

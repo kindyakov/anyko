@@ -4,7 +4,6 @@ import {
   type AgentSessionContext,
   type FieldDefinition,
 } from '../../modules/agents';
-import type { DocumentAnalysis } from '../../modules/documents';
 import { candidatesForContext, type WorkFacts } from '../../modules/facts';
 import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
@@ -14,16 +13,16 @@ import { logWorkFailure } from '../work-execution/failure';
 import { analysisContextRevision } from '../work-execution/run-state';
 import { guardWorkRevision, workLockKey } from '../work-guards';
 
+import {
+  type ChecklistAnalysisSource,
+  validateChecklistSuggestions,
+} from './checklist-suggestions';
 import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
 
-export interface ContinuationSource {
-  id: string;
+export interface ContinuationSource extends ChecklistAnalysisSource {
   filename: string;
   digest: string;
-  text: string;
-  pdfOcr?: DocumentAnalysis['pdfOcr'];
-  visuals: { path: string; description: string }[];
 }
 
 /** One entry point for continuing a logical work session; transport never owns its context. */
@@ -64,7 +63,10 @@ export function createWorkContinuation(deps: WorkDependencies) {
             await deps.processing
               .in(tx)
               .internal.thread(run.workspaceId, run.workId, threadId);
-            return { work, facts, session, threadId };
+            const requirements = await deps.templateRequirements(
+              work.packageVersion,
+            );
+            return { work, facts, session, threadId, requirements };
           }, signal);
         },
         input.signal,
@@ -133,6 +135,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
               modelId: config.extractionModel,
               connection: config.connection,
               fields: input.fields,
+              checklistRequirements: snapshot.requirements,
               workRevision: snapshot.work.revision,
               previousContext: snapshot.session.context,
               facts: snapshot.facts,
@@ -219,6 +222,31 @@ export function createWorkContinuation(deps: WorkDependencies) {
               ...(validOutput && { contextCandidates: validOutput.candidates }),
             });
             if (!acceptedFacts.contextAccepted) validOutput = undefined;
+            const suggestions = validOutput?.checklistSuggestions;
+            if (suggestions && snapshot.requirements.length) {
+              const documents = await works.documents(
+                run.workspaceId,
+                run.workId,
+              );
+              const sources = input.sources.filter((source) =>
+                documents.some(
+                  (row) =>
+                    !row.deleted &&
+                    row.id === source.id &&
+                    row.ocrRevision === source.ocrRevision,
+                ),
+              );
+              await works.replaceChecklistSuggestions(
+                run.workspaceId,
+                run.workId,
+                sources.map(({ id }) => id),
+                validateChecklistSuggestions(
+                  snapshot.requirements,
+                  sources,
+                  suggestions,
+                ),
+              );
+            }
             await sessions.history.outcome(historyRef, {
               ...interaction,
               status: validOutput ? 'accepted' : 'rejected',
