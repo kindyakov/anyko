@@ -12,6 +12,14 @@ export type { DocumentPackage } from './schemas';
 export type ReadTemplatePlaceholders = (
   pack: DocumentPackage,
 ) => Promise<DocumentPackage>;
+export type ReadTemplateRequirements = (packageVersion: string) => Promise<
+  {
+    key: string;
+    documentKind: string;
+    label: string;
+    applicability: 'usual' | 'conditional';
+  }[]
+>;
 export { templateData } from './render-data';
 
 const historicalPackage: DocumentPackage = documentPackageSchema.parse({
