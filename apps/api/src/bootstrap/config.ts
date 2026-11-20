@@ -1,4 +1,6 @@
 import { z } from 'zod';
+
+import { DiagnosticError } from '@anyko/logger';
 const schema = z.object({
   DOCUMENTS_ENABLED: z
     .enum(['true', 'false'])
@@ -30,8 +32,10 @@ const schema = z.object({
 export function parseApiConfig(env: unknown) {
   const result = schema.safeParse(env);
   if (!result.success)
-    throw new Error(
-      `Invalid API configuration: ${result.error.issues.map((i) => i.path.join('.')).join(', ')}`,
-    );
+    throw new DiagnosticError({
+      code: 'API_CONFIG_INVALID',
+      message: `Некорректные параметры API: ${result.error.issues.map((i) => i.path.join('.')).join(', ')}`,
+      operation: 'api.parseConfig',
+    });
   return result.data;
 }

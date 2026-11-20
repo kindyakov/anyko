@@ -34,9 +34,13 @@ test('local launch accepts only fixed app and mode pairs', () => {
     app: 'worker',
     mode: 'start',
   });
+  expect(parseLaunchArgs(['web', 'start'])).toEqual({
+    app: 'web',
+    mode: 'start',
+  });
   for (const args of [
     [],
-    ['web', 'start'],
+    ['web', 'build'],
     ['api;echo', 'dev'],
     ['api', '--eval'],
     ['api', 'dev', 'extra'],
@@ -53,6 +57,26 @@ test('invalid CLI exits before launching an app', () => {
   );
   expect(result.status).toBe(2);
   expect(result.stderr).toContain('Usage:');
+});
+
+test('the local diagnostic file keeps structured events and excludes raw framework output', () => {
+  const file = logFile();
+  const sink = createTerminalLog(createLogWriter(file), {
+    structuredService: 'web',
+  });
+  const event = JSON.stringify({
+    schemaVersion: 1,
+    service: 'web',
+    event: 'web_request_failed',
+    level: 50,
+    errorCode: 'WEB_REQUEST_FAILED',
+    failure: { message: 'Сбой Web.', operation: 'web.handleRequest' },
+  });
+  sink.write(Buffer.from('private framework message\n'));
+  sink.write(Buffer.from(event.slice(0, 30)));
+  sink.write(Buffer.from(event.slice(30) + '\n'));
+  sink.end();
+  expect(readFileSync(file, 'utf8')).toBe(event + '\n');
 });
 
 test('file logging appends across launcher restarts', () => {
@@ -100,9 +124,12 @@ test('terminal displays split JSON events with level colors and preserves other 
   );
   terminal.write(input.subarray(0, 23));
   terminal.write(input.subarray(23));
+  const malformed =
+    '{"level":"constructor","service":"api","event":"not-a-log"}\n';
+  terminal.write(Buffer.from(malformed));
   terminal.end();
   expect(result).toContain('\x1b[32mINFO\x1b[0m [api] process_ready port=3021');
-  expect(result).toEndWith('plain output\n');
+  expect(result).toEndWith(`plain output\n${malformed}`);
 });
 
 test('terminal escapes control characters and preserves oversized and unfinished lines', () => {

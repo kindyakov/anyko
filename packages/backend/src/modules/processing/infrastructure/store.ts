@@ -82,6 +82,7 @@ export function createDocumentProcessingStore(
           attemptToken,
           snapshot: {
             id: runId,
+            attempts: run.attempts,
             workspaceId,
             documentId: run.documentId,
             sourceKey: run.document.sourceKey,

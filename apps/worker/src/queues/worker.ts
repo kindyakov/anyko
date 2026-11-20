@@ -9,6 +9,7 @@ import {
   type WorkerQueue,
   workerQueues,
 } from '@anyko/backend/jobs';
+import { correlationId, diagnoseFailure } from '@anyko/logger';
 
 import { dispatchOutbox } from '../loops/dispatcher';
 import { reconcileJobs } from '../loops/reconciler';
@@ -118,8 +119,50 @@ export async function startJobWorker(
       { connection, prefix, concurrency: 1 },
     );
     worker.on('error', degrade);
-    worker.on('failed', (job) => {
-      runtime.logger.warn({ event: 'job.failed', jobId: job?.id ?? 'unknown' });
+    worker.on('failed', (job, error) => {
+      const definition = runtime.registry.definitions.find(
+        (entry) => entry.name === job?.name && entry.queue === name,
+      );
+      const traceId =
+        job?.data &&
+        typeof job.data === 'object' &&
+        'correlationId' in job.data &&
+        typeof job.data.correlationId === 'string'
+          ? correlationId(job.data.correlationId)
+          : undefined;
+      const details = {
+        event: 'job.failed',
+        jobId: job?.id,
+        jobType: definition?.name,
+        correlationId: traceId,
+        attempt: job?.attemptsMade,
+      };
+      if (
+        error instanceof UnrecoverableError &&
+        error.message === 'STALE_JOB_EXECUTION'
+      ) {
+        runtime.logger.info({
+          ...details,
+          errorCode: 'STALE_JOB_EXECUTION',
+          state: 'skipped',
+        });
+        return;
+      }
+      const failure = diagnoseFailure(error, {
+        code: 'JOB_EXECUTION_FAILED',
+        message: 'Не удалось выполнить попытку фонового задания.',
+        operation: definition?.name ?? 'worker.executeJob',
+      });
+      const willRetry =
+        job !== undefined &&
+        !(error instanceof UnrecoverableError) &&
+        job.attemptsMade < (job.opts.attempts ?? 1);
+      runtime.logger.error({
+        ...details,
+        errorCode: failure.code,
+        failure,
+        state: willRetry ? 'retrying' : 'failed',
+      });
     });
     workers.push(worker);
   }
@@ -212,9 +255,18 @@ export async function startJobWorker(
               worker.isRunning() &&
               worker.getBackend().blockingConnection?.status === 'ready',
           );
-      } catch {
+      } catch (error) {
         healthy = false;
-        runtime.logger.warn({ event: 'job_dispatch_failed' });
+        const failure = diagnoseFailure(error, {
+          code: 'JOB_DISPATCH_FAILED',
+          message: 'Не удалось сверить задания или доставить их в очередь.',
+          operation: 'worker.dispatchJobs',
+        });
+        runtime.logger.warn({
+          event: 'job_dispatch_failed',
+          errorCode: failure.code,
+          failure,
+        });
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }

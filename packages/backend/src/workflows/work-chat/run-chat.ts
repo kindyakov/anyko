@@ -7,6 +7,7 @@ import { WorkError } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
 import { callModel } from '../work-analysis/model-call';
 import type { WorkDependencies } from '../work-dependencies';
+import { logWorkFailure } from '../work-execution/failure';
 import { createRunState } from '../work-execution/run-state';
 import { workLockKey } from '../work-guards';
 
@@ -147,7 +148,7 @@ export function createWorkChatRun(
           error instanceof LlmError || isAppError(error)
             ? error.code
             : 'WORK_PROCESSING_FAILED';
-        const failure = writer.failure(code);
+        const failure = writer.failure({ errorCode: code, cause: error });
         if (!failure) throw error;
         return { failure };
       },
@@ -163,7 +164,7 @@ export function createWorkChatRun(
           async (tx, write) => {
             if (!failure && 'answer' in result)
               await deps.agents.in(tx).internal.chat.answer(ref, result.answer);
-            await write.finish(failure ?? { status: 'succeeded' });
+            await write.finish(failure?.outcome ?? { status: 'succeeded' });
             await deps.works
               .in(tx)
               .internal.event(
@@ -177,5 +178,13 @@ export function createWorkChatRun(
       },
       signal,
     );
+    if (failure) {
+      logWorkFailure(deps.logger, run, failure.cause, {
+        code: failure.outcome.errorCode,
+        message: 'Не удалось завершить изменение поля через чат.',
+        operation: 'work.chat',
+        state: failure.outcome.status,
+      });
+    }
   };
 }

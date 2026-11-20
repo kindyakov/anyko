@@ -78,6 +78,7 @@ export type StepOutput = z.infer<typeof stepOutputSchema>;
 
 export interface WorkRunSnapshot {
   id: string;
+  attempts: number;
   workspaceId: string;
   workId: string;
   kind: 'analysis' | 'generation' | 'chat';
@@ -116,7 +117,7 @@ export interface WorkProcessingStore {
     workId: string,
   ): Promise<AnalysisRecovery | null>;
   start(
-    input: WorkRunSnapshot & {
+    input: Omit<WorkRunSnapshot, 'attempts'> & {
       actorId: string;
       modelSnapshot: { vision: string; extraction: string };
     },

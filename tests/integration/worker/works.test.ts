@@ -145,12 +145,20 @@ const agents: DocumentAgents = {
     return Promise.resolve();
   },
 };
-const logger = createLogger({
-  service: 'worker',
-  environment: 'test',
-  release: 'work-integration',
-  level: 'error',
-});
+const workLog: string[] = [];
+const logger = createLogger(
+  {
+    service: 'worker',
+    environment: 'test',
+    release: 'work-integration',
+    level: 'error',
+  },
+  {
+    write: (line) => {
+      workLog.push(line);
+    },
+  },
+);
 // Same composition as the processes: an API backend and a worker backend over one database.
 const testConfig = integrationConfig({
   databaseUrl,
@@ -898,6 +906,22 @@ test('chat tool edits one field, records its history, and restores through the w
       status: 'partial',
       errorCode: 'LLM_AUTH_FAILED',
       answer: null,
+    });
+    const interruptedLog = workLog
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .find(
+        (entry) =>
+          entry.jobId === interruptedRun &&
+          entry.event === 'work_processing_failed',
+      );
+    expect(interruptedLog).toMatchObject({
+      errorCode: 'LLM_AUTH_FAILED',
+      state: 'partial',
+      attempt: 1,
+      failure: {
+        message: 'Провайдер модели отклонил авторизацию.',
+        operation: 'work.chat',
+      },
     });
     const interrupted = await workHttp.views.get(scope, workId);
     expect(interrupted.facts.values).toMatchObject({

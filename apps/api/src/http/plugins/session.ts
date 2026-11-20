@@ -16,6 +16,7 @@ export function sessionGuard(
     if (state) state.session = session;
     if (!session) {
       set.status = 401;
+      if (state) state.errorCode = transportErrorCodes.UNAUTHORIZED;
       return {
         error: {
           code: transportErrorCodes.UNAUTHORIZED,

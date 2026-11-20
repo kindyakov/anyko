@@ -13,10 +13,17 @@ export function proxy(request: NextRequest) {
     cookieNames: request.cookies.getAll().map((cookie) => cookie.name),
     lastWorkspace: request.cookies.get(lastWorkspaceCookie)?.value,
   });
-  if (decision.action === 'redirect')
+  const signIn =
+    request.nextUrl.pathname === '/sign-in' ||
+    request.nextUrl.pathname.startsWith('/sign-in/');
+  if (!signIn && decision.action === 'redirect')
     return NextResponse.redirect(new URL(decision.location, request.url));
-  const response = NextResponse.next();
-  if (decision.lastWorkspace !== undefined)
+  const correlationId = crypto.randomUUID();
+  const headers = new Headers(request.headers);
+  headers.set('x-correlation-id', correlationId);
+  const response = NextResponse.next({ request: { headers } });
+  response.headers.set('x-correlation-id', correlationId);
+  if (decision.action === 'continue' && decision.lastWorkspace !== undefined)
     response.cookies.set(lastWorkspaceCookie, decision.lastWorkspace, {
       httpOnly: true,
       sameSite: 'lax',
@@ -27,9 +34,9 @@ export function proxy(request: NextRequest) {
   return response;
 }
 
-// Статика, API-прокси и сама страница входа не проходят через проверку.
+// API-прокси сам назначает correlation ID. Статике он не нужен.
 export const config = {
   matcher: [
-    '/((?!api/|api$|_next/|brand/|pdf-assets/|sign-in$|sign-in/|favicon\\.ico$|.*\\.svg$|.*\\.png$|.*\\.ico$|.*\\.ttf$|.*\\.txt$).*)',
+    '/((?!api/|api$|_next/|brand/|pdf-assets/|favicon\\.ico$|.*\\.svg$|.*\\.png$|.*\\.ico$|.*\\.ttf$|.*\\.txt$).*)',
   ],
 };

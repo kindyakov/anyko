@@ -95,8 +95,8 @@ export function worksRoutes(
     });
     return { ...page, deletions: await deletion.pending(scope) };
   });
-  route(app, deleteWork, ({ scope, params, requestId }) =>
-    deletion.request(scope, brandWorkId(params.workId), requestId),
+  route(app, deleteWork, ({ scope, params, correlationId }) =>
+    deletion.request(scope, brandWorkId(params.workId), correlationId),
   );
   route(app, getWorkDeletion, ({ scope, params }) =>
     deletion.status(scope, brandWorkId(params.workId)),
@@ -151,13 +151,13 @@ export function worksRoutes(
   route(
     app,
     createWorkChatMessage,
-    async ({ scope, params, body, requestId }) => {
+    async ({ scope, params, body, correlationId }) => {
       const workId = brandWorkId(params.workId);
       return {
         body: await chat.send(scope, {
           workId,
           ...body,
-          correlationId: requestId,
+          correlationId,
         }),
         resource: { kind: 'work' as const, id: workId, documentIds: [] },
       };
@@ -177,12 +177,12 @@ export function worksRoutes(
   route(
     app,
     uploadWorkDocument,
-    async ({ scope, params, headers, body, requestId }) => {
+    async ({ scope, params, headers, body, correlationId }) => {
       const document = await intake.uploadDocument(scope, {
         workId: brandWorkId(params.workId),
         filename: body.file.name,
         bytes: new Uint8Array(await body.file.arrayBuffer()),
-        correlationId: requestId,
+        correlationId,
         requestKey: headers['idempotency-key'],
       });
       return {
@@ -232,10 +232,10 @@ export function worksRoutes(
     );
     return { bytes: image.bytes, headers: imageHeaders(image.contentType) };
   });
-  route(app, analyzeWork, async ({ scope, params, requestId }) => {
+  route(app, analyzeWork, async ({ scope, params, correlationId }) => {
     await intake.analyzeWork(scope, {
       workId: brandWorkId(params.workId),
-      correlationId: requestId,
+      correlationId,
     });
     return { body: { status: 'queued' as const }, resource: null };
   });
@@ -272,11 +272,11 @@ export function worksRoutes(
     await review.confirmFacts(scope, { ...body, workId });
     return presentWork(await views.get(scope, workId));
   });
-  route(app, generateWork, async ({ scope, params, body, requestId }) => {
+  route(app, generateWork, async ({ scope, params, body, correlationId }) => {
     await generation.startGeneration(scope, {
       ...body,
       workId: brandWorkId(params.workId),
-      correlationId: requestId,
+      correlationId,
     });
     return { body: { status: 'queued' as const }, resource: null };
   });

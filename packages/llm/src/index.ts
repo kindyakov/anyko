@@ -53,7 +53,21 @@ export class LlmError extends Error {
   constructor(public readonly code: LlmErrorCode) {
     super(code);
   }
+
+  get diagnosticMessage(): string {
+    return llmErrorMessages[this.code];
+  }
 }
+
+const llmErrorMessages = {
+  LLM_AUTH_FAILED: 'Провайдер модели отклонил авторизацию.',
+  LLM_RATE_LIMITED: 'Провайдер модели ограничил частоту запросов.',
+  LLM_UNAVAILABLE: 'Провайдер модели недоступен.',
+  LLM_TIMEOUT: 'Провайдер модели не ответил за отведённое время.',
+  LLM_CANCELLED: 'Запрос к модели отменён.',
+  LLM_INVALID_RESPONSE: 'Ответ модели не соответствует ожидаемому формату.',
+  LLM_REQUEST_REJECTED: 'Провайдер модели отклонил запрос.',
+} satisfies Record<LlmErrorCode, string>;
 
 /** No provider body, prompt or credential crosses the application error seam. */
 export function llmError(error: unknown, signal?: AbortSignal): LlmError {

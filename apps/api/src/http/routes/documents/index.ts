@@ -47,18 +47,22 @@ export function documentRoutes(
       pendingDeletions: await documents.queries.pendingDeletions(scope),
     };
   });
-  route(app, uploadDocument, async ({ scope, headers, body, requestId }) => {
-    const document = await documents.commands.upload(scope, {
-      requestKey: headers['idempotency-key'],
-      filename: body.file.name,
-      bytes: new Uint8Array(await body.file.arrayBuffer()),
-      correlationId: requestId,
-    });
-    return {
-      body: { document: documentSummary(document) },
-      resource: { kind: 'document' as const, id: document.id },
-    };
-  });
+  route(
+    app,
+    uploadDocument,
+    async ({ scope, headers, body, correlationId }) => {
+      const document = await documents.commands.upload(scope, {
+        requestKey: headers['idempotency-key'],
+        filename: body.file.name,
+        bytes: new Uint8Array(await body.file.arrayBuffer()),
+        correlationId,
+      });
+      return {
+        body: { document: documentSummary(document) },
+        resource: { kind: 'document' as const, id: document.id },
+      };
+    },
+  );
   route(app, getDocument, async ({ scope, params }) => ({
     document: documentSummary(
       await documents.queries.get(scope, brandDocumentId(params.documentId)),
@@ -114,12 +118,12 @@ export function documentRoutes(
     );
     return { status: 'deleting' as const };
   });
-  route(app, retryDocument, async ({ scope, params, requestId }) => ({
+  route(app, retryDocument, async ({ scope, params, correlationId }) => ({
     document: documentSummary(
       await documents.commands.retry(
         scope,
         brandDocumentId(params.documentId),
-        requestId,
+        correlationId,
       ),
     ),
   }));

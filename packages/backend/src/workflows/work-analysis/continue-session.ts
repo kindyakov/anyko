@@ -10,6 +10,7 @@ import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
+import { logWorkFailure } from '../work-execution/failure';
 import { analysisContextRevision } from '../work-execution/run-state';
 import { guardWorkRevision, workLockKey } from '../work-guards';
 
@@ -88,6 +89,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
       };
       const history = deps.agents.internal.history.record(historyRef);
       let reconciliationError: string | undefined;
+      let reconciliationCause: unknown;
       try {
         if (!input.sources.length) throw new Error('NO_READABLE_SOURCES');
         await workAttempt.step({
@@ -162,6 +164,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
         output.candidates = locateEvidence(output.candidates, input.sources);
       } catch (error) {
         output = undefined;
+        reconciliationCause = error;
         reconciliationError =
           error instanceof LlmError
             ? error.code
@@ -288,7 +291,17 @@ export function createWorkContinuation(deps: WorkDependencies) {
         },
         input.signal,
       );
-      if (accepted) return;
+      if (accepted) {
+        if (reconciliationError) {
+          logWorkFailure(deps.logger, run, reconciliationCause, {
+            code: reconciliationError,
+            message: 'Не удалось сверить исходники и сведения работы.',
+            operation: 'work.analysis.reconcile',
+            state: input.completed === 0 ? 'failed' : 'partial',
+          });
+        }
+        return;
+      }
     }
   };
 }

@@ -92,7 +92,9 @@ test('error without fields becomes the form-level error with the common text', (
     new ApiError('INTERNAL_ERROR', 500, 'r1', undefined),
     texts,
   );
-  expect(read(form.state.errorMap.onServer)).toBe('Техническая формулировка.');
+  expect(read(form.state.errorMap.onServer)).toBe(
+    'Техническая формулировка. Код обращения: r1.',
+  );
   expect(form.state.isFieldsValid).toBe(true);
 });
 

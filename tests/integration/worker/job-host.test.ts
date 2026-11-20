@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { uuidV7 } from '@anyko/backend/ids';
 import { defineJob } from '@anyko/backend/jobs';
 import { createDatabase, createDatabasePool } from '@anyko/database';
-import { createLogger } from '@anyko/logger';
+import { createLogger, DiagnosticError } from '@anyko/logger';
 import { startJobWorker } from '@anyko/worker/queues';
 import { createQueueProbe } from '@anyko/worker/testing';
 
@@ -95,6 +95,92 @@ async function waitFor(check: () => Promise<boolean>) {
   }
   throw new Error('JOB_TEST_TIMEOUT');
 }
+
+test('failed queue attempts keep the original diagnosis and correlation without provider data', async () => {
+  const prefix = `diagnostics-${uuidV7()}`;
+  const probe = createQueueProbe(redisUrl, 'maintenance', prefix);
+  const lines: string[] = [];
+  const logger = createLogger(
+    {
+      service: 'worker',
+      environment: 'test',
+      release: 'job-host',
+      level: 'error',
+    },
+    {
+      write: (line) => {
+        lines.push(line);
+      },
+    },
+  );
+  const message = 'Провайдер не ответил за отведённое время.';
+  const job = defineJob({
+    kind: 'scheduled',
+    name: 'test.diagnostic',
+    version: 1,
+    queue: 'maintenance',
+    payload: z.object({}).strict(),
+    timeoutMs: 1_000,
+    retry: { attempts: 2, backoffMs: 0 },
+    handler() {
+      throw new DiagnosticError(
+        {
+          code: 'PROVIDER_TIMEOUT',
+          message,
+          operation: 'test.callProvider',
+        },
+        { cause: new Error('private-provider-data') },
+      );
+    },
+  });
+  const worker = await startJobWorker(
+    {
+      ...backend.jobs,
+      logger,
+      registry: { ...backend.jobs.registry, definitions: [job], schedules: [] },
+    },
+    { queues: 'maintenance', prefix },
+  );
+  try {
+    const correlationId = uuidV7();
+    const jobId = uuidV7();
+    const queued = await probe.queue.add(
+      job.name,
+      {
+        envelopeVersion: 1,
+        version: 1,
+        correlationId,
+        payload: {},
+      },
+      { jobId, attempts: 2 },
+    );
+    await waitFor(
+      async () => (await queued.getState()) === 'failed' && lines.length >= 2,
+    );
+    const events = lines
+      .map((line) => JSON.parse(line) as Record<string, unknown>)
+      .filter((event) => event.jobId === jobId);
+    expect(events).toHaveLength(2);
+    for (const [index, state] of ['retrying', 'failed'].entries()) {
+      expect(events[index]).toMatchObject({
+        event: 'job.failed',
+        level: 50,
+        correlationId,
+        attempt: index + 1,
+        state,
+        errorCode: 'PROVIDER_TIMEOUT',
+        failure: {
+          message,
+          operation: 'test.callProvider',
+        },
+      });
+    }
+    expect(lines.join('')).not.toContain('private-provider-data');
+  } finally {
+    await worker.stop();
+    await probe.close();
+  }
+});
 
 test('WORKER_QUEUES=ocr leaves llm delivery waiting and executes a current OCR envelope', async () => {
   const prefix = `queue-selection-${uuidV7()}`;

@@ -1,6 +1,7 @@
 import { expect, mock, test } from 'bun:test';
 
 import type { Session } from '@anyko/contracts/session';
+import { DiagnosticError } from '@anyko/logger';
 
 // Next подставляет маркер server-only в сборке; в тестах он пустой.
 await mock.module('server-only', () => ({}));
@@ -90,24 +91,28 @@ test('the Secure session cookie name is recognised too', async () => {
 });
 
 // Сообщение ошибки или признак успешного ответа: проверяем причину, а не сам факт исключения.
-async function failureMessage(promise: Promise<unknown>): Promise<string> {
+async function sessionFailure(
+  promise: Promise<unknown>,
+): Promise<DiagnosticError> {
   try {
     await promise;
-    return 'resolved';
   } catch (error) {
-    return error instanceof Error ? error.message : 'not an Error';
+    if (error instanceof DiagnosticError) return error;
+    throw error;
   }
+  throw new Error('Expected a session diagnostic');
 }
 
 test('other API statuses are failures, not an anonymous visitor', async () => {
   for (const status of [403, 404, 500, 503]) {
     const { fetcher } = fakeFetch(() => new Response('{}', { status }));
-    const message = await failureMessage(
+    const error = await sessionFailure(
       readSession(cookie, 'http://api.test', fetcher),
     );
-    expect(message).toBe(
-      `Session request failed with status ${String(status)}`,
-    );
+    expect(error.description).toMatchObject({
+      code: 'SESSION_API_REJECTED',
+      causeCode: `HTTP_${String(status)}`,
+    });
   }
 });
 
@@ -115,9 +120,11 @@ test('a network failure propagates', async () => {
   const { fetcher } = fakeFetch(() =>
     Promise.reject(new TypeError('fetch failed')),
   );
-  expect(
-    await failureMessage(readSession(cookie, 'http://api.test', fetcher)),
-  ).toBe('fetch failed');
+  const error = await sessionFailure(
+    readSession(cookie, 'http://api.test', fetcher),
+  );
+  expect(error.description.code).toBe('SESSION_API_UNAVAILABLE');
+  expect(Bun.inspect(error)).not.toContain('fetch failed');
 });
 
 test('a response that does not match the session contract is a failure', async () => {
@@ -125,8 +132,9 @@ test('a response that does not match the session contract is a failure', async (
     Response.json({ user: { id: 'user-1' }, workspace: 'workspace-1' }),
   );
   expect(
-    await failureMessage(readSession(cookie, 'http://api.test', fetcher)),
-  ).toBe('Session response does not match the contract');
+    (await sessionFailure(readSession(cookie, 'http://api.test', fetcher)))
+      .description.code,
+  ).toBe('SESSION_RESPONSE_INVALID');
 });
 
 // Прежняя форма `{ user, workspace }` без участий не проходит новую схему: её не принимаем молча.
@@ -137,6 +145,7 @@ test('the previous single-workspace shape is rejected by the v1 contract', async
   };
   const { fetcher } = fakeFetch(() => Response.json(legacy));
   expect(
-    await failureMessage(readSession(cookie, 'http://api.test', fetcher)),
-  ).toBe('Session response does not match the contract');
+    (await sessionFailure(readSession(cookie, 'http://api.test', fetcher)))
+      .description.code,
+  ).toBe('SESSION_RESPONSE_INVALID');
 });

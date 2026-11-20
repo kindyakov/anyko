@@ -35,6 +35,12 @@ export async function dispatchOutbox(
         `${item.id}-${item.token}`,
       );
       await port.delivered(item.id, item.token);
+      runtime.logger.info({
+        event: 'job_dispatched',
+        correlationId: run.correlationId,
+        jobId: `${item.id}-${item.token}`,
+        jobType: definition.name,
+      });
     } catch (error) {
       await port.release(item.id, item.token);
       throw error;

@@ -1,3 +1,5 @@
+import { DiagnosticError } from '@anyko/logger';
+
 import { checksum } from '../../modules/documents';
 import { generateDocument } from '../../modules/generation';
 import type { WorkAttempt } from '../../modules/processing';
@@ -7,6 +9,7 @@ import {
   templateData,
 } from '../../modules/templates';
 import type { WorkDependencies } from '../work-dependencies';
+import { logWorkFailure } from '../work-execution/failure';
 import { createRunState } from '../work-execution/run-state';
 import { guardWorkRevision, workLockKey } from '../work-guards';
 
@@ -36,13 +39,19 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
         },
         signal,
       );
-    if (!run.generationId) throw new Error('GENERATION_MISSING');
-    const record = await deps.generation.internal.get(
-      run.workspaceId,
-      run.workId,
-      run.generationId,
-    );
-    if (!record) throw new Error('GENERATION_MISSING');
+    const record =
+      run.generationId &&
+      (await deps.generation.internal.get(
+        run.workspaceId,
+        run.workId,
+        run.generationId,
+      ));
+    if (!record)
+      throw new DiagnosticError({
+        code: 'GENERATION_MISSING',
+        message: 'Не найдены данные задания на формирование документов.',
+        operation: 'work.generation.load',
+      });
     const pack = await deps.templatePlaceholders(
       requirePackage(record.packageVersion),
     );
@@ -54,21 +63,31 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       const template = pack.documents.find(
         (entry) => entry.version === file.templateVersion,
       );
-      if (!template) throw new Error('PACKAGE_TEMPLATE_MISMATCH');
+      if (!template)
+        throw new DiagnosticError({
+          code: 'PACKAGE_TEMPLATE_MISMATCH',
+          message: 'Шаблон формируемого файла отсутствует в пакете документов.',
+          operation: 'work.generation.readTemplate',
+        });
       const expected = templateBytes(template.version);
       const templateKey = `templates/${template.version}/${template.checksum}.docx`;
       if (!(await deps.storage.exists(templateKey)))
         await deps.storage.put(templateKey, expected, DOCX, signal);
       const source = await deps.storage.get(templateKey, signal);
       if ((await checksum(source)) !== template.checksum)
-        throw new Error('TEMPLATE_CHECKSUM_MISMATCH');
+        throw new DiagnosticError({
+          code: 'TEMPLATE_CHECKSUM_MISMATCH',
+          message:
+            'Контрольная сумма шаблона в хранилище отличается от утверждённой.',
+          operation: 'work.generation.readTemplate',
+        });
       let bytes: Uint8Array;
       try {
         bytes = generateDocument(
           source,
           templateData(record.values, template.version, template.placeholders),
         );
-      } catch {
+      } catch (error) {
         await write(async (tx) => {
           await deps.generation
             .in(tx)
@@ -80,6 +99,12 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
               run.workId,
               'generation.file.failed',
             );
+        });
+        logWorkFailure(deps.logger, run, error, {
+          code: 'DOCUMENT_GENERATION_FAILED',
+          message: 'Не удалось сформировать файл из шаблона.',
+          operation: 'work.generation.renderDocument',
+          state: 'failed',
         });
         continue;
       }

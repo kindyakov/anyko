@@ -1,7 +1,7 @@
 import type { Elysia } from 'elysia';
 
 import { type ErrorKind, isAppError } from '@anyko/backend/errors';
-import type { Logger } from '@anyko/logger';
+import { diagnoseFailure, type Logger } from '@anyko/logger';
 
 import { transportErrorCodes } from '../errors';
 import { requestState } from '../request-state';
@@ -18,11 +18,35 @@ const statusByKind = {
 
 // Единственное место, где ошибка становится HTTP-ответом: вид AppError задаёт статус.
 export function errorHandling(app: Elysia, logger: Logger): void {
-  app.onError(({ code, error, set, request }) => {
-    const id = requestState(request)?.requestId ?? crypto.randomUUID();
+  app.onError(({ code, error, set, request, route }) => {
+    const state = requestState(request);
+    const id = state?.requestId ?? crypto.randomUUID();
     set.headers['x-request-id'] = id;
+    set.headers['x-correlation-id'] = state?.correlationId ?? id;
+    const logFailure = (errorCode: string, statusCode: number) => {
+      const failure = diagnoseFailure(error, {
+        code: errorCode,
+        message: 'Обработка HTTP-запроса завершилась сбоем.',
+        operation: 'api.handleRequest',
+      });
+      logger.error({
+        event:
+          failure.code === 'RESPONSE_CONTRACT_VIOLATION'
+            ? 'http_response_invalid'
+            : 'http_failed',
+        requestId: id,
+        correlationId: state?.correlationId ?? id,
+        method: request.method,
+        route,
+        statusCode,
+        errorCode: failure.code,
+        failure,
+      });
+    };
     if (isAppError(error)) {
       set.status = statusByKind[error.kind];
+      if (state) state.errorCode = error.code;
+      if (set.status >= 500) logFailure(error.code, set.status);
       return {
         error: {
           code: error.code,
@@ -44,8 +68,8 @@ export function errorHandling(app: Elysia, logger: Logger): void {
         : status === 400
           ? transportErrorCodes.INVALID_REQUEST
           : transportErrorCodes.INTERNAL_ERROR;
-    if (status === 500)
-      logger.error({ event: 'http_failed', requestId: id, errorCode });
+    if (state) state.errorCode = errorCode;
+    if (status === 500) logFailure(errorCode, status);
     return { error: { code: errorCode, requestId: id } };
   });
 }

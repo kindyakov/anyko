@@ -16,7 +16,7 @@ import {
   type MultipartPart,
 } from '@anyko/contracts/common';
 import type { Session } from '@anyko/contracts/session';
-import type { Logger } from '@anyko/logger';
+import { DiagnosticError, type Logger } from '@anyko/logger';
 
 import { requestState } from './request-state';
 
@@ -68,6 +68,7 @@ type ScopeOf<E> = E extends { path: `${string}:workspaceId${string}` }
 type RouteContext<E extends Endpoint> = ScopeOf<E> & {
   readonly session: Session;
   readonly requestId: string;
+  readonly correlationId: string;
   readonly request: Request;
   readonly signal: AbortSignal;
   readonly params: ParsedPart<E, 'params'>;
@@ -134,6 +135,7 @@ export function createRoute(env: RouteEnv): Route {
             session,
             scope: state.scope,
             requestId,
+            correlationId: state.correlationId,
             request,
             signal: request.signal,
             link,
@@ -145,7 +147,7 @@ export function createRoute(env: RouteEnv): Route {
           // Команды без режима key выполняются напрямую; у режима key ключ обязателен уже при разборе входа.
           if (key === undefined) {
             const value = await handler(context);
-            return await respond(endpoint, value, set, env.logger, requestId);
+            return await respond(endpoint, value, set);
           }
           if (!state.scope) throw new Error('KEYED_ROUTE_WITHOUT_SCOPE');
           // Повтор с тем же ключом, областью, командой и входом отдаёт сохранённый ответ, сценарий
@@ -166,7 +168,7 @@ export function createRoute(env: RouteEnv): Route {
               const { body, resource } = (await handler(
                 context,
               )) as KeyedResponse<ResponseOf<typeof endpoint>>;
-              await checkedJson(endpoint, body, env.logger, requestId);
+              await checkedJson(endpoint, body);
               return {
                 response: {
                   status: endpoint.status,
@@ -299,8 +301,6 @@ async function respond(
   endpoint: Endpoint,
   value: unknown,
   set: { status?: number | string; headers: Record<string, unknown> },
-  logger: Logger,
-  requestId: string,
 ): Promise<unknown> {
   const response = endpoint.response;
   if (response.kind === 'events') {
@@ -319,29 +319,22 @@ async function respond(
       },
     });
   }
-  await checkedJson(endpoint, value, logger, requestId);
+  await checkedJson(endpoint, value);
   set.status = endpoint.status;
   return value;
 }
 
 // Ответ json проверяется схемой описания до отправки; нарушение — внутренняя ошибка.
-async function checkedJson(
-  endpoint: Endpoint,
-  value: unknown,
-  logger: Logger,
-  requestId: string,
-): Promise<void> {
+async function checkedJson(endpoint: Endpoint, value: unknown): Promise<void> {
   if (endpoint.response.kind !== 'json')
     throw new Error('JSON_RESPONSE_EXPECTED');
   const check = await endpoint.response.schema['~standard'].validate(value);
-  if (check.issues !== undefined) {
-    logger.error({
-      event: 'http_response_invalid',
-      requestId,
-      route: endpoint.path,
+  if (check.issues !== undefined)
+    throw new DiagnosticError({
+      code: 'RESPONSE_CONTRACT_VIOLATION',
+      message: 'Сформированный ответ API не соответствует схеме маршрута.',
+      operation: 'api.validateResponse',
     });
-    throw new Error('RESPONSE_CONTRACT_VIOLATION');
-  }
 }
 
 // Заголовок Idempotency-Key уже проверен схемой; здесь только выбор значения.

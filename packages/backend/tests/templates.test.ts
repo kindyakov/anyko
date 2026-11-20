@@ -9,6 +9,7 @@ import {
   formatMoneyAmount,
   moneyAmountsInText,
 } from '@anyko/document-values/money';
+import { diagnoseFailure } from '@anyko/logger';
 
 import { generateDocument } from '../src/modules/generation';
 import {
@@ -34,8 +35,35 @@ test('the selectable package contains three real versioned templates; archived s
     'creditors',
   ]);
   expect(requirePackage('technical-document-v1').documents).toHaveLength(1);
-  expect(() => requirePackage('not-a-package')).toThrow('PACKAGE_NOT_FOUND');
 });
+
+test.each([
+  [
+    () => requirePackage('not-a-package'),
+    'PACKAGE_NOT_FOUND',
+    'templates.requirePackage',
+  ],
+  [
+    () => templateBytes('not-a-template'),
+    'TEMPLATE_NOT_FOUND',
+    'templates.readAsset',
+  ],
+] as const)(
+  'retains the diagnostic code of a missing template reference',
+  (read, code, operation) => {
+    let diagnostic: unknown;
+    try {
+      read();
+    } catch (error) {
+      diagnostic = diagnoseFailure(error, {
+        code: 'INTERNAL_ERROR',
+        message: 'Не удалось открыть каталог.',
+        operation: 'catalog.load',
+      });
+    }
+    expect(diagnostic).toMatchObject({ code, operation });
+  },
+);
 
 test.each([
   [

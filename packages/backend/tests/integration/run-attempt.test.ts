@@ -148,6 +148,7 @@ test('the OCR attempt rolls back failed notifications and fences publication aft
   if (!old) throw new Error('CLAIM_MISSING');
   expect(old.run).toEqual({
     id: runId,
+    attempts: 1,
     workspaceId,
     documentId,
     sourceKey,

@@ -25,6 +25,7 @@ export type ApiErrorTexts = {
   codes?: Partial<Record<string, string>>;
   technical?: string;
   fallback?: string;
+  includeClientReference?: boolean;
 };
 
 export function isUnauthorized(error: unknown): boolean {
@@ -52,17 +53,19 @@ const commonTechnicalText =
   'Не удалось получить ответ сервера. Повторите попытку позже.';
 const commonFallbackText = 'Операция не выполнена. Повторите попытку.';
 
-// Текст причины без номера обращения: номер добавляет вызывающий в собственном формате.
 export function describeApiError(
   error: unknown,
   texts: ApiErrorTexts = {},
 ): string {
   if (!(error instanceof ApiError)) return texts.fallback ?? commonFallbackText;
-  const own = texts.codes?.[error.code];
-  if (own) return own;
-  const technical =
-    technicalCodes.has(error.code) ||
-    (error.status !== undefined && error.status >= 500);
-  if (technical) return texts.technical ?? commonTechnicalText;
-  return texts.fallback ?? commonFallbackText;
+  const serverFailure = error.status !== undefined && error.status >= 500;
+  const technical = serverFailure || technicalCodes.has(error.code);
+  const text =
+    texts.codes?.[error.code] ??
+    (technical
+      ? (texts.technical ?? commonTechnicalText)
+      : (texts.fallback ?? commonFallbackText));
+  return error.requestId && (serverFailure || texts.includeClientReference)
+    ? `${text} Код обращения: ${error.requestId}.`
+    : text;
 }

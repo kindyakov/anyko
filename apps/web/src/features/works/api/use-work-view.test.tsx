@@ -171,7 +171,29 @@ test('a failed request other than not found reports a retryable load error', asy
   });
   await waitFor(() => {
     expect(result.current.loadError).toBe(
-      'Не удалось обновить работу. Повторите попытку.',
+      'Не удалось открыть карточку работы. Повторите попытку.',
+    );
+  });
+});
+
+test('an internal failure shows the failed action and its request ID', async () => {
+  installEventSource();
+  const requestId = crypto.randomUUID();
+  serveWork(
+    Response.json(
+      { error: { code: 'INTERNAL_ERROR', requestId } },
+      {
+        status: 500,
+        headers: { 'x-request-id': requestId },
+      },
+    ),
+  );
+  const { result } = renderHook(() => useWorkView({ workspaceId, workId }), {
+    wrapper: wrapperFor(createQueryClient()),
+  });
+  await waitFor(() => {
+    expect(result.current.loadError).toBe(
+      `Не удалось открыть карточку работы. Повторите попытку. Код обращения: ${requestId}.`,
     );
   });
 });

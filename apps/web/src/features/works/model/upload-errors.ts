@@ -1,4 +1,4 @@
-import { ApiError, describeApiError, sharedCodeTexts } from '@/lib/api/errors';
+import { describeApiError, sharedCodeTexts } from '@/lib/api/errors';
 
 import { workCommandReasons, workRevisionConflictText } from './command-errors';
 
@@ -22,13 +22,12 @@ const uploadTexts = {
   },
   technical: 'Не удалось загрузить файл. Повторите попытку.',
   fallback: 'Не удалось загрузить файл. Повторите попытку.',
+  includeClientReference: true,
 };
 
 export function uploadFailureMessage(
   filename: string,
   failure: unknown,
 ): string {
-  const reason = describeApiError(failure, uploadTexts);
-  const requestId = failure instanceof ApiError ? failure.requestId : undefined;
-  return `${filename}: ${reason}${requestId ? ` Код обращения: ${requestId}.` : ''}`;
+  return `${filename}: ${describeApiError(failure, uploadTexts)}`;
 }

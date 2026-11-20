@@ -1,3 +1,7 @@
+import 'server-only';
+
+import { diagnoseFailure, DiagnosticError, type Logger } from '@anyko/logger';
+
 import type { HttpFetch } from '@/lib/api/client';
 const requestHeaders = [
   'accept',
@@ -12,6 +16,7 @@ const responseHeaders = [
   'content-type',
   'content-disposition',
   'x-request-id',
+  'x-correlation-id',
   'x-content-type-options',
   'content-security-policy',
   'x-accel-buffering',
@@ -27,6 +32,7 @@ export async function proxyApiRequest(
   timeoutMs = 60000,
   fetcher: HttpFetch = fetch,
   publicOrigin?: string,
+  logger?: Logger,
 ): Promise<Response> {
   const base = new URL(origin);
   if (
@@ -41,12 +47,43 @@ export async function proxyApiRequest(
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000)
     throw new Error('INVALID_PROXY_TIMEOUT');
   const requestId = crypto.randomUUID();
+  let upstreamRequestId: string | undefined;
+  const logFailure = (
+    code: string,
+    message: string,
+    statusCode: number,
+    cause?: unknown,
+  ) => {
+    if (!logger) return;
+    const operation = 'web.proxyApiRequest';
+    const failure = diagnoseFailure(
+      new DiagnosticError({ code, message, operation }, { cause }),
+      {
+        code,
+        message,
+        operation,
+      },
+    );
+    logger.error({
+      event: 'web_api_proxy_failed',
+      requestId: upstreamRequestId ?? requestId,
+      correlationId: requestId,
+      method: request.method,
+      statusCode,
+      errorCode: code,
+      failure,
+    });
+  };
   const failure = (status: number, code: string) =>
     Response.json(
       { error: { code, requestId } },
       {
         status,
-        headers: { 'x-request-id': requestId, 'cache-control': 'no-store' },
+        headers: {
+          'x-request-id': requestId,
+          'x-correlation-id': requestId,
+          'cache-control': 'no-store',
+        },
       },
     );
   if (
@@ -85,6 +122,7 @@ export async function proxyApiRequest(
   );
   target.search = source.search;
   const headers = new Headers();
+  headers.set('x-correlation-id', requestId);
   for (const name of requestHeaders) {
     const value = request.headers.get(name);
     if (value !== null) headers.set(name, value);
@@ -142,6 +180,11 @@ export async function proxyApiRequest(
     if (response.status >= 300 && response.status < 400) {
       cleanup();
       await response.body?.cancel();
+      logFailure(
+        'UPSTREAM_REDIRECT',
+        'API вернул перенаправление вместо ответа.',
+        502,
+      );
       return failure(502, 'UPSTREAM_REDIRECT');
     }
     const outgoing = new Headers({ 'cache-control': 'no-store' });
@@ -149,8 +192,17 @@ export async function proxyApiRequest(
       const value = response.headers.get(name);
       if (value !== null) outgoing.set(name, value);
     }
+    upstreamRequestId = outgoing.get('x-request-id') ?? undefined;
     for (const cookie of response.headers.getSetCookie())
       outgoing.append('set-cookie', cookie);
+    if (response.status >= 500)
+      logger?.info({
+        event: 'web_api_upstream_failed',
+        requestId: upstreamRequestId,
+        correlationId: requestId,
+        method: request.method,
+        statusCode: response.status,
+      });
     if (request.method === 'HEAD' || !response.body) {
       cleanup();
       return new Response(null, { status: response.status, headers: outgoing });
@@ -166,8 +218,15 @@ export async function proxyApiRequest(
             cleanup();
             output.close();
           } else output.enqueue(chunk.value);
-        } catch {
+        } catch (error) {
           cleanup();
+          if (!request.signal.aborted)
+            logFailure(
+              'UPSTREAM_BODY_FAILED',
+              'Не удалось дочитать ответ API.',
+              response.status,
+              error,
+            );
           output.error(new Error('UPSTREAM_BODY_FAILED'));
         }
       },
@@ -178,8 +237,24 @@ export async function proxyApiRequest(
       },
     });
     return new Response(stream, { status: response.status, headers: outgoing });
-  } catch {
+  } catch (error) {
     cleanup();
+    if (!state.requestTooLarge && !request.signal.aborted) {
+      if (state.timedOut)
+        logFailure(
+          'UPSTREAM_TIMEOUT',
+          'API не ответил за отведённое время.',
+          504,
+          error,
+        );
+      else
+        logFailure(
+          'UPSTREAM_UNAVAILABLE',
+          'Не удалось получить ответ от API.',
+          502,
+          error,
+        );
+    }
     return failure(
       state.requestTooLarge ? 413 : state.timedOut ? 504 : 502,
       state.requestTooLarge

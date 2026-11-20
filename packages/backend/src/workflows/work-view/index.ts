@@ -1,3 +1,5 @@
+import { inOperation } from '@anyko/logger';
+
 import type { AgentsModule } from '../../modules/agents';
 import type { ConnectionsModule } from '../../modules/connections';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
@@ -32,7 +34,9 @@ export interface WorkViewDeps {
 export function createWorkView(deps: WorkViewDeps) {
   return {
     packages: () =>
-      Promise.all(availablePackages().map(deps.templatePlaceholders)),
+      inOperation('catalog.listDocumentPackages', () =>
+        Promise.all(availablePackages().map(deps.templatePlaceholders)),
+      ),
     get: getWork(deps),
     ...agentHistoryQueries(deps),
     source: getSource(deps),

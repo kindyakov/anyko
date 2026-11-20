@@ -18,10 +18,10 @@ export function parseLaunchArgs(args) {
   const [app, mode] = args;
   if (
     args.length !== 2 ||
-    !['api', 'worker'].includes(app) ||
+    !['api', 'worker', 'web'].includes(app) ||
     !['dev', 'start'].includes(mode)
   ) {
-    throw new Error('Usage: run-local.mjs api|worker dev|start');
+    throw new Error('Usage: run-local.mjs api|worker|web dev|start');
   }
   return { app, mode };
 }
@@ -80,17 +80,28 @@ async function main(args) {
     process.exitCode = 2;
     return;
   }
+  const isWeb = config.app === 'web';
+  const appDirectory = resolve(root, 'apps', config.app);
   const child = spawn(
     'bun',
     [
-      ...[resolve(root, '.env'), resolve(root, 'apps', config.app, '.env')]
-        .filter(existsSync)
-        .flatMap((file) => ['--env-file', file]),
-      ...(config.mode === 'dev' ? ['--watch'] : []),
-      resolve(root, 'apps', config.app, 'src', 'index.ts'),
+      ...(isWeb
+        ? [
+            // Run the entry point directly. Next forwards Bun runtime flags to Node workers.
+            resolve(appDirectory, 'node_modules/next/dist/bin/next'),
+            config.mode,
+            ...(config.mode === 'dev' ? ['--hostname', '127.0.0.1'] : []),
+          ]
+        : [
+            ...[resolve(root, '.env'), resolve(appDirectory, '.env')]
+              .filter(existsSync)
+              .flatMap((file) => ['--env-file', file]),
+            ...(config.mode === 'dev' ? ['--watch'] : []),
+            resolve(appDirectory, 'src', 'index.ts'),
+          ]),
     ],
     {
-      cwd: root,
+      cwd: isWeb ? appDirectory : root,
       env: process.env,
       shell: false,
       stdio: ['inherit', 'pipe', 'pipe'],
@@ -111,9 +122,12 @@ async function main(args) {
   const terminal = process.stdout.isTTY
     ? createTerminalLog(process.stdout, { color: !('NO_COLOR' in process.env) })
     : process.stdout;
+  const diagnosticLog = createTerminalLog(writer, {
+    structuredService: config.app,
+  });
   function tee(chunk, output) {
     try {
-      writer.write(chunk);
+      if (output === terminal) diagnosticLog.write(chunk);
       output.write(chunk);
     } catch {
       if (!sinkFailed)
@@ -124,6 +138,7 @@ async function main(args) {
   }
   child.stdout.on('data', (chunk) => tee(chunk, terminal));
   child.stdout.on('end', () => {
+    diagnosticLog.end();
     if (terminal !== process.stdout) terminal.end();
   });
   child.stderr.on('data', (chunk) => tee(chunk, process.stderr));

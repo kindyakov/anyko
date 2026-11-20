@@ -1,3 +1,5 @@
+import { inOperation } from '@anyko/logger';
+
 import type { AgentsModule } from '../../modules/agents';
 import type { ConnectionsModule } from '../../modules/connections';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
@@ -77,8 +79,8 @@ export const getWork =
         session: cleanupPending
           ? null
           : await deps.agents.internal.get(scope.workspaceId, workId),
-        package: await deps.templatePlaceholders(
-          requirePackage(work.packageVersion),
+        package: await inOperation('works.getDetails', () =>
+          deps.templatePlaceholders(requirePackage(work.packageVersion)),
         ),
         documents,
         facts: { ...facts, candidates: markSelectedCandidates(facts) },

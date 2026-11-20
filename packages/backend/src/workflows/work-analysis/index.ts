@@ -7,6 +7,7 @@ import { stepOutputSchema, type WorkAttempt } from '../../modules/processing';
 import { requirePackage } from '../../modules/templates';
 import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
+import { logWorkFailure } from '../work-execution/failure';
 import { createRunState } from '../work-execution/run-state';
 
 import {
@@ -312,14 +313,22 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           throw error;
         await current();
         failures++;
+        const errorCode =
+          error instanceof LlmError
+            ? error.code
+            : `${stage.toUpperCase()}_FAILED`;
         await step({
           stage,
           documentId,
           status: 'failed',
-          errorCode:
-            error instanceof LlmError
-              ? error.code
-              : `${stage.toUpperCase()}_FAILED`,
+          errorCode,
+        });
+        logWorkFailure(deps.logger, run, error, {
+          code: errorCode,
+          message:
+            'Не удалось обработать исходник работы на этом этапе анализа.',
+          operation: `work.analysis.${stage}`,
+          state: 'failed',
         });
       }
     }

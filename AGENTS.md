@@ -14,6 +14,14 @@
 
 Перед добавлением или изменением HTTP-запроса сверяйтесь с [каталогом API](docs/engineering/api-catalog.md) и [правилами проектирования адресов](docs/engineering/backend.md#проектирование-адресов).
 
+При диагностике сбоя начните с кода обращения и [серверного журнала](docs/engineering/runtime-foundation.md#события-и-серверный-журнал). Из корня репозитория найдите локальные события, включая ротацию журнала.
+
+```powershell
+rtk proxy rg -F "КОД_ОБРАЩЕНИЯ" apps -g "runtime.log*" --hidden --no-ignore
+```
+
+В найденном событии ищите `failure.code`, `failure.message`, `failure.operation` и `failure.source`. Повторите поиск по `correlationId`, чтобы проследить запрос через Web, API и worker. Для фонового задания начните с `jobId`.
+
 ### Issue tracker
 
 Для агентских команд GitHub и Git push в Anyko используйте `bun run agent:github` по [инструкции доступа](docs/engineering/github-protection.md). При ошибке App не переходите на обычный `gh` или пользовательские credentials. Административные изменения выполняются только по явному поручению пользователя; launcher не изолирует текущую среду от человеческого доступа.

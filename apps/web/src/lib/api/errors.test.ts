@@ -34,7 +34,7 @@ test.each([
     name: 'server failure without feature text uses the feature technical text',
     error: new ApiError('INTERNAL_ERROR', 503, 'request-1'),
     texts: featureTexts,
-    expected: 'Своя техническая формулировка.',
+    expected: 'Своя техническая формулировка. Код обращения: request-1.',
   },
   {
     name: 'client error with unknown code uses the feature fallback',

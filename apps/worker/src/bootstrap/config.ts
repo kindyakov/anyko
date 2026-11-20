@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { parseWorkerQueues } from '@anyko/backend/jobs';
+import { DiagnosticError } from '@anyko/logger';
 
 const schema = z.object({
   NODE_ENV: z
@@ -55,8 +56,10 @@ const schema = z.object({
 export function parseWorkerConfig(env: Record<string, string | undefined>) {
   const result = schema.safeParse(env);
   if (!result.success)
-    throw new Error(
-      `INVALID_ENV: ${[...new Set(result.error.issues.map((issue) => issue.path.join('.')))].join(', ')}`,
-    );
+    throw new DiagnosticError({
+      code: 'INVALID_ENV',
+      message: `INVALID_ENV: ${[...new Set(result.error.issues.map((issue) => issue.path.join('.')))].join(', ')}`,
+      operation: 'worker.parseConfig',
+    });
   return result.data;
 }

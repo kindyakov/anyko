@@ -9,6 +9,8 @@ import { createWorkChatRun } from '../work-chat/run-chat';
 import type { WorkDependencies } from '../work-dependencies';
 import { createWorkGenerationRun } from '../work-generation/run-generation';
 
+import { logWorkFailure } from './failure';
+
 // Исполнение запуска работы: захват попытки, блокировки, выбор анализа или генерации и итог при сбое.
 export function createWorkExecution(
   deps: WorkDependencies,
@@ -81,10 +83,11 @@ export function createWorkExecution(
             },
           );
           if (!finished) return;
-          deps.logger.error({
-            event: 'work_processing_failed',
-            correlationId: run.correlationId,
-            errorCode,
+          logWorkFailure(deps.logger, run, error, {
+            code: errorCode,
+            message: 'Не удалось завершить обработку работы.',
+            operation: `work.${run.kind}`,
+            state: bounded.aborted ? 'cancelled' : 'failed',
           });
         }
       },

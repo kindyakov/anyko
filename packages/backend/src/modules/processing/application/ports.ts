@@ -4,6 +4,7 @@ import type { RunClaim } from './run-attempt';
 
 export interface DocumentRunSnapshot {
   id: string;
+  attempts: number;
   workspaceId: string;
   documentId: string;
   sourceKey: string;

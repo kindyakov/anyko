@@ -54,10 +54,9 @@ export async function prepareChatFieldWriter(
   );
   let hasApplied = saved.length > 0;
 
-  const write: Parameters<DocumentAgents['chat']>[0]['writeField'] = async (
-    args,
-    toolCallId,
-    signal,
+  type WriteField = Parameters<DocumentAgents['chat']>[0]['writeField'];
+  const write = async (
+    ...[args, toolCallId, signal]: Parameters<WriteField>
   ) => {
     const payload = JSON.stringify({
       tool: fieldWriteTool,
@@ -131,24 +130,33 @@ export async function prepareChatFieldWriter(
         status: 'failed',
         errorCode,
       });
-      return { errorCode };
+      return { errorCode, cause: error };
     }
   };
 
   // Calls in the same model step may arrive concurrently. Each accepted edit
   // advances the optimistic revision seen by the next write in this turn.
-  const failures: { args: Parameters<typeof write>[0]; errorCode: string }[] =
-    [];
+  const failures: {
+    args: Parameters<WriteField>[0];
+    errorCode: string;
+    cause: unknown;
+  }[] = [];
   let pending = Promise.resolve();
-  const writeField: typeof write = (args, toolCallId, signal) => {
+  const writeField: WriteField = (args, toolCallId, signal) => {
     const result = pending.then(async () => {
       const outcome = await write(args, toolCallId, signal);
       const previous = failures.findIndex((failure) =>
         isDeepStrictEqual(failure.args, args),
       );
       if (previous >= 0) failures.splice(previous, 1);
-      if ('errorCode' in outcome)
-        failures.push({ args, errorCode: outcome.errorCode });
+      if ('errorCode' in outcome) {
+        failures.push({
+          args,
+          errorCode: outcome.errorCode,
+          cause: outcome.cause,
+        });
+        return { errorCode: outcome.errorCode };
+      }
       return outcome;
     });
     pending = result.then(
@@ -160,13 +168,15 @@ export async function prepareChatFieldWriter(
   return {
     appliedFields,
     writeField,
-    failure(modelError?: string) {
-      const errorCode =
-        (hasApplied ? modelError : undefined) ?? failures[0]?.errorCode;
-      return errorCode
+    failure(modelError?: { errorCode: string; cause: unknown }) {
+      const primary = (hasApplied ? modelError : undefined) ?? failures[0];
+      return primary
         ? {
-            status: hasApplied ? ('partial' as const) : ('failed' as const),
-            errorCode,
+            cause: primary.cause,
+            outcome: {
+              status: hasApplied ? ('partial' as const) : ('failed' as const),
+              errorCode: primary.errorCode,
+            },
           }
         : null;
     },

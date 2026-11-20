@@ -4,7 +4,7 @@ import {
   createBackend,
   resolveBackendMode,
 } from '@anyko/backend/runtime';
-import { createLogger } from '@anyko/logger';
+import { createLogger, diagnoseFailure } from '@anyko/logger';
 
 import { createApp } from '../http/app';
 
@@ -63,8 +63,17 @@ export async function startApi() {
         await app.stop();
         await backend?.stop();
         logger.info({ event: 'process_stopped' });
-      } catch {
-        logger.error({ event: 'shutdown_failed' });
+      } catch (error) {
+        const failure = diagnoseFailure(error, {
+          code: 'API_SHUTDOWN_FAILED',
+          message: 'Не удалось завершить работу API.',
+          operation: 'api.shutdown',
+        });
+        logger.error({
+          event: 'shutdown_failed',
+          errorCode: failure.code,
+          failure,
+        });
         process.exitCode = 1;
       } finally {
         clearTimeout(timer);
@@ -82,6 +91,17 @@ export async function startApi() {
       });
   } catch (error) {
     await Promise.allSettled([backend?.stop()]);
+    const failure = diagnoseFailure(error, {
+      code:
+        error instanceof BackendConfigError
+          ? error.code
+          : 'CONFIG_OR_LISTEN_FAILED',
+      message:
+        error instanceof BackendConfigError
+          ? error.message
+          : 'Не удалось запустить API.',
+      operation: 'api.start',
+    });
     createLogger({
       service: 'api',
       environment: 'unknown',
@@ -89,10 +109,8 @@ export async function startApi() {
       level: 'error',
     }).fatal({
       event: 'startup_failed',
-      errorCode:
-        error instanceof BackendConfigError
-          ? error.code
-          : 'CONFIG_OR_LISTEN_FAILED',
+      errorCode: failure.code,
+      failure,
     });
     process.exitCode = 1;
   }

@@ -1,13 +1,102 @@
-import { expect, test } from 'bun:test';
+import { expect, mock, test } from 'bun:test';
 
 import {
   documentResultSchema,
   documentsResponseSchema,
 } from '@anyko/contracts/documents';
+import { createLogger } from '@anyko/logger';
 
 import { type HttpFetch, requestApi } from '@/lib/api/client';
 import { ApiError } from '@/lib/api/errors';
-import { proxyApiRequest } from '@/lib/api/proxy';
+await mock.module('server-only', () => ({}));
+const { proxyApiRequest } = await import('@/lib/server/api-proxy');
+
+test('upstream failure keeps the API request ID and the Web correlation ID', async () => {
+  const events: string[] = [];
+  const logger = createLogger(
+    { service: 'web', environment: 'test', release: 'test', level: 'info' },
+    {
+      write: (line) => {
+        events.push(line);
+      },
+    },
+  );
+  const spoofed = crypto.randomUUID();
+  const requestId = crypto.randomUUID();
+  const request = new Request('http://web.test/api/v1/document-packages', {
+    headers: { 'x-correlation-id': spoofed },
+  });
+  const body = { error: { code: 'INTERNAL_ERROR', requestId } };
+  const response = await proxyApiRequest(
+    request,
+    ['v1', 'document-packages'],
+    'http://api.test',
+    1000,
+    (_url, init) => {
+      const trace = new Headers(init?.headers).get('x-correlation-id');
+      expect(trace).toBeTruthy();
+      expect(trace).not.toBe(spoofed);
+      return Promise.resolve(
+        Response.json(body, {
+          status: 500,
+          headers: {
+            'x-request-id': requestId,
+            'x-correlation-id': trace ?? '',
+          },
+        }),
+      );
+    },
+    undefined,
+    logger,
+  );
+  expect(response.status).toBe(500);
+  expect(response.headers.get('x-request-id')).toBe(requestId);
+  expect(await response.json()).toEqual(body);
+  expect(events).toHaveLength(1);
+  expect(JSON.parse(events[0] ?? '') as unknown).toMatchObject({
+    event: 'web_api_upstream_failed',
+    level: 30,
+    requestId,
+    correlationId: response.headers.get('x-correlation-id'),
+  });
+});
+
+test('the Web proxy logs its own transport failure and returns a safe error', async () => {
+  const events: string[] = [];
+  const logger = createLogger(
+    { service: 'web', environment: 'test', release: 'test', level: 'error' },
+    {
+      write: (line) => {
+        events.push(line);
+      },
+    },
+  );
+  const response = await proxyApiRequest(
+    new Request('http://web.test/api/v1/document-packages'),
+    ['v1', 'document-packages'],
+    'http://api.test',
+    1000,
+    () => Promise.reject(new Error('private-upstream-fixture')),
+    undefined,
+    logger,
+  );
+  const requestId = response.headers.get('x-request-id');
+  expect(response.status).toBe(502);
+  expect(await response.json()).toEqual({
+    error: { code: 'UPSTREAM_UNAVAILABLE', requestId },
+  });
+  expect(events).toHaveLength(1);
+  expect(JSON.parse(events[0] ?? '') as unknown).toMatchObject({
+    event: 'web_api_proxy_failed',
+    requestId,
+    correlationId: requestId,
+    failure: {
+      code: 'UPSTREAM_UNAVAILABLE',
+      operation: 'web.proxyApiRequest',
+    },
+  });
+  expect(events.join('')).not.toContain('private-upstream-fixture');
+});
 
 test('proxy uses configured public origin despite Next internal localhost URL and forwards SSE cursor', async () => {
   let calls = 0;

@@ -7,6 +7,7 @@ import {
   sessionCookieNames,
   sessionResponseSchema,
 } from '@anyko/contracts/session';
+import { DiagnosticError } from '@anyko/logger';
 
 import { readServerConfig } from '@/lib/server/config';
 
@@ -30,14 +31,29 @@ export async function readSession(
   cookieHeader: string | null,
   origin: string,
   fetcher: typeof fetch = fetch,
+  correlationId = crypto.randomUUID(),
 ): Promise<Session | null> {
   if (!cookieHeader || !hasSessionCookie(cookieHeader)) return null;
   // Серверный запрос идёт прямо к API (без прокси web), поэтому путь версии задан здесь явно.
+  const operation = 'web.readSession';
   const response = await fetcher(`${origin}/api/v1/session`, {
-    headers: { cookie: cookieHeader, accept: 'application/json' },
+    headers: {
+      cookie: cookieHeader,
+      accept: 'application/json',
+      'x-correlation-id': correlationId,
+    },
     cache: 'no-store',
     redirect: 'error',
     signal: AbortSignal.timeout(SESSION_TIMEOUT_MS),
+  }).catch((cause: unknown) => {
+    throw new DiagnosticError(
+      {
+        code: 'SESSION_API_UNAVAILABLE',
+        message: 'Не удалось связаться с API для проверки сессии.',
+        operation,
+      },
+      { cause },
+    );
   });
   if (response.status === 401) {
     await response.body?.cancel();
@@ -45,17 +61,31 @@ export async function readSession(
   }
   if (!response.ok) {
     await response.body?.cancel();
-    throw new Error(
-      `Session request failed with status ${String(response.status)}`,
-    );
+    throw new DiagnosticError({
+      code: 'SESSION_API_REJECTED',
+      message: 'API вернул ошибку при проверке сессии.',
+      operation,
+      causeCode: `HTTP_${String(response.status)}`,
+    });
   }
-  const parsed = sessionResponseSchema.safeParse(await response.json());
+  const payload: unknown = await response.json().catch(() => undefined);
+  const parsed = sessionResponseSchema.safeParse(payload);
   if (!parsed.success)
-    throw new Error('Session response does not match the contract');
+    throw new DiagnosticError({
+      code: 'SESSION_RESPONSE_INVALID',
+      message: 'Ответ API о сессии не соответствует контракту.',
+      operation,
+    });
   return parsed.data;
 }
 
 // Один запрос сессии на отрисовку: layout, страница и корневой маршрут получают одно значение.
-export const getSession = cache(async () =>
-  readSession((await headers()).get('cookie'), readServerConfig().API_ORIGIN),
-);
+export const getSession = cache(async () => {
+  const incoming = await headers();
+  return readSession(
+    incoming.get('cookie'),
+    readServerConfig().API_ORIGIN,
+    fetch,
+    incoming.get('x-correlation-id') ?? undefined,
+  );
+});

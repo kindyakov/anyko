@@ -32,10 +32,10 @@ const documentTexts = {
   },
   technical: 'Не удалось выполнить действие. Попробуйте ещё раз.',
   fallback: 'Не удалось выполнить действие. Попробуйте ещё раз.',
+  includeClientReference: true,
 };
 
 export function describeDocumentError(error: unknown) {
   if (!(error instanceof ApiError)) return 'Не удалось выполнить действие.';
-  const text = describeApiError(error, documentTexts);
-  return error.requestId ? `${text} Код обращения: ${error.requestId}` : text;
+  return describeApiError(error, documentTexts);
 }

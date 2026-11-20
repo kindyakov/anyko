@@ -3,7 +3,7 @@ import { skipToken, useQuery } from '@tanstack/react-query';
 
 import { getWork } from '@anyko/contracts/works';
 
-import { ApiError, isUnauthorized } from '@/lib/api/errors';
+import { ApiError, describeApiError, isUnauthorized } from '@/lib/api/errors';
 
 import { useWorkEvents } from './events';
 import { workQueryOptions } from './queries';
@@ -36,7 +36,8 @@ export function useWorkView({
 // 401 не показывается: сессия истекла, оболочка перенаправит на вход.
 function loadErrorText(error: unknown): string {
   if (!error || isUnauthorized(error)) return '';
-  return error instanceof ApiError && error.status === 404
-    ? 'Работа не найдена.'
-    : 'Не удалось обновить работу. Повторите попытку.';
+  if (error instanceof ApiError && error.status === 404)
+    return 'Работа не найдена.';
+  const message = 'Не удалось открыть карточку работы. Повторите попытку.';
+  return describeApiError(error, { technical: message, fallback: message });
 }

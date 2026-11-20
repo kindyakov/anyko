@@ -118,6 +118,7 @@ export function createWorkProcessingStore(
         attemptToken,
         snapshot: {
           id: row.id,
+          attempts: row.attempts,
           workspaceId,
           workId: row.workId,
           kind: workKind(row.kind),

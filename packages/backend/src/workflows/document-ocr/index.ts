@@ -1,4 +1,5 @@
-import type { Logger } from '@anyko/logger';
+import { LlmError } from '@anyko/llm';
+import { diagnoseFailure, type Logger } from '@anyko/logger';
 
 import type { DocumentAgents } from '../../modules/agents';
 import type { ConnectionsModule } from '../../modules/connections';
@@ -218,15 +219,31 @@ export function createDocumentOcrWorkflow(options: {
         correlationId: run.correlationId,
       });
     } catch (error) {
+      const originalCode =
+        error instanceof Error && failureCodes.has(error.message)
+          ? error.message
+          : undefined;
       const errorCode =
-        (error instanceof Error
-          ? failureCodes.get(error.message)
-          : undefined) ?? 'OCR_FAILED';
+        (originalCode ? failureCodes.get(originalCode) : undefined) ??
+        'OCR_FAILED';
+      const failure = diagnoseFailure(error, {
+        code: errorCode,
+        message:
+          error instanceof LlmError
+            ? error.diagnosticMessage
+            : 'Не удалось обработать исходник при распознавании.',
+        operation: 'document.ocr',
+        ...(originalCode &&
+          originalCode !== errorCode && { causeCode: originalCode }),
+      });
       options.logger.error({
         event: 'document_ocr_failed',
         jobId: run.id,
+        jobType: 'document.ocr',
+        attempt: run.attempts,
         correlationId: run.correlationId,
-        errorCode,
+        errorCode: failure.code,
+        failure,
       });
       if (error instanceof StorageWriteOutcomeUnknown) {
         try {

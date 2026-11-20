@@ -4,7 +4,7 @@ import {
   resolveBackendMode,
   type WorkerBackend,
 } from '@anyko/backend/runtime';
-import { createLogger } from '@anyko/logger';
+import { createLogger, diagnoseFailure } from '@anyko/logger';
 
 import { createWorkerRuntime, startJobWorker } from '../queues';
 
@@ -76,8 +76,17 @@ export async function startWorker() {
         // The backend stops its queue workers first, then releases the shared pool.
         await Promise.all([diagnostic?.stop(), backend?.stop()]);
         logger.info({ event: 'worker.stopped' });
-      } catch {
-        logger.error({ event: 'worker.shutdown_failed' });
+      } catch (error) {
+        const failure = diagnoseFailure(error, {
+          code: 'WORKER_SHUTDOWN_FAILED',
+          message: 'Не удалось завершить работу worker.',
+          operation: 'worker.shutdown',
+        });
+        logger.error({
+          event: 'worker.shutdown_failed',
+          errorCode: failure.code,
+          failure,
+        });
         process.exitCode = 1;
       } finally {
         await server.stop(true);
@@ -95,12 +104,23 @@ export async function startWorker() {
       });
   } catch (error) {
     await Promise.allSettled([diagnostic?.stop(), backend?.stop()]);
-    console.error(
-      error instanceof BackendConfigError ||
-        (error instanceof Error && error.message.startsWith('INVALID_ENV:'))
-        ? error.message
-        : 'WORKER_STARTUP_FAILED',
-    );
+    const failure = diagnoseFailure(error, {
+      code:
+        error instanceof BackendConfigError
+          ? error.code
+          : 'WORKER_STARTUP_FAILED',
+      message:
+        error instanceof BackendConfigError
+          ? error.message
+          : 'Не удалось запустить worker.',
+      operation: 'worker.start',
+    });
+    createLogger({
+      service: 'worker',
+      environment: 'unknown',
+      release: 'unknown',
+      level: 'error',
+    }).fatal({ event: 'startup_failed', errorCode: failure.code, failure });
     process.exitCode = 1;
   }
 }

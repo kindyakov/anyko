@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
+import { DiagnosticError } from '@anyko/logger';
+
 import { fieldDefinitions } from '../../profiles/bfl/fields';
 
 import manifest from './assets/package.json';
@@ -83,7 +85,12 @@ export function hasPackage(version: string): boolean {
 }
 export function requirePackage(version: string): DocumentPackage {
   const pack = knownPackages.find((entry) => entry.version === version);
-  if (!pack) throw new Error('PACKAGE_NOT_FOUND');
+  if (!pack)
+    throw new DiagnosticError({
+      code: 'PACKAGE_NOT_FOUND',
+      message: 'Версия пакета документов отсутствует в каталоге.',
+      operation: 'templates.requirePackage',
+    });
   return pack;
 }
 export function templateBytes(version: string): Uint8Array {
@@ -91,14 +98,35 @@ export function templateBytes(version: string): Uint8Array {
   const assetVersion =
     version === 'bfl-statement-v6' ? 'bfl-statement-v5' : version;
   const template = manifest.find((item) => item.version === assetVersion);
-  if (!template) throw new Error('TEMPLATE_NOT_FOUND');
-  const bytes = readFileSync(
-    new URL(
-      `./assets/${template.version.replace(/^bfl-/, '')}.docx`,
-      import.meta.url,
-    ),
-  );
+  if (!template)
+    throw new DiagnosticError({
+      code: 'TEMPLATE_NOT_FOUND',
+      message: 'Версия шаблона отсутствует в каталоге.',
+      operation: 'templates.readAsset',
+    });
+  let bytes: Uint8Array;
+  try {
+    bytes = readFileSync(
+      new URL(
+        `./assets/${template.version.replace(/^bfl-/, '')}.docx`,
+        import.meta.url,
+      ),
+    );
+  } catch (cause) {
+    throw new DiagnosticError(
+      {
+        code: 'TEMPLATE_ASSET_READ_FAILED',
+        message: 'Не удалось прочитать файл шаблона из поставки приложения.',
+        operation: 'templates.readAsset',
+      },
+      { cause },
+    );
+  }
   if (createHash('sha256').update(bytes).digest('hex') !== template.checksum)
-    throw new Error('TEMPLATE_CHECKSUM_MISMATCH');
+    throw new DiagnosticError({
+      code: 'TEMPLATE_CHECKSUM_MISMATCH',
+      message: 'Контрольная сумма файла шаблона отличается от утверждённой.',
+      operation: 'templates.readAsset',
+    });
   return bytes;
 }

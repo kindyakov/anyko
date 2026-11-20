@@ -15,7 +15,13 @@ export function WorkspaceLoading() {
   );
 }
 
-export function WorkspaceUnavailable({ onRetry }: { onRetry: () => void }) {
+export function WorkspaceUnavailable({
+  onRetry,
+  reference,
+}: {
+  onRetry: () => void;
+  reference?: string | undefined;
+}) {
   return (
     <section className="animate-rise flex max-w-md flex-col items-center text-center">
       <EventHorizon state="calm" className="mb-4 size-44" />
@@ -24,6 +30,7 @@ export function WorkspaceUnavailable({ onRetry }: { onRetry: () => void }) {
       </h1>
       <p role="alert" className="text-muted mt-3 mb-7 leading-7">
         Сервер не ответил. Проверьте подключение и повторите попытку.
+        {reference && <> Код обращения: {reference}</>}
       </p>
       <Button
         size="lg"

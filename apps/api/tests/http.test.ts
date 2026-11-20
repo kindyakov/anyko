@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 
 import { DocumentError } from '@anyko/backend/documents';
 import { AppError } from '@anyko/backend/errors';
-import { createLogger } from '@anyko/logger';
+import { createLogger, DiagnosticError, inOperation } from '@anyko/logger';
 
 import { createApp } from '../src/http/app';
 
@@ -37,28 +37,84 @@ test('real HTTP carries request context, safe errors and readiness', async () =>
     },
   );
   const app = createApp({ logger, ready: () => ready })
-    .get('/failure', () => {
-      throw new Error('private-fixture');
+    .get('/failure', () =>
+      inOperation('catalog.listPackages', () => {
+        throw new DiagnosticError(
+          {
+            code: 'DB_COLUMN_MISSING',
+            message: 'В схеме БД отсутствует ожидаемая колонка.',
+            operation: 'templates.readPlaceholders',
+            causeCode: 'P2022',
+          },
+          { cause: new Error('private-fixture') },
+        );
+      }),
+    )
+    .get('/conflict', () => {
+      throw new AppError('REVISION_CONFLICT', 'conflict');
     })
     .listen({ hostname: '127.0.0.1', port: 0 });
   try {
     const port = app.server?.port;
     if (port === undefined) throw new Error('No listener');
     const origin = `http://127.0.0.1:${String(port)}`;
-    const response = await fetch(`${origin}/failure?secret=private-fixture`);
+    const correlationId = crypto.randomUUID();
+    const response = await fetch(`${origin}/failure?secret=private-fixture`, {
+      headers: { 'x-correlation-id': correlationId },
+    });
     expect(response.status).toBe(500);
     const id = response.headers.get('x-request-id');
     expect(id).toBeTruthy();
+    expect(response.headers.get('x-correlation-id')).toBe(correlationId);
     expect(await response.json()).toEqual({
       error: { code: 'INTERNAL_ERROR', requestId: id },
     });
     const missing = await fetch(`${origin}/missing?secret=private-fixture`);
     expect(missing.status).toBe(404);
+    const conflict = await fetch(`${origin}/conflict`, {
+      headers: { 'x-correlation-id': 'private-fixture' },
+    });
+    const conflictId = conflict.headers.get('x-request-id');
+    expect(conflict.status).toBe(409);
+    expect(conflict.headers.get('x-correlation-id')).toBe(conflictId);
+    expect(await conflict.json()).toEqual({
+      error: { code: 'REVISION_CONFLICT', requestId: conflictId },
+    });
     ready = false;
     expect((await fetch(`${origin}/health/ready`)).status).toBe(503);
     await Bun.sleep(10);
-    expect(lines.join('')).toContain('http_failed');
-    expect(lines.join('')).toContain(id ?? 'impossible-id');
+    const events = lines.map(
+      (line) => JSON.parse(line) as Record<string, unknown>,
+    );
+    const failures = events.filter(
+      (event) => event.requestId === id && event.level === 50,
+    );
+    expect(failures).toHaveLength(1);
+    expect(failures[0]).toMatchObject({
+      event: 'http_failed',
+      correlationId,
+      route: '/failure',
+      statusCode: 500,
+      errorCode: 'DB_COLUMN_MISSING',
+      failure: {
+        message: 'В схеме БД отсутствует ожидаемая колонка.',
+        causeCode: 'P2022',
+        operation: 'templates.readPlaceholders',
+        operations: [
+          'api.handleRequest',
+          'catalog.listPackages',
+          'templates.readPlaceholders',
+        ],
+      },
+    });
+    const conflicts = events.filter((event) => event.requestId === conflictId);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toMatchObject({
+      event: 'http_completed',
+      level: 30,
+      statusCode: 409,
+      errorCode: 'REVISION_CONFLICT',
+    });
     expect(lines.join('')).not.toContain('private-fixture');
   } finally {
     await app.stop();
