@@ -1,3 +1,4 @@
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
 import { LlmError } from '@anyko/llm';
 
 import {
@@ -14,6 +15,7 @@ import { logWorkFailure } from '../work-execution/failure';
 import { analysisContextRevision } from '../work-execution/run-state';
 import { guardWorkRevision, workLockKey } from '../work-guards';
 
+import { attachmentAnalysis } from './attachment-analysis';
 import {
   type ChecklistAnalysisSource,
   validateChecklistSuggestions,
@@ -73,12 +75,14 @@ export function createWorkContinuation(deps: WorkDependencies) {
         },
         input.signal,
       );
-      const candidates = candidatesForContext(
+      const found = candidatesForContext(
         input.candidates,
         snapshot.facts.candidates,
         run.documentIds,
         input.sources.map(({ id }) => id),
       );
+      const submitted = hasSubmittedAttachments(input.fields);
+      const candidates = submitted ? attachmentAnalysis(found) : found;
       let output:
         Awaited<ReturnType<typeof deps.agents.model.reconcile>> | undefined;
       const historyRef = {
@@ -166,7 +170,10 @@ export function createWorkContinuation(deps: WorkDependencies) {
               },
             }),
         });
-        output.candidates = locateEvidence(output.candidates, input.sources);
+        const located = locateEvidence(output.candidates, input.sources);
+        output.candidates = submitted
+          ? attachmentAnalysis(located, candidates)
+          : located;
       } catch (error) {
         output = undefined;
         reconciliationCause = error;

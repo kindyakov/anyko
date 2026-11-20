@@ -9,6 +9,7 @@ import {
   type FieldValue,
   type FieldValues,
 } from '@anyko/contracts/catalog';
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
 import {
   datedBankruptcyPackage,
   statementSroValues,
@@ -279,7 +280,12 @@ export function PackagePreview(props: Props) {
             ref={form}
             className="grid gap-4 sm:grid-cols-2 [&_[data-review-highlight]]:outline-2 [&_[data-review-highlight]]:outline-offset-2 [&_[data-review-highlight]]:outline-rose-500"
           >
-            {[...pack.fields]
+            {pack.fields
+              .filter(
+                ({ key }) =>
+                  !hasSubmittedAttachments(pack.fields) ||
+                  (key !== 'attachments' && key !== 'submittedAttachments'),
+              )
               .sort(
                 (a, b) =>
                   Number(b.columns.length > 0) - Number(a.columns.length > 0),

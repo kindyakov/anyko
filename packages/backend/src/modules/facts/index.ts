@@ -69,6 +69,11 @@ export interface FactsPorts {
   readonly queries: FactsQueries;
   // Внутренний порт обслуживания для удаления производных данных.
   readonly internal: Pick<FactsStore, 'erase'> & {
+    removeSubmittedAttachment(
+      workspaceId: string,
+      workId: string,
+      documentId: string,
+    ): Promise<void>;
     defaultDocumentDate(
       workspaceId: string,
       workId: string,

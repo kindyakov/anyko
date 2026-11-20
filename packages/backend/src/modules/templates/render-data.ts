@@ -1,3 +1,4 @@
+import { attachmentDescriptions } from '@anyko/document-values/attachments';
 import {
   approvedStatementTemplate,
   statementRequestValues,
@@ -37,6 +38,9 @@ export function templateData(
   if (templateVersion === approvedStatementTemplate)
     Object.assign(values, statementSroValues(values));
   const output = emptyFieldValues();
+  const submitted = templateVersion === approvedStatementTemplate;
+  if (submitted)
+    values.attachments = attachmentDescriptions(values.submittedAttachments);
   if (context && hasEmploymentFields(context.fields)) {
     values.employmentDetails = assessEmployment(
       values,
@@ -55,7 +59,8 @@ export function templateData(
       (templateVersion === 'bfl-statement-v4' ||
         templateVersion === 'bfl-statement-v5' ||
         templateVersion === 'bfl-statement-v6' ||
-        obligationTemplate(templateVersion)) &&
+        obligationTemplate(templateVersion) ||
+        (submitted && field.key === 'attachments')) &&
       Array.isArray(value) &&
       !value.length &&
       ['debts', 'businessDebts', 'attachments'].includes(field.key)
@@ -84,7 +89,11 @@ export function templateData(
           ];
     output[field.key] = rows.map((row, index) => ({
       ...Object.fromEntries(
-        field.columns.map(({ key }) => [key, row[key] ?? '[не заполнено]']),
+        field.columns
+          .filter(
+            ({ key }) => field.key !== 'attachments' || key !== 'category',
+          )
+          .map(({ key }) => [key, row[key] ?? '[не заполнено]']),
       ),
       rowNumber: String(index + 1),
     }));

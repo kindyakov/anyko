@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 
 import { type FieldKey } from '@anyko/contracts/catalog';
 import { type WorkView } from '@anyko/contracts/works';
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
 import { hasEmploymentFields } from '@anyko/document-values/employment';
 import { Button, Disclosure, SegmentedControl } from '@anyko/ui';
 import { EventHorizon } from '@anyko/ui/brand';
@@ -15,6 +16,7 @@ import {
 
 import type { FactsForm } from './facts-form';
 import { PackagePreview } from './package-preview';
+import { AttachmentReview } from './review/attachment-review';
 import { CandidateList } from './review/candidate-list';
 import { EditConflicts } from './review/edit-conflicts';
 import { EmploymentReview } from './review/employment-review';
@@ -128,6 +130,18 @@ export function WorkReview({
             />
           )}
         </div>
+        {hasSubmittedAttachments(view.package.fields) && (
+          <AttachmentReview
+            documents={view.documents}
+            candidates={view.facts.candidates}
+            value={values.submittedAttachments}
+            disabled={busy}
+            onChange={(value) => {
+              facts.change({ submittedAttachments: value });
+            }}
+            onOpen={onOpen}
+          />
+        )}
         {hasEmploymentFields(view.package.fields) && (
           <EmploymentReview
             values={values}

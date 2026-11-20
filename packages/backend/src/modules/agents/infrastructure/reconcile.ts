@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { createModelGateway, llmError } from '@anyko/llm';
 
 import type { DocumentAgents } from '..';
+import { attachmentInstructions } from '../../../profiles/bfl/attachment-instructions';
 import { candidateSchema } from '../../../profiles/bfl/candidate';
 import { employmentInstructions } from '../../../profiles/bfl/employment-instructions';
 import { fieldValueSchema } from '../../../profiles/bfl/fields';
@@ -141,7 +142,7 @@ export function createReconciliationAgent(options: {
 Для кредитора сохраняй точное название юридического лица из справки или договора. Если в источнике рядом с названием указан ИНН или ОГРН кредитора, добавь этот реквизит в строку обязательства и его цитату в evidence. Сведения заемщика к кредитору не относятся. Реквизиты из реестра сервер проверяет отдельно.
 Для каждой значимой сущности, названной в источниках, проверь, какие пустые поля можно дополнить её однозначно известными свойствами и связями, включая принадлежность к более общей сущности. Верни каждый обоснованный вывод в candidates. Для этого можно использовать устойчивые общие знания без внешнего поиска. Проверь, что исходный факт относится к нужному человеку, объекту, событию и периоду. Например, место одного события само по себе ничего не говорит о месте другого события.
 Когда доступны поля суда и адрес места жительства заявителя, вызови lookupArbitrationCourt для каждого обоснованного субъекта РФ. Если источники расходятся, проверь все варианты. Передавай только наименование субъекта РФ. Если субъект выводится из названия населённого пункта, верни подтверждённый инструментом вариант courtName с объяснением связи населённого пункта и субъекта, а в evidence укажи точную цитату исходного кандидата region, registrationAddress, city или locality. Реквизиты суда вне официального поиска возвращай только при прямом указании в исходном документе.
-В evidence каждого предложения указывай documentId, imagePath и точную quote из исходника. Для origin="document" цитата содержит само значение. Для origin="inference" цитата подтверждает исходный факт, а explanation описывает, как из него получено значение. Поля пакета: ${JSON.stringify(fieldLabels)}. ${obligationInstructions(input.fields)} ${employmentInstructions(input.fields)} Если нужны тип, ограничения или колонки поля, уточни их через readField. В summary пиши простым языком без внутренних ID, названий API и технических полей.${checklistInstructions}`,
+В evidence каждого предложения указывай documentId, imagePath и точную quote из исходника. Для origin="document" цитата содержит само значение. Для origin="inference" цитата подтверждает исходный факт, а explanation описывает, как из него получено значение. Поля пакета: ${JSON.stringify(fieldLabels)}. ${obligationInstructions(input.fields)} ${employmentInstructions(input.fields)} ${attachmentInstructions(input.fields)} Если нужны тип, ограничения или колонки поля, уточни их через readField. В summary пиши простым языком без внутренних ID, названий API и технических полей.${checklistInstructions}`,
     });
     try {
       const result = await agent.generate(

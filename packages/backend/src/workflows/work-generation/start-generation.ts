@@ -1,3 +1,7 @@
+import {
+  hasSubmittedAttachments,
+  submittedAttachmentRows,
+} from '@anyko/document-values/attachments';
 import { datedBankruptcyPackage } from '@anyko/document-values/bankruptcy-statement';
 
 import type { AuditModule } from '../../modules/audit';
@@ -53,6 +57,14 @@ export const startGeneration =
             input.workId,
           );
           if (needsReview?.length) throw new WorkError('NOT_READY');
+          const pack = requirePackage(work.packageVersion);
+          if (hasSubmittedAttachments(pack.fields))
+            values.submittedAttachments = submittedAttachmentRows(
+              values.submittedAttachments,
+              new Set(
+                documents.filter(({ deleted }) => !deleted).map(({ id }) => id),
+              ),
+            );
           const confirmed = work.confirmedRevision === work.revision;
           let revision = work.revision;
           if (
@@ -84,13 +96,11 @@ export const startGeneration =
               confirmed,
               values,
               packageVersion: work.packageVersion,
-              templates: requirePackage(work.packageVersion).documents.map(
-                (template) => ({
-                  templateVersion: template.version,
-                  title: template.title,
-                  filename: template.filename,
-                }),
-              ),
+              templates: pack.documents.map((template) => ({
+                templateVersion: template.version,
+                title: template.title,
+                filename: template.filename,
+              })),
             });
           await deps.processing.in(tx).commands.start(scope, {
             workId: input.workId,

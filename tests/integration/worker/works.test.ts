@@ -4915,3 +4915,193 @@ test('employment records and income certificates reach review and the downloaded
     extractFixture = undefined;
   }
 });
+
+test('an EGRN source fills inventory and only confirmed supported files enter the statement', async () => {
+  const { workspaceId } = await create();
+  const scope = memberScope(workspaceId, 'fixture');
+  const packageVersion = 'bfl-bankruptcy-v8';
+  const workId = await apiBackend.workHttp.intake.createWork(scope, {
+    packageVersion,
+    title: 'Синтетические приложения к заявлению',
+  });
+  const input = { workspaceId, workId };
+  const egrn = 'Выписка из ЕГРН · выписка подписана ЭП';
+  const realEstate = {
+    description: 'Гараж',
+    address: 'ул. Синтетическая, 101',
+    area: '21.5',
+  };
+  const property = Object.values(realEstate).join(' ');
+  const expenses = 'Чек об оплате расходов по процедуре';
+  const remuneration = 'Документ о внесении вознаграждения';
+  const scans = 'Справка с изображением печати';
+  const misc = 'Материал для сверки';
+  const texts = {
+    'egrn-fixture': [egrn, property].join('\n'),
+    'expense-fixture': expenses,
+    'remuneration-fixture': remuneration,
+    'stamp-fixture': scans,
+    'internal-fixture': misc,
+  };
+  parseFixture = (bytes) => {
+    const key = new TextDecoder().decode(bytes).split('\n').at(-1)?.trim();
+    const markdown = Object.entries(texts).find(([id]) => id === key)?.[1];
+    if (!markdown) throw new Error('UNKNOWN_ATTACHMENT_SOURCE');
+    return Promise.resolve({ markdown, processorVersion: 'fixture' });
+  };
+  extractFixture = ({ document }) => {
+    const evidence = (quote: string) => [
+      { documentId: document.id, imagePath: null, quote },
+    ];
+    const title = document.text.split('\n')[0] ?? '';
+    const candidates: Awaited<
+      ReturnType<DocumentAgents['extract']>
+    >['candidates'] = [
+      {
+        field: 'attachments',
+        value: [
+          {
+            description: title,
+            category:
+              title === egrn
+                ? 'egrn'
+                : title === expenses
+                  ? 'procedureExpenses'
+                  : title === remuneration
+                    ? 'trusteeRemuneration'
+                    : 'other',
+          },
+        ],
+        evidence: evidence(title),
+      },
+    ];
+    if (title === egrn)
+      candidates.push(
+        {
+          field: 'realEstate',
+          value: [realEstate],
+          evidence: evidence(property),
+        },
+        {
+          field: 'propertyDetails',
+          value: property,
+          evidence: evidence(property),
+        },
+      );
+    return Promise.resolve({
+      candidates,
+      usage: { inputTokens: 4, outputTokens: 4 },
+    });
+  };
+  try {
+    const added = [];
+    for (const name of Object.keys(texts)) {
+      const source = await upload(input, name);
+      await until(
+        input,
+        (view) =>
+          terminal(view) &&
+          view.documents.some(
+            ({ id, status }) => id === source.id && status === 'succeeded',
+          ),
+      );
+      added.push(source.id);
+    }
+    const [extract, expense, , stamp] = added;
+    const initial = await until(input, terminal);
+    expect(initial.facts.values.realEstate).toEqual([realEstate]);
+    expect(initial.facts.values.propertyDetails).toBeNull();
+    expect(initial.facts.values.submittedAttachments).toBeNull();
+    const sourceFacts = initial.facts.candidates.filter(({ evidence }) =>
+      evidence.some(({ documentId }) => documentId === extract),
+    );
+    expect(
+      sourceFacts.find(({ field }) => field === 'attachments')?.value,
+    ).toEqual([{ description: egrn, category: 'egrn' }]);
+    expect(
+      sourceFacts.find(({ field }) => field === 'realEstate')?.value,
+    ).toEqual([realEstate]);
+    const rejected = {
+      documentId: crypto.randomUUID(),
+      description: misc,
+      copyKind: 'copy',
+      category: 'other',
+    };
+    await rejects(
+      apiBackend.workHttp.review.editValues(scope, {
+        workId,
+        revision: initial.work.revision,
+        values: { ...initial.facts.values, submittedAttachments: [rejected] },
+      }),
+      'NOT_FOUND',
+    );
+    const selected = [
+      {
+        documentId: extract ?? '',
+        description: 'Выписка из ЕГРН',
+        copyKind: 'electronicOriginal',
+        category: 'egrn',
+      },
+      {
+        documentId: expense ?? '',
+        description: 'Чек № 101',
+        copyKind: 'paperOriginal',
+        category: 'procedureExpenses',
+      },
+      {
+        documentId: stamp ?? '',
+        description: scans,
+        copyKind: 'copy',
+        category: 'other',
+      },
+    ];
+    await apiBackend.workHttp.review.editValues(scope, {
+      workId,
+      revision: initial.work.revision,
+      values: { ...initial.facts.values, submittedAttachments: selected },
+    });
+    const edited = await until(input, terminal);
+    expect(edited.facts.values.submittedAttachments).toEqual(selected);
+    await apiBackend.workHttp.generation.startGeneration(scope, {
+      workId,
+      revision: edited.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    const output = await until(input, (view) =>
+      view.generations.some(({ status }) => status === 'succeeded'),
+    );
+    const generation = output.generations.find(
+      ({ status }) => status === 'succeeded',
+    );
+    if (!generation) throw new Error('ATTACHMENT_GENERATION_MISSING');
+    const readDocument = async (filename: string) => {
+      const file = generation.files.find((row) => row.filename === filename);
+      if (!file) throw new Error('ATTACHMENT_DOCUMENT_MISSING');
+      const result = await apiBackend.workHttp.generation.downloadResult(
+        scope,
+        {
+          workId,
+          generationId: brandGenerationId(generation.id),
+          fileId: brandFileId(file.id),
+        },
+      );
+      return strFromU8(
+        unzipSync(result.bytes)['word/document.xml'] ?? new Uint8Array(),
+      );
+    };
+    const statement = await readDocument('statement.docx');
+    const inventory = await readDocument('inventory.docx');
+    expect(inventory).toContain('ул. Синтетическая, 101');
+    expect(statement).not.toContain('ул. Синтетическая, 101');
+    expect(statement).toContain('Выписка из ЕГРН (электронный оригинал)');
+    expect(statement).toContain(
+      'Чек № 101 — расходы по процедуре (бумажный оригинал)',
+    );
+    expect(statement).toContain('Справка с изображением печати (копия)');
+    expect(statement).not.toContain(remuneration);
+    expect(statement).not.toContain(misc);
+  } finally {
+    parseFixture = undefined;
+    extractFixture = undefined;
+  }
+}, 60000);

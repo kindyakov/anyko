@@ -4,6 +4,7 @@ import type {
   FieldValues,
   PreviewRow,
 } from '@anyko/contracts/catalog';
+import { attachmentDescriptions } from '@anyko/document-values/attachments';
 import {
   approvedStatementTemplate,
   statementRequestValues,
@@ -17,7 +18,14 @@ export function previewDocumentValues(version: string, values: FieldValues) {
   if (!obligationTemplate(version)) return null;
   const { debts, businessDebts, creditorHeaders, total, totalWords } =
     obligationAmounts(values.debts, values.businessDebts);
-  const rows = { debts, businessDebts, creditorHeaders };
+  const rows = {
+    debts,
+    businessDebts,
+    creditorHeaders,
+    ...(version === approvedStatementTemplate && {
+      attachments: attachmentDescriptions(values.submittedAttachments),
+    }),
+  };
   const request =
     version === approvedStatementTemplate
       ? statementRequestValues(values)

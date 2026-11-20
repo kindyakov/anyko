@@ -224,8 +224,19 @@ const collectionLabels = {
     label: 'Приложения к заявлению',
     columns: columns({
       description: 'Наименование, реквизиты, оригинал / копия',
+      category: 'Назначение документа',
     }),
     identity: ['description'],
+  },
+  submittedAttachments: {
+    label: 'Подаваемые приложения',
+    columns: columns({
+      documentId: 'Файл работы',
+      description: 'Наименование и реквизиты',
+      category: 'Назначение',
+      copyKind: 'Вид подаваемого экземпляра',
+    }),
+    identity: ['documentId'],
   },
 } as const;
 export const fieldKeySchema = z.enum([
@@ -290,6 +301,7 @@ export const fieldKeySchema = z.enum([
   'securities',
   'valuables',
   'attachments',
+  'submittedAttachments',
 ]);
 export type FieldKey = z.infer<typeof fieldKeySchema>;
 export interface FieldDefinition {
