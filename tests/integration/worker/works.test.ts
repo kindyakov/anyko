@@ -6,7 +6,10 @@ import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
 import { rightCatalog } from '@anyko/backend/scope';
-import { getWorkAgentHistory } from '@anyko/contracts/works';
+import {
+  getWorkAgentHistory,
+  workResponseSchema,
+} from '@anyko/contracts/works';
 import { createDatabase, createDatabasePool } from '@anyko/database';
 import { LlmError } from '@anyko/llm';
 import { createLogger } from '@anyko/logger';
@@ -207,7 +210,7 @@ async function ready() {
     prefix: workerPrefix,
   });
 }
-async function create() {
+async function create(packageVersion = 'technical-document-v1') {
   await ready();
   const workspaceId = crypto.randomUUID();
   owned.push(workspaceId);
@@ -222,7 +225,7 @@ async function create() {
   });
   const workId = await apiBackend.workHttp.intake.createWork(
     memberScope(workspaceId, 'fixture'),
-    { packageVersion: 'technical-document-v1', title: 'Тестовая работа' },
+    { packageVersion, title: 'Тестовая работа' },
   );
   return { workspaceId, workId };
 }
@@ -245,6 +248,186 @@ const terminal = (view: WorkView) =>
   view.pendingUploadCount === 0 &&
   !!view.runs.length &&
   view.runs.every((run) => !['queued', 'running'].includes(run.status));
+
+test('the source checklist preserves scoped manual decisions when the work is analysed again', async () => {
+  const input = await create('bfl-bankruptcy-v7');
+  const { workspaceId, workId } = input;
+  const scope = memberScope(workspaceId);
+  const app = fixtureApp(workspaceId);
+  const workUrl = `http://localhost/api/v1/workspaces/${workspaceId}/works/${workId}`;
+  const read = async () => {
+    const response = await app.handle(new Request(workUrl));
+    expect(response.status).toBe(200);
+    return workResponseSchema.parse(await response.json()).checklist ?? [];
+  };
+  const set = (
+    key: string,
+    documentId: string,
+    decision: 'confirmed' | 'rejected',
+    ocrRevision: number | null,
+  ) =>
+    app.handle(
+      new Request(`${workUrl}/checklist-items/${key}/documents/${documentId}`, {
+        method: 'PUT',
+        headers: {
+          origin: apiBackend.workHttp.origin,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ decision, ocrRevision }),
+      }),
+    );
+  const before = await read();
+  expect(before.filter(({ key }) => key === 'debt-certificate')).toHaveLength(
+    1,
+  );
+  expect(before.find(({ key }) => key === 'passport')?.status).toBe('missing');
+  expect(before.find(({ key }) => key === 'marriage')?.status).toBe('clarify');
+  expect(
+    (await set('passport', crypto.randomUUID(), 'confirmed', null)).status,
+  ).toBe(404);
+
+  const quote = 'Итого задолженность 42 руб.';
+  parseFixture = () =>
+    Promise.resolve({
+      markdown: quote,
+      processorVersion: 'checklist-fixture',
+    });
+  reconcileHook = ({ documents, checklistRequirements }) => {
+    expect(
+      checklistRequirements?.some(({ key }) => key === 'debt-certificate'),
+    ).toBe(true);
+    return Promise.resolve({
+      summary: 'Проверены исходники',
+      candidates: [],
+      usage: { inputTokens: 7, outputTokens: 9 },
+      checklistSuggestions: [
+        ...documents.flatMap(({ id }) => [
+          {
+            requirementKey: 'debt-certificate',
+            documentId: id,
+            quote,
+            imagePath: null,
+            decision: 'found' as const,
+          },
+          {
+            requirementKey: 'bank-statement',
+            documentId: id,
+            quote,
+            imagePath: null,
+            decision: 'review' as const,
+          },
+          {
+            requirementKey: 'marriage',
+            documentId: id,
+            quote: 'Выдуманная цитата',
+            imagePath: null,
+            decision: 'found' as const,
+          },
+        ]),
+      ],
+    });
+  };
+  try {
+    const first = await upload(input, 'first checklist input');
+    const second = await upload(input, 'second checklist input');
+    const view = await until(
+      input,
+      (state) =>
+        terminal(state) &&
+        state.checklist.find(({ key }) => key === 'debt-certificate')?.sources
+          .length === 2,
+    );
+    const current = view.documents.find(
+      ({ id }) => id === first.id,
+    )?.processingRevision;
+    if (!current) throw new Error('CHECKLIST_SOURCE_NOT_RECOGNISED');
+    expect(
+      (await set('debt-certificate', first.id, 'confirmed', current + 1))
+        .status,
+    ).toBe(409);
+    expect(
+      (await set('debt-certificate', first.id, 'confirmed', current)).status,
+    ).toBe(200);
+    expect(
+      (await set('bank-statement', first.id, 'rejected', current)).status,
+    ).toBe(200);
+    await analyze(input);
+    await until(input, terminal);
+    const checklist = await read();
+    const debts = checklist.find(({ key }) => key === 'debt-certificate');
+    expect(debts?.status).toBe('confirmed');
+    expect(
+      debts?.sources.find(({ documentId }) => documentId === first.id),
+    ).toMatchObject({
+      status: 'confirmed',
+      quote,
+    });
+    expect(
+      debts?.sources.find(({ documentId }) => documentId === second.id),
+    ).toMatchObject({
+      status: 'found',
+      quote,
+    });
+    expect(
+      checklist.find(({ key }) => key === 'bank-statement')?.sources,
+    ).toMatchObject([{ documentId: second.id, status: 'review' }]);
+    expect(checklist.find(({ key }) => key === 'marriage')?.status).toBe(
+      'clarify',
+    );
+    await apiBackend.workHttp.intake.removeDocument(scope, {
+      workId,
+      documentId: brandDocumentId(first.id),
+    });
+    await until(
+      input,
+      (state) => !state.cleanupPending && state.documents.length === 1,
+    );
+    expect(
+      (await read()).find(({ key }) => key === 'debt-certificate')?.sources,
+    ).toMatchObject([{ documentId: second.id, status: 'found' }]);
+  } finally {
+    parseFixture = undefined;
+    reconcileHook = undefined;
+  }
+});
+
+test('a bankruptcy statement can be formed, downloaded and the work confirmed without source files', async () => {
+  const input = await create('bfl-bankruptcy-v7');
+  const scope = memberScope(input.workspaceId);
+  const { generation, review, views } = apiBackend.workHttp;
+  const { workId } = input;
+  const empty = await views.get(scope, workId);
+  expect(empty.documents).toEqual([]);
+  expect(empty.checklist.every(({ sources }) => sources.length === 0)).toBe(
+    true,
+  );
+  expect(empty.availability.generate).toEqual({ available: true });
+  await generation.startGeneration(scope, {
+    workId,
+    revision: empty.work.revision,
+    correlationId: crypto.randomUUID(),
+  });
+  const completed = await until(input, terminal);
+  const result = completed.generations.find(
+    ({ status }) => status === 'succeeded',
+  );
+  const statement = result?.files.find(
+    ({ templateVersion }) => templateVersion === 'bfl-statement-v7',
+  );
+  if (!result || !statement) throw new Error('MISSING_BLANK_STATEMENT');
+  const { bytes } = await generation.downloadResult(scope, {
+    workId,
+    generationId: brandGenerationId(result.id),
+    fileId: brandFileId(statement.id),
+  });
+  expect(unzipSync(bytes)['word/document.xml']).toBeDefined();
+  await review.confirmFacts(scope, {
+    workId,
+    revision: completed.work.revision,
+  });
+  const final = await views.get(scope, workId);
+  expect(final.work.confirmedRevision).toBe(final.work.revision);
+});
 
 test('reprocesses an older PDF, traces its quote to the page and renders only the supported value', async () => {
   const input = await create();
@@ -4230,3 +4413,220 @@ test('bank certificates retain evidence and a manual contract decision, and both
     extractFixture = undefined;
   }
 }, 60000);
+
+test('employment records and income certificates reach review and the downloaded statement', async () => {
+  const { workspaceId } = await create();
+  const scope = memberScope(workspaceId, 'fixture');
+  const workId = await apiBackend.workHttp.intake.createWork(scope, {
+    packageVersion: 'bfl-bankruptcy-v7',
+    title: 'Синтетическая трудовая и справки о доходах',
+  });
+  const input = { workspaceId, workId };
+  const north = 'ООО Север';
+  const south = 'ООО Юг';
+  const history = [
+    {
+      employer: north,
+      date: '05.04.2025',
+      event: 'Приём',
+      quote: '05.04.2025 Принят на работу в ООО Север',
+    },
+    {
+      employer: north,
+      date: '10.02.2026',
+      event: 'Увольнение',
+      quote: '10.02.2026 Уволен из ООО Север',
+    },
+    {
+      employer: south,
+      date: '23.02.2026',
+      event: 'Приём',
+      quote: '23.02.2026 Принят на работу в ООО Юг',
+    },
+  ];
+  const termination = {
+    employer: south,
+    date: '13.03.2026',
+    event: 'Увольнение',
+    quote: '13.03.2026 Уволен из ООО Юг',
+  };
+  const northIncome = [
+    {
+      month: '2026-01',
+      code: '2000',
+      amount: '90000.01',
+      quote: '| 01 | 2000 | 90000,01 |',
+    },
+    {
+      month: '2026-02',
+      code: '2000',
+      amount: '30000.00',
+      quote: '| 02 | 2000 | 30000,00 |',
+    },
+  ];
+  const southIncome = [
+    {
+      month: '2026-02',
+      code: '2000',
+      amount: '10000.00',
+      quote: '| 02 | 2000 | 10000,00 |',
+    },
+    {
+      month: '2026-03',
+      code: '2000',
+      amount: '70000.00',
+      quote: '| 03 | 2000 | 70000,00 |',
+    },
+    {
+      month: '2026-03',
+      code: '2002',
+      amount: '10000.00',
+      quote: '| 03 | 2002 | 10000,00 |',
+    },
+  ];
+  const invalidIncome = {
+    month: '2026-02',
+    code: '2002',
+    amount: '70000.00',
+    quote: '| 03 | 2000 | 70000,00 |',
+  };
+  const taxYear = 'Справка о доходах за 2026 год';
+  const documents = {
+    'employment-book': history.map(({ quote }) => quote).join('\n'),
+    'employment-north': [
+      taxYear,
+      north,
+      ...northIncome.map(({ quote }) => quote),
+    ].join('\n'),
+    'employment-south': [
+      taxYear,
+      south,
+      ...southIncome.map(({ quote }) => quote),
+    ].join('\n'),
+    'employment-termination': termination.quote,
+  };
+  parseFixture = (bytes) => {
+    const key = new TextDecoder().decode(bytes).split('\n').at(-1)?.trim();
+    const markdown = Object.entries(documents).find(([id]) => id === key)?.[1];
+    if (!markdown) throw new Error('UNKNOWN_EMPLOYMENT_SOURCE');
+    return Promise.resolve({ markdown, processorVersion: 'fixture' });
+  };
+  extractFixture = ({ document, fields }) => {
+    expect(fields?.some(({ key }) => key === 'employmentHistory')).toBe(true);
+    expect(fields?.some(({ key }) => key === 'employmentIncome')).toBe(true);
+    const evidence = (quote: string) => ({
+      documentId: document.id,
+      imagePath: null,
+      quote,
+    });
+    const employmentCandidates = (records: typeof history) =>
+      records.map(({ quote, ...row }) => ({
+        field: 'employmentHistory',
+        value: [row],
+        evidence: [evidence(quote)],
+      }));
+    const incomeCandidates = (employer: string, records: typeof northIncome) =>
+      records.map(({ quote, ...row }) => ({
+        field: 'employmentIncome',
+        value: [{ employer, ...row }],
+        evidence: [evidence(taxYear), evidence(employer), evidence(quote)],
+      }));
+    const candidates = document.text.includes(documents['employment-book'])
+      ? employmentCandidates(history)
+      : document.text.includes(termination.quote)
+        ? employmentCandidates([termination])
+        : document.text.includes(north)
+          ? incomeCandidates(north, northIncome)
+          : incomeCandidates(south, [...southIncome, invalidIncome]);
+    return Promise.resolve({
+      candidates,
+      usage: { inputTokens: 4, outputTokens: 4 },
+    });
+  };
+
+  const addSource = async (key: keyof typeof documents) => {
+    const source = await upload(input, key);
+    await until(
+      input,
+      (view) =>
+        terminal(view) &&
+        view.documents.some(
+          ({ id, status }) => id === source.id && status === 'succeeded',
+        ),
+    );
+    return source;
+  };
+  const renderStatement = async (view: WorkView) => {
+    const previous = new Set(view.generations.map(({ id }) => id));
+    await apiBackend.workHttp.generation.startGeneration(scope, {
+      workId,
+      revision: view.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    const generated = await until(input, (state) =>
+      state.generations.some(
+        ({ id, status }) => !previous.has(id) && status === 'succeeded',
+      ),
+    );
+    const generation = generated.generations.find(
+      ({ id }) => !previous.has(id),
+    );
+    const statement = generation?.files.find(
+      ({ filename }) => filename === 'statement.docx',
+    );
+    if (!generation || !statement)
+      throw new Error('EMPLOYMENT_STATEMENT_MISSING');
+    const result = await apiBackend.workHttp.generation.downloadResult(scope, {
+      workId,
+      generationId: brandGenerationId(generation.id),
+      fileId: brandFileId(statement.id),
+    });
+    return strFromU8(
+      unzipSync(result.bytes)['word/document.xml'] ?? new Uint8Array(),
+    );
+  };
+
+  try {
+    const book = await addSource('employment-book');
+    const prior = await addSource('employment-north');
+    const current = await addSource('employment-south');
+    const reviewed = await until(input, terminal);
+    expect(reviewed.facts.values.employmentHistory).toHaveLength(3);
+    expect(reviewed.facts.values.employmentIncome).toHaveLength(5);
+    const selectedSources = new Set(
+      reviewed.facts.candidates
+        .filter(({ selected }) => selected)
+        .flatMap(({ evidence }) =>
+          evidence.map(({ documentId }) => documentId),
+        ),
+    );
+    expect(selectedSources).toEqual(new Set([book.id, prior.id, current.id]));
+    const rejected = reviewed.facts.candidates.find(
+      ({ field, value }) =>
+        field === 'employmentIncome' &&
+        Array.isArray(value) &&
+        value.some(
+          ({ employer, month, amount }) =>
+            employer === south && month === '2026-02' && amount === '70000.00',
+        ),
+    );
+    expect(rejected?.selected).toBe(false);
+    await apiBackend.workHttp.review.editValues(scope, {
+      workId,
+      revision: reviewed.work.revision,
+      values: { ...reviewed.facts.values, documentDate: '14.03.2026' },
+    });
+    const active = await renderStatement(await until(input, terminal));
+    expect(active).toContain('В настоящее время работаю в ООО Юг.');
+    expect(active).toContain('60900,00 руб.');
+    expect(active).not.toContain('ООО Север');
+
+    await addSource('employment-termination');
+    const terminated = await renderStatement(await until(input, terminal));
+    expect(terminated).toContain('не осуществляю трудовую деятельность');
+    expect(terminated).not.toMatch(/ООО Юг|Средняя заработная плата|60900,00/);
+  } finally {
+    parseFixture = undefined;
+    extractFixture = undefined;
+  }
+});

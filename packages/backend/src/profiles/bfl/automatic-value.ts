@@ -5,6 +5,11 @@ import {
   datesInText,
 } from '@anyko/document-values/calendar-date';
 import {
+  employmentEvents,
+  employmentFields,
+  employmentMonth,
+} from '@anyko/document-values/employment';
+import {
   canonicalMoneyAmount,
   moneyAmountsInText,
 } from '@anyko/document-values/money';
@@ -143,6 +148,8 @@ function supportedValue(
       : value;
   }
   if (!Array.isArray(value)) return value;
+  if (employmentFields.some((key) => key === field))
+    return evidencedEmployment(candidate, value);
   if (
     obligationFields.some((key) => key === field) &&
     value.some(isBankObligation)
@@ -204,6 +211,103 @@ function supportedValue(
       : [supported];
   });
   return requireText && value.length && !rows.length ? null : rows;
+}
+
+function evidencedEmployment(
+  candidate: Candidate,
+  rows: FieldRow[],
+): FieldValue {
+  const documentIds = new Set(
+    candidate.evidence.map(({ documentId }) => documentId),
+  );
+  const documents = [...documentIds].map((id) =>
+    proofLines(
+      candidate.evidence.filter(({ documentId }) => documentId === id),
+      true,
+    ),
+  );
+  const supported = rows.flatMap<FieldRow>((row) => {
+    const employer = row.employer?.trim();
+    if (!employer) return [];
+    const employerSources = documents.filter((lines) =>
+      lines.some((line) => mentions(line, employer)),
+    );
+    if (candidate.field === 'employmentHistory') {
+      const date = canonicalCalendarDate(row.date ?? '');
+      const event = row.event;
+      const pattern =
+        event === employmentEvents.hired
+          ? /(?<![\p{L}])(?:при[её]м|принят[ао]?|назначен[ао]?)(?![\p{L}])/iu
+          : event === employmentEvents.terminated
+            ? /(?<![\p{L}])(?:увольнение|уволен[ао]?|трудов[а-я]+ договор (?:расторгнут|прекращ[её]н))(?![\p{L}])/iu
+            : null;
+      if (
+        date &&
+        event &&
+        pattern &&
+        employerSources.some((lines) =>
+          lines.some((line) => pattern.test(line) && attestedDate(date, line)),
+        )
+      )
+        return [{ employer, date, event }];
+      return [];
+    }
+    const month = employmentMonth(row.month ?? '');
+    const amount = canonicalMoneyAmount(row.amount ?? '');
+    const code = row.code?.trim() || null;
+    if (
+      month &&
+      amount &&
+      !amount.startsWith('-') &&
+      (code === null || /^\d{4}$/u.test(code)) &&
+      employerSources.some((lines) =>
+        evidencedIncomeMonth(lines, month, amount, code),
+      )
+    )
+      return [{ employer, month, code, amount }];
+    return [];
+  });
+  return supported.length ? supported : null;
+}
+
+function evidencedIncomeMonth(
+  lines: string[],
+  month: string,
+  amount: string,
+  code: string | null,
+) {
+  const year = month.slice(0, 4);
+  const number = String(Number(month.slice(5)));
+  const yearHeader = new RegExp(
+    String.raw`(?:^\s*${year}\s*$|(?<!\d)${year}\s*(?:год|г\.)|год\s*[:=]\s*${year}(?!\d))`,
+    'iu',
+  );
+  const monthLabel = new RegExp(
+    String.raw`^\s*(?:\|\s*)?(?:месяц\s*[:=]?\s*)?0?${number}(?=\s|[|:;])`,
+    'iu',
+  );
+  const fullMonth = new RegExp(String.raw`(?<!\d)${month}(?![-\d])`, 'u');
+  const hasYear = lines.some((line) => yearHeader.test(line));
+  return lines.some((line) => {
+    const date =
+      fullMonth.exec(line) ?? (hasYear ? monthLabel.exec(line) : null);
+    if (!date) return false;
+    const payment = line.slice(date.index + date[0].length);
+    if (code === null) return attestedAmount(amount, payment);
+    const codeCell = new RegExp(
+      String.raw`^\s*(?:[|;:]\s*)?${code}(?=\s|[|;:])`,
+      'u',
+    ).exec(payment);
+    return (
+      codeCell !== null &&
+      moneyAmountsInText(
+        payment
+          .slice(codeCell[0].length)
+          .replace(/^\s*[|;:]\s*/u, '')
+          .split(/[|;]/u, 1)[0] ?? '',
+      )[0] === amount
+    );
+  });
 }
 
 function evidencedObligation(

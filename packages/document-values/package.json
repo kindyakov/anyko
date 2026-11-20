@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./calendar-date": "./src/calendar-date.ts",
+    "./employment": "./src/employment.ts",
     "./money": "./src/money.ts",
     "./obligations": "./src/obligations.ts",
     "./template-value": "./src/template-value.ts"

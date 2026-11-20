@@ -9,6 +9,7 @@ import type { ProcessingModule } from '../../modules/processing';
 import {
   availablePackages,
   type ReadTemplatePlaceholders,
+  type ReadTemplateRequirements,
 } from '../../modules/templates';
 import type { WorksModule } from '../../modules/works';
 
@@ -25,6 +26,7 @@ export interface WorkViewDeps {
   connections: ConnectionsModule;
   generation: GenerationModule;
   templatePlaceholders: ReadTemplatePlaceholders;
+  templateRequirements: ReadTemplateRequirements;
   documents: DocumentsModule;
   agents: AgentsModule;
   locks: ResourceLocks;

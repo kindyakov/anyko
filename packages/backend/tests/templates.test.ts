@@ -485,3 +485,53 @@ test('the current package uses one active contract total in both DOCX files', ()
     'одна тысяча четыреста тридцать четыре рубля одиннадцать копеек',
   );
 });
+
+test('statement projects current-year income across employers and leaves historical fields editable', () => {
+  const pack = requirePackage('bfl-bankruptcy-v7');
+  const statement = pack.documents[0];
+  if (!statement) throw new Error('STATEMENT_MISSING');
+  const values = {
+    ...emptyFieldValues(),
+    employmentHistory: [
+      { employer: 'ООО Север', date: '05.04.2025', event: 'Приём' },
+      { employer: 'ООО Север', date: '10.02.2026', event: 'Увольнение' },
+      { employer: 'ООО Юг', date: '23.02.2026', event: 'Приём' },
+    ],
+    employmentIncome: [
+      { employer: 'ООО Север', month: '2025-12', amount: '900000.00' },
+      { employer: 'ООО Север', month: '2026-01', amount: '90000.01' },
+      { employer: 'ООО Север', month: '2026-02', amount: '30000.00' },
+      { employer: 'ООО Юг', month: '2026-02', amount: '10000.00' },
+      { employer: 'ООО Юг', month: '2026-03', amount: '80000.00' },
+    ],
+  };
+  expect(pack.fields.map(({ key }) => key)).toContain('employmentHistory');
+  const output = templateData(
+    values,
+    statement.version,
+    statement.placeholders,
+    {
+      fields: pack.fields,
+      referenceDate: '14.03.2026',
+    },
+  );
+  const xml = new PizZip(
+    generateDocument(templateBytes(statement.version), output),
+  )
+    .file('word/document.xml')
+    ?.asText();
+  expect(xml).toContain('В настоящее время работаю в ООО Юг.');
+  expect(xml).toContain('60900,00 руб.');
+  expect(xml).not.toContain('ООО Север');
+
+  const historical = requirePackage('bfl-bankruptcy-v6');
+  expect(historical.fields.map(({ key }) => key)).not.toContain(
+    'employmentHistory',
+  );
+  expect(
+    templateData(
+      { ...emptyFieldValues(), employmentDetails: 'Исторический текст' },
+      historical.documents[0]?.version,
+    ).employmentDetails,
+  ).toBe('Исторический текст');
+});

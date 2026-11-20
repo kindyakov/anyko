@@ -12,7 +12,9 @@ import type {
   AgentFieldWrite,
 } from './application/chat';
 export { fieldWriteTool } from './application/chat';
+import type { ChecklistSuggestion } from './application/checklist';
 import type { AgentToolEvent } from './application/history';
+export type { ChecklistSuggestion } from './application/checklist';
 import type { AgentSessionStore } from './application/session';
 
 interface AgentDocument {
@@ -69,6 +71,12 @@ export interface DocumentAgents {
     resource: string;
     threadId: string;
     sessionId: string;
+    checklistRequirements?: readonly {
+      key: string;
+      label: string;
+      documentKind: string;
+      applicability: 'usual' | 'conditional';
+    }[];
     workRevision: number;
     previousContext: AgentSessionContext | null;
     fields: FieldDefinition[];
@@ -86,6 +94,7 @@ export interface DocumentAgents {
   }): Promise<{
     summary: string;
     candidates: WorkFacts['candidates'];
+    checklistSuggestions?: ChecklistSuggestion[];
     usage: AgentUsage;
   }>;
   chat(

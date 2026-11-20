@@ -9,6 +9,10 @@ import {
   type FieldValue,
   type FieldValues,
 } from '@anyko/contracts/catalog';
+import {
+  assessEmployment,
+  hasEmploymentFields,
+} from '@anyko/document-values/employment';
 import { Button, Disclosure } from '@anyko/ui';
 
 import { mentions } from '@/features/fact-review/model/preview';
@@ -33,6 +37,7 @@ const PAGE_WIDTH = 794;
 interface Props {
   pack: DocumentPackage;
   values: FieldValues;
+  needsReview?: readonly FieldKey[] | undefined;
   disabled: boolean;
   onChange: (key: FieldKey, value: FieldValue) => void;
   onBack?: () => void;
@@ -41,7 +46,8 @@ interface Props {
 }
 
 export function PackagePreview(props: Props) {
-  const { pack, values, disabled, onChange, onBack, focus } = props;
+  const { pack, values, needsReview, disabled, onChange, onBack, focus } =
+    props;
   const [selected, select] = useState(pack.documents[0]?.version);
   const [handledFocus, setHandledFocus] = useState<
     NonNullable<typeof focus> & { version: string | undefined; inForm: boolean }
@@ -125,6 +131,14 @@ export function PackagePreview(props: Props) {
   const zoomIndex = zooms.findIndex((item) => item.value === scale);
   const zoomClass = zooms[zoomIndex]?.className ?? '';
   const focusedField = pack.fields.find(({ key }) => key === focusKey);
+  const paperValues =
+    document.id === 'statement' && hasEmploymentFields(pack.fields)
+      ? {
+          ...values,
+          employmentDetails: assessEmployment(values, undefined, needsReview)
+            .statement,
+        }
+      : values;
   return (
     <Tabs.Root
       value={document.version}
@@ -228,7 +242,7 @@ export function PackagePreview(props: Props) {
             <PreviewPaper
               pack={pack}
               document={document}
-              values={values}
+              values={paperValues}
               disabled={disabled}
               onChange={onChange}
             />

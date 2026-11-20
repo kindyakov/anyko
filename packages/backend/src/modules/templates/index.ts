@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
+import { employmentFields } from '@anyko/document-values/employment';
 import {
   creditorRegistryColumns,
   obligationColumns,
@@ -16,6 +17,14 @@ export type { DocumentPackage } from './schemas';
 export type ReadTemplatePlaceholders = (
   pack: DocumentPackage,
 ) => Promise<DocumentPackage>;
+export type ReadTemplateRequirements = (packageVersion: string) => Promise<
+  {
+    key: string;
+    documentKind: string;
+    label: string;
+    applicability: 'usual' | 'conditional';
+  }[]
+>;
 export { templateData } from './render-data';
 
 const historicalPackage: DocumentPackage = documentPackageSchema.parse({
@@ -26,7 +35,12 @@ const historicalPackage: DocumentPackage = documentPackageSchema.parse({
   fields: fieldDefinitions
     .filter(
       ({ key }) =>
-        !['personName', 'registrationAddress', 'observations'].includes(key),
+        ![
+          'personName',
+          'registrationAddress',
+          'observations',
+          ...employmentFields,
+        ].includes(key),
     )
     .map((field) => ({
       ...field,
@@ -84,9 +98,12 @@ const amountPackage: DocumentPackage = documentPackageSchema.parse({
 const obligationPackage: DocumentPackage = documentPackageSchema.parse({
   ...amountPackage,
   version: 'bfl-bankruptcy-v7',
-  fields: amountPackage.fields
-    .filter(({ key }) => key !== 'debtTotal')
-    .map((field) => fieldDefinitions.find(({ key }) => key === field.key)),
+  fields: fieldDefinitions.filter(
+    ({ key }) =>
+      !['debtTotal', 'employmentDetails'].includes(key) &&
+      (amountPackage.fields.some((field) => field.key === key) ||
+        employmentFields.some((field) => field === key)),
+  ),
   documents: ['bfl-statement-v7', 'bfl-inventory-v1', 'bfl-creditors-v2'].map(
     (version) => manifest.find((doc) => doc.version === version),
   ),

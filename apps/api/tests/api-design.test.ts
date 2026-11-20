@@ -15,6 +15,7 @@ const collections = new Map([
   ['workspaces', 'workspace'],
   ['document-packages', 'document-package'],
   ['works', 'work'],
+  ['checklist-items', 'checklist-item'],
   ['runs', 'run'],
   ['messages', 'message'],
   ['connections', 'connection'],

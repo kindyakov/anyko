@@ -1,6 +1,11 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
+import {
+  assessEmployment,
+  hasEmploymentFields,
+} from '@anyko/document-values/employment';
+
 import type { WorkReadContext } from '..';
 import { fieldKeySchema } from '../../../profiles/bfl/fields';
 
@@ -68,6 +73,14 @@ export function createWorkReadTools(
           value: facts.values[field],
           manual: facts.manual.includes(field),
           confirmed: facts.confirmed.includes(field),
+          ...(field === 'employmentIncome' &&
+            hasEmploymentFields(input.fields) && {
+              employment: assessEmployment(
+                facts.values,
+                undefined,
+                facts.needsReview,
+              ),
+            }),
           candidates: input.candidates.filter((c) => c.field === field),
           savedCandidates: facts.candidates.filter((c) => c.field === field),
         });

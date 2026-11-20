@@ -1,4 +1,5 @@
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
+import { employmentFields } from '@anyko/document-values/employment';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
 import {
   containsCreditorRegistryCandidate,
@@ -75,8 +76,12 @@ export function mergeCandidates(
       }
       continue;
     }
-    const proposed =
-      reconcileCandidates(key, found) === null
+    const proposed = employmentFields.some((field) => field === key)
+      ? reconcile(
+          key,
+          found.map(automaticValue).filter((value) => value !== null),
+        )
+      : reconcileCandidates(key, found) === null
         ? null
         : reconcileCandidates(key, found, automaticValue);
     if (preserveExisting && saved !== null) {
