@@ -956,7 +956,7 @@ test('official creditor details stay a proposal until selecting them for the lin
   const threadId = crypto.randomUUID();
   const documentId = crypto.randomUUID();
   const resource = crypto.randomUUID();
-  const quote = 'Кредитор ПАО ВТБ, ИНН 7702070139';
+  const quote = 'Кредитор: ПАО ВТБ, адрес: г. Москва, ИНН 7702070139';
   const row = {
     name: 'ПАО ВТБ',
     inn: '7702070139',
@@ -985,6 +985,12 @@ test('official creditor details stay a proposal until selecting them for the lin
       quote: 'АО Эталон, номер договора 1234567890',
       name: 'АО Эталон',
       inn: '1234567890',
+    },
+    {
+      quote:
+        'Кредитор: АО Образец, адрес: г. Москва, АО Пример, ИНН 7707083893',
+      name: 'АО Образец',
+      inn: '7707083893',
     },
     {
       quote: 'АО Проверка, ИНН 1234567891',

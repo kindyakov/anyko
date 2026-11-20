@@ -544,6 +544,13 @@ test('accepts a later documented closure while keeping conflicting active balanc
     'Закрыт',
     'Кредитный договор закрыт.',
   );
+  const repayment = makeDebt(
+    'ACT-2',
+    '0',
+    '10.11.2026',
+    'Погашен',
+    'Обязательства по кредитному договору исполнены в полном объеме.',
+  );
   const turnover = makeDebt(
     'ACT-3',
     '9000.10',
@@ -576,21 +583,45 @@ test('accepts a later documented closure while keeping conflicting active balanc
     'Погашен',
     'Кредит не полностью погашен.',
   );
+  const incompleteObligations = makeDebt(
+    'ACT-2',
+    '0',
+    '10.11.2026',
+    'Погашен',
+    'Обязательства по кредитному договору не исполнены в полном объёме.',
+  );
   const negated = runFacts(beforeClosure);
   await negated.accept({
     fields: ['debts'],
     confirmed: false,
     preserveExisting: true,
-    candidates: [negatedRepayment],
+    candidates: [negatedRepayment, incompleteObligations],
   });
   const afterNegation = await negated.saved();
   expect(afterNegation.candidates).toContainEqual(negatedRepayment);
+  expect(afterNegation.candidates).toContainEqual(incompleteObligations);
   expect(
     obligationAmounts(afterNegation.values.debts, null).debts,
   ).toMatchObject([
     { contractNumber: 'ACT-1', amount: '100,05' },
     { contractNumber: 'ACT-2', amount: '200,06' },
   ]);
+
+  const repaid = runFacts(beforeClosure);
+  await repaid.accept({
+    fields: ['debts'],
+    confirmed: false,
+    preserveExisting: true,
+    candidates: [repayment],
+  });
+  const afterRepayment = await repaid.saved();
+  expect(afterRepayment.values.debts).toMatchObject([
+    { contractNumber: 'ACT-1', amount: '100.05' },
+    { contractNumber: 'ACT-2', debtStatus: 'Погашен' },
+  ]);
+  expect(
+    obligationAmounts(afterRepayment.values.debts, null).debts,
+  ).toMatchObject([{ contractNumber: 'ACT-1', amount: '100,05' }]);
 
   const result = await accept([changed, closing], true);
   saved = await facts.saved();
@@ -619,4 +650,54 @@ test('accepts a later documented closure while keeping conflicting active balanc
       beforeClosure.values.debts,
     );
   }
+});
+
+test('accepts a credit certificate with adjacent contract number and date fields from one evidence block', async () => {
+  const row = {
+    name: 'АО Синтетический Банк',
+    contractNumber: 'A-42',
+    contractDate: '2025-01-03',
+    amount: '720.50',
+    amountDate: '2026-11-09',
+    debtStatus: 'Действует',
+  };
+  const numberLine = 'Номер договора: A-42';
+  const dateLine = 'Дата заключения договора: 03.01.2025';
+  const sharedLines =
+    'АО Синтетический Банк\nПо состоянию на 09.11.2026\nОбщая задолженность: 720,50 руб.';
+  const accept = async (quotes: string[]) => {
+    const facts = runFacts();
+    await facts.accept({
+      fields: ['debts'],
+      confirmed: false,
+      candidates: [
+        {
+          field: 'debts',
+          value: [row],
+          evidence: quotes.map((quote) => ({
+            documentId,
+            imagePath: null,
+            quote,
+          })),
+        },
+      ],
+    });
+    return (await facts.saved()).values.debts;
+  };
+
+  expect(await accept([sharedLines + '\n' + numberLine, dateLine])).toBeNull();
+  expect(
+    await accept([
+      [sharedLines, numberLine, 'Номер договора: A-43', dateLine].join('\n'),
+    ]),
+  ).toBeNull();
+  expect(
+    await accept([[sharedLines, numberLine, dateLine].join('\n')]),
+  ).toEqual([
+    expect.objectContaining({
+      ...row,
+      contractDate: '03.01.2025',
+      amountDate: '09.11.2026',
+    }),
+  ]);
 });
