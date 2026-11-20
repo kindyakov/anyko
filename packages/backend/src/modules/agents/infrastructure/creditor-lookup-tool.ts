@@ -78,7 +78,7 @@ export function createCreditorLookup(
 
 function supportedQuery(
   row: FieldRow,
-  evidence: Candidate['evidence'],
+  text: string,
   source: CreditorQuery['source'],
 ) {
   const name = row.name?.trim();
@@ -86,22 +86,71 @@ function supportedQuery(
   const named = creditorRegistryQuery({ name }, source);
   if (!named) return;
   const key = creditorNameKey(name);
-  const matching = evidence
-    .flatMap(({ quote }) => quote.split(/\r?\n/gu))
-    .filter((line) => creditorNameKey(line).includes(key));
-  if (!matching.length) return;
-  const hasIdentifier = (identifier: string) =>
-    matching.some((line) => line.match(/\d+/gu)?.includes(identifier));
   const inn = row.inn?.replace(/\s/gu, '');
   const ogrn = row.ogrn?.replace(/\s/gu, '');
-  return creditorRegistryQuery(
-    {
-      name,
-      inn: inn && hasIdentifier(inn) ? inn : null,
-      ogrn: ogrn && hasIdentifier(ogrn) ? ogrn : null,
-    },
-    source,
-  );
+  for (const line of text.split(/\r?\n/gu)) {
+    const details = line
+      .normalize('NFKC')
+      .trim()
+      .replace(/^(?:наименование кредитора|кредитор)(?:\s*:\s*|\s+)/iu, '');
+    const nameField =
+      /^(?:«[^»]*»|"[^"]*"|„[^“”]*[“”]|“[^”]*”|[^«»"„“”,;|])+?(?=$|[,;|]|\s+(?:инн|огрн)(?=\s|[:№]))/iu.exec(
+        details,
+      )?.[0];
+    if (
+      !nameField ||
+      (creditorNameKey(nameField) !== key &&
+        creditorNameKey(nameField.replace(/\.$/u, '')) !== key)
+    )
+      continue;
+    const tail = details.slice(nameField.length).toLocaleLowerCase('ru');
+    if (
+      /^,\s*\S/u.test(tail) &&
+      !/^,\s*(?:инн|огрн|кпп|бик|адрес|договор|номер договора)(?=$|\s|[:№])/u.test(
+        tail,
+      )
+    )
+      continue;
+    const identifiers = new Map<string, string>();
+    for (const field of tail.split(/[,;|]|\s+(?=(?:инн|огрн)(?=\s|[:№]))/u)) {
+      if (!field.trim()) continue;
+      const [, label, number] =
+        /^(инн|огрн)\s*[:№]?\s*(\d+)\.?$/u.exec(field.trim()) ?? [];
+      if (!label || !number || identifiers.has(label)) break;
+      identifiers.set(label, number);
+    }
+    if (
+      (inn && identifiers.get('инн') !== inn) ||
+      (ogrn && identifiers.get('огрн') !== ogrn)
+    )
+      continue;
+    return creditorRegistryQuery(
+      { name, inn: inn || null, ogrn: ogrn || null },
+      source,
+    );
+  }
+}
+
+async function verifiedQuery(
+  row: FieldRow,
+  evidence: Candidate['evidence'][number],
+  source: CreditorQuery['source'],
+  readSource: WorkReadContext['readSource'],
+) {
+  const { documentId, imagePath, quote } = evidence;
+  const query = supportedQuery(row, quote, source);
+  if (!query || !quote.trim()) return;
+  const text = await readSource(documentId, imagePath);
+  for (
+    let index = text.indexOf(quote);
+    index !== -1;
+    index = text.indexOf(quote, index + 1)
+  ) {
+    const before = index === 0 ? -1 : text.lastIndexOf('\n', index - 1);
+    const after = text.indexOf('\n', index + quote.length);
+    const lines = text.slice(before + 1, after === -1 ? undefined : after);
+    if (supportedQuery(row, lines, source)) return query;
+  }
 }
 
 export async function authorisedCreditorQuery(
@@ -125,35 +174,34 @@ export async function authorisedCreditorQuery(
       )
         continue;
       for (const row of candidate.value) {
-        const sourced = supportedQuery(row, [evidence], query.source);
+        if (
+          query.name &&
+          creditorNameKey(query.name) !== creditorNameKey(row.name ?? '')
+        )
+          continue;
+        const sourced = await verifiedQuery(
+          row,
+          evidence,
+          query.source,
+          input.readSource,
+        );
         if (
           !sourced ||
-          (query.name &&
-            creditorNameKey(query.name) !== creditorNameKey(row.name ?? '')) ||
           (query.inn && query.inn !== sourced.inn) ||
           (query.ogrn && query.ogrn !== sourced.ogrn)
         )
           continue;
-        const text = await input.readSource(
-          evidence.documentId,
-          evidence.imagePath,
-        );
-        if (text.includes(evidence.quote)) {
-          if (query.ogrn || query.inn) {
-            return { source: query.source, inn: query.inn, ogrn: query.ogrn };
-          }
-          return creditorRegistryQuery(
-            { name: row.name ?? null },
-            query.source,
-          );
+        if (query.ogrn || query.inn) {
+          return { source: query.source, inn: query.inn, ogrn: query.ogrn };
         }
+        return creditorRegistryQuery({ name: row.name ?? null }, query.source);
       }
     }
   }
 }
 
 export async function reviewCreditorCandidates(
-  input: Pick<WorkReadContext, 'candidates' | 'facts'>,
+  input: Pick<WorkReadContext, 'candidates' | 'facts' | 'readSource'>,
   lookup: ReturnType<typeof createCreditorLookup>,
   hasValidEvidence: (candidate: Candidate) => Promise<boolean>,
 ) {
@@ -173,8 +221,6 @@ export async function reviewCreditorCandidates(
     )
       continue;
     for (const row of ground.value) {
-      const query = supportedQuery(row, ground.evidence, 'cbr');
-      if (!query) continue;
       const saved = input.facts.values[ground.field];
       const matching = Array.isArray(saved)
         ? saved.filter((prior) => sameObligation(prior, row))
@@ -187,6 +233,12 @@ export async function reviewCreditorCandidates(
       )
         continue;
       if (!(await hasValidEvidence(ground))) continue;
+      let query: CreditorQuery | undefined;
+      for (const evidence of ground.evidence) {
+        query = await verifiedQuery(row, evidence, 'cbr', input.readSource);
+        if (query) break;
+      }
+      if (!query) continue;
       const result = await resolve(query);
       // FNS can corroborate identity when the financial registry cannot match it by name.
       const fallback =

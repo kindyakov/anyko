@@ -312,49 +312,58 @@ function evidencedIncomeMonth(
   });
 }
 
+/** The caller supplies evidence from one document. */
+export function evidencedContract(
+  evidence: Candidate['evidence'],
+  { name, contractNumber, contractDate }: FieldRow,
+) {
+  if (!name || !contractNumber || !contractDate) return;
+  const lines = proofLines(evidence, true);
+  const number = contractNumber
+    .trim()
+    .replace(/^№\s*/, '')
+    .normalize('NFKC')
+    .toLowerCase();
+  if (
+    lines.some((line) => mentions(line, name)) &&
+    lines.some(
+      (line) =>
+        line
+          .normalize('NFKC')
+          .toLowerCase()
+          .match(/[\p{L}\p{N}]+(?:[-/._][\p{L}\p{N}]+)*/gu)
+          ?.includes(number) && attestedDate(contractDate, line),
+    )
+  )
+    return { lines, identity: { name, contractNumber, contractDate } };
+}
+
 function evidencedObligation(
   evidence: Candidate['evidence'],
   row: FieldRow,
   requireText: boolean,
 ): FieldValue {
-  const { name, contractNumber, contractDate, amountDate, debtStatus } = row;
-  if (!name || !contractNumber || !contractDate || !amountDate) return null;
+  const { contractDate, amountDate, debtStatus } = row;
+  if (!contractDate || !amountDate) return null;
   const active = debtStatus === obligationStatuses.active;
   const statusPattern =
     debtStatus === obligationStatuses.closed
-      ? /(?:договор|кредит)\s+(?:был\s+)?закрыт|действие договора прекращено/iu
+      ? /^\s*(?:(?:кредитный\s+договор|договор|кредит)\s+(?:был\s+)?закрыт|действие\s+договора\s+прекращено)\.?\s*$/iu
       : debtStatus === obligationStatuses.repaid
-        ? /полностью погашен|исполнены в полном объ[её]ме|задолженность отсутствует/iu
+        ? /^\s*(?:(?:кредит|долг)\s+(?:был\s+)?полностью\s+погашен|задолженность\s+(?:полностью\s+погашена|отсутствует)|обязательства\s+исполнены\s+в\s+полном\s+объ[её]ме)\.?\s*$/iu
         : null;
   const documentIds = [
     ...new Set(evidence.map(({ documentId }) => documentId)),
   ];
-  const sameContract = documentIds
-    .map((id) =>
-      proofLines(
-        evidence.filter(({ documentId }) => documentId === id),
-        true,
-      ),
-    )
-    .filter(
-      (lines) =>
-        lines.some((line) => mentions(line, name)) &&
-        lines.some((line) =>
-          line
-            .normalize('NFKC')
-            .toLowerCase()
-            .match(/[\p{L}\p{N}]+(?:[-/._][\p{L}\p{N}]+)*/gu)
-            ?.includes(
-              contractNumber
-                .trim()
-                .replace(/^№\s*/, '')
-                .normalize('NFKC')
-                .toLowerCase(),
-            ),
-        ) &&
-        lines.some((line) => attestedDate(contractDate, line)) &&
-        lines.some((line) => attestedDate(amountDate, line)),
+  const sameContract = documentIds.flatMap((id) => {
+    const contract = evidencedContract(
+      evidence.filter(({ documentId }) => documentId === id),
+      row,
     );
+    return contract?.lines.some((line) => attestedDate(amountDate, line))
+      ? [contract.lines]
+      : [];
+  });
   const amount = canonicalMoneyAmount(row.amount ?? '');
   const credible = sameContract.find((lines) =>
     active

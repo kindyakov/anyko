@@ -189,7 +189,12 @@ test('court alternatives expose the official source and replace the court and ad
   const courtAddress = '107053, Москва, пр-кт Академика Сахарова, 18';
   const alternative = '107053, Москва, Садовая-Спасская, 18';
   const contactUrl = 'https://asmo.arbitr.ru/about/mode';
-  const initial = viewWith({ courtName: 'Арбитражный суд города Москвы' });
+  const currentName = 'Арбитражный суд города Москвы';
+  const currentAddress = '115191, Москва, ул. Большая Тульская, 17';
+  const initial = viewWith({
+    courtName: currentName,
+    courtAddress: currentAddress,
+  });
   const courtPackage = documentPackageSchema.parse({
     ...pack,
     fields: [
@@ -245,6 +250,21 @@ test('court alternatives expose the official source and replace the court and ad
       courtName,
     },
   }));
+  candidates.push({
+    field: 'courtName',
+    origin: 'inference',
+    selected: false,
+    value: currentName,
+    evidence: [
+      { documentId: crypto.randomUUID(), imagePath: null, quote: 'Москва' },
+    ],
+    courtSources: {
+      catalogueUrl: 'https://arbitr.ru/',
+      checkedAt: '2026-11-20T00:00:00.000Z',
+      courtName: currentName,
+      contactUrl: 'https://msk.arbitr.ru/about/mode',
+    },
+  });
   installEventSource();
   serveApi(() =>
     json(200, {
@@ -253,12 +273,23 @@ test('court alternatives expose the official source and replace the court and ad
       facts: {
         ...initial.facts,
         candidates,
+        manual: ['courtAddress'],
         discrepancyFields: ['courtAddress'],
       },
     }),
   );
   renderFacts();
 
+  await userEvent
+    .setup()
+    .click(await screen.findByRole('button', { name: /Все поля/ }));
+  const nameCard = await screen.findByRole('article', {
+    name: /Арбитражный суд/,
+  });
+  expect(
+    within(nameCard).queryAllByRole('button', { name: 'Подставить суд' }),
+  ).toHaveLength(0);
+  expect(screen.getByText(currentAddress)).toBeDefined();
   const court = await screen.findByRole('article', { name: /Адрес суда/ });
   const options = within(court).getByRole('region', {
     name: 'Варианты модели',
