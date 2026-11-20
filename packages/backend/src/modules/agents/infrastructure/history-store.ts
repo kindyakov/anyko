@@ -4,6 +4,9 @@ import type { Database } from '@anyko/database';
 import type { Logger } from '@anyko/logger';
 
 import {
+  checklistChangeSchema,
+  checklistWriteSchema,
+  checklistWriteTool,
   fieldChangeSchema,
   fieldWriteSchema,
   fieldWriteTool,
@@ -12,43 +15,69 @@ import type { AgentHistoryStore } from '../application/history';
 
 type HistoryDb = Pick<Database, 'workAgentEvent' | 'run'>;
 
-const fieldWriteInput = z.strictObject({
-  tool: z.literal(fieldWriteTool),
-  toolCallId: z.string().min(1),
-  arguments: fieldWriteSchema,
-});
-const successfulFieldWrite = {
+const successfulWrite = (tool: string) => ({
   stage: 'chat',
   kind: 'tool',
   status: 'succeeded',
-  input: { startsWith: `{"tool":"${fieldWriteTool}",` },
-} as const;
+  input: { startsWith: `{"tool":"${tool}",` },
+});
 
-function fieldReceipt(event: {
+type WriteEvent = {
   stage: string;
   kind: string;
   status: string;
   input: string | null;
   output: string | null;
-}) {
-  if (
-    event.stage !== successfulFieldWrite.stage ||
-    event.kind !== successfulFieldWrite.kind ||
-    event.status !== successfulFieldWrite.status ||
-    !event.input?.startsWith(successfulFieldWrite.input.startsWith) ||
-    !event.output
-  )
+};
+
+function readWriteReceipt<Args, Change>(
+  tool: string,
+  argsSchema: z.ZodType<Args>,
+  changeSchema: z.ZodType<Change>,
+  matches: (args: Args, change: Change) => boolean,
+) {
+  const criteria = successfulWrite(tool);
+  const inputSchema = z.strictObject({
+    tool: z.literal(tool),
+    toolCallId: z.string().min(1),
+    arguments: argsSchema,
+  });
+  return (event: WriteEvent) => {
+    if (
+      event.stage !== criteria.stage ||
+      event.kind !== criteria.kind ||
+      event.status !== criteria.status ||
+      !event.input?.startsWith(criteria.input.startsWith) ||
+      !event.output
+    )
+      return null;
+    try {
+      const input = inputSchema.parse(JSON.parse(event.input));
+      const change = changeSchema.parse(JSON.parse(event.output));
+      if (matches(input.arguments, change))
+        return { toolCallId: input.toolCallId, args: input.arguments, change };
+    } catch {
+      return null;
+    }
     return null;
-  try {
-    const input = fieldWriteInput.parse(JSON.parse(event.input));
-    const change = fieldChangeSchema.parse(JSON.parse(event.output));
-    if (change.field === input.arguments.field)
-      return { toolCallId: input.toolCallId, args: input.arguments, change };
-  } catch {
-    return null;
-  }
-  return null;
+  };
 }
+
+const fieldReceipt = readWriteReceipt(
+  fieldWriteTool,
+  fieldWriteSchema,
+  fieldChangeSchema,
+  (args, change) => change.field === args.field,
+);
+const checklistReceipt = readWriteReceipt(
+  checklistWriteTool,
+  checklistWriteSchema,
+  checklistChangeSchema,
+  (args, change) =>
+    change.requirementKey === args.requirementKey &&
+    change.documentId === args.documentId &&
+    change.after === args.decision,
+);
 
 function usage(
   sums: {
@@ -175,7 +204,7 @@ export function createAgentHistoryStore(
         where: {
           id,
           ...ref,
-          ...successfulFieldWrite,
+          ...successfulWrite(fieldWriteTool),
           run: { kind: 'work.chat' },
         },
       });
@@ -183,11 +212,21 @@ export function createAgentHistoryStore(
     },
     async fieldWrites(ref) {
       const events = await db.workAgentEvent.findMany({
-        where: { ...ref, ...successfulFieldWrite },
+        where: { ...ref, ...successfulWrite(fieldWriteTool) },
         orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       });
       return events.flatMap((event) => {
         const receipt = fieldReceipt(event);
+        return receipt ? [receipt] : [];
+      });
+    },
+    async checklistWrites(ref) {
+      const events = await db.workAgentEvent.findMany({
+        where: { ...ref, ...successfulWrite(checklistWriteTool) },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      });
+      return events.flatMap((event) => {
+        const receipt = checklistReceipt(event);
         return receipt ? [receipt] : [];
       });
     },
@@ -266,6 +305,7 @@ export function createAgentHistoryStore(
         items: events.map((event) => ({
           ...event,
           fieldChange: fieldReceipt(event)?.change ?? null,
+          checklistChange: checklistReceipt(event)?.change ?? null,
           createdAt: event.createdAt.toISOString(),
         })),
         total,

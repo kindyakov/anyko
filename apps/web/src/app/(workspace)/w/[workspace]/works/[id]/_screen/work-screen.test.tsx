@@ -163,6 +163,7 @@ test('work history can open a retained analysis run outside the recent work view
             input: null,
             output: JSON.stringify({ summary: 'Проверены сведения' }),
             fieldChange: null,
+            checklistChange: null,
             errorCode: null,
             durationMs: null,
             createdAt: run.createdAt,
