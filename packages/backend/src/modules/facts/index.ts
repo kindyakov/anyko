@@ -29,6 +29,7 @@ export interface AnalysisFactsRef {
 
 export interface AcceptRunCandidatesInput extends AnalysisFactsRef {
   fields: readonly FieldKey[];
+  excludedFields?: ReadonlySet<FieldKey> | undefined;
   confirmed: boolean;
   preserveExisting?: boolean;
   candidates: WorkFacts['candidates'];
@@ -68,6 +69,11 @@ export interface FactsPorts {
   readonly queries: FactsQueries;
   // Внутренний порт обслуживания для удаления производных данных.
   readonly internal: Pick<FactsStore, 'erase'> & {
+    defaultDocumentDate(
+      workspaceId: string,
+      workId: string,
+      date: string,
+    ): Promise<void>;
     refreshEvidence(
       workspaceId: string,
       workId: string,

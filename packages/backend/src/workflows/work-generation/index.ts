@@ -5,6 +5,7 @@ import type { FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
 import type { WorksModule } from '../../modules/works';
+import type { Clock } from '../../platform/clock';
 import type { UnitOfWork } from '../../platform/transactions';
 
 import { downloadResult } from './download-result';
@@ -12,6 +13,7 @@ import { startGeneration } from './start-generation';
 
 export interface WorkGenerationDeps {
   uow: UnitOfWork;
+  clock: Clock;
   works: WorksModule;
   facts: FactsModule;
   processing: ProcessingModule;

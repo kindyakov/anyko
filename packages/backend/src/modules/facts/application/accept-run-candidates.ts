@@ -18,10 +18,17 @@ export const acceptRunCandidates =
     candidates,
     contextCandidates,
     fields,
+    excludedFields,
     confirmed,
     preserveExisting,
   }: AcceptRunCandidatesInput): Promise<AcceptedRunCandidates> => {
     const existing = await store.get(workspaceId, workId);
+    if (excludedFields?.size) {
+      candidates = candidates.filter(({ field }) => !excludedFields.has(field));
+      contextCandidates = contextCandidates?.filter(
+        ({ field }) => !excludedFields.has(field),
+      );
+    }
     let selected = preserveExisting
       ? existing.candidates
       : combineCandidates(candidates);
@@ -43,6 +50,7 @@ export const acceptRunCandidates =
       selected,
       confirmed,
       preserveExisting,
+      excludedFields,
     );
     if (!contextAccepted) {
       // Необязательная стадия не стирает известные значения без новых кандидатов.

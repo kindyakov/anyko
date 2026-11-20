@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./bankruptcy-statement": "./src/bankruptcy-statement.ts",
     "./calendar-date": "./src/calendar-date.ts",
     "./employment": "./src/employment.ts",
     "./money": "./src/money.ts",
@@ -11,6 +12,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lvovich": "2.1.0"
   },
   "devDependencies": {
     "@anyko/typescript-config": "workspace:*",

@@ -19,6 +19,14 @@ export function createFactsModule(deps: FactsDeps): FactsModule {
   const bind = (store: FactsStore): FactsPorts => ({
     internal: {
       erase: (workspaceId, workId) => store.erase(workspaceId, workId),
+      async defaultDocumentDate(workspaceId, workId, date) {
+        const facts = await store.get(workspaceId, workId);
+        if (facts.values.documentDate === null)
+          await store.save(workspaceId, workId, {
+            ...facts,
+            values: { ...facts.values, documentDate: date },
+          });
+      },
       async refreshEvidence(workspaceId, workId, refresh) {
         const facts = refreshFactEvidence(
           await store.get(workspaceId, workId),
