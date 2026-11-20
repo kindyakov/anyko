@@ -15,7 +15,12 @@ const creditorNameSchema = z
   .regex(/^[\p{L}\p{N} «»"„“”().,&'–—-]+$/u)
   .refine((value) => /\p{L}/u.test(value));
 const legalForm =
-  /(?:^(?:пао|нао|ао|ооо|зао|оао|нко|фгуп|гуп|муп|общество|(?:публичное |непубличное )?акционерное общество|банк|мкк|мфк)(?:\s|$)|банк$)/iu;
+  /(?:пао|нао|ао|ооо|зао|оао|нко|фгуп|гуп|муп|общество|(?:публичное |непубличное )?акционерное общество|банк|мкк|мфк)/iu;
+const legalName = new RegExp(`^${legalForm.source}(?:\\s|$)|банк$`, 'iu');
+export const inlineCreditorLegalForm = new RegExp(
+  `(?:^|[^\\p{L}\\p{N}])${legalForm.source}(?=$|[^\\p{L}\\p{N}])`,
+  'iu',
+);
 
 export const creditorLookupInput = z
   .strictObject({
@@ -68,7 +73,7 @@ export function creditorRegistryQuery(
     };
   }
   const name = creditorNameSchema.safeParse(row.name);
-  if (!name.success || !legalForm.test(creditorNameKey(name.data))) return;
+  if (!name.success || !legalName.test(creditorNameKey(name.data))) return;
   return { source, name: name.data };
 }
 

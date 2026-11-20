@@ -993,6 +993,13 @@ test('official creditor details stay a proposal until selecting them for the lin
       inn: '7707083893',
     },
     {
+      quote:
+        'Кредитор: АО Образец; адрес: г. Москва Представитель АО Пример; ИНН 7707083893',
+      name: 'АО Образец',
+      inn: '7707083893',
+      contractNumber: 'K-44',
+    },
+    {
       quote: 'АО Проверка, ИНН 1234567891',
       name: 'АО Проверка',
       inn: '1234567891',
@@ -1002,7 +1009,11 @@ test('official creditor details stay a proposal until selecting them for the lin
   const otherCandidates = otherSources.map((source) => ({
     ...ground,
     value: [
-      { name: source.name, inn: source.inn ?? null, contractNumber: 'K-43' },
+      {
+        name: source.name,
+        inn: source.inn ?? null,
+        contractNumber: source.contractNumber ?? 'K-43',
+      },
     ],
     evidence: [{ documentId: source.id, imagePath: null, quote: source.quote }],
   }));
@@ -1078,6 +1089,7 @@ test('official creditor details stay a proposal until selecting them for the lin
                               { source: 'cbr', name: 'АО Пример' },
                               { source: 'cbr', inn: '1234567890' },
                               { source: 'cbr', inn: '1234567891' },
+                              { source: 'cbr', inn: '7707083893' },
                               {
                                 source: 'cbr',
                                 name: 'ПАО ВТБ',
