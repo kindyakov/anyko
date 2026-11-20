@@ -8,6 +8,12 @@ const config: NextConfig = {
     ? {
         output: 'standalone',
         outputFileTracingRoot: resolve(import.meta.dirname, '../..'),
+        outputFileTracingIncludes: {
+          '/pdf-assets/\\[kind\\]/\\[file\\]': [
+            './node_modules/pdfjs-dist/package.json',
+            './node_modules/pdfjs-dist/{cmaps,iccs,standard_fonts,wasm}/**/*',
+          ],
+        },
       }
     : {}),
 };

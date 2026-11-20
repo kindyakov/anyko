@@ -1,5 +1,6 @@
-import { proxyApiRequest } from '@/lib/api/proxy';
+import { proxyApiRequest } from '@/lib/server/api-proxy';
 import { readServerConfig } from '@/lib/server/config';
+import { serverLogger } from '@/lib/server/logger';
 
 export const dynamic = 'force-dynamic';
 async function relay(
@@ -15,6 +16,14 @@ async function relay(
     60000,
     fetch,
     config.APP_ORIGIN,
+    serverLogger(),
   );
 }
-export { relay as GET, relay as HEAD, relay as POST, relay as DELETE };
+export {
+  relay as GET,
+  relay as HEAD,
+  relay as POST,
+  relay as PATCH,
+  relay as PUT,
+  relay as DELETE,
+};

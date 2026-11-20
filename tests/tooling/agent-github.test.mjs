@@ -8,6 +8,7 @@ import {
   assertNoLocalAuthHeaders,
   assertPermissions,
   commandEnvironment,
+  commandTimeout,
 } from '../../scripts/agent-github.mjs';
 
 const approvedPermissions = {
@@ -18,6 +19,16 @@ const approvedPermissions = {
   metadata: 'read',
   pull_requests: 'write',
 };
+
+test('extends the deadline only for release asset uploads', () => {
+  expect(commandTimeout('gh', ['release', 'upload', 'v1.0.0'])).toBe(
+    45 * 60 * 1000,
+  );
+  expect(commandTimeout('gh', ['release', 'create', 'v1.0.0'])).toBe(
+    5 * 60 * 1000,
+  );
+  expect(commandTimeout('git', ['push'])).toBe(5 * 60 * 1000);
+});
 
 test('accepts the approved issue editing and labeling permissions', () => {
   expect(() => assertPermissions(approvedPermissions)).not.toThrow();

@@ -2,8 +2,13 @@ import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { apiCatalogIsCurrent, renderApiCatalog } from './api-catalog';
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const errors = [];
+if (!(await apiCatalogIsCurrent(renderApiCatalog()))) {
+  errors.push('docs/engineering/api-catalog.md: run bun run api:catalog');
+}
 
 async function exists(file) {
   try {

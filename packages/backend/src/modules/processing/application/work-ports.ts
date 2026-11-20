@@ -1,7 +1,57 @@
 import { z } from 'zod';
 
-import type { WorkView } from '@anyko/contracts';
-import { candidateSchema } from '@anyko/contracts';
+import { documentImageLimit } from '../../../platform/document-output';
+import { candidateSchema } from '../../../profiles/bfl/candidate';
+
+const workStepSchema = z.object({
+  id: z.uuid(),
+  stage: z.enum([
+    'parsing',
+    'vision',
+    'extraction',
+    'reconciliation',
+    'generation',
+  ]),
+  documentId: z.uuid().nullable(),
+  status: z.enum(['queued', 'running', 'succeeded', 'failed', 'skipped']),
+  errorCode: z.string().nullable(),
+  visuals: z
+    .array(
+      z.object({
+        path: z.string(),
+        description: z.string(),
+        imageIndex: z
+          .number()
+          .int()
+          .min(0)
+          .max(documentImageLimit - 1)
+          .optional(),
+      }),
+    )
+    .default([]),
+});
+export const workRunSchema = z.object({
+  id: z.uuid(),
+  inputRevision: z
+    .number()
+    .int()
+    .nullable()
+    .transform((revision) => revision ?? undefined)
+    .optional(),
+  kind: z.enum(['analysis', 'generation']),
+  status: z.enum([
+    'queued',
+    'running',
+    'succeeded',
+    'partial',
+    'failed',
+    'cancelled',
+  ]),
+  errorCode: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  steps: z.array(workStepSchema),
+});
+export type WorkRuns = z.infer<typeof workRunSchema>[];
 
 export const stepOutputSchema = z
   .object({
@@ -12,73 +62,97 @@ export const stepOutputSchema = z
         z.object({
           path: z.string(),
           description: z.string().max(12000),
-          imageIndex: z.number().int().min(0).max(31).optional(),
+          imageIndex: z
+            .number()
+            .int()
+            .min(0)
+            .max(documentImageLimit - 1)
+            .optional(),
         }),
       )
-      .max(32),
+      .max(documentImageLimit),
     candidates: z.array(candidateSchema).max(500),
   })
   .strict();
-type StepOutput = z.infer<typeof stepOutputSchema>;
+export type StepOutput = z.infer<typeof stepOutputSchema>;
 
-export interface WorkRunRecord {
+export interface WorkRunSnapshot {
   id: string;
+  attempts: number;
   workspaceId: string;
   workId: string;
-  kind: 'analysis' | 'generation';
+  kind: 'analysis' | 'generation' | 'chat';
   inputRevision: number;
+  automaticUpload?: boolean;
   documentIds: string[];
   settingsRevision: number | null;
   generationId: string | null;
   correlationId: string;
-  attemptToken: string | null;
+}
+type AnalysisRecovery = Pick<
+  WorkRunSnapshot,
+  'documentIds' | 'inputRevision' | 'automaticUpload'
+>;
+export interface ClaimedWorkRun {
+  snapshot: WorkRunSnapshot;
+  attemptToken: string;
+}
+
+export interface WorkStepInput {
+  stage: 'parsing' | 'vision' | 'extraction' | 'reconciliation' | 'generation';
+  documentId?: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped';
+  errorCode?: string;
+  usage?: { inputTokens: number | null; outputTokens: number | null };
+  output?: StepOutput;
+}
+
+export interface WorkRunOutcome {
+  status: 'succeeded' | 'partial' | 'failed' | 'cancelled';
+  errorCode?: string;
 }
 export interface WorkProcessingStore {
+  latestAnalysisRecovery(
+    workspaceId: string,
+    workId: string,
+  ): Promise<AnalysisRecovery | null>;
   start(
-    input: WorkRunRecord & {
+    input: Omit<WorkRunSnapshot, 'attempts'> & {
       actorId: string;
       modelSnapshot: { vision: string; extraction: string };
     },
   ): Promise<void>;
-  claim(workspaceId: string, runId: string): Promise<WorkRunRecord | null>;
+  claim: (
+    workspaceId: string,
+    runId: string,
+    attemptToken: string,
+    leaseUntil: Date,
+  ) => Promise<ClaimedWorkRun | null>;
   active(workspaceId: string, workId: string): Promise<boolean>;
-  valid(run: WorkRunRecord): Promise<boolean>;
-  fence(run: WorkRunRecord): Promise<void>;
-  finish(
-    run: WorkRunRecord,
-    status: 'succeeded' | 'partial' | 'failed' | 'cancelled',
-    errorCode?: string,
-  ): Promise<void>;
-  step(
-    run: WorkRunRecord,
-    input: {
-      stage:
-        'parsing' | 'vision' | 'extraction' | 'reconciliation' | 'generation';
-      documentId?: string;
-      status: 'queued' | 'running' | 'succeeded' | 'failed' | 'skipped';
-      errorCode?: string;
-      usage?: { inputTokens: number | null; outputTokens: number | null };
-      output?: StepOutput;
-    },
-  ): Promise<void>;
+  valid(run: ClaimedWorkRun): Promise<boolean>;
+  fence(run: ClaimedWorkRun): Promise<void>;
+  finish(run: ClaimedWorkRun, outcome: WorkRunOutcome): Promise<boolean>;
+  step(run: ClaimedWorkRun, input: WorkStepInput): Promise<void>;
   cached(
-    run: WorkRunRecord,
+    run: WorkRunSnapshot,
     documentId: string,
     stage: 'vision' | 'extraction',
     sourceDigest: string,
   ): Promise<StepOutput | null>;
-  list(workspaceId: string, workId: string): Promise<WorkView['runs']>;
-  delivery(): Promise<{
-    id: string;
-    workspaceId: string;
-    runId: string;
-    token: string;
-  } | null>;
-  delivered(id: string, token: string): Promise<void>;
-  release(id: string, token: string): Promise<void>;
-  reconcile(): Promise<void>;
-  erase(workspaceId: string, workId: string): Promise<void>;
-  thread(workspaceId: string, workId: string, threadId: string): Promise<void>;
-  threads(workspaceId: string, workId: string): Promise<string[]>;
-  eraseThreads(workspaceId: string, workId: string): Promise<void>;
+  sourceVisuals(
+    workspaceId: string,
+    workId: string,
+    documentId: string,
+    sourceDigest: string,
+  ): Promise<StepOutput['visuals']>;
+  list(workspaceId: string, workId: string): Promise<WorkRuns>;
+  cancel: (workspaceId: string, workId: string) => Promise<void>;
+  erase: (workspaceId: string, workId: string) => Promise<void>;
+  thread: (
+    workspaceId: string,
+    workId: string,
+    threadId: string,
+  ) => Promise<void>;
+  threads: (workspaceId: string, workId: string) => Promise<string[]>;
+  eraseThreads: (workspaceId: string, workId: string) => Promise<void>;
 }

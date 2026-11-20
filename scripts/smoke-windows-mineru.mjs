@@ -13,7 +13,7 @@ const metadata = JSON.parse(
   await readFile(resolve(source, 'complete.json'), 'utf8'),
 );
 if (
-  metadata.format !== 1 ||
+  metadata.format !== 2 ||
   typeof metadata.python !== 'string' ||
   isAbsolute(metadata.python)
 )
@@ -56,7 +56,7 @@ try {
     [
       python,
       '-c',
-      "from PIL import Image,ImageDraw,ImageFont; import sys; im=Image.new('RGB',(1200,400),'white'); d=ImageDraw.Draw(im); f=ImageFont.truetype('C:/Windows/Fonts/arial.ttf',46); d.text((50,60),'ANYKO INTEGRATION TEST',font=f,fill='black'); d.text((50,150),'Invoice total 123.45',font=f,fill='black'); im.save(sys.argv[1],format='PDF',resolution=150)",
+      "from PIL import Image,ImageDraw,ImageFont; import sys; im=Image.new('RGB',(1200,400),'white'); d=ImageDraw.Draw(im); f=ImageFont.truetype('C:/Windows/Fonts/arial.ttf',46); d.text((50,60),'Уведомление о налоговом режиме',font=f,fill='black'); d.text((50,150),'Форма 1150001. Год 2023',font=f,fill='black'); im.save(sys.argv[1],format='PDF',resolution=150)",
       fixture,
     ],
     { cwd: temporary, env, stdout: 'ignore', stderr: 'inherit' },
@@ -125,13 +125,15 @@ try {
     [
       python,
       '-c',
-      "import sys,zipfile; text=zipfile.ZipFile(sys.argv[1]).read('markdown.md').decode('utf8'); sys.exit(0 if 'ANYKO' in text.upper() else 1)",
+      "import json,sys,zipfile; output=zipfile.ZipFile(sys.argv[1]); text=output.read('markdown.md').decode('utf8').casefold(); pages=json.loads(output.read('pdf-ocr.json'))['pages']; sys.exit(0 if 'уведомление' in text and '1150001' in text and pages and pages[0]['page']==1 else 1)",
       zip,
     ],
     { cwd: temporary, env, stdout: 'ignore', stderr: 'inherit' },
   );
   if ((await inspect.exited) !== 0) throw new Error('OCR marker missing');
-  console.log('Relocated offline MinerU recognized the synthetic PDF');
+  console.log(
+    'Relocated offline processor recognized the Russian synthetic PDF and located its text',
+  );
 } finally {
   let cleanupError;
   if (server && server.exitCode === null) {

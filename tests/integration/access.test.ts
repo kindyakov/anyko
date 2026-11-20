@@ -1,18 +1,18 @@
 import { expect, test } from 'bun:test';
 
-import { createAccess, provisionLocalAccess } from '@anyko/backend/access';
-import {
-  createDocumentRuntime,
-  createWorkRuntime,
-} from '@anyko/backend/runtime';
+import { provisionLocalAccess } from '@anyko/backend/access';
+import { type BackendConfig, createBackend } from '@anyko/backend/runtime';
+import { llmSettingsResponseSchema } from '@anyko/contracts/connections';
 import {
   documentResponseSchema,
   documentsResponseSchema,
-  emptyFieldValues,
-  llmSettingsResponseSchema,
-  workResponseSchema,
-} from '@anyko/contracts';
-import { createDatabase } from '@anyko/database';
+} from '@anyko/contracts/documents';
+import {
+  sessionCookieNames,
+  sessionResponseSchema,
+} from '@anyko/contracts/session';
+import { workResponseSchema } from '@anyko/contracts/works';
+import { createDatabase, createDatabasePool } from '@anyko/database';
 import { createLogger } from '@anyko/logger';
 
 import { createApp } from '../../apps/api/src/http/app';
@@ -22,6 +22,12 @@ if (!databaseUrl || new URL(databaseUrl).pathname !== '/anyko_test') {
   throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
 }
 
+// Адреса области находятся в пути (`/api/v1/workspaces/:workspaceId`): чужая область даёт 404.
+const scopedRoot = '/api/v1/workspaces/local';
+const sessionPath = '/api/v1/session';
+const worksRoot = `${scopedRoot}/works`;
+const documentsRoot = `${scopedRoot}/recognitions`;
+const settingsPath = `${scopedRoot}/connections/llm`;
 test('real sessions enforce closed signup, mutation origin and document workspace scope', async () => {
   const fixtureId = crypto.randomUUID();
   const emails = [
@@ -37,82 +43,84 @@ test('real sessions enforce closed signup, mutation origin and document workspac
   const password = `Fixture-${crypto.randomUUID()}!aA9`;
   const origin = 'http://localhost:3000';
   const config = {
-    databaseUrl,
     secret: crypto.randomUUID() + crypto.randomUUID(),
     baseURL: 'http://127.0.0.1:3001',
     origin,
   };
-  const db = createDatabase(databaseUrl);
-  const access = createAccess(config);
+  const pool = createDatabasePool(databaseUrl);
+  const db = createDatabase(pool);
   const files = new Map<string, Uint8Array>();
-  const documents = createDocumentRuntime({
-    databaseUrl,
-    logger: createLogger({
-      service: 'api',
-      environment: 'test',
-      release: 'access-integration',
-      level: 'fatal',
-    }),
-    storage: {
-      exists: (key) => Promise.resolve(files.has(key)),
-      put(key, bytes) {
-        files.set(key, bytes);
-        return Promise.resolve();
-      },
-      get(key) {
-        const bytes = files.get(key);
-        if (!bytes) throw new Error('MISSING_FIXTURE');
-        return Promise.resolve(bytes);
-      },
-      delete(key) {
-        files.delete(key);
-        return Promise.resolve();
-      },
-    },
+  const logger = createLogger({
+    service: 'api',
+    environment: 'test',
+    release: 'access-integration',
+    level: 'fatal',
   });
-  const works = createWorkRuntime({
-    databaseUrl,
-    encryptionKey: (crypto.randomUUID() + crypto.randomUUID()).replaceAll(
-      '-',
-      '',
-    ),
-    logger: createLogger({
-      service: 'api',
-      environment: 'test',
-      release: 'work-access',
-      level: 'fatal',
-    }),
+  // One API composition: the same pool and storage serve sessions, documents and works.
+  const backendConfig: BackendConfig = {
+    database: { url: databaseUrl },
     storage: {
-      exists: () => Promise.resolve(false),
-      get: () => Promise.reject(new Error('UNEXPECTED_STORAGE_READ')),
-      put: () => Promise.reject(new Error('UNEXPECTED_STORAGE_WRITE')),
-      delete: () => Promise.reject(new Error('UNEXPECTED_STORAGE_DELETE')),
+      endpoint: 'http://127.0.0.1:1',
+      bucket: 'fixture',
+      accessKeyId: 'fixture',
+      secretAccessKey: 'fixture',
+    },
+    works: {
+      encryptionKey: (crypto.randomUUID() + crypto.randomUUID()).replaceAll(
+        '-',
+        '',
+      ),
+    },
+    auth: {
+      secret: config.secret,
+      baseUrl: config.baseURL,
+      origin,
+    },
+  };
+  const api = createBackend(backendConfig, {
+    logger,
+    role: 'api',
+    dependencies: {
+      storage: {
+        exists: (key) => Promise.resolve(files.has(key)),
+        put(key, bytes) {
+          files.set(key, bytes);
+          return Promise.resolve();
+        },
+        get(key) {
+          const bytes = files.get(key);
+          if (!bytes) throw new Error('MISSING_FIXTURE');
+          return Promise.resolve(bytes);
+        },
+        delete(key) {
+          files.delete(key);
+          return Promise.resolve();
+        },
+      },
     },
   });
   const ownedWorkIds: string[] = [];
   let ownedSettingsRevision: number | undefined;
   const app = createApp({
-    workHttp: {
-      access,
-      documents,
-      origin,
-      works: works.api,
-      settings: works.settings,
-      saveSettings: works.saveSettings,
-    },
-    documentHttp: { access, documents, origin },
-    logger: createLogger({
-      service: 'api',
-      environment: 'test',
-      release: 'access-integration',
-      level: 'fatal',
-    }),
+    workHttp: api.workHttp,
+    documentHttp: api.documentHttp,
+    logger,
   });
   let listening = false;
   const foreignWorkspace = `access-${fixtureId}`;
   try {
-    await provisionLocalAccess({ ...config, email: firstEmail, password });
-    await provisionLocalAccess({ ...config, email: secondEmail, password });
+    await provisionLocalAccess({
+      db,
+      ...config,
+      email: firstEmail,
+      password,
+    });
+    await provisionLocalAccess({
+      db,
+      ...config,
+      email: secondEmail,
+      password,
+    });
     const secondUser = await db.user.findUniqueOrThrow({
       where: { email: secondEmail },
     });
@@ -134,8 +142,8 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     const base = `http://127.0.0.1:${String(port)}`;
     const request = (path: string, init?: RequestInit) =>
       fetch(`${base}${path}`, init);
-    expect((await request('/api/session')).status).toBe(401);
-    expect((await request('/api/documents')).status).toBe(401);
+    expect((await request(sessionPath)).status).toBe(401);
+    expect((await request(documentsRoot)).status).toBe(401);
     const signup = await request('/api/auth/sign-up/email', {
       method: 'POST',
       headers: { origin, 'content-type': 'application/json' },
@@ -169,11 +177,16 @@ test('real sessions enforce closed signup, mutation origin and document workspac
         .map((cookie) => cookie.split(';', 1)[0])
         .filter((cookie): cookie is string => Boolean(cookie));
       expect(cookies.length).toBeGreaterThan(0);
+      // Web находит сессию по этим именам (proxy и серверная проверка): Better Auth должен ставить одно из них.
+      const names: readonly string[] = sessionCookieNames;
+      expect(
+        cookies.some((cookie) => names.includes(cookie.split('=', 1)[0] ?? '')),
+      ).toBe(true);
       return cookies.join('; ');
     }
     const ownerCookie = await login(firstEmail);
     const secondCookie = await login(secondEmail);
-    expect((await request('/api/works')).status).toBe(401);
+    expect((await request(worksRoot)).status).toBe(401);
     const workBody = {
       title: 'Synthetic access work',
       packageVersion: 'technical-document-v1',
@@ -185,25 +198,26 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     };
     expect(
       (
-        await request('/api/works', {
+        await request(worksRoot, {
           method: 'POST',
           headers: { ...headers, origin: 'https://foreign.invalid' },
           body: JSON.stringify(workBody),
         })
       ).status,
     ).toBe(403);
-    const created = await request('/api/works', {
+    // Создание работы в v1 требует Idempotency-Key (ADR 0009): без него ответ 400.
+    const created = await request(worksRoot, {
       method: 'POST',
-      headers,
+      headers: { ...headers, 'idempotency-key': crypto.randomUUID() },
       body: JSON.stringify(workBody),
     });
     expect(created.status).toBe(201);
     const work = workResponseSchema.parse(await created.json());
     ownedWorkIds.push(work.work.id);
     for (const path of [
-      `/api/works/${work.work.id}`,
-      `/api/works/${work.work.id}/events`,
-      `/api/works/${work.work.id}/generations/${crypto.randomUUID()}/files/${crypto.randomUUID()}`,
+      `${worksRoot}/${work.work.id}`,
+      `${worksRoot}/${work.work.id}/events`,
+      `${worksRoot}/${work.work.id}/generations/${crypto.randomUUID()}/files/${crypto.randomUUID()}`,
     ]) {
       expect(
         (await request(path, { headers: { cookie: secondCookie } })).status,
@@ -211,8 +225,8 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     }
     expect(
       (
-        await request(`/api/works/${work.work.id}/fields`, {
-          method: 'POST',
+        await request(`${worksRoot}/${work.work.id}/fields`, {
+          method: 'PATCH',
           headers,
           body: JSON.stringify({ revision: 0 }),
         })
@@ -220,12 +234,29 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     ).toBe(400);
     const edit = {
       revision: 0,
-      values: { ...emptyFieldValues(), personName: 'Manual fixture' },
+      values: { ...work.facts.values, personName: 'Manual fixture' },
     };
+    const invalidEdit = await request(`${worksRoot}/${work.work.id}/fields`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        revision: 0,
+        values: { ...edit.values, debts: [{ rogue: 'x' }] },
+      }),
+    });
+    expect(invalidEdit.status).toBe(400);
+    const invalidBody = (await invalidEdit.json()) as {
+      error: { code: string; fields: unknown };
+    };
+    expect(invalidBody.error.code).toBe('INVALID_WORK_INPUT');
+    expect(invalidBody.error.fields).toContainEqual({
+      path: ['values', 'debts', 0, 'rogue'],
+      code: 'invalid_value',
+    });
     expect(
       (
-        await request(`/api/works/${work.work.id}/fields`, {
-          method: 'POST',
+        await request(`${worksRoot}/${work.work.id}/fields`, {
+          method: 'PATCH',
           headers,
           body: JSON.stringify(edit),
         })
@@ -233,8 +264,8 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     ).toBe(200);
     expect(
       (
-        await request(`/api/works/${work.work.id}/fields`, {
-          method: 'POST',
+        await request(`${worksRoot}/${work.work.id}/fields`, {
+          method: 'PATCH',
           headers,
           body: JSON.stringify(edit),
         })
@@ -249,15 +280,17 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     };
     expect(
       (
-        await request('/api/settings/llm', {
-          method: 'POST',
+        await request(settingsPath, {
+          method: 'PATCH',
           headers,
           body: JSON.stringify(connection),
         })
       ).status,
     ).toBe(200);
     const settingsText = await (
-      await request('/api/settings/llm', { headers: { cookie: ownerCookie } })
+      await request(settingsPath, {
+        headers: { cookie: ownerCookie },
+      })
     ).text();
     expect(settingsText).not.toContain(providerKey);
     const settings = llmSettingsResponseSchema.parse(
@@ -265,6 +298,28 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     );
     expect(settings.canManage).toBe(true);
     ownedSettingsRevision = settings.settings?.revision;
+    const revokeHeaders = { cookie: ownerCookie, origin };
+    const revoked = await request(settingsPath, {
+      method: 'DELETE',
+      headers: revokeHeaders,
+    });
+    expect(revoked.status).toBe(200);
+    expect(await revoked.json()).toEqual({ status: 'revoked' });
+    const afterRevoke = await request(settingsPath, {
+      headers: { cookie: ownerCookie },
+    });
+    expect(await afterRevoke.json()).toEqual({
+      settings: null,
+      canManage: true,
+    });
+    expect(
+      (
+        await request(settingsPath, {
+          method: 'DELETE',
+          headers: revokeHeaders,
+        })
+      ).status,
+    ).toBe(200);
     const firstUser = await db.user.findUniqueOrThrow({
       where: { email: firstEmail },
     });
@@ -276,17 +331,28 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     });
     expect(
       (
-        await request('/api/settings/llm', {
-          method: 'POST',
+        await request(settingsPath, {
+          method: 'PATCH',
           headers,
           body: JSON.stringify(connection),
         })
       ).status,
     ).toBe(403);
     expect(
-      (await request('/api/session', { headers: { cookie: ownerCookie } }))
-        .status,
+      (
+        await request(sessionPath, {
+          headers: { cookie: ownerCookie },
+        })
+      ).status,
     ).toBe(200);
+    const forbiddenRevoke = await request(settingsPath, {
+      method: 'DELETE',
+      headers: revokeHeaders,
+    });
+    expect(forbiddenRevoke.status).toBe(403);
+    expect(await forbiddenRevoke.json()).toMatchObject({
+      error: { code: 'FORBIDDEN' },
+    });
     function uploadBody() {
       const body = new FormData();
       body.set(
@@ -297,13 +363,16 @@ test('real sessions enforce closed signup, mutation origin and document workspac
       );
       return body;
     }
-    const noOrigin = await request('/api/documents', {
+    const noOrigin = await request(documentsRoot, {
       method: 'POST',
-      headers: { cookie: ownerCookie, 'idempotency-key': crypto.randomUUID() },
+      headers: {
+        cookie: ownerCookie,
+        'idempotency-key': crypto.randomUUID(),
+      },
       body: uploadBody(),
     });
     expect(noOrigin.status).toBe(403);
-    const wrongOrigin = await request('/api/documents', {
+    const wrongOrigin = await request(documentsRoot, {
       method: 'POST',
       headers: {
         cookie: ownerCookie,
@@ -313,7 +382,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
       body: uploadBody(),
     });
     expect(wrongOrigin.status).toBe(403);
-    const accepted = await request('/api/documents', {
+    const accepted = await request(documentsRoot, {
       method: 'POST',
       headers: {
         cookie: ownerCookie,
@@ -328,33 +397,39 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     expect(uploaded.document.status).toBe('queued');
     expect(
       (
-        await request(`/api/documents/${uploaded.document.id}`, {
+        await request(`${documentsRoot}/${uploaded.document.id}`, {
           headers: { cookie: ownerCookie },
         })
       ).status,
     ).toBe(200);
     expect(
       (
-        await request(`/api/documents/${uploaded.document.id}`, {
+        await request(`${documentsRoot}/${uploaded.document.id}`, {
           headers: { cookie: secondCookie },
         })
       ).status,
     ).toBe(404);
     expect(
       (
-        await request(`/api/documents/${uploaded.document.id}/result`, {
+        await request(`${documentsRoot}/${uploaded.document.id}/result`, {
           headers: { cookie: secondCookie },
         })
       ).status,
     ).toBe(404);
-    const foreignList = await request('/api/documents', {
+    // Участник только чужой области: локальная область для него не существует (404).
+    const secondLocal = await request(documentsRoot, {
+      headers: { cookie: secondCookie },
+    });
+    expect(secondLocal.status).toBe(404);
+    const foreignDocumentsPath = `/api/v1/workspaces/${foreignWorkspace}/recognitions`;
+    const foreignList = await request(foreignDocumentsPath, {
       headers: { cookie: secondCookie },
     });
     expect(foreignList.status).toBe(200);
     expect(
-      documentsResponseSchema.parse(await foreignList.json()).documents,
+      documentsResponseSchema.parse(await foreignList.json()).items,
     ).toEqual([]);
-    const documentPath = `/api/documents/${uploaded.document.id}`;
+    const documentPath = `${documentsRoot}/${uploaded.document.id}`;
     expect(
       (
         await request(`${documentPath}/images/0`, {
@@ -399,14 +474,17 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     ).toBe(404);
     const ownerAfterDelete = documentsResponseSchema.parse(
       await (
-        await request('/api/documents', {
+        await request(documentsRoot, {
           headers: { cookie: ownerCookie },
         })
       ).json(),
     );
-    expect(ownerAfterDelete.documents).toEqual([]);
+    expect(ownerAfterDelete.items).toEqual([]);
     expect(
-      ownerAfterDelete.deletions.map(({ id, status }) => ({ id, status })),
+      ownerAfterDelete.pendingDeletions.map(({ id, status }) => ({
+        id,
+        status,
+      })),
     ).toEqual([
       {
         id: uploaded.document.id,
@@ -415,12 +493,44 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     ]);
     const foreignAfterDelete = documentsResponseSchema.parse(
       await (
-        await request('/api/documents', {
+        await request(foreignDocumentsPath, {
           headers: { cookie: secondCookie },
         })
       ).json(),
     );
-    expect(foreignAfterDelete.deletions).toEqual([]);
+    expect(foreignAfterDelete.pendingDeletions).toEqual([]);
+    // Документ работы адресуется через свою работу: документ, не связанный с ней, — 404.
+    for (const suffix of ['source', 'result'])
+      expect(
+        (
+          await request(
+            `${worksRoot}/${work.work.id}/documents/${uploaded.document.id}/${suffix}`,
+            { headers: { cookie: ownerCookie } },
+          )
+        ).status,
+      ).toBe(404);
+    // Участие второго пользователя удалено: сессия без участий отвечает 200 с пустым списком.
+    await db.membership.deleteMany({ where: { userId: secondUser.id } });
+    const emptySession = await request(sessionPath, {
+      headers: { cookie: secondCookie },
+    });
+    expect(emptySession.status).toBe(200);
+    expect(
+      sessionResponseSchema.parse(await emptySession.json()).memberships,
+    ).toEqual([]);
+    // Роль member не получает права управления подключениями; сессия отражает текущее право.
+    const ownerSession = sessionResponseSchema.parse(
+      await (
+        await request(sessionPath, {
+          headers: { cookie: ownerCookie },
+        })
+      ).json(),
+    );
+    const local = ownerSession.memberships.find(
+      (item) => item.workspace.id === 'local',
+    );
+    expect(local?.rights).toContain('works.edit');
+    expect(local?.rights).not.toContain('connections.manage');
   } finally {
     if (listening) await app.stop();
     try {
@@ -439,19 +549,19 @@ test('real sessions enforce closed signup, mutation origin and document workspac
         select: { id: true },
       });
       const documentIds = ownedDocuments.map((document) => document.id);
-      await db.documentIo.deleteMany({
+      await db.processingIo.deleteMany({
         where: { documentId: { in: documentIds } },
       });
       await db.documentArtifact.deleteMany({
         where: { documentId: { in: documentIds } },
       });
-      await db.processorAttempt.deleteMany({
+      await db.runAttempt.deleteMany({
         where: { documentId: { in: documentIds } },
       });
       await db.documentDeletion.deleteMany({
         where: { id: { in: documentIds } },
       });
-      await db.processingRun.deleteMany({
+      await db.run.deleteMany({
         where: { documentId: { in: documentIds } },
       });
       await db.sourceDocument.deleteMany({
@@ -461,14 +571,14 @@ test('real sessions enforce closed signup, mutation origin and document workspac
         where: { key: { in: [...files.keys()] } },
       });
       await db.user.deleteMany({ where: { id: { in: userIds } } });
+      await db.auditEvent.deleteMany({
+        where: { workspaceId: foreignWorkspace },
+      });
       await db.anykoWorkspace.deleteMany({ where: { id: foreignWorkspace } });
     } finally {
-      await Promise.all([
-        works.stop(),
-        documents.stop(),
-        access.stop(),
-        db.$disconnect(),
-      ]);
+      await api.stop();
+      await db.$disconnect();
+      await pool.end();
     }
   }
 }, 30000);

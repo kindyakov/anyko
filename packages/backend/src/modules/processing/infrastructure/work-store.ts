@@ -1,147 +1,207 @@
 import { z } from 'zod';
 
-import { workRunSchema } from '@anyko/contracts';
 import type { Database } from '@anyko/database';
 
-import type { WorkProcessingStore } from '..';
-import { stepOutputSchema } from '../application/work-ports';
+import { type Clock, systemClock } from '../../../platform/clock';
+import { uuidV7 } from '../../../platform/ids';
+import { transactionHandle, type Tx } from '../../../platform/transactions';
+import {
+  type ClaimedWorkRun,
+  stepOutputSchema,
+  type WorkProcessingStore,
+  workRunSchema,
+} from '../application/work-ports';
 
-type Connection = Pick<
-  Database,
-  'workRun' | 'workStep' | 'workOutbox' | 'workAgentThread' | '$executeRaw'
->;
-const kindSchema = z.enum(['analysis', 'generation']);
-export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
+import {
+  activeAttempt,
+  claimRun,
+  finishRun,
+  type RunConnection,
+} from './run-engine';
+
+type Connection = RunConnection & Pick<Database, 'runStep' | 'workAgentThread'>;
+export async function eraseWorkAgentThreads(
+  db: Pick<Database, 'workAgentThread'>,
+  workspaceId: string,
+  threadIds: string[],
+) {
+  if (threadIds.length)
+    await db.workAgentThread.deleteMany({
+      where: { workspaceId, id: { in: threadIds } },
+    });
+}
+
+const pipelineKinds = ['work.analysis', 'work.generation'];
+const workKinds = [...pipelineKinds, 'work.chat'];
+const workKind = (kind: string) =>
+  z.enum(['analysis', 'generation', 'chat']).parse(kind.slice('work.'.length));
+export function createWorkProcessingStore(
+  db: Connection & Partial<Pick<Database, '$transaction'>>,
+  deps: { newId(): string; clock: Clock } = {
+    newId: uuidV7,
+    clock: systemClock,
+  },
+): WorkProcessingStore {
+  const atomic = <T>(operation: (tx: Connection) => Promise<T>) =>
+    db.$transaction ? db.$transaction(operation) : operation(db);
+  const fence = async (
+    tx: Connection,
+    { snapshot: run, attemptToken }: ClaimedWorkRun,
+  ) => {
+    const now = deps.clock.now();
+    const change = await tx.run.updateMany({
+      where: {
+        ...activeAttempt(run.workspaceId, run.id, attemptToken, now),
+        kind: { in: workKinds },
+      },
+      data: { updatedAt: now },
+    });
+    if (change.count !== 1) throw new Error('STALE_WORK_ATTEMPT');
+  };
   return {
+    async latestAnalysisRecovery(workspaceId, workId) {
+      const row = await db.run.findFirst({
+        where: { workspaceId, workId, kind: 'work.analysis' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: {
+          status: true,
+          inputRevision: true,
+          documentIds: true,
+          automaticUpload: true,
+        },
+      });
+      if (
+        !row ||
+        row.inputRevision === null ||
+        !['partial', 'failed', 'cancelled'].includes(row.status)
+      )
+        return null;
+      const documentIds = z.array(z.uuid()).safeParse(row.documentIds);
+      if (!documentIds.success) return null;
+      return {
+        inputRevision: row.inputRevision,
+        automaticUpload: row.automaticUpload,
+        documentIds: documentIds.data,
+      };
+    },
     async start(input) {
-      await db.workRun.create({
+      await db.run.create({
         data: {
           id: input.id,
           workspaceId: input.workspaceId,
           workId: input.workId,
-          kind: input.kind,
+          kind: `work.${input.kind}`,
           inputRevision: input.inputRevision,
+          automaticUpload: input.automaticUpload ?? false,
           settingsRevision: input.settingsRevision,
           generationId: input.generationId,
           documentIds: input.documentIds,
           modelSnapshot: input.modelSnapshot,
           initiatedBy: input.actorId,
           correlationId: input.correlationId,
-          outbox: { create: { id: crypto.randomUUID() } },
+          outbox: { create: { id: deps.newId() } },
         },
       });
     },
-    async claim(workspaceId, id) {
-      const token = crypto.randomUUID();
-      if (
-        !(
-          await db.workRun.updateMany({
-            where: { workspaceId, id, status: 'queued' },
-            data: {
-              status: 'running',
-              attemptToken: token,
-              leaseUntil: new Date(Date.now() + 1_800_000),
-            },
-          })
-        ).count
-      )
-        return null;
-      const row = await db.workRun.findFirstOrThrow({
-        where: { workspaceId, id, attemptToken: token },
-      });
+    async claim(workspaceId, id, attemptToken, leaseUntil) {
+      const row = await atomic((tx) =>
+        claimRun(tx, {
+          workspaceId,
+          id,
+          attemptToken,
+          kinds: workKinds,
+          leaseUntil,
+        }),
+      );
+      if (!row?.workId || row.inputRevision === null) return null;
       return {
-        id: row.id,
-        workspaceId,
-        workId: row.workId,
-        kind: kindSchema.parse(row.kind),
-        inputRevision: row.inputRevision,
-        settingsRevision: row.settingsRevision,
-        generationId: row.generationId,
-        documentIds: z.array(z.uuid()).parse(row.documentIds),
-        correlationId: row.correlationId,
-        attemptToken: token,
+        attemptToken,
+        snapshot: {
+          id: row.id,
+          attempts: row.attempts,
+          workspaceId,
+          workId: row.workId,
+          kind: workKind(row.kind),
+          inputRevision: row.inputRevision,
+          automaticUpload: row.automaticUpload,
+          settingsRevision: row.settingsRevision,
+          generationId: row.generationId,
+          documentIds: z.array(z.uuid()).parse(row.documentIds),
+          correlationId: row.correlationId,
+        },
       };
     },
     async active(workspaceId, workId) {
       return (
-        (await db.workRun.count({
+        (await db.run.count({
           where: { workspaceId, workId, status: { in: ['queued', 'running'] } },
         })) > 0
       );
     },
-    async fence(run) {
-      const changed = await db.workRun.updateMany({
-        where: {
-          workspaceId: run.workspaceId,
-          id: run.id,
-          attemptToken: run.attemptToken,
-          status: 'running',
-        },
-        data: { updatedAt: new Date() },
-      });
-      if (changed.count !== 1) throw new Error('STALE_WORK_ATTEMPT');
-    },
-    async valid(run) {
+    fence: (run) => fence(db, run),
+    async valid({ snapshot: run, attemptToken }) {
       return (
-        (await db.workRun.count({
+        (await db.run.count({
           where: {
-            workspaceId: run.workspaceId,
-            id: run.id,
-            attemptToken: run.attemptToken,
-            status: 'running',
+            ...activeAttempt(
+              run.workspaceId,
+              run.id,
+              attemptToken,
+              deps.clock.now(),
+            ),
+            kind: { in: workKinds },
           },
         })) === 1
       );
     },
-    async finish(run, status, errorCode) {
-      await db.workRun.updateMany({
-        where: {
+    async finish({ snapshot: run, attemptToken }, { status, errorCode }) {
+      return (
+        (await finishRun(db, {
           workspaceId: run.workspaceId,
           id: run.id,
-          attemptToken: run.attemptToken,
-          status: 'running',
-        },
-        data: {
-          status,
-          errorCode: errorCode ?? null,
-          attemptToken: null,
-          leaseUntil: null,
-        },
-      });
+          attemptToken,
+          kinds: workKinds,
+          now: deps.clock.now(),
+          outcome: { status, errorCode: errorCode ?? null },
+        })) !== null
+      );
     },
-    async step(run, input) {
-      if (!(await this.valid(run))) throw new Error('STALE_WORK_ATTEMPT');
-      const documentId = input.documentId ?? '';
-      const data = {
-        status: input.status,
-        errorCode: input.errorCode ?? null,
-        ...(input.usage ? { usage: input.usage } : {}),
-        ...(input.output
-          ? { output: stepOutputSchema.parse(input.output) }
-          : {}),
-      };
-      await db.workStep.upsert({
-        where: {
-          workspaceId_runId_stage_documentId: {
+    async step(claim, input) {
+      await atomic(async (tx) => {
+        await fence(tx, claim);
+        const run = claim.snapshot;
+        const documentId = input.documentId ?? '';
+        const data = {
+          status: input.status,
+          errorCode: input.errorCode ?? null,
+          ...(input.usage ? { usage: input.usage } : {}),
+          ...(input.output
+            ? { output: stepOutputSchema.parse(input.output) }
+            : {}),
+        };
+        await tx.runStep.upsert({
+          where: {
+            workspaceId_runId_stage_documentId: {
+              workspaceId: run.workspaceId,
+              runId: run.id,
+              stage: input.stage,
+              documentId,
+            },
+          },
+          update: data,
+          create: {
+            id: deps.newId(),
             workspaceId: run.workspaceId,
             runId: run.id,
             stage: input.stage,
             documentId,
+            ...data,
           },
-        },
-        update: data,
-        create: {
-          id: crypto.randomUUID(),
-          workspaceId: run.workspaceId,
-          runId: run.id,
-          stage: input.stage,
-          documentId,
-          ...data,
-        },
+        });
       });
     },
     async cached(run, documentId, stage, sourceDigest) {
-      const row = await db.workStep.findFirst({
+      const row = await db.runStep.findFirst({
         where: {
           workspaceId: run.workspaceId,
           documentId,
@@ -157,10 +217,33 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
       });
       return row?.output ? stepOutputSchema.parse(row.output) : null;
     },
+    async sourceVisuals(workspaceId, workId, documentId, sourceDigest) {
+      const row = await db.runStep.findFirst({
+        where: {
+          workspaceId,
+          documentId,
+          stage: 'vision',
+          status: 'succeeded',
+          run: { workId, kind: 'work.analysis' },
+          OR: [
+            { output: { path: ['sourceDigest'], equals: sourceDigest } },
+            {
+              output: {
+                path: ['sourceDigest'],
+                string_ends_with: `:${sourceDigest}`,
+              },
+            },
+          ],
+        },
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        select: { output: true },
+      });
+      return row?.output ? stepOutputSchema.parse(row.output).visuals : [];
+    },
     async list(workspaceId, workId) {
       return (
-        await db.workRun.findMany({
-          where: { workspaceId, workId },
+        await db.run.findMany({
+          where: { workspaceId, workId, kind: { in: pipelineKinds } },
           include: { steps: { orderBy: { updatedAt: 'asc' } } },
           orderBy: { createdAt: 'desc' },
           take: 20,
@@ -168,6 +251,7 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
       ).map((row) =>
         workRunSchema.parse({
           ...row,
+          kind: workKind(row.kind),
           steps: row.steps.map((step) => ({
             ...step,
             documentId: step.documentId || null,
@@ -179,49 +263,14 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
         }),
       );
     },
-    async delivery() {
-      const row = await db.workOutbox.findFirst({
-        where: {
-          deliveredAt: null,
-          OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date() } }],
-        },
+    async cancel(workspaceId, workId) {
+      await db.run.updateMany({
+        where: { workspaceId, workId, status: { in: ['queued', 'running'] } },
+        data: { status: 'cancelled', attemptToken: null, leaseUntil: null },
       });
-      if (!row) return null;
-      const token = crypto.randomUUID();
-      const changed = await db.workOutbox.updateMany({
-        where: {
-          id: row.id,
-          deliveredAt: null,
-          OR: [{ leaseUntil: null }, { leaseUntil: { lt: new Date() } }],
-        },
-        data: { leaseToken: token, leaseUntil: new Date(Date.now() + 10000) },
-      });
-      return changed.count
-        ? { id: row.id, workspaceId: row.workspaceId, runId: row.runId, token }
-        : null;
-    },
-    async delivered(id, token) {
-      await db.workOutbox.updateMany({
-        where: { id, leaseToken: token },
-        data: { deliveredAt: new Date(), leaseUntil: null, leaseToken: null },
-      });
-    },
-    async release(id, token) {
-      await db.workOutbox.updateMany({
-        where: { id, leaseToken: token },
-        data: { leaseUntil: null, leaseToken: null },
-      });
-    },
-    async reconcile() {
-      // Atomic recovery: queued runs are not repeatedly republished while waiting for a consumer.
-      await db.$executeRaw`WITH expired AS (
-        UPDATE "WorkRun" SET "status"='queued', "attemptToken"=NULL, "leaseUntil"=NULL, "updatedAt"=(NOW() AT TIME ZONE 'UTC')
-        WHERE "status"='running' AND "leaseUntil" < (NOW() AT TIME ZONE 'UTC') RETURNING "id", "workspaceId"
-      ) UPDATE "WorkOutbox" AS outbox SET "deliveredAt"=NULL, "leaseUntil"=NULL, "leaseToken"=NULL
-        FROM expired WHERE outbox."runId"=expired."id" AND outbox."workspaceId"=expired."workspaceId"`;
     },
     async erase(workspaceId, workId) {
-      await db.workRun.deleteMany({ where: { workspaceId, workId } });
+      await db.run.deleteMany({ where: { workspaceId, workId } });
     },
     async thread(workspaceId, workId, id) {
       await db.workAgentThread.create({ data: { id, workspaceId, workId } });
@@ -238,4 +287,9 @@ export function createWorkProcessingStore(db: Connection): WorkProcessingStore {
       await db.workAgentThread.deleteMany({ where: { workspaceId, workId } });
     },
   };
+}
+
+// Запуски внутри транзакции действия: токен превращается в клиент транзакции драйвера.
+export function workProcessingStoreFor(tx: Tx): WorkProcessingStore {
+  return createWorkProcessingStore(transactionHandle<Connection>(tx));
 }

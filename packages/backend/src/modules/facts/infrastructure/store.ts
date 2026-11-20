@@ -1,7 +1,8 @@
-import { factsSchema } from '@anyko/contracts';
 import type { Database } from '@anyko/database';
 
 import { emptyFacts, type FactsStore } from '..';
+import { transactionHandle, type Tx } from '../../../platform/transactions';
+import { factsSchema } from '../schemas';
 
 export function createFactsStore(db: Pick<Database, 'workFacts'>): FactsStore {
   return {
@@ -23,4 +24,9 @@ export function createFactsStore(db: Pick<Database, 'workFacts'>): FactsStore {
       await db.workFacts.deleteMany({ where: { workspaceId, workId } });
     },
   };
+}
+
+// Сведения внутри транзакции действия: токен превращается в клиент транзакции драйвера.
+export function factsStoreFor(tx: Tx): FactsStore {
+  return createFactsStore(transactionHandle<Pick<Database, 'workFacts'>>(tx));
 }

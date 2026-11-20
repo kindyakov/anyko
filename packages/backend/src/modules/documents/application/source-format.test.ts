@@ -16,7 +16,9 @@ test('accepts supported signatures and canonicalizes filename aliases', () => {
   expect(sourceFormatFromKey('PHOTO.JPEG')).toBe('jpg');
   expect(sourceFormatFromKey('scan.TIF')).toBe('tiff');
   expect(sourceFormatFromKey('sources/workspace/id.pdf')).toBe('pdf');
-  expect(sourceFormatFromKey('photo.heic')).toBeUndefined();
+  expect(sourceFormatFromKey('photo.HEIC')).toBe('heif');
+  expect(sourceFormatFromKey('photo.heif')).toBe('heif');
+  expect(sourceFormatFromKey('photo.AVIF')).toBe('avif');
   expect(matchesSourceFormat(strToU8('%PDF-1.7 fixture'), 'pdf')).toBe(true);
   expect(
     matchesSourceFormat(new Uint8Array([255, 216, 255, 224, 0]), 'jpg'),
@@ -32,6 +34,31 @@ test('accepts supported signatures and canonicalizes filename aliases', () => {
     true,
   );
   expect(matchesSourceFormat(docx, 'docx')).toBe(true);
+});
+
+test('distinguishes AVIF and HEIF from other ISO image or video containers', () => {
+  function ftyp(major: string, compatible: string) {
+    return new Uint8Array([
+      0,
+      0,
+      0,
+      20,
+      ...strToU8(`ftyp${major}`),
+      0,
+      0,
+      0,
+      0,
+      ...strToU8(compatible),
+    ]);
+  }
+  expect(matchesSourceFormat(ftyp('mif1', 'avif'), 'avif')).toBe(true);
+  expect(matchesSourceFormat(ftyp('mif1', 'avif'), 'heif')).toBe(false);
+  expect(matchesSourceFormat(ftyp('mif1', 'heic'), 'heif')).toBe(true);
+  expect(matchesSourceFormat(ftyp('heix', 'mif1'), 'avif')).toBe(false);
+  expect(matchesSourceFormat(ftyp('isom', 'mp42'), 'heif')).toBe(false);
+  expect(
+    matchesSourceFormat(ftyp('heic', 'mif1').subarray(0, 16), 'heif'),
+  ).toBe(false);
 });
 
 test('rejects mislabeled content, arbitrary ZIPs and oversized DOCX entries', () => {

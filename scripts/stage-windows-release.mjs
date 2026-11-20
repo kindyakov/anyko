@@ -15,7 +15,7 @@ if (process.platform !== 'win32' || process.arch !== 'x64')
 const inputs = [
   ['infrastructure', process.env.ANYKO_WINDOWS_INFRA_PATH, 1],
   ['migrator', process.env.ANYKO_WINDOWS_MIGRATOR_PATH, 2],
-  ['mineru', process.env.ANYKO_WINDOWS_MINERU_PATH, 1],
+  ['mineru', process.env.ANYKO_WINDOWS_MINERU_PATH, 2],
 ];
 for (const [name, input, version] of inputs) {
   if (

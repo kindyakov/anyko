@@ -1,0 +1,33 @@
+{
+  "name": "@anyko/ui",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./chat": "./src/chat/index.ts",
+    "./form": "./src/form/index.ts",
+    "./brand": "./src/brand/index.ts",
+    "./brand/logo": "./src/brand/logo.tsx",
+    "./styles.css": "./src/styles.css"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@base-ui/react": "1.9.0",
+    "@shadcn/react": "0.3.1",
+    "lucide-react": "1.70.0"
+  },
+  "devDependencies": {
+    "@anyko/typescript-config": "workspace:*",
+    "@tanstack/react-form": "1.33.5",
+    "@types/react": "19.3.0",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "react": "19.3.1",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
+  },
+  "peerDependencies": {
+    "@tanstack/react-form": "1.33.5",
+    "react": "19.3.1"
+  }
+}

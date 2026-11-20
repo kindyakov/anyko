@@ -77,8 +77,12 @@ export function createS3Storage(config: {
       try {
         const response = await request(key, 'PUT', bytes, contentType, signal);
         await response.body?.cancel();
-      } catch {
-        throw new StorageWriteOutcomeUnknown();
+      } catch (error) {
+        throw new StorageWriteOutcomeUnknown(
+          !signal?.aborted &&
+            error instanceof DOMException &&
+            error.name === 'TimeoutError',
+        );
       }
     },
     async get(key, signal) {

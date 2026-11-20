@@ -1,7 +1,8 @@
-import { afterAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   symlink,
@@ -34,6 +35,15 @@ async function check(
       mkdir(join(directory, folder), { recursive: true }),
     ),
   );
+  await mkdir(join(directory, 'apps/web/src'), { recursive: true });
+  await writeFile(
+    join(directory, 'apps/web/tsconfig.json'),
+    JSON.stringify({
+      compilerOptions: { paths: { '@/*': ['./src/*'] } },
+      include: ['src/**/*.ts', 'src/**/*.tsx'],
+    }),
+  );
+  await writeFile(join(directory, 'apps/web/src/placeholder.ts'), 'export {};');
   let fixtureConfig = config;
   if (withAllowedEdge) {
     const original = await readFile(config, 'utf8');
@@ -107,6 +117,11 @@ const cases = [
     '../database/index.ts',
   ],
   ['ui-no-business', 'packages/ui/index.ts', '../contracts/index.ts'],
+  [
+    'ui-no-business',
+    'packages/ui/src/form/example.ts',
+    '../../../../apps/web/src/lib/api/client.ts',
+  ],
   [
     'modules-no-workflows',
     'packages/backend/src/modules/facts/index.ts',
@@ -270,6 +285,7 @@ test('blocks a private module import and an unapproved public module edge', asyn
 test('composition root may bind module adapters while application internals stay private', async () => {
   for (const [target, forbidden] of [
     ['infrastructure/store.ts', false],
+    ['module.ts', false],
     ['application/command.ts', true],
   ] as const) {
     const { result } = await check({
@@ -510,3 +526,645 @@ test('blocks relative and src deep workspace imports but permits package exports
   const allowed = await lintSnippet(filename, "import '@anyko/backend/facts';");
   expect(allowed.rules).not.toContain('architecture/no-cross-package-source');
 }, 30000);
+
+// Backend (ADR 0009): правила этапа 1. Каждое правило имеет пример нарушения и пример разрешённого кода.
+
+function npmModule(name: string): Record<string, string> {
+  return {
+    [`node_modules/${name}/package.json`]: JSON.stringify({
+      name,
+      main: 'index.js',
+    }),
+    [`node_modules/${name}/index.js`]: 'module.exports = {};',
+  };
+}
+
+function hasViolation(
+  result: { summary: { violations: { rule: { name: string } }[] } },
+  rule: string,
+) {
+  return result.summary.violations.some((item) => item.rule.name === rule);
+}
+
+test('backend-no-contracts rejects HTTP contract imports including formerly exempt files', async () => {
+  const contractImport = "import '../../../../contracts/index.ts';";
+  const contractTarget = 'packages/contracts/index.ts';
+  const rejected = await check({
+    'packages/backend/src/modules/works/new-rule.ts': contractImport,
+    [contractTarget]: 'export const value = 1;',
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(rejected.result, 'backend-no-contracts')).toBe(true);
+  const legacy = await check({
+    'packages/backend/src/modules/works/index.ts': contractImport,
+    [contractTarget]: 'export const value = 1;',
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(legacy.result, 'backend-no-contracts')).toBe(true);
+});
+
+test('backend-no-queue-libs rejects queue libraries in every backend layer and permits the worker host', async () => {
+  for (const library of ['bullmq', 'ioredis', 'elysia']) {
+    for (const path of [
+      'modules/works/application/example.ts',
+      'runtime/works/worker.ts',
+      'runtime/diagnostics/client.ts',
+    ]) {
+      const rejected = await check({
+        [`packages/backend/src/${path}`]: `import '${library}';`,
+        ...npmModule(library),
+        'apps/placeholder.ts': 'export {};',
+      });
+      expect(hasViolation(rejected.result, 'backend-no-queue-libs')).toBe(true);
+    }
+    const allowed = await check({
+      'apps/worker/src/queues/index.ts': `import '${library}';`,
+      ...npmModule(library),
+    });
+    expect(hasViolation(allowed.result, 'backend-no-queue-libs')).toBe(false);
+  }
+});
+
+test('backend-contracts-only-zod permits zod and rejects other external or Node dependencies', async () => {
+  const allowed = await check({
+    'packages/contracts/index.ts': "import 'zod';",
+    ...npmModule('zod'),
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(allowed.result, 'backend-contracts-only-zod')).toBe(
+    false,
+  );
+  for (const dependency of ['example-external', 'node:fs']) {
+    const rejected = await check({
+      'packages/contracts/index.ts': `import '${dependency}';`,
+      ...npmModule('example-external'),
+      'apps/placeholder.ts': 'export {};',
+    });
+    expect(hasViolation(rejected.result, 'backend-contracts-only-zod')).toBe(
+      true,
+    );
+  }
+});
+
+test('backend-scope-issued-by-access rejects scope issuance outside access and permits access', async () => {
+  const issuer = 'packages/backend/src/platform/scope/issue.ts';
+  const issuerSource = 'export const issueWorkspaceScope = () => 1;';
+  const rejected = await check({
+    [issuer]: issuerSource,
+    'packages/backend/src/modules/works/application/example.ts':
+      "import { issueWorkspaceScope } from '../../../platform/scope/issue.ts';\nexport const scope = issueWorkspaceScope;",
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(rejected.result, 'backend-scope-issued-by-access')).toBe(
+    true,
+  );
+  const allowed = await check({
+    [issuer]: issuerSource,
+    'packages/backend/src/modules/access/infrastructure/example.ts':
+      "import { issueWorkspaceScope } from '../../../platform/scope/issue.ts';\nexport const scope = issueWorkspaceScope;",
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(hasViolation(allowed.result, 'backend-scope-issued-by-access')).toBe(
+    false,
+  );
+});
+
+test('ESLint rejects request body parsing in HTTP routes and permits passed-in values', async () => {
+  const filename = 'apps/api/src/http/routes/example.js';
+  const rejected = await lintSnippet(
+    filename,
+    'export async function handle(request) { return request.json(); }',
+  );
+  expect(rejected.rules).toContain('no-restricted-syntax');
+  const allowed = await lintSnippet(
+    filename,
+    'export function handle(value) { return value; }',
+  );
+  expect(allowed.rules).not.toContain('no-restricted-syntax');
+}, 30000);
+
+test('ESLint rejects ambient clock, ids and environment in application code', async () => {
+  const filename = 'packages/backend/src/modules/facts/application/example.js';
+  const rejected = await Promise.all(
+    [
+      'new Date()',
+      'Date.now()',
+      'crypto.randomUUID()',
+      'process.env.SECRET',
+    ].map((code) => lintSnippet(filename, code)),
+  );
+  for (const result of rejected)
+    expect(result.rules).toContain('no-restricted-syntax');
+  const allowed = await lintSnippet(
+    filename,
+    'function expiresAt(now, ms) { return new Date(now.getTime() + ms); } expiresAt(new Date(0), 1);',
+  );
+  expect(allowed.rules).not.toContain('no-restricted-syntax');
+}, 120000);
+
+test('backend-modules-database-types-only rejects database client values outside runtime and permits types', async () => {
+  const database = {
+    'packages/database/package.json': JSON.stringify({
+      name: '@anyko/database',
+      exports: { '.': './src/index.ts' },
+    }),
+    'packages/database/src/index.ts':
+      'export const createDatabase = (url: string) => url; export type Database = string;',
+  };
+  const rejected = await check(
+    {
+      ...database,
+      'packages/backend/src/modules/access/infrastructure/example.ts':
+        "import { createDatabase } from '@anyko/database';\nexport const client = createDatabase;",
+      'apps/placeholder.ts': 'export {};',
+    },
+    false,
+    ['database'],
+  );
+  expect(
+    hasViolation(rejected.result, 'backend-modules-database-types-only'),
+  ).toBe(true);
+  const allowed = await check(
+    {
+      ...database,
+      'packages/backend/src/modules/access/infrastructure/example.ts':
+        "import type { Database } from '@anyko/database';\nexport type Client = Database;",
+      'packages/backend/src/runtime/example.ts':
+        "import { createDatabase } from '@anyko/database';\nexport const client = createDatabase;",
+      'apps/placeholder.ts': 'export {};',
+    },
+    false,
+    ['database'],
+  );
+  expect(
+    hasViolation(allowed.result, 'backend-modules-database-types-only'),
+  ).toBe(false);
+}, 30000);
+
+test('backend-workflows-use-module-facades rejects module application imports in workflows and permits the public index', async () => {
+  const rejected = await check({
+    'packages/backend/src/workflows/work-intake/example.ts':
+      "import '../../modules/works/application/create-work.ts';",
+    'packages/backend/src/modules/works/application/create-work.ts':
+      'export {};',
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(
+    hasViolation(rejected.result, 'backend-workflows-use-module-facades'),
+  ).toBe(true);
+  const allowed = await check({
+    'packages/backend/src/workflows/work-intake/example.ts':
+      "import '../../modules/works/index.ts';",
+    'packages/backend/src/modules/works/index.ts': 'export {};',
+    'apps/placeholder.ts': 'export {};',
+  });
+  expect(
+    hasViolation(allowed.result, 'backend-workflows-use-module-facades'),
+  ).toBe(false);
+}, 30000);
+
+test('backend-transactions-opaque rejects database client values in workflows and permits types', async () => {
+  const database = {
+    'packages/database/package.json': JSON.stringify({
+      name: '@anyko/database',
+      exports: { '.': './src/index.ts' },
+    }),
+    'packages/database/src/index.ts':
+      'export const createDatabase = (url: string) => url; export type Database = string;',
+  };
+  const rejected = await check(
+    {
+      ...database,
+      'packages/backend/src/workflows/work-intake/example.ts':
+        "import { createDatabase } from '@anyko/database';\nexport const client = createDatabase;",
+      'apps/placeholder.ts': 'export {};',
+    },
+    false,
+    ['database'],
+  );
+  expect(hasViolation(rejected.result, 'backend-transactions-opaque')).toBe(
+    true,
+  );
+  const allowed = await check(
+    {
+      ...database,
+      'packages/backend/src/workflows/work-intake/example.ts':
+        "import type { Database } from '@anyko/database';\nexport type Client = Database;",
+      'apps/placeholder.ts': 'export {};',
+    },
+    false,
+    ['database'],
+  );
+  expect(hasViolation(allowed.result, 'backend-transactions-opaque')).toBe(
+    false,
+  );
+}, 30000);
+
+test('ESLint rejects process.env in backend runtime and permits passed-in configuration', async () => {
+  const filename = 'packages/backend/src/runtime/example.js';
+  const rejected = await lintSnippet(
+    filename,
+    'export const url = process.env.DATABASE_URL;',
+  );
+  expect(rejected.rules).toContain('no-restricted-syntax');
+  const allowed = await lintSnippet(
+    filename,
+    'export function url(config) { return config.database.url; }',
+  );
+  expect(allowed.rules).not.toContain('no-restricted-syntax');
+}, 60000);
+// Web (apps/web) и @anyko/ui: границы features/lib/ui, server-only, административные контракты и правила ESLint.
+// Каждый плохой пример должен отклоняться именно этим правилом; хороший проходит.
+async function webRules(
+  files: Record<string, string>,
+  workspaceLinks: string[] = [],
+) {
+  const { result } = await check(files, false, workspaceLinks);
+  return result.summary.violations.map((violation) => violation.rule.name);
+}
+
+test('web feature public API rejects deep cross-feature imports, including the @ alias and app/', async () => {
+  const target = 'apps/web/src/features/documents/document-viewer.tsx';
+  for (const [source, specifier] of [
+    [
+      'apps/web/src/features/works/a.ts',
+      '@/features/documents/document-viewer',
+    ],
+    ['apps/web/src/features/works/a.ts', '../documents/document-viewer'],
+    ['apps/web/src/app/other.tsx', '@/features/documents/document-viewer'],
+  ] as const) {
+    const rules = await webRules({
+      [source]: `import '${specifier}';`,
+      [target]: 'export const value = 1;',
+    });
+    expect(rules).toContain('web-feature-public-api');
+  }
+});
+
+test('web feature public API permits the public index and the own feature', async () => {
+  const rules = await webRules({
+    'apps/web/src/features/works/a.ts':
+      "import '@/features/documents';\nimport './b';",
+    'apps/web/src/features/works/b.ts': 'export const value = 1;',
+    'apps/web/src/features/documents/index.ts': 'export const value = 1;',
+  });
+  expect(rules).toHaveLength(0);
+});
+
+test('web features cannot form cycles', async () => {
+  const rules = await webRules({
+    'apps/web/src/features/a/index.ts': "import './x';",
+    'apps/web/src/features/a/x.ts': "import '@/features/b';",
+    'apps/web/src/features/b/index.ts': "import '@/features/a';",
+  });
+  expect(rules).toContain('web-no-feature-cycles');
+  const acyclic = await webRules({
+    'apps/web/src/features/a/index.ts': "import '@/features/b';",
+    'apps/web/src/features/b/index.ts': 'export const value = 1;',
+  });
+  expect(acyclic).toHaveLength(0);
+});
+
+test('web features cannot import app routes', async () => {
+  const rules = await webRules({
+    'apps/web/src/features/works/a.ts': "import '@/app/other';",
+    'apps/web/src/app/other.ts': 'export const value = 1;',
+  });
+  expect(rules).toContain('web-features-no-app');
+  const allowed = await webRules({
+    'apps/web/src/features/works/a.ts': "import '@/lib/b';",
+    'apps/web/src/lib/b.ts': 'export const value = 1;',
+  });
+  expect(allowed).toHaveLength(0);
+});
+
+test('@anyko/ui cannot import applications or Next', async () => {
+  for (const [specifier, target] of [
+    ['../../../apps/web/src/lib/format.ts', 'apps/web/src/lib/format.ts'],
+    ['../../../apps/admin/src/a.ts', 'apps/admin/src/a.ts'],
+    ['next/link', undefined],
+  ] as const) {
+    const rules = await webRules({
+      'packages/ui/src/button.tsx': `import '${specifier}';`,
+      ...(target ? { [target]: 'export const value = 1;' } : {}),
+    });
+    expect(rules).toContain('ui-no-business');
+  }
+});
+
+test('@anyko/ui root and form do not import brand graphics', async () => {
+  const brand = {
+    'packages/ui/src/brand/event-horizon.tsx': 'export const value = 1;',
+  };
+  for (const [source, specifier] of [
+    ['packages/ui/src/index.ts', './brand/event-horizon'],
+    ['packages/ui/src/form/fields.tsx', '../brand/event-horizon'],
+  ] as const) {
+    const rules = await webRules({
+      ...brand,
+      [source]: `import '${specifier}';`,
+    });
+    expect(rules).toContain('ui-brand-isolated');
+  }
+  const allowed = await webRules({
+    ...brand,
+    'packages/ui/src/button.tsx': 'export const value = 1;',
+    'packages/ui/src/brand/drop-zone.tsx': [
+      "import '../button';",
+      "import './event-horizon';",
+    ].join('\n'),
+  });
+  expect(allowed).toHaveLength(0);
+});
+
+test('web features and app reach the API through call.ts, never through the transport client', async () => {
+  const client = {
+    'apps/web/src/lib/api/client.ts': 'export const requestApi = 1;',
+    'apps/web/src/lib/api/call.ts': "import '@/lib/api/client';",
+  };
+  for (const source of [
+    'apps/web/src/features/works/new-screen.tsx',
+    'apps/web/src/features/works/api/queries.ts',
+    'apps/web/src/app/(workspace)/w/[workspace]/page.tsx',
+  ]) {
+    const rules = await webRules({
+      ...client,
+      [source]: "import '@/lib/api/client';",
+    });
+    expect(rules).toContain('web-api-transport-only-in-lib');
+  }
+  const allowed = await webRules({
+    ...client,
+    'apps/web/src/features/works/api/queries.ts': "import '@/lib/api/call';",
+    'apps/web/src/lib/api/extra.ts': "import '@/lib/api/client';",
+  });
+  expect(allowed).toHaveLength(0);
+});
+
+test('web features and the API layer cannot import server-only modules', async () => {
+  const server = {
+    'apps/web/src/lib/server/config.ts': 'export const value = 1;',
+  };
+  for (const source of [
+    'apps/web/src/features/works/a.ts',
+    'apps/web/src/lib/api/a.ts',
+  ]) {
+    const rules = await webRules({
+      ...server,
+      [source]: "import '@/lib/server/config';",
+    });
+    expect(rules).toContain('web-server-only');
+  }
+  const allowed = await webRules({
+    ...server,
+    'apps/web/src/app/route.ts': "import '@/lib/server/config';",
+  });
+  expect(allowed).toHaveLength(0);
+});
+
+test('web cannot import administrative contracts but can import resource contracts', async () => {
+  const contracts = {
+    'packages/contracts/package.json': JSON.stringify({
+      name: '@anyko/contracts',
+      exports: {
+        './admin': './src/admin/index.ts',
+        './works': './src/works.ts',
+      },
+    }),
+    'packages/contracts/src/admin/index.ts': 'export const value = 1;',
+    'packages/contracts/src/works.ts': 'export const value = 1;',
+  };
+  const rules = await webRules(
+    {
+      ...contracts,
+      'apps/web/src/features/works/a.ts': "import '@anyko/contracts/admin';",
+    },
+    ['contracts'],
+  );
+  expect(rules).toContain('web-no-contracts-admin');
+  const allowed = await webRules(
+    {
+      ...contracts,
+      'apps/web/src/features/works/a.ts': "import '@anyko/contracts/works';",
+    },
+    ['contracts'],
+  );
+  expect(allowed).toHaveLength(0);
+});
+
+// One ESLint instance checks every web example. ruleFilter keeps only the rules under test, so typed rules never
+// run and projectService stays off: the real configuration (files globs and rule settings) is used without
+// type information, in seconds instead of a typed run per snippet.
+const checkedWebRules = [
+  'no-restricted-imports',
+  'no-restricted-globals',
+  'no-restricted-properties',
+  'react-hooks/rules-of-hooks',
+  '@eslint-community/eslint-comments/require-description',
+  'jsx-a11y-x/alt-text',
+];
+
+async function lintWebSnippets(
+  cases: Record<string, { filename: string; code: string }>,
+) {
+  const script = `
+import { ESLint } from 'eslint';
+const cases = JSON.parse(await new Response(process.stdin).text());
+const checked = ${JSON.stringify(checkedWebRules)};
+const eslint = new ESLint({
+  cwd: process.cwd(),
+  ruleFilter: ({ ruleId }) => checked.includes(ruleId),
+  overrideConfig: { languageOptions: { parserOptions: { projectService: false } } },
+});
+const output = {};
+for (const [name, item] of Object.entries(cases)) {
+  const [result] = await eslint.lintText(item.code, { filePath: item.filename });
+  output[name] = result.messages.map((message) => message.ruleId);
+}
+console.log(JSON.stringify(output));
+`;
+  const subprocess = Bun.spawn(['node', '--input-type=module', '-e', script], {
+    cwd: root,
+    stdin: 'pipe',
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  await subprocess.stdin.write(JSON.stringify(cases));
+  await subprocess.stdin.end();
+  const [output, errors] = await Promise.all([
+    new Response(subprocess.stdout).text(),
+    new Response(subprocess.stderr).text(),
+  ]);
+  if (!output.trim()) throw new Error(errors);
+  return JSON.parse(output) as Record<string, (string | null)[]>;
+}
+
+describe('ESLint web examples', () => {
+  const feature = 'apps/web/src/features/auth/sign-in.tsx';
+  const app = 'apps/web/src/app/layout.tsx';
+  const runtime = 'packages/backend/src/runtime/index.ts';
+  let rules: Record<string, (string | null)[]> = {};
+
+  beforeAll(async () => {
+    rules = await lintWebSnippets({
+      formLibrary: {
+        filename: feature,
+        code: "import { useForm } from '@tanstack/react-form';",
+      },
+      persistedStore: {
+        filename: feature,
+        code: "import { persist } from 'zustand/middleware';",
+      },
+      memoryStore: {
+        filename: feature,
+        code: "import { create } from 'zustand';",
+      },
+      persistOutsideFeatures: {
+        filename: app,
+        code: "import { persist } from 'zustand/middleware';",
+      },
+      localStorageInFeature: {
+        filename: feature,
+        code: "localStorage.setItem('draft', 'x');",
+      },
+      sessionStorageOnWindow: {
+        filename: feature,
+        code: "window.sessionStorage.getItem('draft');",
+      },
+      conditionalHook: {
+        filename: app,
+        code: "import { useState } from 'react';\nexport function C(p: { on: boolean }) {\n  if (p.on) useState(0);\n  return null;\n}",
+      },
+      undescribedDisable: {
+        filename: runtime,
+        code: '// eslint-disable-next-line no-console\nexport const value = 1;',
+      },
+      describedDisable: {
+        filename: runtime,
+        code: '// eslint-disable-next-line no-console -- example reason\nexport const value = 1;',
+      },
+      imageWithoutAlt: {
+        filename: feature,
+        code: 'export const logo = <img src="x" />;',
+      },
+      imageWithAlt: {
+        filename: feature,
+        code: 'export const logo = <img src="x" alt="Логотип" />;',
+      },
+    });
+  }, 120000);
+
+  test('ESLint blocks TanStack Form and persisted Zustand inside web features only', () => {
+    expect(rules.formLibrary).toContain('no-restricted-imports');
+    expect(rules.persistedStore).toContain('no-restricted-imports');
+    expect(rules.memoryStore).not.toContain('no-restricted-imports');
+    expect(rules.persistOutsideFeatures).not.toContain('no-restricted-imports');
+  });
+
+  test('ESLint blocks browser storage in web features', () => {
+    expect(rules.localStorageInFeature).toContain('no-restricted-globals');
+    expect(rules.sessionStorageOnWindow).toContain('no-restricted-properties');
+  });
+
+  test('ESLint applies react-hooks to web files and requires eslint-disable reasons', () => {
+    expect(rules.conditionalHook).toContain('react-hooks/rules-of-hooks');
+    expect(rules.undescribedDisable).toContain(
+      '@eslint-community/eslint-comments/require-description',
+    );
+    expect(rules.describedDisable).not.toContain(
+      '@eslint-community/eslint-comments/require-description',
+    );
+  });
+
+  test('ESLint requires alt text on images in web files', () => {
+    expect(rules.imageWithoutAlt).toContain('jsx-a11y-x/alt-text');
+    expect(rules.imageWithAlt).not.toContain('jsx-a11y-x/alt-text');
+  });
+});
+
+test('execution scope constructor is reserved for processing', async () => {
+  const issuer = 'packages/backend/src/platform/scope/issue-execution.ts';
+  for (const [owner, blocked] of [
+    ['works', true],
+    ['processing', false],
+  ] as const) {
+    const result = await check({
+      [issuer]: 'export const issueExecutionScope = () => 1;',
+      [`packages/backend/src/modules/${owner}/application/example.ts`]:
+        "import { issueExecutionScope } from '../../../platform/scope/issue-execution.ts'; export const scope = issueExecutionScope;",
+      'apps/placeholder.ts': 'export {};',
+    });
+    expect(
+      hasViolation(
+        result.result,
+        'backend-execution-scope-issued-by-processing',
+      ),
+    ).toBe(blocked);
+  }
+});
+
+test('backend cannot depend on app hosts, including test-only worker aliases', async () => {
+  for (const source of [
+    'packages/backend/src/runtime/example.ts',
+    'packages/backend/tests/integration/example.test.ts',
+  ]) {
+    for (const target of [
+      '../../../../apps/worker/src/queues/index.ts',
+      '@anyko/worker',
+      '@anyko/api',
+    ]) {
+      const checked = await check({
+        [source]: `import '${target}';`,
+        ...npmModule('@anyko/worker'),
+        ...npmModule('@anyko/api'),
+        'apps/worker/src/queues/index.ts': 'export {};',
+        'apps/placeholder.ts': 'export {};',
+      });
+      expect(hasViolation(checked.result, 'backend-no-apps')).toBe(true);
+    }
+  }
+  const allowed = await check({
+    'packages/backend/src/runtime/example.ts': 'export {};',
+    'apps/worker/src/bootstrap/start-worker.ts':
+      "import '../../../../packages/backend/src/runtime/example.ts';",
+  });
+  expect(hasViolation(allowed.result, 'backend-no-apps')).toBe(false);
+});
+
+const featureRootEntries = new Set(['index.ts', 'ui', 'api', 'model']);
+const maxUiFiles = 10;
+
+test('web features follow the folder layout and UI size limits', async () => {
+  const features = join(root, 'apps/web/src/features');
+  const errors: string[] = [];
+  async function checkUi(directory: string): Promise<void> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    const files = entries.filter(
+      (entry) => entry.isFile() && !/\.test\.tsx?$/.test(entry.name),
+    );
+    if (files.length > maxUiFiles)
+      errors.push(
+        `${directory}: ${String(files.length)} files; group components in subfolders by screen part (maximum ${String(maxUiFiles)}).`,
+      );
+    for (const entry of entries)
+      if (entry.isDirectory()) await checkUi(join(directory, entry.name));
+  }
+  for (const feature of await readdir(features, { withFileTypes: true })) {
+    if (!feature.isDirectory()) continue;
+    const directory = join(features, feature.name);
+    const entries = await readdir(directory, { withFileTypes: true });
+    if (!entries.some((entry) => entry.name === 'index.ts' && entry.isFile()))
+      errors.push(`${directory}: add the required public index.ts.`);
+    for (const entry of entries) {
+      if (!featureRootEntries.has(entry.name))
+        errors.push(
+          `${join(directory, entry.name)}: move this entry into ui/, api/, or model/.`,
+        );
+      else if (entry.name !== 'index.ts' && !entry.isDirectory())
+        errors.push(`${join(directory, entry.name)}: expected a directory.`);
+      if (entry.name === 'ui' && entry.isDirectory())
+        await checkUi(join(directory, entry.name));
+    }
+  }
+  expect(errors).toEqual([]);
+});

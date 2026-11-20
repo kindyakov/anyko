@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import { parseWorkerQueues } from '@anyko/backend/jobs';
+import { DiagnosticError } from '@anyko/logger';
+
 const schema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
@@ -11,6 +14,17 @@ const schema = z.object({
   LOG_LEVEL: z
     .enum(['debug', 'info', 'warn', 'error', 'fatal'])
     .default('info'),
+  WORKER_QUEUES: z
+    .string()
+    .default('ocr,llm,render,maintenance')
+    .refine((value) => {
+      try {
+        parseWorkerQueues(value);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
   WORKER_HOST: z.string().min(1).default('127.0.0.1'),
   WORKER_PORT: z.coerce.number().int().min(1).max(65535).default(3022),
   REDIS_URL: z.url().refine((value) => /^rediss?:\/\//.test(value)),
@@ -32,37 +46,20 @@ const schema = z.object({
     .max(600000)
     .default(10000),
   DOCUMENTS_ENABLED: z.enum(['true', 'false']).default('false'),
+  WORKS_ENABLED: z.enum(['true', 'false']).default('false'),
 });
 
-const documentsSchema = z.object({
-  DATABASE_URL: z.url().refine((value) => /^postgres(ql)?:\/\//.test(value)),
-  S3_ENDPOINT: z.url(),
-  S3_BUCKET: z.string().min(1),
-  S3_ACCESS_KEY: z.string().min(1),
-  S3_SECRET_KEY: z.string().min(1),
-  MINERU_BASE_URL: z.url().refine((value) => /^https?:\/\//.test(value)),
-  MINERU_TIMEOUT_MS: z.coerce
-    .number()
-    .int()
-    .min(1000)
-    .max(600000)
-    .default(240000),
-});
-
+/**
+ * Process-level settings only. Backend sections are read by `parseBackendEnv`, which runs
+ * only in full mode; the diagnostic queue needs REDIS_URL in every mode.
+ */
 export function parseWorkerConfig(env: Record<string, string | undefined>) {
   const result = schema.safeParse(env);
   if (!result.success)
-    throw new Error(
-      `INVALID_ENV: ${[...new Set(result.error.issues.map((issue) => issue.path.join('.')))].join(', ')}`,
-    );
-  let documents: null | z.infer<typeof documentsSchema> = null;
-  if (result.data.DOCUMENTS_ENABLED === 'true') {
-    const parsed = documentsSchema.safeParse(env);
-    if (!parsed.success)
-      throw new Error(
-        `INVALID_ENV: ${[...new Set(parsed.error.issues.map((issue) => issue.path.join('.')))].join(', ')}`,
-      );
-    documents = parsed.data;
-  }
-  return { ...result.data, documents };
+    throw new DiagnosticError({
+      code: 'INVALID_ENV',
+      message: `INVALID_ENV: ${[...new Set(result.error.issues.map((issue) => issue.path.join('.')))].join(', ')}`,
+      operation: 'worker.parseConfig',
+    });
+  return result.data;
 }

@@ -49,6 +49,7 @@ services:
       NODE_ENV: production
       WORKER_HOST: 0.0.0.0
       WORKER_PORT: '3022'
+      WORKER_QUEUES: ${WORKER_QUEUES:-ocr,llm,render,maintenance}
       REDIS_URL: redis://redis:6379
       LOG_LEVEL: info
       RELEASE: ${ANYKO_RELEASE:?Specify release}

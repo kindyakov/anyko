@@ -1,6 +1,15 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 
+import {
+  observeProviderFetch,
+  type ProviderCallObserver,
+} from './provider-calls';
+import { createRouterContextLimits } from './router-context';
+
+export type { ProviderCallObserver } from './provider-calls';
+export type { ModelContextLimits } from './router-context';
+
 const connectionSchema = z.object({
   id: z.string().regex(/^[\w-]{1,80}$/),
   baseURL: z.url().refine((value) => {
@@ -44,7 +53,21 @@ export class LlmError extends Error {
   constructor(public readonly code: LlmErrorCode) {
     super(code);
   }
+
+  get diagnosticMessage(): string {
+    return llmErrorMessages[this.code];
+  }
 }
+
+const llmErrorMessages = {
+  LLM_AUTH_FAILED: 'Провайдер модели отклонил авторизацию.',
+  LLM_RATE_LIMITED: 'Провайдер модели ограничил частоту запросов.',
+  LLM_UNAVAILABLE: 'Провайдер модели недоступен.',
+  LLM_TIMEOUT: 'Провайдер модели не ответил за отведённое время.',
+  LLM_CANCELLED: 'Запрос к модели отменён.',
+  LLM_INVALID_RESPONSE: 'Ответ модели не соответствует ожидаемому формату.',
+  LLM_REQUEST_REJECTED: 'Провайдер модели отклонил запрос.',
+} satisfies Record<LlmErrorCode, string>;
 
 /** No provider body, prompt or credential crosses the application error seam. */
 export function llmError(error: unknown, signal?: AbortSignal): LlmError {
@@ -69,18 +92,26 @@ export function llmError(error: unknown, signal?: AbortSignal): LlmError {
 
 export function createModelGateway(options: { fetch?: typeof fetch } = {}) {
   return {
-    model(connection: ModelConnection, selection: ModelSelection) {
+    contextLimits: createRouterContextLimits(options.fetch ?? fetch),
+    model(
+      connection: ModelConnection,
+      selection: ModelSelection,
+      observe?: ProviderCallObserver,
+    ) {
       const parsedConnection = connectionSchema.safeParse(connection);
       const parsedModel = modelSchema.safeParse(selection);
       if (!parsedConnection.success || !parsedModel.success)
         throw new LlmError('LLM_REQUEST_REJECTED');
       const config = parsedConnection.data;
+      const transport = observe
+        ? observeProviderFetch(options.fetch ?? fetch, observe)
+        : options.fetch;
       return createOpenAICompatible({
         name: config.id,
         baseURL: config.baseURL,
         apiKey: config.apiKey,
         supportsStructuredOutputs: parsedModel.data.structuredOutput,
-        ...(options.fetch ? { fetch: options.fetch } : {}),
+        ...(transport ? { fetch: transport } : {}),
       }).chatModel(parsedModel.data.id);
     },
   };

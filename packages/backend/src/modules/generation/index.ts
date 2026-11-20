@@ -1,4 +1,9 @@
-import type { FieldValues, WorkView } from '@anyko/contracts';
+import type { GenerationId, WorkId } from '../../platform/ids';
+import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
+import type { Tx } from '../../platform/transactions';
+import type { FieldValues } from '../../profiles/bfl/fields';
+
+import type { GenerationView } from './schemas';
 export { generateDocument } from './render';
 
 interface GenerationFile {
@@ -35,7 +40,7 @@ export interface GenerationStore {
     workId: string,
     id: string,
   ): Promise<GenerationRecord | null>;
-  list(workspaceId: string, workId: string): Promise<WorkView['generations']>;
+  list(workspaceId: string, workId: string): Promise<GenerationView[]>;
   publish(input: {
     workspaceId: string;
     workId: string;
@@ -59,3 +64,53 @@ export interface GenerationStore {
   keys(workspaceId: string, workId: string): Promise<string[]>;
   erase(workspaceId: string, workId: string): Promise<void>;
 }
+
+// Фасад результатов генерации: снимок сведений и шаблонов фиксируется командой create.
+export interface GenerationTemplate {
+  templateVersion: string;
+  title: string;
+  filename: string;
+}
+interface GenerationCommands {
+  create(
+    scope: WorkspaceScope,
+    input: {
+      workId: WorkId;
+      revision: number;
+      confirmed: boolean;
+      values: FieldValues;
+      packageVersion: string;
+      templates: GenerationTemplate[];
+    },
+  ): Promise<GenerationId>;
+}
+// Внутренние запросы: право проверяет вызывающий сценарий.
+interface GenerationQueries {
+  get(
+    scope: WorkspaceScope,
+    workId: WorkId,
+    generationId: GenerationId,
+  ): Promise<GenerationRecord | null>;
+  list(scope: WorkspaceScope, workId: WorkId): Promise<GenerationView[]>;
+}
+export interface GenerationPorts {
+  readonly commands: GenerationCommands;
+  readonly queries: GenerationQueries;
+  // Внутренний порт исполнения генерации: файлы, публикация и итог вызывает процесс worker.
+  readonly internal: Pick<
+    GenerationStore,
+    | 'get'
+    | 'keys'
+    | 'stage'
+    | 'failFile'
+    | 'fail'
+    | 'publish'
+    | 'finish'
+    | 'erase'
+  >;
+}
+export interface GenerationModule extends GenerationPorts {
+  in(tx: Tx): GenerationPorts;
+}
+
+export type { FieldValues } from '../../profiles/bfl/fields';

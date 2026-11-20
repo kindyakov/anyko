@@ -5,16 +5,23 @@
   "exports": {
     "./runtime": "./src/runtime/index.ts",
     "./documents": "./src/modules/documents/index.ts",
+    "./idempotency": "./src/modules/idempotency/index.ts",
     "./access": "./src/modules/access/index.ts",
     "./works": "./src/modules/works/index.ts",
-    "./processing": "./src/modules/processing/index.ts"
+    "./workflows": "./src/workflows/index.ts",
+    "./processing": "./src/modules/processing/index.ts",
+    "./errors": "./src/platform/errors/index.ts",
+    "./ids": "./src/platform/ids.ts",
+    "./scope": "./src/platform/scope/index.ts",
+    "./jobs": "./src/platform/jobs/index.ts",
+    "./connections": "./src/modules/connections/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anyko/contracts": "workspace:*",
     "@anyko/database": "workspace:*",
+    "@anyko/document-values": "workspace:*",
     "@anyko/llm": "workspace:*",
     "@anyko/logger": "workspace:*",
     "@aws-sdk/client-s3": "3.1162.0",
@@ -23,10 +30,8 @@
     "@mastra/memory": "1.41.0",
     "@mastra/pg": "1.35.0",
     "better-auth": "1.7.17",
-    "bullmq": "6.7.0",
     "docxtemplater": "3.71.1",
     "fflate": "0.8.3",
-    "ioredis": "6.0.0",
     "pizzip": "3.3.0",
     "zod": "4.6.7"
   },

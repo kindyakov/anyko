@@ -2,14 +2,25 @@ import type { Database } from '@anyko/database';
 
 export function createDeletionStore(db: Database) {
   return {
-    async assertNoWriters(
+    completed: async (workspaceId: string, ids: string[]) => {
+      return (
+        (await db.documentDeletion.count({
+          where: { workspaceId, id: { in: ids }, completedAt: { not: null } },
+        })) === ids.length
+      );
+    },
+    assertNoWriters: async (
       workspaceId: string,
       documentId: string,
       requestKey: string,
-    ) {
+    ) => {
       if (
-        await db.documentIo.count({
-          where: { workspaceId, OR: [{ documentId }, { requestKey }] },
+        await db.processingIo.count({
+          where: {
+            kind: 'document',
+            workspaceId,
+            OR: [{ documentId }, { requestKey }],
+          },
         })
       )
         throw new Error('DOCUMENT_WRITES_PENDING');
@@ -19,7 +30,12 @@ export function createDeletionStore(db: Database) {
         where: { completedAt: null },
         orderBy: { createdAt: 'asc' },
         take: 20,
-        select: { id: true, workspaceId: true, requestKey: true },
+        select: {
+          id: true,
+          workspaceId: true,
+          requestKey: true,
+          threadIds: true,
+        },
       }),
     async keys(workspaceId: string, documentId: string, requestKey: string) {
       const rows = await db.documentArtifact.findMany({

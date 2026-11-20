@@ -1,19 +1,26 @@
 import { prismaAdapter } from '@better-auth/prisma-adapter';
 import { betterAuth } from 'better-auth';
 
-import { createDatabase } from '@anyko/database';
+import type { Database } from '@anyko/database';
+
+import { type AuditWriter, record } from '../../audit';
+import { rightsForRole } from '../domain/roles';
+import { type AccessSession, scopeFor } from '../domain/scope';
 
 export interface AccessOptions {
-  databaseUrl: string;
+  /** Shared client owned by the composition root; access never connects or disconnects it. */
+  db: Database;
   secret: string;
   baseURL: string;
   origin: string;
 }
 
 function buildAuth(options: AccessOptions, provisioning = false) {
-  const db = createDatabase(options.databaseUrl);
-  const auth = betterAuth({
-    database: prismaAdapter(db, { provider: 'postgresql', transaction: true }),
+  return betterAuth({
+    database: prismaAdapter(options.db, {
+      provider: 'postgresql',
+      transaction: true,
+    }),
     secret: options.secret,
     baseURL: options.baseURL,
     basePath: '/api/auth',
@@ -25,44 +32,38 @@ function buildAuth(options: AccessOptions, provisioning = false) {
     },
     logger: { disabled: true },
   });
-  return { db, auth };
 }
 
 export function createAccess(options: AccessOptions) {
-  const { db, auth } = buildAuth(options);
+  const { db } = options;
+  const auth = buildAuth(options);
   return {
     handle: (request: Request) => auth.handler(request),
-    async canManage(userId: string, workspaceId: string) {
-      return (
-        (
-          await db.membership.findUnique({
-            where: { workspaceId_userId: { workspaceId, userId } },
-          })
-        )?.role === 'owner'
-      );
-    },
-    async session(headers: Headers) {
+    // Сессия Better Auth без участий — тоже сессия: web получает пустой список и не зацикливается.
+    async session(headers: Headers): Promise<AccessSession | null> {
       const session = await auth.api.getSession({ headers });
       if (!session) return null;
-      const membership = await db.membership.findFirst({
+      const memberships = await db.membership.findMany({
         where: { userId: session.user.id },
         include: { workspace: true },
-        orderBy: { workspaceId: 'asc' },
+        orderBy: [{ workspace: { name: 'asc' } }, { workspaceId: 'asc' }],
       });
-      if (!membership) return null;
       return {
         user: {
           id: session.user.id,
           name: session.user.name,
           email: session.user.email,
         },
-        workspace: {
-          id: membership.workspace.id,
-          name: membership.workspace.name,
-        },
+        memberships: memberships.map((membership) => ({
+          workspace: {
+            id: membership.workspace.id,
+            name: membership.workspace.name,
+          },
+          rights: [...rightsForRole(membership.role)],
+        })),
       };
     },
-    stop: () => db.$disconnect(),
+    scope: scopeFor,
   };
 }
 
@@ -70,32 +71,61 @@ export function createAccess(options: AccessOptions) {
 export async function provisionLocalAccess(
   options: AccessOptions & { email: string; password: string },
 ) {
-  const { db, auth } = buildAuth(options, true);
-  try {
-    let user = await db.user.findUnique({ where: { email: options.email } });
-    if (!user) {
-      const created = await auth.api.signUpEmail({
-        body: {
-          email: options.email,
-          password: options.password,
-          name: 'Разработчик Anyko',
-        },
-      });
-      user = await db.user.findUniqueOrThrow({
-        where: { id: created.user.id },
-      });
-    }
-    await db.anykoWorkspace.upsert({
-      where: { id: 'local' },
-      create: { id: 'local', name: 'Локальная команда' },
-      update: {},
+  const { db } = options;
+  const auth = buildAuth(options, true);
+  let user = await db.user.findUnique({ where: { email: options.email } });
+  if (!user) {
+    const created = await auth.api.signUpEmail({
+      body: {
+        email: options.email,
+        password: options.password,
+        name: 'Разработчик Anyko',
+      },
     });
-    await db.membership.upsert({
-      where: { workspaceId_userId: { workspaceId: 'local', userId: user.id } },
-      create: { workspaceId: 'local', userId: user.id, role: 'owner' },
-      update: {},
+    user = await db.user.findUniqueOrThrow({
+      where: { id: created.user.id },
     });
-  } finally {
-    await db.$disconnect();
   }
+  await db.anykoWorkspace.upsert({
+    where: { id: 'local' },
+    create: { id: 'local', name: 'Локальная команда' },
+    update: {},
+  });
+  await grantMembership(db, {
+    workspaceId: 'local',
+    userId: user.id,
+    role: 'owner',
+  });
+}
+
+// Выдача участия: изменение доступа и событие журнала в одной транзакции. Если запись события
+// не удалась, участие не выдаётся. write подменяется только тестами, проверяющими откат.
+export async function grantMembership(
+  db: Pick<Database, '$transaction'>,
+  grant: { workspaceId: string; userId: string; role: string },
+  write: AuditWriter = record,
+): Promise<void> {
+  await db.$transaction(async (tx) => {
+    await tx.membership.upsert({
+      where: {
+        workspaceId_userId: {
+          workspaceId: grant.workspaceId,
+          userId: grant.userId,
+        },
+      },
+      create: {
+        workspaceId: grant.workspaceId,
+        userId: grant.userId,
+        role: grant.role,
+      },
+      update: {},
+    });
+    await write(tx, {
+      workspaceId: grant.workspaceId,
+      actorId: null,
+      action: 'access.membership_granted',
+      target: { kind: 'user', id: grant.userId },
+      data: { role: grant.role },
+    });
+  });
 }

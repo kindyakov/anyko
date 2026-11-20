@@ -1,16 +1,35 @@
+import { formatTemplateValue } from '@anyko/document-values/template-value';
+
 import {
   emptyFieldValues,
   fieldDefinitions,
+  type FieldValues,
   readFieldValues,
-} from '@anyko/contracts';
-import type { FieldValues } from '@anyko/contracts';
+} from '../../profiles/bfl/fields';
+
+import type { TemplatePlaceholder } from './schemas';
 
 /** Projection only: unknown values stay visibly unknown; no legal or financial inference. */
-export function templateData(input: FieldValues): FieldValues {
+export function templateData(
+  input: FieldValues,
+  templateVersion?: string,
+  placeholders: readonly TemplatePlaceholder[] = [],
+): FieldValues & { signerName: string } {
   const values = readFieldValues(input);
   const output = emptyFieldValues();
   for (const field of fieldDefinitions) {
     const value = values[field.key];
+    if (
+      (templateVersion === 'bfl-statement-v4' ||
+        templateVersion === 'bfl-statement-v5' ||
+        templateVersion === 'bfl-statement-v6') &&
+      Array.isArray(value) &&
+      !value.length &&
+      ['debts', 'businessDebts', 'attachments'].includes(field.key)
+    ) {
+      output[field.key] = [];
+      continue;
+    }
     if (!field.columns.length) {
       output[field.key] = typeof value === 'string' ? value : '[не заполнено]';
       continue;
@@ -37,5 +56,30 @@ export function templateData(input: FieldValues): FieldValues {
       rowNumber: String(index + 1),
     }));
   }
-  return output;
+  for (const { tag, field, placeholder } of placeholders) {
+    if (placeholder === 'identity') continue;
+    const value = values[field];
+    Object.assign(output, {
+      [tag]:
+        typeof value === 'string'
+          ? formatTemplateValue(value, placeholder)
+          : '[не заполнено]',
+    });
+  }
+  const surname =
+    typeof values.lastName === 'string' ? values.lastName.trim() : '';
+  const initials = [values.firstName, values.middleName]
+    .map((value) =>
+      typeof value === 'string'
+        ? value.trim().match(/^\p{L}/u)?.[0]
+        : undefined,
+    )
+    .flatMap((initial) => (initial ? [`${initial.toUpperCase()}.`] : []))
+    .join('');
+  return {
+    ...output,
+    signerName: surname
+      ? `${surname}${initials ? ` ${initials}` : ''}`
+      : '[не заполнено]',
+  };
 }

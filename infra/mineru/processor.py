@@ -1,8 +1,10 @@
 """Anyko stateless MinerU SDK boundary. No Tasks/FileStore/document-library cache."""
 import asyncio
 from contextlib import asynccontextmanager
+from hashlib import sha256
 import io
 from importlib.metadata import version
+import logging
 import os
 from pathlib import Path, PurePosixPath
 import shutil
@@ -11,56 +13,135 @@ import uuid
 import zipfile
 
 
-def visual_inputs(writer, data, extension):
+CONTAINER_IMAGES = {'avif': 'AVIF', 'heif': 'HEIF'}
+RASTER_FORMATS = {'jpg', 'png', 'webp', 'tiff', *CONTAINER_IMAGES}
+MAX_IMAGES = 256
+REPORTED_ERRORS = {
+    'TOO_MANY_EXPORTED_IMAGES',
+    'DOCUMENT_VISUALS_TOO_LARGE',
+    'UNSUPPORTED_DOCUMENT_VISUAL',
+    'IMAGE_TOO_LARGE',
+    'EXPORT_TOO_LARGE',
+    'PDF_OCR_NO_READABLE_TEXT',
+}
+
+
+def register_image_format(extension):
+    if extension == 'heif':
+        from pillow_heif import register_heif_opener
+        register_heif_opener(decode_threads=2)
+
+
+def primary_image_png(data, extension):
+    from PIL import Image, ImageOps
+
+    register_image_format(extension)
+    with Image.open(io.BytesIO(data), formats=[CONTAINER_IMAGES[extension]]) as image:
+        if image.width * image.height > 25_000_000:
+            raise ValueError('IMAGE_TOO_LARGE')
+        frame = ImageOps.exif_transpose(image).convert('RGBA')
+        frame.thumbnail((2600, 2600))
+        background = Image.new('RGB', frame.size, 'white')
+        background.paste(frame, mask=frame.getchannel('A'))
+        output = io.BytesIO()
+        background.save(output, format='PNG')
+        return output.getvalue()
+
+
+def visual_inputs(writer, data, extension, recognize=None):
     """Explicit visual inputs, independent of the SDK's optional image export."""
     from PIL import Image, ImageOps, ImageSequence
+
+    frames = []
+    seen = set()
+
+    def fingerprint(image):
+        return image.size, sha256(image.convert('RGBA').tobytes()).digest()
 
     def add(name, payload):
         with Image.open(io.BytesIO(payload)) as image:
             if image.width * image.height > 25_000_000:
                 raise ValueError('IMAGE_TOO_LARGE')
-            if getattr(image, 'n_frames', 1) > 32:
-                raise ValueError('TOO_MANY_IMAGE_FRAMES')
+            if getattr(image, 'n_frames', 1) > MAX_IMAGES:
+                raise ValueError('TOO_MANY_EXPORTED_IMAGES')
             for index, frame in enumerate(ImageSequence.Iterator(image)):
-                normalized = ImageOps.exif_transpose(frame).convert('RGB')
+                if frame.width * frame.height > 25_000_000:
+                    raise ValueError('IMAGE_TOO_LARGE')
+                oriented = ImageOps.exif_transpose(frame)
+                if extension == 'docx':
+                    identity = fingerprint(oriented)
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                normalized = oriented.convert('RGB')
+                if extension in RASTER_FORMATS and ('A' in oriented.getbands() or 'transparency' in oriented.info):
+                    transparent = oriented.convert('RGBA')
+                    background = Image.new('RGB', transparent.size, 'white')
+                    background.paste(transparent, mask=transparent.getchannel('A'))
+                    normalized = background
+                if recognize is not None:
+                    normalized.thumbnail((2600, 2600))
+                    frames.append(recognize(normalized))
                 normalized.thumbnail((2400, 2400))
                 output = io.BytesIO()
                 normalized.save(output, format='JPEG', quality=88)
                 writer.write(f'{name}-{index:03d}.jpg', output.getvalue())
 
-    if extension in {'jpg', 'png', 'webp', 'tiff'}:
+    if extension in RASTER_FORMATS:
+        register_image_format(extension)
         add('images/anyko-source', data)
     elif extension == 'docx':
+        from docx_media import media_entries
+
+        # Keep the SDK assets referenced in Markdown and only supplement missing media.
+        for path, payload in writer.files.items():
+            if path.startswith('images/') and PurePosixPath(path).suffix.lower() in {'.jpg', '.jpeg', '.png', '.webp'}:
+                with Image.open(io.BytesIO(payload)) as image:
+                    if image.width * image.height > 25_000_000:
+                        raise ValueError('IMAGE_TOO_LARGE')
+                    seen.add(fingerprint(ImageOps.exif_transpose(image)))
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            media = [entry for entry in archive.infolist() if entry.filename.startswith('word/media/') and not entry.is_dir()]
-            if len(media) > 32 or sum(entry.file_size for entry in media) > 16 * 1024 * 1024:
-                raise ValueError('DOCUMENT_VISUALS_TOO_LARGE')
+            media = media_entries(archive.infolist(), MAX_IMAGES)
             for index, entry in enumerate(media):
                 if PurePosixPath(entry.filename).suffix.lower() not in {'.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.gif', '.bmp'}:
                     raise ValueError('UNSUPPORTED_DOCUMENT_VISUAL')
-                add(f'images/anyko-docx-{index:03d}', archive.read(entry))
+                add(f'images/docx-media-{index:03d}', archive.read(entry))
+    return frames
 
 from fastapi import FastAPI, HTTPException, Request, Response
+
+logger = logging.getLogger('uvicorn.error')
 
 
 class ZipWriter:
     def __init__(self):
         self.files = {}
         self.size = 0
+        self.image_count = 0
 
     def write(self, path, data):
         name = PurePosixPath(path)
         if name.is_absolute() or '..' in name.parts or '\\' in path:
             raise ValueError('INVALID_EXPORT_PATH')
-        if path != 'markdown.md' and not path.startswith('images/'):
+        if path not in {'markdown.md', 'pdf-ocr.json'} and not path.startswith('images/'):
             return
-        self.size += len(data)
-        if self.size > 13 * 1024 * 1024 or len(self.files) >= 64 or path in self.files:
+        if path == 'pdf-ocr.json' and len(data) > 2 * 1024 * 1024:
             raise ValueError('EXPORT_TOO_LARGE')
+        self.size += len(data)
+        if self.size > 13 * 1024 * 1024 or path in self.files:
+            raise ValueError('EXPORT_TOO_LARGE')
+        if path.startswith('images/'):
+            if self.image_count >= MAX_IMAGES:
+                raise ValueError('TOO_MANY_EXPORTED_IMAGES')
+            self.image_count += 1
         self.files[path] = data
 
     def write_string(self, path, data):
         self.write(path, data.encode('utf-8'))
+
+    def replace_markdown(self, content):
+        self.size -= len(self.files.pop('markdown.md'))
+        self.write_string('markdown.md', content)
 
     def archive(self):
         stream = io.BytesIO()
@@ -120,13 +201,18 @@ class Processor:
         for path in self.jobs.iterdir():
             self.erase_dir(path.name)
 
-    async def run(self, identity, data, extension):
+    async def run(self, identity, data, extension, visual_only=False):
         path = self.job_dir(identity)
         path.mkdir()
         try:
-            source = path / ('source.' + extension)
-            source.write_bytes(data)
             async with self.capacity:
+                if visual_only:
+                    writer = ZipWriter()
+                    writer.write_string('markdown.md', '')
+                    visual_inputs(writer, data, extension)
+                    return writer.archive()
+                source = path / ('source.' + extension)
+                source.write_bytes(data)
                 temporary = path / 'temp'
                 temporary.mkdir()
                 previous = {key: os.environ.get(key) for key in ('TEMP', 'TMP', 'TMPDIR')}
@@ -139,10 +225,39 @@ class Processor:
                     if parse is None:
                         from mineru.parser import parse_async
                         parse = parse_async
+                    unplaced_visuals = 0
+                    if extension == 'docx':
+                        from docx_media import prepare_docx
+                        from mineru.utils.async_utils import run_sync
+                        prepared, unplaced_visuals = await run_sync(prepare_docx, data, MAX_IMAGES)
+                        if prepared is not data:
+                            data = prepared
+                            source = path / 'normalized.docx'
+                            source.write_bytes(data)
+                    if extension in CONTAINER_IMAGES:
+                        from mineru.utils.async_utils import run_sync
+                        data = await run_sync(primary_image_png, data, extension)
+                        source = path / 'decoded.png'
+                        source.write_bytes(data)
                     result = await parse(source, tier='flash' if extension == 'docx' else 'basic', ocr_mode='auto', image_analysis=False)
                     writer = ZipWriter()
-                    result.save(writer)
-                    visual_inputs(writer, data, extension)
+                    if extension == 'pdf' and self.parse is None:
+                        from mineru.config import get_config
+                        from mineru.utils.async_utils import run_sync
+                        from pdf_ocr import MODEL_NAME, save_pdf
+                        model = Path(get_config().model.base_dir) / 'anyko' / MODEL_NAME
+                        await run_sync(save_pdf, source, result.middle_json, writer, model)
+                    else:
+                        result.save(writer)
+                    if unplaced_visuals:
+                        from docx_media import SKIPPED_VISUAL
+                        markdown = writer.files['markdown.md'].decode('utf-8')
+                        writer.replace_markdown(f'{markdown}\n\n> {SKIPPED_VISUAL} Количество: {unplaced_visuals}.')
+                    if extension in RASTER_FORMATS and self.parse is None:
+                        from mineru.utils.async_utils import run_sync
+                        await run_sync(save_raster_text, writer, data, extension)
+                    else:
+                        visual_inputs(writer, data, extension)
                     return writer.archive()
                 finally:
                     tempfile.tempdir = previous_tempdir
@@ -154,14 +269,14 @@ class Processor:
         finally:
             self.erase_dir(identity)
 
-    async def submit(self, identity, data, extension):
+    async def submit(self, identity, data, extension, visual_only=False):
         self.job_dir(identity)
         async with self.guard:
             if (self.cancelled / identity).exists():
                 raise HTTPException(410, 'ATTEMPT_ERASED')
             if identity in self.active:
                 raise HTTPException(409, 'ATTEMPT_ACTIVE')
-            task = asyncio.create_task(self.run(identity, data, extension))
+            task = asyncio.create_task(self.run(identity, data, extension, visual_only))
             self.active[identity] = task
             task.add_done_callback(lambda finished: self.completed(identity, finished))
         try:
@@ -207,14 +322,34 @@ async def lifespan(_app):
 app = FastAPI(lifespan=lifespan)
 
 
+def save_raster_text(writer, data, extension):
+    import numpy as np
+    from mineru.config import get_config
+    from pdf_ocr import MODEL_NAME, read_image_lines, recover_image_markdown
+
+    model = Path(get_config().model.base_dir) / 'anyko' / MODEL_NAME
+
+    def recognize(image):
+        bgr = np.ascontiguousarray(np.asarray(image)[:, :, ::-1])
+        return read_image_lines(bgr, model)
+
+    frames = visual_inputs(writer, data, extension, recognize=recognize)
+    markdown = recover_image_markdown(writer.files['markdown.md'].decode('utf-8'), frames)
+    if markdown is not None:
+        writer.replace_markdown(markdown)
+
+
 @app.get('/v1/health')
 async def health():
-    return {'status': 'ok', 'mode': 'stateless-sdk'}
+    return {'status': 'ok', 'mode': 'stateless-sdk', 'pdfOcrVersion': 1, 'pdfPageLayoutVersion': 1, 'imageOcrVersion': 1, 'docxVisualExportVersion': 1,
+            'imageFormats': sorted(RASTER_FORMATS), 'maxImages': MAX_IMAGES,
+            'pdfFormulaVersion': 1, 'docxLegacyVisualVersion': 1, 'visualInputsVersion': 1}
 
 
-@app.put('/v1/attempts/{identity}')
-async def parse(identity: uuid.UUID, request: Request, format: str):
-    if format not in {'pdf', 'docx', 'jpg', 'png', 'webp', 'tiff'}:
+async def parse_source(identity: uuid.UUID, request: Request, format: str, visual_only: bool):
+    if format not in RASTER_FORMATS and format not in {'pdf', 'docx'}:
+        raise HTTPException(400, 'UNSUPPORTED_FORMAT')
+    if visual_only and format not in RASTER_FORMATS:
         raise HTTPException(400, 'UNSUPPORTED_FORMAT')
     data = bytearray()
     async for chunk in request.stream():
@@ -224,14 +359,32 @@ async def parse(identity: uuid.UUID, request: Request, format: str):
     if len(data) < 5:
         raise HTTPException(400, 'INVALID_DOCUMENT')
     try:
-        result = await processor.submit(str(identity), bytes(data), format)
-        return Response(result, media_type='application/zip', headers={'x-mineru-version': version('mineru')})
+        result = await processor.submit(str(identity), bytes(data), format, visual_only)
+        processor_version = version('mineru')
+        if visual_only:
+            processor_version += '+visual-inputs.1'
+        elif format in RASTER_FORMATS:
+            processor_version += '+eslav-image.1'
+        return Response(result, media_type='application/zip', headers={'x-mineru-version': processor_version})
     except asyncio.CancelledError:
         raise HTTPException(409, 'ATTEMPT_CANCELLED')
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(422, 'PARSE_FAILED')
+    except Exception as error:
+        code = str(error) if isinstance(error, ValueError) and str(error) in REPORTED_ERRORS else 'PARSE_FAILED'
+        logger.error('document_parse_failed attempt_id=%s format=%s error_type=%s error_code=%s',
+                     identity, format, type(error).__name__, code)
+        raise HTTPException(422, code, headers={'x-anyko-processor-error': code})
+
+
+@app.put('/v1/attempts/{identity}')
+async def parse(identity: uuid.UUID, request: Request, format: str):
+    return await parse_source(identity, request, format, visual_only=False)
+
+
+@app.put('/v1/attempts/{identity}/visual-inputs')
+async def prepare_visual_inputs(identity: uuid.UUID, request: Request, format: str):
+    return await parse_source(identity, request, format, visual_only=True)
 
 
 @app.delete('/v1/attempts/{identity}')

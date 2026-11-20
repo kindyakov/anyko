@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto';
 
 import PizZip from 'pizzip';
 
+import { formatCalendarDate } from '@anyko/document-values/calendar-date';
 import {
-  candidateSchema,
-  emptyFieldValues,
-  fieldValuesSchema,
-} from '@anyko/contracts';
+  canonicalMoneyAmount,
+  formatMoneyAmount,
+  moneyAmountsInText,
+} from '@anyko/document-values/money';
+import { diagnoseFailure } from '@anyko/logger';
 
 import { generateDocument } from '../src/modules/generation';
 import {
@@ -16,22 +18,229 @@ import {
   templateBytes,
   templateData,
 } from '../src/modules/templates';
+import { candidateSchema } from '../src/profiles/bfl/candidate';
+import {
+  emptyFieldValues,
+  fieldValuesSchema,
+} from '../src/profiles/bfl/fields';
 
 test('the selectable package contains three real versioned templates; archived single-document works still resolve', () => {
   const packages = availablePackages();
   expect(packages).toHaveLength(1);
   expect(packages[0]?.technical).toBe(false);
+  expect(packages[0]?.version).toBe('bfl-bankruptcy-v6');
   expect(packages[0]?.documents.map((doc) => doc.id)).toEqual([
     'statement',
     'inventory',
     'creditors',
   ]);
   expect(requirePackage('technical-document-v1').documents).toHaveLength(1);
-  expect(() => requirePackage('not-a-package')).toThrow('PACKAGE_NOT_FOUND');
+});
+
+test.each([
+  [
+    () => requirePackage('not-a-package'),
+    'PACKAGE_NOT_FOUND',
+    'templates.requirePackage',
+  ],
+  [
+    () => templateBytes('not-a-template'),
+    'TEMPLATE_NOT_FOUND',
+    'templates.readAsset',
+  ],
+] as const)(
+  'retains the diagnostic code of a missing template reference',
+  (read, code, operation) => {
+    let diagnostic: unknown;
+    try {
+      read();
+    } catch (error) {
+      diagnostic = diagnoseFailure(error, {
+        code: 'INTERNAL_ERROR',
+        message: 'Не удалось открыть каталог.',
+        operation: 'catalog.load',
+      });
+    }
+    expect(diagnostic).toMatchObject({ code, operation });
+  },
+);
+
+test.each([
+  [
+    '30.08.2003',
+    'D_WORDS MMMM YYYY_WORDS года',
+    'тридцатое августа две тысячи третьего года',
+  ],
+  [
+    '03.09.2000',
+    'D_WORDS MMMM YYYY_WORDS года',
+    'третье сентября двухтысячного года',
+  ],
+  [
+    '31.12.1900',
+    'D_GENITIVE_WORDS MMMM YYYY_WORDS года',
+    'тридцать первого декабря тысяча девятисотого года',
+  ],
+  [
+    '09.11.2026',
+    'D_GENITIVE_WORDS MMMM YYYY_WORDS года',
+    'девятого ноября две тысячи двадцать шестого года',
+  ],
+  [
+    '21.05.1945',
+    'D_WORDS MMMM YYYY_WORDS года',
+    'двадцать первое мая тысяча девятьсот сорок пятого года',
+  ],
+  ['29.02.2023', 'D_WORDS MMMM YYYY_WORDS года', '29.02.2023'],
+])('formats %s with %s', (value, placeholder, expected) => {
+  expect(formatCalendarDate(value, placeholder)).toBe(expected);
+});
+
+test('slot aliases read original facts even when a previous slot uses the same name', () => {
+  const values = {
+    ...emptyFieldValues(),
+    birthDate: '02.03.2024',
+    passportIssuedAt: '04.05.2025',
+  };
+  const output = templateData(values, 'bfl-statement-v5', [
+    {
+      tag: 'birthDate',
+      field: 'passportIssuedAt',
+      placeholder: 'D MMMM YYYY года',
+    },
+    { tag: 'documentDate', field: 'birthDate', placeholder: 'DD.MM.YYYY' },
+  ]);
+  expect(output.birthDate).toBe('4 мая 2025 года');
+  expect(output.documentDate).toBe('02.03.2024');
+});
+
+test('identity metadata preserves raw dates, collections and computed bindings in archived templates', () => {
+  const values = {
+    ...emptyFieldValues(),
+    passportIssuedAt: '30/08/2003',
+    lastName: 'Иванова',
+    firstName: 'Анна',
+    debts: [{ amount: '100.00' }],
+  };
+  const slots = ['passportIssuedAt', 'debts', 'debts.amount', 'signerName'].map(
+    (key) => ({
+      tag: key,
+      field: key,
+      placeholder: 'identity' as const,
+    }),
+  );
+  const version = 'bfl-statement-v4';
+  const output = templateData(values, version, slots);
+  expect(output).toEqual(templateData(values, version));
+  const xml = new PizZip(generateDocument(templateBytes(version), output))
+    .file('word/document.xml')
+    ?.asText();
+  expect(xml).toContain('30/08/2003');
+  expect(xml).toContain('100.00');
+  expect(xml).toContain('Иванова А.');
+});
+
+test('one saved date uses the format of each statement slot and old statement versions preserve their substitution', () => {
+  const values = { ...emptyFieldValues(), passportIssuedAt: '30/08/2003' };
+  const formats = [
+    {
+      field: 'passportIssuedAt',
+      tag: 'passportIssuedAt',
+      placeholder: 'DD.MM.YYYY',
+    },
+    {
+      field: 'passportIssuedAt',
+      tag: 'passportIssuedAtText',
+      placeholder: 'D MMMM YYYY года',
+    },
+  ] as const;
+  const current = requirePackage('bfl-bankruptcy-v5').documents[0];
+  const historical = requirePackage('bfl-bankruptcy-v4').documents[0];
+  if (!current || !historical) throw new Error('Statement missing');
+  const rendered = (
+    version: string,
+    slots: readonly (typeof formats)[number][] = formats,
+  ) =>
+    new PizZip(
+      generateDocument(
+        templateBytes(version),
+        templateData(values, version, slots),
+      ),
+    )
+      .file('word/document.xml')
+      ?.asText();
+  expect(rendered(current.version)).toContain('30.08.2003');
+  expect(rendered(current.version)).toContain('30 августа 2003 года');
+  expect(rendered(current.version)).not.toContain('passportIssuedAtText');
+  expect(rendered(historical.version, [])?.match(/30\/08\/2003/g)).toHaveLength(
+    2,
+  );
+});
+
+test('the same precise ruble amount is rendered numerically and in the requested case', () => {
+  const value = 'одна тысяча двести тридцать четыре рубля, пять копеек';
+  expect(canonicalMoneyAmount(value)).toBe('1234.05');
+  expect(canonicalMoneyAmount('9 007 199 254 740 993,09')).toBe(
+    '9007199254740993.09',
+  );
+  expect(canonicalMoneyAmount('1 234,05 ₽')).toBe('1234.05');
+  expect(canonicalMoneyAmount('100руб.05коп.')).toBe('100.05');
+  expect(canonicalMoneyAmount('− 100 р. 1 к.')).toBe('-100.01');
+  expect(canonicalMoneyAmount('двадцать одиннадцать рублей')).toBeUndefined();
+  expect(moneyAmountsInText('Сумма 100 руб. 01 коп.')).toEqual(['100.01']);
+  expect(moneyAmountsInText('Итого 12 3456 руб.')).toEqual([]);
+  expect(formatMoneyAmount('1234.05', 'RUB_GENITIVE_WORDS')).toBe(
+    'одной тысячи двухсот тридцати четырёх рублей пяти копеек',
+  );
+  const fields = {
+    ...emptyFieldValues(),
+    debtTotal: value,
+    debtTotalWords: 'Независимый старый текст',
+  };
+  const formats = [
+    { tag: 'debtTotal', field: 'debtTotal', placeholder: 'RUB_DECIMAL' },
+    { tag: 'debtTotalWords', field: 'debtTotal', placeholder: 'RUB_WORDS' },
+  ] as const;
+  const version = 'bfl-statement-v6';
+  const output = templateData(fields, version, formats);
+  const xml = new PizZip(generateDocument(templateBytes(version), output))
+    .file('word/document.xml')
+    ?.asText();
+  expect(xml).toContain('1234,05');
+  expect(xml).toContain('одна тысяча двести тридцать четыре рубля пять копеек');
+  expect(xml).not.toContain('Независимый старый текст');
+  expect(templateData(fields, 'bfl-statement-v5').debtTotalWords).toBe(
+    'Независимый старый текст',
+  );
+});
+
+test.each([
+  ['Итого 100 российских рублей 01 копейка', ['100.01']],
+  ['Итого 100 рублей 01 копейку', ['100.01']],
+  ['Итого 100 (сто) рублей 01 копейка', []],
+  ['Итого 100 рублей (сто рублей) 01 копейка', []],
+  ['Итого 100 руб. (сто) 01 коп.', []],
+  ['Итого 100 рублей 01 (одна) копейка', []],
+  ['Итого 100 рублей (01 копейка)', []],
+  ['Итого 100 рублей (сумма (сто) 01 коп.)', []],
+  ['Итого 100 рублей (01 копейка', []],
+  ['Итого 100 рублей, в том числе 01 копейка', []],
+  ['Итого 100 белорусских рублей 01 копейка', []],
+  ['Итого 100 бел.руб.', []],
+  ['Итого 100 долларов 50 центов', []],
+  ['Итого 100 рублей −01 копейка', []],
+  ['Итого 100 рублей 01 копейке', []],
+  ['Итого 01 копейка', []],
+  ['Банк А | 1 200,01', ['1200.01']],
+  ['100 белорусских рублей; итог 100,01', ['100.01']],
+  ['100 рублей, 200 рублей 01 копейка', ['100.00', '200.01']],
+  ['100 рублей | 01 копейка', ['100.00']],
+])('finds exact ruble amounts in %s', (quote, expected) => {
+  expect(moneyAmountsInText(quote)).toEqual(expected);
 });
 
 test('each DOCX keeps its source styles, page geometry and structured tables and renders the shared identity and repeated rows', () => {
-  const pack = requirePackage('bfl-bankruptcy-v3');
+  const pack = requirePackage('bfl-bankruptcy-v4');
   const values = emptyFieldValues();
   Object.assign(values, {
     lastName: 'Тестовый',
@@ -39,6 +248,10 @@ test('each DOCX keeps its source styles, page geometry and structured tables and
     middleName: 'Сергеевич',
     documentNumber: '0000 123456',
     documentDate: '05.11.2026',
+    attachments: [
+      { description: 'Синтетическое приложение А' },
+      { description: 'Синтетическое приложение Б' },
+    ],
     debts: [
       {
         name: 'Синтетический кредитор А',
@@ -62,7 +275,9 @@ test('each DOCX keeps its source styles, page geometry and structured tables and
       template.checksum,
     );
     const zip = new PizZip(source);
-    const rendered = new PizZip(generateDocument(source, templateData(values)));
+    const rendered = new PizZip(
+      generateDocument(source, templateData(values, template.version)),
+    );
     const xml = rendered.file('word/document.xml')?.asText() ?? '';
     expect(xml).toContain('Тестовый');
     expect(xml).toContain('Пётр');
@@ -89,7 +304,35 @@ test('each DOCX keeps its source styles, page geometry and structured tables and
       expect(xml).toContain('Синтетическая квартира А');
       expect(xml).toContain('Синтетическая квартира Б');
     }
+    if (template.id === 'statement') {
+      expect(xml).toContain('Тестовый Пётр Сергеевич');
+      expect(xml).toContain('______________________  Тестовый П.С.');
+      expect(xml).not.toContain(
+        '______________________  Тестовый Пётр Сергеевич',
+      );
+      const attachments = (xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []).filter(
+        (paragraph) => paragraph.includes('Синтетическое приложение'),
+      );
+      expect(attachments).toHaveLength(2);
+      expect(
+        attachments.every((paragraph) => paragraph.includes('<w:numPr>')),
+      ).toBe(true);
+    }
   }
+});
+
+test('a statement signature uses only available initials without changing the name in the facts', () => {
+  const values = {
+    ...emptyFieldValues(),
+    lastName: 'Иванова',
+    firstName: ' ёлка ',
+  };
+  const data = templateData(values);
+  expect(data.signerName).toBe('Иванова Ё.');
+  expect(values.firstName).toBe(' ёлка ');
+  expect(templateData({ ...values, lastName: null }).signerName).toBe(
+    '[не заполнено]',
+  );
 });
 
 test('unknown collections do not become absence, and an empty package never contains source-case defaults', () => {
@@ -150,7 +393,10 @@ test('the chosen request and explicit absence of attachments cannot be contradic
   };
   const xml =
     new PizZip(
-      generateDocument(templateBytes('bfl-statement-v3'), templateData(values)),
+      generateDocument(
+        templateBytes('bfl-statement-v4'),
+        templateData(values, 'bfl-statement-v4'),
+      ),
     )
       .file('word/document.xml')
       ?.asText() ?? '';
@@ -160,4 +406,5 @@ test('the chosen request and explicit absence of attachments cannot be contradic
   );
   expect(xml).not.toContain('прилагаю');
   expect(xml).not.toContain('подтверждаются приложенными документами');
+  expect(xml).not.toContain('Отсутствует');
 });

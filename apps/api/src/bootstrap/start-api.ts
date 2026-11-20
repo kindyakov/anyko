@@ -1,92 +1,44 @@
-import { createAccess } from '@anyko/backend/access';
 import {
-  createDocumentRuntime,
-  createS3Storage,
-  createWorkRuntime,
-  parseWorkConfig,
+  type ApiBackend,
+  BackendConfigError,
+  createBackend,
+  resolveBackendMode,
 } from '@anyko/backend/runtime';
-import { createLogger } from '@anyko/logger';
+import { createLogger, diagnoseFailure } from '@anyko/logger';
 
 import { createApp } from '../http/app';
 
+import { parseBackendEnv } from './backend-config';
 import { parseApiConfig } from './config';
-import { parseDocumentConfig } from './document-config';
+
 export async function startApi() {
-  const startupResources: Array<() => Promise<void>> = [];
+  let backend: ApiBackend | undefined;
   try {
     const config = parseApiConfig(process.env);
-    const workConfig = parseWorkConfig(process.env);
     const logger = createLogger({
       service: 'api',
       environment: config.NODE_ENV,
       release: config.RELEASE,
       level: config.LOG_LEVEL,
     });
+    const mode = resolveBackendMode({
+      documentsEnabled: config.DOCUMENTS_ENABLED,
+      worksEnabled: config.WORKS_ENABLED,
+    });
+    backend =
+      mode === 'full'
+        ? createBackend(parseBackendEnv(process.env), { logger, role: 'api' })
+        : undefined;
+    await backend?.ready();
     let ready = false;
-    const documentConfig = config.DOCUMENTS_ENABLED
-      ? parseDocumentConfig(process.env)
-      : null;
-    const documents = documentConfig
-      ? createDocumentRuntime({
-          databaseUrl: documentConfig.DATABASE_URL,
-          logger,
-          storage: createS3Storage({
-            endpoint: documentConfig.S3_ENDPOINT,
-            bucket: documentConfig.S3_BUCKET,
-            accessKeyId: documentConfig.S3_ACCESS_KEY,
-            secretAccessKey: documentConfig.S3_SECRET_KEY,
-          }),
-        })
-      : null;
-    const access = documentConfig
-      ? createAccess({
-          databaseUrl: documentConfig.DATABASE_URL,
-          secret: documentConfig.AUTH_SECRET,
-          baseURL: documentConfig.AUTH_BASE_URL,
-          origin: documentConfig.APP_ORIGIN,
-        })
-      : null;
-    if (documents) startupResources.push(documents.stop);
-    if (access) startupResources.push(access.stop);
-    const works =
-      workConfig && documentConfig
-        ? createWorkRuntime({
-            databaseUrl: documentConfig.DATABASE_URL,
-            encryptionKey: workConfig.encryptionKey,
-            logger,
-            storage: createS3Storage({
-              endpoint: documentConfig.S3_ENDPOINT,
-              bucket: documentConfig.S3_BUCKET,
-              accessKeyId: documentConfig.S3_ACCESS_KEY,
-              secretAccessKey: documentConfig.S3_SECRET_KEY,
-            }),
-          })
-        : null;
-    if (works) startupResources.push(() => works.stop());
-    await documents?.ready();
-    await works?.ready();
     const app = createApp({
       logger,
+      environment: config.NODE_ENV,
       ready: () => ready,
-      ...(works && documents && access && documentConfig
+      ...(backend
         ? {
-            workHttp: {
-              works: works.api,
-              settings: works.settings,
-              saveSettings: works.saveSettings,
-              documents,
-              access,
-              origin: documentConfig.APP_ORIGIN,
-            },
-          }
-        : {}),
-      ...(documents && access && documentConfig
-        ? {
-            documentHttp: {
-              documents,
-              access,
-              origin: documentConfig.APP_ORIGIN,
-            },
+            documentHttp: backend.documentHttp,
+            workHttp: backend.workHttp,
           }
         : {}),
     }).listen({
@@ -109,12 +61,19 @@ export async function startApi() {
       }, config.SHUTDOWN_TIMEOUT_MS);
       try {
         await app.stop();
-        await documents?.stop();
-        await works?.stop();
-        await access?.stop();
+        await backend?.stop();
         logger.info({ event: 'process_stopped' });
-      } catch {
-        logger.error({ event: 'shutdown_failed' });
+      } catch (error) {
+        const failure = diagnoseFailure(error, {
+          code: 'API_SHUTDOWN_FAILED',
+          message: 'Не удалось завершить работу API.',
+          operation: 'api.shutdown',
+        });
+        logger.error({
+          event: 'shutdown_failed',
+          errorCode: failure.code,
+          failure,
+        });
         process.exitCode = 1;
       } finally {
         clearTimeout(timer);
@@ -130,14 +89,29 @@ export async function startApi() {
       process.on('SIGBREAK', () => {
         void stop();
       });
-  } catch {
-    await Promise.allSettled(startupResources.map((close) => close()));
+  } catch (error) {
+    await Promise.allSettled([backend?.stop()]);
+    const failure = diagnoseFailure(error, {
+      code:
+        error instanceof BackendConfigError
+          ? error.code
+          : 'CONFIG_OR_LISTEN_FAILED',
+      message:
+        error instanceof BackendConfigError
+          ? error.message
+          : 'Не удалось запустить API.',
+      operation: 'api.start',
+    });
     createLogger({
       service: 'api',
       environment: 'unknown',
       release: 'unknown',
       level: 'error',
-    }).fatal({ event: 'startup_failed', errorCode: 'CONFIG_OR_LISTEN_FAILED' });
+    }).fatal({
+      event: 'startup_failed',
+      errorCode: failure.code,
+      failure,
+    });
     process.exitCode = 1;
   }
 }

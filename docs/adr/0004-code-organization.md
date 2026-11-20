@@ -9,6 +9,8 @@ status: accepted
 
 ## Web
 
+Уровни, адреса рабочей области, проверка сессии и UI-пакет уточнены в [ADR 0008](0008-web-application-architecture.md).
+
 Next App Router отвечает за маршруты, layouts и framework loading/error states.
 Пользовательский сценарий принадлежит `src/features/<name>`: UI, состояние и
 предметные HTTP-вызовы находятся рядом. Feature предоставляет небольшой явный
@@ -22,6 +24,8 @@ HTTP DTO принадлежат browser-safe `contracts`. Next Route Handlers д
 для прозрачного транспорта к API, без повторной реализации предметных правил.
 
 ## API и worker
+
+Модули, доверенный scope, HTTP по контрактам и реестр заданий уточнены в [ADR 0009](0009-backend-architecture.md).
 
 API является HTTP-адаптером: разбирает запрос, проверяет сессию/участие,
 получает доверенный scope, вызывает серверную операцию и отображает результат.

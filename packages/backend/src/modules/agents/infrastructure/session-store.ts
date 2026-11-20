@@ -1,13 +1,36 @@
-import {
-  agentSessionContextSchema,
-  agentSessionSchema,
-} from '@anyko/contracts';
 import type { Database } from '@anyko/database';
+import type { Logger } from '@anyko/logger';
 
-import { type AgentSessionStore, reconciliationSchema } from '../session';
+import { transactionHandle, type Tx } from '../../../platform/transactions';
+import {
+  type AgentSessionStore,
+  reconciliationSchema,
+} from '../application/session';
+import { agentSessionContextSchema, agentSessionSchema } from '../schemas';
 
-type Connection = Pick<Database, 'workAgentSession' | 'workAgentTurn'>;
-export function createAgentSessionStore(db: Connection): AgentSessionStore {
+import { createAgentChatStore } from './chat-store';
+import { createAgentHistoryStore } from './history-store';
+
+type Connection = Pick<
+  Database,
+  | 'workAgentSession'
+  | 'workAgentTurn'
+  | 'workAgentEvent'
+  | 'workChatTurn'
+  | 'run'
+>;
+// Сессия работы внутри транзакции действия (создание работы): токен превращается в клиент транзакции.
+export function agentSessionStoreFor(
+  tx: Tx,
+  newId: () => string,
+): AgentSessionStore {
+  return createAgentSessionStore(transactionHandle<Connection>(tx), newId);
+}
+export function createAgentSessionStore(
+  db: Connection,
+  newId: () => string,
+  logger?: Pick<Logger, 'warn'>,
+): AgentSessionStore {
   const view = (row: {
     id: string;
     revision: number;
@@ -21,6 +44,8 @@ export function createAgentSessionStore(db: Connection): AgentSessionStore {
       updatedAt: row.updatedAt.toISOString(),
     });
   return {
+    chat: createAgentChatStore(db),
+    history: createAgentHistoryStore(db, newId, logger),
     async get(workspaceId, workId) {
       const row = await db.workAgentSession.findFirst({
         where: { workspaceId, workId },
@@ -31,7 +56,7 @@ export function createAgentSessionStore(db: Connection): AgentSessionStore {
       return view(
         await db.workAgentSession.upsert({
           where: { workspaceId_workId: { workspaceId, workId } },
-          create: { id: crypto.randomUUID(), workspaceId, workId },
+          create: { id: newId(), workspaceId, workId },
           update: {},
         }),
       );
@@ -53,7 +78,7 @@ export function createAgentSessionStore(db: Connection): AgentSessionStore {
       if (changed.count !== 1) throw new Error('STALE_AGENT_SESSION');
       await db.workAgentTurn.create({
         data: {
-          id: crypto.randomUUID(),
+          id: newId(),
           workspaceId: input.workspaceId,
           workId: input.workId,
           sessionId: input.sessionId,

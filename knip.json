@@ -6,6 +6,7 @@
     ".": {
       "entry": [
         "tests/architecture/**/*.test.ts",
+        "tests/e2e/playwright.config.ts",
         "tests/processor/create-junction.mjs",
         "infra/windows/bootstrap.mjs",
         "scripts/restore-windows-web-links.mjs",
@@ -17,12 +18,18 @@
         "tests/integration/*.test.ts",
         "tests/portable-template-probe.ts",
         "tests/templates.test.ts",
-        "src/modules/**/*.test.ts"
+        "src/modules/**/*.test.ts",
+        "src/platform/**/*.test.ts",
+        "src/workflows/**/*.test.ts"
       ]
     },
     "packages/database": {
       "ignore": ["generated/**"],
       "ignoreDependencies": ["@prisma/client", "@prisma/client-runtime-utils"]
+    },
+    "apps/web": {
+      "entry": ["src/**/*.test.{ts,tsx}"],
+      "ignoreDependencies": ["happy-dom"]
     }
   }
 }

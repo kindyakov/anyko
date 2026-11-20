@@ -1,34 +1,30 @@
 import type { z } from 'zod';
 
-import { httpErrorSchema } from '@anyko/contracts';
+import { httpErrorSchema, type HttpMethod } from '@anyko/contracts/common';
+
+import { ApiError } from '@/lib/api/errors';
 
 export type HttpFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
 
-export class ApiError extends Error {
-  constructor(
-    readonly code: string,
-    readonly status: number | undefined,
-    readonly requestId: string | undefined,
-  ) {
-    super(code);
-    this.name = 'ApiError';
-  }
-}
-export async function requestApi<T>(
+type RequestOptions = {
+  method?: HttpMethod;
+  body?: BodyInit;
+  headers?: HeadersInit;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+  query?: Record<string, string>;
+  fetch?: HttpFetch;
+};
+
+// Путь без `/api`: префикс добавляет транспорт, версия (`/v1`) входит в путь вызывающего.
+async function request<T>(
   path: string,
-  schema: z.ZodType<T>,
-  options: {
-    method?: 'GET' | 'POST' | 'DELETE';
-    body?: BodyInit;
-    headers?: HeadersInit;
-    signal?: AbortSignal;
-    timeoutMs?: number;
-    query?: Record<string, string>;
-    fetch?: HttpFetch;
-  } = {},
+  options: RequestOptions,
+  accept: string,
+  read: (response: Response, requestId: string | undefined) => Promise<T>,
 ): Promise<T> {
   if (
     !/^\/[a-zA-Z0-9/_-]*$/.test(path) ||
@@ -54,7 +50,7 @@ export async function requestApi<T>(
   let requestId: string | undefined;
   try {
     const headers = new Headers(options.headers);
-    headers.set('accept', 'application/json');
+    headers.set('accept', accept);
     const query = new URLSearchParams(options.query).toString();
     const response = await (options.fetch ?? fetch)(
       `/api${path}${query ? `?${query}` : ''}`,
@@ -70,19 +66,17 @@ export async function requestApi<T>(
     );
     status = response.status;
     requestId = response.headers.get('x-request-id') ?? undefined;
-    const body: unknown = await response.json();
     if (!response.ok) {
+      const body: unknown = await response.json();
       const parsed = httpErrorSchema.safeParse(body);
       throw new ApiError(
         parsed.success ? parsed.data.error.code : 'HTTP_ERROR',
         status,
         requestId,
+        parsed.success ? parsed.data.error.fields : undefined,
       );
     }
-    const parsed = schema.safeParse(body);
-    if (!parsed.success)
-      throw new ApiError('INVALID_RESPONSE', status, requestId);
-    return parsed.data;
+    return await read(response, requestId);
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw new ApiError(
@@ -100,4 +94,27 @@ export async function requestApi<T>(
     clearTimeout(timer);
     options.signal?.removeEventListener('abort', abort);
   }
+}
+
+export function requestApi<S extends z.ZodType>(
+  path: string,
+  schema: S,
+  options: RequestOptions = {},
+): Promise<z.output<S>> {
+  return request(
+    path,
+    options,
+    'application/json',
+    async (response, requestId) => {
+      const body: unknown = await response.json();
+      const parsed = schema.safeParse(body);
+      if (!parsed.success)
+        throw new ApiError('INVALID_RESPONSE', response.status, requestId);
+      return parsed.data;
+    },
+  );
+}
+
+export function requestApiFile(path: string, options: RequestOptions) {
+  return request(path, options, '*/*', (response) => response.blob());
 }

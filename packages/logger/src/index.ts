@@ -1,17 +1,29 @@
 import pino, { type DestinationStream } from 'pino';
+
+import { type FailureDiagnostic, isPreparedFailure } from './diagnostics';
+
+export {
+  correlationId,
+  DiagnosticError,
+  diagnoseFailure,
+  inOperation,
+} from './diagnostics';
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 export interface LogEvent {
   event: string;
-  requestId?: string;
-  correlationId?: string;
-  jobId?: string;
-  jobType?: string;
-  attempt?: number;
+  requestId?: string | undefined;
+  correlationId?: string | undefined;
+  jobId?: string | undefined;
+  jobType?: string | undefined;
+  attempt?: number | undefined;
   method?: string;
-  route?: string;
+  route?: string | undefined;
   statusCode?: number;
   durationMs?: number;
-  errorCode?: string;
+  errorCode?: string | undefined;
+  errorDigest?: string | undefined;
+  failure?: FailureDiagnostic;
   state?: string;
   port?: number;
   provider?: string;
@@ -20,11 +32,11 @@ export interface LogEvent {
   outputTokens?: number;
 }
 export interface Logger {
-  debug(fields: LogEvent): void;
-  info(fields: LogEvent): void;
-  warn(fields: LogEvent): void;
-  error(fields: LogEvent): void;
-  fatal(fields: LogEvent): void;
+  debug: (fields: LogEvent) => void;
+  info: (fields: LogEvent) => void;
+  warn: (fields: LogEvent) => void;
+  error: (fields: LogEvent) => void;
+  fatal: (fields: LogEvent) => void;
 }
 const fields = [
   'event',
@@ -38,6 +50,7 @@ const fields = [
   'statusCode',
   'durationMs',
   'errorCode',
+  'errorDigest',
   'state',
   'port',
   'provider',
@@ -76,7 +89,10 @@ export function createLogger(
         safe[key] = value;
       else if (typeof value === 'string') safe[key] = value.slice(0, 256);
     }
-    output[level](safe);
+    output[level]({
+      ...safe,
+      ...(isPreparedFailure(input.failure) && { failure: input.failure }),
+    });
   }
   return {
     debug: (e) => {

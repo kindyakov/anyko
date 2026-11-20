@@ -13,22 +13,27 @@ function display(value) {
   return JSON.stringify(String(value)).slice(1, -1);
 }
 
-function formatLine(line, color) {
+function formatLine(line, color, structuredService) {
   let record;
   try {
     record = JSON.parse(line);
   } catch {
-    return line;
+    return structuredService === undefined ? line : undefined;
   }
   if (
     !record ||
     typeof record !== 'object' ||
-    !levels[record.level] ||
+    typeof record.level !== 'number' ||
+    !Object.hasOwn(levels, record.level) ||
     typeof record.event !== 'string' ||
     typeof record.service !== 'string'
   )
-    return line;
-  const { level, time, service, event, ...details } = record;
+    return structuredService === undefined ? line : undefined;
+  if (structuredService !== undefined)
+    return record.schemaVersion === 1 && record.service === structuredService
+      ? line
+      : undefined;
+  const { level, time, service, event, failure, ...details } = record;
   const [label, code] = levels[level];
   const title = color ? `\x1b[${code}m${label}\x1b[0m` : label;
   const fields = Object.entries(details)
@@ -37,13 +42,18 @@ function formatLine(line, color) {
     )
     .map(([key, value]) => `${display(key)}=${JSON.stringify(value)}`)
     .join(' ');
-  return `${display(time ?? '')} ${title} [${display(service)}] ${display(event)}${fields ? ` ${fields}` : ''}`;
+  const diagnostic =
+    typeof failure?.message === 'string' &&
+    typeof failure?.operation === 'string'
+      ? ` ${display(failure.message)} operation=${display(failure.operation)}`
+      : '';
+  return `${display(time ?? '')} ${title} [${display(service)}] ${display(event)}${diagnostic}${fields ? ` ${fields}` : ''}`;
 }
 
 // Buffer only complete log lines; preserve framework output and oversized lines.
 export function createTerminalLog(
   output,
-  { color = true, maxLine = 65536 } = {},
+  { color = true, maxLine = 65536, structuredService } = {},
 ) {
   const decoder = new StringDecoder('utf8');
   let pending = '';
@@ -54,11 +64,16 @@ export function createTerminalLog(
     while ((end = pending.indexOf('\n')) !== -1) {
       const line = pending.slice(0, end);
       pending = pending.slice(end + 1);
-      output.write((passthrough ? line : formatLine(line, color)) + '\n');
+      const formatted = passthrough
+        ? structuredService === undefined
+          ? line
+          : undefined
+        : formatLine(line, color, structuredService);
+      if (formatted !== undefined) output.write(formatted + '\n');
       passthrough = false;
     }
     if (pending.length > maxLine) {
-      output.write(pending);
+      if (structuredService === undefined) output.write(pending);
       pending = '';
       passthrough = true;
     }
@@ -69,7 +84,7 @@ export function createTerminalLog(
     },
     end() {
       consume(decoder.end());
-      if (pending) output.write(pending);
+      if (pending && structuredService === undefined) output.write(pending);
     },
   };
 }

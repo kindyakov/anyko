@@ -178,18 +178,20 @@ try:
     request = urllib.request.Request(origin+'/api/auth/sign-in/email', data=body,
                                      headers={'content-type': 'application/json', 'origin': origin}, method='POST')
     opener.open(request, timeout=30).close()
-    with opener.open(origin+'/api/documents/'+document+'/result', timeout=30) as response:
+    with opener.open(origin+'/api/v1/workspaces/local/recognitions/'+document+'/result', timeout=30) as response:
         result = json.load(response)
     if 'ANYKO' not in result['markdown'].upper():
         raise RuntimeError('OCR result was not preserved after restart')
-    def request(path, value=None):
+    def request(path, value=None, *, method=None):
+        method = method or ('POST' if value is not None else 'GET')
         headers = {'origin': origin}
         data = None
         if value is not None:
             data = json.dumps(value).encode()
             headers['content-type'] = 'application/json'
-        req = urllib.request.Request(origin+'/api'+path, data=data, headers=headers,
-                                     method='POST' if value is not None else 'GET')
+            if method == 'POST':
+                headers['idempotency-key'] = str(uuid.uuid4())
+        req = urllib.request.Request(origin+'/api'+path, data=data, headers=headers, method=method)
         with opener.open(req, timeout=30) as response:
             return response.read()
     model_state = {'document': '', 'calls': 0}
@@ -239,22 +241,22 @@ try:
             self.wfile.write(payload)
     provider = ThreadingHTTPServer(('127.0.0.1', 0), ModelHandler)
     threading.Thread(target=provider.serve_forever, daemon=True).start()
-    request('/settings/llm', {'baseURL': f'http://127.0.0.1:{provider.server_port}/v1',
-                              'visionModel': 'fixture', 'extractionModel': 'fixture', 'apiKey': 'synthetic-key'})
-    created = json.loads(request('/works', {'packageVersion': 'bfl-bankruptcy-v3', 'title': 'Synthetic test'}))
+    request('/v1/workspaces/local/connections/llm', {'baseURL': f'http://127.0.0.1:{provider.server_port}/v1',
+                              'visionModel': 'fixture', 'extractionModel': 'fixture', 'apiKey': 'synthetic-key'}, method='PATCH')
+    created = json.loads(request('/v1/workspaces/local/works', {'packageVersion': 'bfl-bankruptcy-v4', 'title': 'Synthetic test'}))
     work = created['work']['id']
     boundary = 'anyko-' + uuid.uuid4().hex
     payload = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="synthetic.pdf"\r\n'
                'Content-Type: application/pdf\r\n\r\n').encode() + fixture.read_bytes() + f'\r\n--{boundary}--\r\n'.encode()
-    upload = urllib.request.Request(origin+'/api/works/'+work+'/documents', data=payload, method='POST',
+    upload = urllib.request.Request(origin+'/api/v1/workspaces/local/works/'+work+'/documents', data=payload, method='POST',
                                     headers={'origin': origin, 'content-type': 'multipart/form-data; boundary='+boundary,
                                              'idempotency-key': str(uuid.uuid4())})
     with opener.open(upload, timeout=30) as response:
         model_state['document'] = json.load(response)['document']['id']
-    request('/works/'+work+'/analyze', {})
+    # The worker starts analysis after the uploaded source has been recognized.
     end = time.monotonic() + 300
     while time.monotonic() < end:
-        analyzed = json.loads(request('/works/'+work))
+        analyzed = json.loads(request('/v1/workspaces/local/works/'+work))
         runs = [run for run in analyzed['runs'] if run['kind'] == 'analysis']
         if runs and runs[0]['status'] not in ('queued', 'running'):
             break
@@ -268,11 +270,12 @@ try:
     values = analyzed['facts']['values']
     values['lastName'] = 'Testov'
     values['firstName'] = 'Anyko'
-    edited = json.loads(request('/works/'+work+'/fields', {'revision': analyzed['work']['revision'], 'values': values}))
-    request('/works/'+work+'/generate', {'revision': edited['work']['revision']})
+    edited = json.loads(request('/v1/workspaces/local/works/'+work+'/fields',
+                                {'revision': analyzed['work']['revision'], 'values': values}, method='PATCH'))
+    request('/v1/workspaces/local/works/'+work+'/generate', {'revision': edited['work']['revision']})
     end = time.monotonic() + 120
     while time.monotonic() < end:
-        view = json.loads(request('/works/'+work))
+        view = json.loads(request('/v1/workspaces/local/works/'+work))
         generations = view['generations']
         if generations and generations[0]['status'] in ('succeeded', 'failed', 'partial'):
             break
@@ -283,7 +286,7 @@ try:
     if generation['status'] != 'succeeded' or len(generation['files']) != 3:
         raise RuntimeError('DOCX package generation failed')
     for file in generation['files']:
-        content = request('/works/'+work+'/generations/'+generation['id']+'/files/'+file['id'])
+        content = request('/v1/workspaces/local/works/'+work+'/generations/'+generation['id']+'/files/'+file['id'])
         xml = zipfile.ZipFile(io.BytesIO(content)).read('word/document.xml').decode('utf8')
         if 'Testov' not in xml or 'Anyko' not in xml:
             raise RuntimeError('Generated DOCX is missing synthetic fields')

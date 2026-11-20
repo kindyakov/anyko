@@ -6,7 +6,11 @@ import {
   StorageWriteOutcomeUnknown,
 } from '@anyko/backend/documents';
 import { createS3Storage } from '@anyko/backend/runtime';
-import { createDatabase, createResourceLocks } from '@anyko/database';
+import {
+  createDatabase,
+  createDatabasePool,
+  createResourceLocks,
+} from '@anyko/database';
 const env = z
   .object({
     DATABASE_URL: z.string(),
@@ -23,8 +27,9 @@ if (
   throw new Error(
     'Migration requires verified quiescence; see document-vertical.md',
   );
-const db = createDatabase(env.DATABASE_URL),
-  locks = createResourceLocks(env.DATABASE_URL);
+const pool = createDatabasePool(env.DATABASE_URL),
+  db = createDatabase(pool),
+  locks = createResourceLocks(pool);
 const storage = createS3Storage({
   endpoint: env.S3_ENDPOINT,
   bucket: env.S3_BUCKET,
@@ -56,8 +61,9 @@ try {
       `document:${document.workspaceId}:${document.id}`,
       async () => {
         const operationId = crypto.randomUUID();
-        await db.documentIo.create({
+        await db.processingIo.create({
           data: {
+            kind: 'document',
             id: operationId,
             workspaceId: document.workspaceId,
             documentId: document.id,
@@ -171,7 +177,7 @@ try {
               update: {},
             });
             await storage.put(resultKey, bytes, 'application/json');
-            await db.processingRun.update({
+            await db.run.update({
               where: { id: run.id },
               data: { resultKey },
             });
@@ -185,18 +191,18 @@ try {
           throw error;
         } finally {
           if (uncertain)
-            await db.documentIo.update({
+            await db.processingIo.update({
               where: { id: operationId },
               data: { uncertain: true },
             });
-          else await db.documentIo.deleteMany({ where: { id: operationId } });
+          else await db.processingIo.deleteMany({ where: { id: operationId } });
         }
       },
     );
   // Legacy staging is cleaned only while applications are stopped during cutover.
   const published = new Set(
     (
-      await db.processingRun.findMany({
+      await db.run.findMany({
         where: { resultKey: { not: null } },
         select: { resultKey: true },
       })
@@ -220,12 +226,12 @@ try {
     await db.sourceUpload.deleteMany({ where: { key: row.key } });
   }
   for (const row of await db.resultUpload.findMany()) {
-    if (!(await db.processingRun.count({ where: { resultKey: row.key } })))
+    if (!(await db.run.count({ where: { resultKey: row.key } })))
       await storage.delete(row.key);
     await db.resultUpload.deleteMany({ where: { key: row.key } });
   }
   console.info('Document artifacts migrated to separate private S3 objects');
 } finally {
-  await locks.stop();
   await db.$disconnect();
+  await pool.end();
 }

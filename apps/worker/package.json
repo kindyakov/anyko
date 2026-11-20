@@ -2,16 +2,22 @@
   "name": "@anyko/worker",
   "private": true,
   "type": "module",
+  "exports": {
+    "./queues": "./src/queues/index.ts",
+    "./testing": "./tests/support/queue.ts"
+  },
   "scripts": {
     "dev": "bun ../../scripts/run-local.mjs worker dev",
     "start": "bun ../../scripts/run-local.mjs worker start",
     "typecheck": "tsc --noEmit",
-    "test": "bun test tests",
+    "test": "bun test tests/config.test.ts",
     "diagnostic": "bun --env-file=../../.env src/cli/diagnostic.ts"
   },
   "dependencies": {
     "@anyko/backend": "workspace:*",
     "@anyko/logger": "workspace:*",
+    "bullmq": "6.7.0",
+    "ioredis": "6.0.0",
     "zod": "4.6.7"
   },
   "devDependencies": {

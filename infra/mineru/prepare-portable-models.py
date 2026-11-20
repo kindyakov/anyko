@@ -12,6 +12,8 @@ snapshot_download(
     allow_patterns=[
         'Layout/PP-DocLayoutV2/inference.onnx',
         'Layout/PP-DocLayoutV2/inference.yml',
+        'MFR/pp_formulanet_plus_m/PP-FormulaNet_plus-M.onnx',
+        'MFR/pp_formulanet_plus_m/PP-FormulaNet_plus-M_inference.yml',
         'OCR/paddleocr/ch_PP-OCRv6_small_rec_infer.onnx',
         'OCR/paddleocr/ch_PP-OCRv6_tiny_det_infer.onnx',
         'OCR/paddleocr/seal_PP-OCRv4_det_infer.onnx',

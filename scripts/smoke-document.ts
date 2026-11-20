@@ -5,8 +5,8 @@ import { z } from 'zod';
 import {
   documentResponseSchema,
   documentResultSchema,
-  sessionResponseSchema,
-} from '@anyko/contracts';
+} from '@anyko/contracts/documents';
+import { sessionResponseSchema } from '@anyko/contracts/session';
 const config = z
   .object({
     LOCAL_USER_EMAIL: z.email(),
@@ -31,7 +31,7 @@ function assert(value: unknown, code: string): asserts value {
 }
 try {
   assert(
-    (await request('/documents')).status === 401,
+    (await request('/v1/workspaces/local/recognitions')).status === 401,
     'ANONYMOUS_ACCESS_NOT_DENIED',
   );
   const login = await request('/auth/sign-in/email', {
@@ -49,7 +49,7 @@ try {
     .join('; ');
   await login.body?.cancel();
   assert(cookie, 'SESSION_COOKIE_MISSING');
-  const session = await request('/session');
+  const session = await request('/v1/session');
   assert(session.ok, 'SESSION_FAILED');
   sessionResponseSchema.parse(await session.json());
   const fixture = process.argv[2] ?? 'work/mineru/smoke-basic.pdf';
@@ -59,7 +59,7 @@ try {
   const upload = async (bytes: Uint8Array) => {
     const form = new FormData();
     form.append('file', new File([Uint8Array.from(bytes)], filename));
-    return request('/documents', {
+    return request('/v1/workspaces/local/recognitions', {
       method: 'POST',
       headers: { 'idempotency-key': key },
       body: form,
@@ -83,7 +83,9 @@ try {
   const end = Date.now() + 180000;
   let status = first.status;
   while (Date.now() < end) {
-    const response = await request(`/documents/${first.id}`);
+    const response = await request(
+      `/v1/workspaces/local/recognitions/${first.id}`,
+    );
     assert(response.ok, 'STATUS_QUERY_FAILED');
     status = documentResponseSchema.parse(await response.json()).document
       .status;
@@ -91,7 +93,9 @@ try {
     await Bun.sleep(1000);
   }
   assert(status === 'succeeded', 'OCR_DID_NOT_SUCCEED');
-  const result = await request(`/documents/${first.id}/result`);
+  const result = await request(
+    `/v1/workspaces/local/recognitions/${first.id}/result`,
+  );
   assert(result.ok, 'RESULT_QUERY_FAILED');
   const parsed = documentResultSchema.parse(await result.json());
   assert(parsed.markdown.includes('ANYKO'), 'OCR_MARKER_MISSING');

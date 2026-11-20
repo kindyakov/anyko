@@ -6,3 +6,5 @@ New-Item -ItemType Directory -Force -Path $runtime | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'MinerU venv creation failed' }
 & uv pip install --python (Join-Path $runtime '.venv/Scripts/python.exe') -r (Join-Path $PSScriptRoot 'requirements.txt')
 if ($LASTEXITCODE -ne 0) { throw 'MinerU dependency installation failed' }
+& (Join-Path $runtime '.venv/Scripts/python.exe') -B (Join-Path $PSScriptRoot 'prepare-pdf-ocr-model.py') (Join-Path $runtime 'home')
+if ($LASTEXITCODE -ne 0) { throw 'PDF OCR model installation failed' }

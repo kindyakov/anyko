@@ -7,7 +7,7 @@ const metadata = JSON.parse(
   await readFile(resolve(mineru, 'complete.json'), 'utf8'),
 );
 if (
-  metadata.format !== 1 ||
+  metadata.format !== 2 ||
   typeof metadata.python !== 'string' ||
   isAbsolute(metadata.python)
 ) {

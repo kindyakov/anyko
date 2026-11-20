@@ -16,7 +16,7 @@ SCAN_LIMIT = 5000
 BYTE_LIMIT = 8 * 1024 * 1024
 LINE_LIMIT = 64 * 1024
 OUTPUT_LIMIT = 2 * 1024 * 1024
-FILTERS = ("requestId", "correlationId", "jobId", "release", "event")
+FILTERS = ("requestId", "correlationId", "jobId", "errorDigest", "release", "event")
 
 
 class InvalidQuery(ValueError):
@@ -58,7 +58,8 @@ def validate_query(value, now=None):
     for key in FILTERS:
         if key in value:
             item = value[key]
-            if not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9_.:/-]{1,128}", item):
+            pattern = r"\d{1,14}(?:@E\d{1,6})?" if key == "errorDigest" else r"[A-Za-z0-9_.:/-]{1,128}"
+            if not isinstance(item, str) or not re.fullmatch(pattern, item):
                 raise InvalidQuery("invalid filter value")
             filters[key] = item
     return {

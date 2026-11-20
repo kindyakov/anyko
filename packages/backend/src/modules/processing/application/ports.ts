@@ -1,40 +1,38 @@
-interface ProcessingClaim {
-  runId: string;
+import type { Tx } from '../../../platform/transactions';
+
+import type { RunClaim } from './run-attempt';
+
+export interface DocumentRunSnapshot {
+  id: string;
+  attempts: number;
   workspaceId: string;
   documentId: string;
   sourceKey: string;
-  attemptToken: string;
   correlationId: string;
 }
-export interface ProcessingStore {
+export type DocumentRunOutcome =
+  | { status: 'succeeded'; resultKey: string; processorVersion: string }
+  | { status: 'failed'; errorCode: string };
+
+export interface DocumentArtifacts {
   attemptIds: (workspaceId: string, documentId: string) => Promise<string[]>;
   documentId: (workspaceId: string, runId: string) => Promise<string | null>;
   resultKeys: (workspaceId: string, documentId: string) => Promise<string[]>;
   stageResult: (key: string, workspaceId: string) => Promise<void>;
   orphanResults: (before: Date) => Promise<{ key: string }[]>;
   forgetResult: (key: string) => Promise<void>;
+}
+
+export interface DocumentAttemptStore {
   claim: (
-    runId: string,
     workspaceId: string,
+    runId: string,
     attemptToken: string,
     leaseUntil: Date,
-  ) => Promise<ProcessingClaim | null>;
-  complete: (
-    claim: ProcessingClaim,
-    resultKey: string,
-    processorVersion: string,
+  ) => Promise<RunClaim<DocumentRunSnapshot> | null>;
+  finish: (
+    tx: Tx,
+    claim: RunClaim<DocumentRunSnapshot>,
+    outcome: DocumentRunOutcome,
   ) => Promise<boolean>;
-  fail: (claim: ProcessingClaim, errorCode: string) => Promise<void>;
-  reserveDelivery: (
-    token: string,
-    leaseUntil: Date,
-  ) => Promise<{
-    id: string;
-    workspaceId: string;
-    runId: string;
-    token: string;
-  } | null>;
-  delivered: (id: string, token: string) => Promise<void>;
-  releaseDelivery: (id: string, token: string) => Promise<void>;
-  reconcile: () => Promise<void>;
 }
