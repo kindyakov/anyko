@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 
 import { type FieldKey } from '@anyko/contracts/catalog';
 import { type WorkView } from '@anyko/contracts/works';
+import { hasEmploymentFields } from '@anyko/document-values/employment';
 import { Button, Disclosure, SegmentedControl } from '@anyko/ui';
 import { EventHorizon } from '@anyko/ui/brand';
 
@@ -16,6 +17,7 @@ import type { FactsForm } from './facts-form';
 import { PackagePreview } from './package-preview';
 import { CandidateList } from './review/candidate-list';
 import { EditConflicts } from './review/edit-conflicts';
+import { EmploymentReview } from './review/employment-review';
 import { SessionContext } from './session-context';
 
 type Document = WorkView['documents'][number];
@@ -126,6 +128,12 @@ export function WorkReview({
             />
           )}
         </div>
+        {hasEmploymentFields(view.package.fields) && (
+          <EmploymentReview
+            values={values}
+            needsReview={view.facts.needsReview}
+          />
+        )}
         {quick.length > 1 && (
           <div className="animate-rise mb-5 flex flex-col gap-4 rounded-2xl border border-[#ff3b62]/25 bg-[#db143c]/[0.06] p-4 backdrop-blur-[18px] sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm leading-6">
@@ -225,6 +233,7 @@ export function WorkReview({
           <PackagePreview
             pack={view.package}
             values={values}
+            needsReview={view.facts.needsReview}
             disabled={busy}
             focus={focus}
             onBack={() => {

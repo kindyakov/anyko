@@ -1,4 +1,8 @@
 import {
+  assessEmployment,
+  hasEmploymentFields,
+} from '@anyko/document-values/employment';
+import {
   obligationAmounts,
   obligationFields,
   obligationTemplate,
@@ -19,12 +23,19 @@ export function templateData(
   input: FieldValues,
   templateVersion?: string,
   placeholders: readonly TemplatePlaceholder[] = [],
+  context?: { fields: readonly { key: string }[]; referenceDate: string },
 ): FieldValues & {
   signerName: string;
   creditorHeaders?: FieldValues['debts'];
 } {
   const values = readFieldValues(input);
   const output = emptyFieldValues();
+  if (context && hasEmploymentFields(context.fields)) {
+    values.employmentDetails = assessEmployment(
+      values,
+      context.referenceDate,
+    ).statement;
+  }
   const obligations = obligationTemplate(templateVersion)
     ? obligationAmounts(values.debts, values.businessDebts)
     : null;
