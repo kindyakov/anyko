@@ -58,3 +58,26 @@ test('uses the official territorial catalogue and reads the current address from
     ],
   });
 });
+
+test('cancels an oversized streamed catalogue response before reading its remainder', async () => {
+  let cancelled = false;
+  let pulls = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      pulls++;
+      if (pulls === 5) controller.close();
+      else controller.enqueue(new Uint8Array(1_000_001));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const result = await findArbitrationCourt(
+    'Московская область',
+    new AbortController().signal,
+    () => Promise.resolve(new Response(body)),
+  );
+  expect(result).toMatchObject({ status: 'unavailable', courts: [] });
+  expect(cancelled).toBe(true);
+  expect(pulls).toBeLessThan(5);
+});

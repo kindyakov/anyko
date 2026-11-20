@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { readOfficialResponse } from './official-response';
+
 const catalogueUrl = 'https://arbitr.ru/ac/map';
 const cataloguePage = 'https://arbitr.ru/' as const;
 const catalogueSchema = z.array(
@@ -182,7 +184,7 @@ export async function findArbitrationCourt(
   };
   try {
     const catalogue = catalogueSchema.parse(
-      await (await request(catalogueUrl)).json(),
+      JSON.parse(await readOfficialResponse(await request(catalogueUrl))),
     );
     const matches = catalogue
       .flatMap(({ ac1 }) => ac1)
@@ -196,7 +198,7 @@ export async function findArbitrationCourt(
           request(contactUrl)
             .then(async (response) =>
               contactAddresses(
-                await response.text(),
+                await readOfficialResponse(response),
                 name.startsWith('Постоянное судебное присутствие '),
               ),
             )

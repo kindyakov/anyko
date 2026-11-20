@@ -184,14 +184,23 @@ function FactsEditor({ view }: { view: WorkView }) {
   );
 }
 
-test('court alternatives expose the official source and the selected address enters the draft', async () => {
+test('court alternatives expose the official source and replace the court and address together', async () => {
+  const courtName = 'Арбитражный суд Московской области';
   const courtAddress = '107053, Москва, пр-кт Академика Сахарова, 18';
   const alternative = '107053, Москва, Садовая-Спасская, 18';
   const contactUrl = 'https://asmo.arbitr.ru/about/mode';
-  const initial = viewWith({});
+  const initial = viewWith({ courtName: 'Арбитражный суд города Москвы' });
   const courtPackage = documentPackageSchema.parse({
     ...pack,
     fields: [
+      {
+        key: 'courtName',
+        label: 'Арбитражный суд',
+        kind: 'text',
+        multiline: false,
+        limits: {},
+        columns: [],
+      },
       {
         key: 'courtAddress',
         label: 'Адрес суда',
@@ -204,7 +213,12 @@ test('court alternatives expose the official source and the selected address ent
     documents: [
       {
         ...pack.documents[0],
-        blocks: [{ kind: 'paragraph', paragraph: paragraph('{courtAddress}') }],
+        blocks: [
+          {
+            kind: 'paragraph',
+            paragraph: paragraph('{courtName}: {courtAddress}'),
+          },
+        ],
       },
     ],
   });
@@ -228,6 +242,7 @@ test('court alternatives expose the official source and the selected address ent
       catalogueUrl: 'https://arbitr.ru/',
       contactUrl,
       checkedAt: '2026-11-20T00:00:00.000Z',
+      courtName,
     },
   }));
   installEventSource();
@@ -256,11 +271,12 @@ test('court alternatives expose the official source and the selected address ent
     contactUrl,
   ]);
   const [firstOption] = within(options).getAllByRole('button', {
-    name: 'Подставить это значение',
+    name: 'Подставить суд и адрес',
   });
   if (!firstOption) throw new Error('EXPECTED_COURT_ADDRESS_CHOICE');
   await userEvent.setup().click(firstOption);
   await findField('Адрес суда');
+  expect(screen.getAllByDisplayValue(courtName).length).toBeGreaterThan(0);
   expect(screen.getAllByDisplayValue(courtAddress).length).toBeGreaterThan(0);
   expect(screen.queryByDisplayValue(alternative)).toBeNull();
 });

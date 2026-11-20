@@ -209,8 +209,8 @@ export function WorkReview({
             visible={visible}
             values={values}
             view={view}
-            onApply={(key, value) => {
-              facts.change({ [key]: value });
+            onApply={(patch) => {
+              facts.change(patch);
             }}
             busy={busy}
             jump={jump}

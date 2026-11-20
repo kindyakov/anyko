@@ -26,6 +26,7 @@ import {
 import {
   containsObligations,
   reconcileObligations,
+  supersedesObligation,
   usesBankObligations,
 } from '../../../profiles/bfl/reconcile-obligations';
 import { factsSchema, type WorkFacts } from '../schemas';
@@ -66,7 +67,14 @@ export function mergeCandidates(
       const proposed = reconcileObligations(saved, found.map(automaticValue));
       if (preserveExisting && Array.isArray(saved)) {
         values[key] = [
-          ...saved,
+          ...saved.map((old) =>
+            Array.isArray(proposed)
+              ? (proposed.find(
+                  (row) =>
+                    sameObligation(old, row) && supersedesObligation(row, old),
+                ) ?? old)
+              : old,
+          ),
           ...(Array.isArray(proposed)
             ? proposed.filter(
                 (row) => !saved.some((old) => sameObligation(old, row)),

@@ -7,25 +7,24 @@ import type {
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 import {
-  applyCreditorRegistryCandidate,
-  applyObligationCandidate,
   canApplyCreditorRegistryCandidate,
   containsCreditorRegistryCandidate,
-  isBankObligation,
-  obligationFields,
 } from '@anyko/document-values/obligations';
 import { Button, StatusPill } from '@anyko/ui';
 
+import { courtOptions } from '@/features/fact-review/model/court-options';
 import { sameFieldValue } from '@/features/fact-review/model/field-value';
 import {
   candidateSelection,
   invalidReviewValue,
   normalizedReviewValue,
+  reviewCandidateValue,
   type ReviewField,
 } from '@/features/fact-review/model/review';
 
 import { CandidateValue } from '../work-fields';
 
+import { CourtChoices } from './court-choices';
 import {
   type CourtSources,
   type CreditorSource,
@@ -48,7 +47,7 @@ export function CandidateList({
   view: WorkView;
   busy: boolean;
   jump: (key: FieldKey) => void;
-  onApply: (key: FieldKey, value: FieldValue) => void;
+  onApply: (patch: Partial<FieldValues>) => void;
   onOpen: OpenSource;
 }) {
   return (
@@ -98,15 +97,27 @@ export function CandidateList({
               group.explanations.add(candidate.explanation);
             if (candidate.courtSources)
               group.courtSources.set(
-                candidate.courtSources.contactUrl,
+                JSON.stringify([
+                  candidate.courtSources.contactUrl,
+                  candidate.courtSources.courtName,
+                ]),
                 candidate.courtSources,
               );
           }
+          const choicesFor = (group: Findings & { value: FieldValue }) =>
+            courtOptions(
+              values,
+              view.facts.candidates,
+              field.key,
+              group.value,
+              group.courtSources.values(),
+            );
           const { matching = [], options = [] } = Object.groupBy(
             groups,
-            ({ value }) =>
-              !invalidReviewValue(field, value) &&
-              sameFieldValue(comparable, value)
+            (group) =>
+              !invalidReviewValue(field, group.value) &&
+              sameFieldValue(comparable, group.value) &&
+              !choicesFor(group).length
                 ? 'matching'
                 : 'options',
           );
@@ -204,7 +215,14 @@ export function CandidateList({
                           <div className="min-w-0 text-sm font-medium">
                             <CandidateValue value={option.value} />
                           </div>
-                          {invalidReviewValue(field, option.value) ? (
+                          {option.courtSources.size ? (
+                            <CourtChoices
+                              field={field.key}
+                              choices={choicesFor(option)}
+                              busy={busy}
+                              onApply={onApply}
+                            />
+                          ) : invalidReviewValue(field, option.value) ? (
                             <StatusPill tone="warning">
                               {field.valueType === 'date'
                                 ? 'Непроверенная дата'
@@ -233,31 +251,13 @@ export function CandidateList({
                                   .closest('article')
                                   ?.querySelector('h3')
                                   ?.focus({ preventScroll: true });
-                                if (
-                                  option.creditorSources.size > 0 &&
-                                  Array.isArray(option.value)
-                                ) {
-                                  onApply(
-                                    field.key,
-                                    applyCreditorRegistryCandidate(
-                                      current,
-                                      option.value,
-                                    ) ?? null,
-                                  );
-                                  return;
-                                }
-                                const value =
-                                  obligationFields.some(
-                                    (key) => key === field.key,
-                                  ) &&
-                                  Array.isArray(option.value) &&
-                                  option.value.some(isBankObligation)
-                                    ? applyObligationCandidate(
-                                        current,
-                                        option.value,
-                                      )
-                                    : option.value;
-                                onApply(field.key, value);
+                                const value = reviewCandidateValue(
+                                  field.key,
+                                  current,
+                                  option.value,
+                                  option.creditorSources.size > 0,
+                                );
+                                onApply({ [field.key]: value });
                               }}
                             >
                               Подставить это значение

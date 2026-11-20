@@ -101,6 +101,57 @@ export function SourceChecklist({
                       <span className="text-sm font-medium">{item.label}</span>
                       <StatusPill tone={tone}>{label}</StatusPill>
                     </div>
+                    {!!item.contracts?.length && (
+                      <ul
+                        aria-label="Справки по договорам"
+                        className="grid gap-2"
+                      >
+                        {item.contracts.map((contract) => (
+                          <li
+                            key={JSON.stringify([
+                              contract.creditor,
+                              contract.contractNumber,
+                              contract.contractDate,
+                            ])}
+                            className="flex flex-wrap items-center gap-2 border-l border-white/10 pl-3"
+                          >
+                            <span className="text-sm wrap-anywhere">
+                              {contract.creditor} · Договор №{' '}
+                              {contract.contractNumber}
+                              {contract.contractDate &&
+                                ` от ${contract.contractDate}`}
+                            </span>
+                            <StatusPill tone={statuses[contract.status][1]}>
+                              {statuses[contract.status][0]}
+                            </StatusPill>
+                            {contract.documentIds.map((id) => {
+                              const document = byId.get(id);
+                              const source = item.sources.find(
+                                ({ documentId }) => documentId === id,
+                              );
+                              return (
+                                document && (
+                                  <Button
+                                    key={id}
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => {
+                                      onOpen(
+                                        document,
+                                        source?.page ?? undefined,
+                                      );
+                                    }}
+                                  >
+                                    <Eye size={15} aria-hidden />
+                                    {document.filename}
+                                  </Button>
+                                )
+                              );
+                            })}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                     {item.sources.length > 0 && (
                       <ul
                         aria-label={`Источники для «${item.label}»`}

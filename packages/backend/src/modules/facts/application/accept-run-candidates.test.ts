@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import { obligationAmounts } from '@anyko/document-values/obligations';
+
 import {
   type AcceptRunCandidatesInput,
   candidatesForContext,
@@ -472,7 +474,7 @@ test('context preparation only reuses document candidates for unreadable sources
   ).toEqual([raw, unreadable]);
 });
 
-test('accepts independent evidenced bank contracts and keeps alternate balances and closing certificates for review', async () => {
+test('accepts a later documented closure while keeping conflicting active balances for review', async () => {
   let evidenceNumber = 100;
   const makeDebt = (
     contractNumber: string,
@@ -550,11 +552,12 @@ test('accepts independent evidenced bank contracts and keeps alternate balances 
     'Оборот по счёту: 9000,10 руб.',
   );
   const facts = runFacts();
-  const accept = (candidates: Candidate[]) =>
+  const accept = (candidates: Candidate[], preserveExisting = false) =>
     facts.accept({
       fields: ['debts'],
       confirmed: false,
       candidates,
+      preserveExisting,
     });
 
   await accept([first, repeat, second, turnover]);
@@ -564,13 +567,33 @@ test('accepts independent evidenced bank contracts and keeps alternate balances 
     expect.objectContaining({ contractNumber: 'ACT-2', amount: '200.06' }),
   ]);
   expect(saved.candidates).toHaveLength(4);
+  const beforeClosure = saved;
 
-  const result = await accept([changed, closing]);
+  const result = await accept([changed, closing], true);
   saved = await facts.saved();
   expect(saved.values.debts).toEqual([
     expect.objectContaining({ contractNumber: 'ACT-1', amount: '100.05' }),
-    expect.objectContaining({ contractNumber: 'ACT-2', amount: '200.06' }),
+    expect.objectContaining({
+      contractNumber: 'ACT-2',
+      debtStatus: 'Закрыт',
+    }),
   ]);
   expect(saved.candidates).toHaveLength(6);
   expect(result.discrepancyFields).toContain('debts');
+  expect(obligationAmounts(saved.values.debts, null).debts).toMatchObject([
+    { contractNumber: 'ACT-1', amount: '100,05' },
+  ]);
+
+  for (const review of ['manual', 'confirmed'] as const) {
+    const reviewed = runFacts({ ...beforeClosure, [review]: ['debts'] });
+    await reviewed.accept({
+      fields: ['debts'],
+      confirmed: false,
+      preserveExisting: true,
+      candidates: [closing],
+    });
+    expect((await reviewed.saved()).values.debts).toEqual(
+      beforeClosure.values.debts,
+    );
+  }
 });

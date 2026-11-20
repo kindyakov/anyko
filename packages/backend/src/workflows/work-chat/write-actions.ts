@@ -13,6 +13,7 @@ import { brandDocumentId, brandWorkId } from '../../platform/ids';
 import type { Tx } from '../../platform/transactions';
 import type { FieldDefinition } from '../../profiles/bfl/fields';
 import type { WorkDependencies } from '../work-dependencies';
+import { workLockKey } from '../work-guards';
 import { editChecklistLink } from '../work-review/edit-checklist';
 import { editWorkField } from '../work-review/edit-values';
 
@@ -68,9 +69,6 @@ export async function prepareChatWriter(
   const recoveredChecklist = new Map(
     savedChecklist.map((receipt) => [checklistKey(receipt.args), receipt]),
   );
-  const appliedChecklist = [...recoveredChecklist.values()].map(
-    ({ change }) => change,
-  );
   const latestRevisions = [
     saved.at(-1)?.change.revision,
     savedChecklist.at(-1)?.change.revision,
@@ -78,6 +76,41 @@ export async function prepareChatWriter(
   let revision = latestRevisions.length
     ? Math.max(...latestRevisions)
     : input.initialRevision;
+  const checkChecklist = async (args: Parameters<WriteChecklist>[0]) => {
+    const ocrRevision = input.checklistSources.get(args.documentId);
+    if (ocrRevision === undefined) return false;
+    const [links, documents] = await Promise.all([
+      deps.works.internal.checklistLinks(workspaceId, workId),
+      deps.works.internal.documents(workspaceId, workId),
+    ]);
+    return (
+      documents.some(
+        (row) =>
+          !row.deleted &&
+          row.id === args.documentId &&
+          row.ocrRevision === ocrRevision,
+      ) &&
+      links.some(
+        (link) =>
+          link.requirementKey === args.requirementKey &&
+          link.documentId === args.documentId &&
+          link.ocrRevision === ocrRevision &&
+          link.decision === args.decision,
+      )
+    );
+  };
+  const lockKey = workLockKey(workspaceId, workId);
+  const appliedChecklist = recoveredChecklist.size
+    ? await deps.locks.run(lockKey, async () => {
+        if ((await assertCurrent()) !== revision) return [];
+        const changes = await Promise.all(
+          [...recoveredChecklist.values()].map(async ({ args, change }) =>
+            (await checkChecklist(args)) ? [change] : [],
+          ),
+        );
+        return changes.flat();
+      })
+    : [];
   const calls = new Map(saved.map((receipt) => [receipt.toolCallId, receipt]));
   const checklistCalls = new Map(
     savedChecklist.map((receipt) => [receipt.toolCallId, receipt]),
@@ -165,17 +198,29 @@ export async function prepareChatWriter(
         const previous = checklistCalls.get(toolCallId);
         if (previous && !isDeepStrictEqual(previous.args, args))
           throw new WorkError('INVALID_WORK_INPUT');
-        const recovered = recoveredChecklist.get(checklistKey(args));
+        const recovered =
+          recoveredChecklist.get(checklistKey(args)) ?? previous;
         if (recovered) {
           if (
             currentRevision !== revision ||
-            !isDeepStrictEqual(recovered.args, args)
+            !isDeepStrictEqual(recovered.args, args) ||
+            !(await deps.locks.run(
+              lockKey,
+              async (lockSignal) => {
+                await requireActor();
+                const matches =
+                  (await assertCurrent()) === revision &&
+                  (await checkChecklist(args));
+                lockSignal.throwIfAborted();
+                return matches;
+              },
+              signal,
+            ))
           )
             throw new WorkError('REVISION_CONFLICT');
           checklistCalls.set(toolCallId, recovered);
           return recovered.change;
         }
-        if (previous) return previous.change;
         const change = await editChecklistLink(attemptDeps(signal))(
           scope,
           {

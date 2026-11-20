@@ -20,7 +20,10 @@ import {
 import type { findArbitrationCourt } from './arbitration-court';
 import { createWorkContextBudget } from './context-budget';
 import { createCourtLookupTool } from './court-lookup-tool';
-import { createCreditorLookup } from './creditor-lookup-tool';
+import {
+  authorisedCreditorQuery,
+  createCreditorLookup,
+} from './creditor-lookup-tool';
 import type { findCreditor } from './creditor-registry';
 import { createWorkReadTools } from './work-read-tools';
 
@@ -53,6 +56,7 @@ export function createChatAgent(options: {
         ...input,
         signal,
         lookupCreditor: options.lookupCreditor,
+        authorisedQuery: (query) => authorisedCreditorQuery(input, query),
       });
       const setWorkField = createTool({
         id: fieldWriteTool,
