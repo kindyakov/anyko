@@ -17,6 +17,7 @@ import {
   type CreditorQuery,
   creditorRegistryQuery,
   findCreditor,
+  inlineCreditorLegalForm,
 } from './creditor-registry';
 
 type Candidate = z.infer<typeof candidateSchema>;
@@ -113,9 +114,15 @@ function supportedQuery(
       continue;
     const identifiers = new Map<string, string>();
     for (const field of tail.split(/[,;|]|\s+(?=(?:инн|огрн)(?=\s|[:№]))/u)) {
-      if (!field.trim()) continue;
+      const detail = field.trim();
+      if (
+        !detail ||
+        (/^адрес\s*:\s*\S/u.test(detail) &&
+          !inlineCreditorLegalForm.test(detail))
+      )
+        continue;
       const [, label, number] =
-        /^(инн|огрн)\s*[:№]?\s*(\d+)\.?$/u.exec(field.trim()) ?? [];
+        /^(инн|огрн)\s*[:№]?\s*(\d+)\.?$/u.exec(detail) ?? [];
       if (!label || !number || identifiers.has(label)) break;
       identifiers.set(label, number);
     }

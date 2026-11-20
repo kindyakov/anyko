@@ -326,14 +326,31 @@ export function evidencedContract(
     .toLowerCase();
   if (
     lines.some((line) => mentions(line, name)) &&
-    lines.some(
+    (lines.some(
       (line) =>
         line
           .normalize('NFKC')
           .toLowerCase()
           .match(/[\p{L}\p{N}]+(?:[-/._][\p{L}\p{N}]+)*/gu)
           ?.includes(number) && attestedDate(contractDate, line),
-    )
+    ) ||
+      evidence.some((entry) =>
+        proofLines([entry], true).some((line, index, block) => {
+          const labelledNumber =
+            /^\s*номер\s+договора\s*:\s*№?\s*(\S+)\s*$/u.exec(
+              line.normalize('NFKC').toLowerCase(),
+            )?.[1];
+          if (labelledNumber !== number) return false;
+          const labelledDate =
+            /^\s*дата\s+(?:заключения\s+)?договора\s*:\s*(.+)$/iu.exec(
+              block[index + 1] ?? '',
+            )?.[1];
+          const date = canonicalCalendarDate(labelledDate ?? '');
+          return (
+            date !== undefined && date === canonicalCalendarDate(contractDate)
+          );
+        }),
+      ))
   )
     return { lines, identity: { name, contractNumber, contractDate } };
 }
@@ -350,7 +367,7 @@ function evidencedObligation(
     debtStatus === obligationStatuses.closed
       ? /^\s*(?:(?:кредитный\s+договор|договор|кредит)\s+(?:был\s+)?закрыт|действие\s+договора\s+прекращено)\.?\s*$/iu
       : debtStatus === obligationStatuses.repaid
-        ? /^\s*(?:(?:кредит|долг)\s+(?:был\s+)?полностью\s+погашен|задолженность\s+(?:полностью\s+погашена|отсутствует)|обязательства\s+исполнены\s+в\s+полном\s+объ[её]ме)\.?\s*$/iu
+        ? /^\s*(?:(?:кредит|долг)\s+(?:был\s+)?полностью\s+погашен|задолженность\s+(?:полностью\s+погашена|отсутствует)|обязательства\s+(?:по\s+кредитному\s+договору\s+)?исполнены\s+в\s+полном\s+объ[её]ме)\.?\s*$/iu
         : null;
   const documentIds = [
     ...new Set(evidence.map(({ documentId }) => documentId)),
