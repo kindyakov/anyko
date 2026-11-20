@@ -15,11 +15,30 @@ export const fieldChangeSchema = z.strictObject({
 });
 export type AgentFieldWrite = z.infer<typeof fieldWriteSchema>;
 export type AgentFieldChange = z.infer<typeof fieldChangeSchema>;
-export interface AgentFieldReceipt {
+export interface AgentWriteReceipt<Args, Change> {
   toolCallId: string;
-  args: AgentFieldWrite;
-  change: AgentFieldChange;
+  args: Args;
+  change: Change;
 }
+
+export const checklistWriteTool = 'set-checklist-link';
+const checklistDecision = z.enum(['confirmed', 'rejected']);
+export const checklistWriteSchema = z.strictObject({
+  requirementKey: z.string().min(1).max(100),
+  documentId: z.uuid(),
+  decision: checklistDecision,
+});
+export const checklistChangeSchema = checklistWriteSchema
+  .omit({ decision: true })
+  .extend({
+    requirementLabel: z.string(),
+    filename: z.string(),
+    before: z.enum(['found', 'review', 'confirmed', 'rejected']).nullable(),
+    after: checklistDecision,
+    revision: z.number().int().nonnegative(),
+  });
+export type AgentChecklistWrite = z.infer<typeof checklistWriteSchema>;
+export type AgentChecklistChange = z.infer<typeof checklistChangeSchema>;
 
 type ChatRef = { workspaceId: string; workId: string; runId: string };
 type ChatSessionRef = Omit<ChatRef, 'runId'> & { sessionId: string };

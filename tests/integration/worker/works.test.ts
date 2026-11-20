@@ -828,6 +828,187 @@ test('chat shares the work session, waits for the current turn and retains read-
   }
 });
 
+test('chat links and unlinks a checklist source, records both changes, and rejects an unavailable source', async () => {
+  const input = await create('bfl-bankruptcy-v7');
+  const { workspaceId, workId } = input;
+  const userId = await createChatActor(workspaceId);
+  const app = fixtureApp(workspaceId, userId);
+  const workUrl = `http://localhost/api/v1/workspaces/${workspaceId}/works/${workId}`;
+  const request = (path: string, userText?: string) =>
+    app.handle(
+      new Request(workUrl + path, {
+        method: userText ? 'POST' : 'GET',
+        headers: {
+          origin: apiBackend.workHttp.origin,
+          'content-type': 'application/json',
+          'idempotency-key': crypto.randomUUID(),
+        },
+        body: userText ? JSON.stringify({ userText }) : null,
+      }),
+    );
+  const source = await upload(input, 'checklist chat source');
+  const initial = await until(input, terminal);
+  const file = initial.documents.find(({ id }) => id === source.id);
+  if (!file) throw new Error('CHECKLIST_SOURCE_NOT_FOUND');
+  const unavailable = crypto.randomUUID();
+  const requirementKey = 'debt-certificate';
+  const requirement = initial.checklist.find(
+    ({ key }) => key === requirementKey,
+  );
+  if (!requirement) throw new Error('CHECKLIST_REQUIREMENT_NOT_FOUND');
+  const read = async () => {
+    const response = await request('');
+    expect(response.status).toBe(200);
+    return workResponseSchema.parse(await response.json());
+  };
+  const chatModel = createDocumentAgents({
+    pool: actualPool,
+    fetch: Object.assign(
+      async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const body = (await new Request(url, init).json()) as {
+          messages: { role: string; content?: string }[];
+          tools?: { function: { name: string } }[];
+        };
+        expect(body.tools?.map(({ function: fn }) => fn.name)).toContain(
+          'setChecklistLink',
+        );
+        const lastUser = [...body.messages]
+          .reverse()
+          .find(({ role }) => role === 'user');
+        const content = z
+          .object({ message: z.string(), context: z.unknown() })
+          .parse(JSON.parse(lastUser?.content ?? '{}'));
+        expect(JSON.stringify(content.context)).toContain(requirementKey);
+        const hasResult = body.messages.at(-1)?.role === 'tool';
+        const args = {
+          requirementKey:
+            content.message === 'Неизвестный пункт'
+              ? 'unknown'
+              : requirementKey,
+          documentId:
+            content.message === 'Другой файл' ? unavailable : source.id,
+          decision:
+            content.message === 'Сними отметку' ? 'rejected' : 'confirmed',
+        };
+        return Response.json({
+          id: 'fixture-checklist-edit',
+          object: 'chat.completion',
+          created: 1,
+          model: 'fixture',
+          choices: [
+            {
+              index: 0,
+              finish_reason: hasResult ? 'stop' : 'tool_calls',
+              message: hasResult
+                ? { role: 'assistant', content: 'Обработано.' }
+                : {
+                    role: 'assistant',
+                    content: null,
+                    tool_calls: [
+                      {
+                        id: 'checklist-edit',
+                        type: 'function',
+                        function: {
+                          name: 'setChecklistLink',
+                          arguments: JSON.stringify(args),
+                        },
+                      },
+                    ],
+                  },
+            },
+          ],
+        });
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  chatHook = (turn) => chatModel.chat(turn);
+  try {
+    const send = async (userText: string, status: string) => {
+      const response = await request('/messages', userText);
+      expect(response.status).toBe(202);
+      const { runId } = z
+        .object({ runId: z.uuid() })
+        .parse(await response.json());
+      let turnStatus: string | undefined;
+      for (let poll = 0; poll < 300; poll++) {
+        const timeline = await request('/messages?pageSize=15');
+        expect(timeline.status).toBe(200);
+        const { items } = z
+          .object({
+            items: z.array(z.object({ runId: z.uuid(), status: z.string() })),
+          })
+          .parse(await timeline.json());
+        turnStatus = items.find((item) => item.runId === runId)?.status;
+        if (turnStatus && !['queued', 'running'].includes(turnStatus)) break;
+        await Bun.sleep(50);
+      }
+      expect(turnStatus).toBe(status);
+      const history = await request(
+        '/runs/' + runId + '/agent-history?pageSize=10',
+      );
+      expect(history.status).toBe(200);
+      const { items } = getWorkAgentHistory.response.schema.parse(
+        await history.json(),
+      );
+      return items.filter(({ kind }) => kind === 'tool');
+    };
+    const links = async () =>
+      (await read()).checklist?.find(({ key }) => key === requirementKey)
+        ?.sources;
+    expect(await links()).toEqual([]);
+    const confirmed = await send('Поставь отметку', 'succeeded');
+    expect(confirmed).toHaveLength(1);
+    expect(confirmed[0]).toMatchObject({
+      checklistChange: {
+        requirementKey,
+        requirementLabel: requirement.label,
+        documentId: source.id,
+        filename: file.filename,
+        before: null,
+        after: 'confirmed',
+      },
+    });
+    expect(await links()).toMatchObject([
+      { documentId: source.id, status: 'confirmed' },
+    ]);
+    await send('Поставь отметку повторно', 'succeeded');
+    expect(await links()).toMatchObject([
+      { documentId: source.id, status: 'confirmed' },
+    ]);
+    const rejected = await send('Сними отметку', 'succeeded');
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]).toMatchObject({
+      checklistChange: {
+        requirementKey,
+        documentId: source.id,
+        filename: file.filename,
+        before: 'confirmed',
+        after: 'rejected',
+      },
+    });
+    expect(await links()).toEqual([]);
+    expect((await read()).documents.some(({ id }) => id === source.id)).toBe(
+      true,
+    );
+    expect(await send('Другой файл', 'failed')).toMatchObject([
+      { status: 'failed', errorCode: 'NOT_FOUND', checklistChange: null },
+    ]);
+    expect(await send('Неизвестный пункт', 'failed')).toMatchObject([
+      {
+        status: 'failed',
+        errorCode: 'INVALID_WORK_INPUT',
+        checklistChange: null,
+      },
+    ]);
+    expect(await links()).toEqual([]);
+  } finally {
+    chatHook = undefined;
+    await chatModel.stop();
+    await db.user.delete({ where: { id: userId } });
+  }
+});
+
 test('chat tool edits one field, records its history, and restores through the work route', async () => {
   const input = await create();
   const { workspaceId, workId } = input;
@@ -4521,13 +4702,13 @@ test('employment records and income certificates reach review and the downloaded
     });
     const employmentCandidates = (records: typeof history) =>
       records.map(({ quote, ...row }) => ({
-        field: 'employmentHistory',
+        field: 'employmentHistory' as const,
         value: [row],
         evidence: [evidence(quote)],
       }));
     const incomeCandidates = (employer: string, records: typeof northIncome) =>
       records.map(({ quote, ...row }) => ({
-        field: 'employmentIncome',
+        field: 'employmentIncome' as const,
         value: [{ employer, ...row }],
         evidence: [evidence(taxYear), evidence(employer), evidence(quote)],
       }));
