@@ -4702,13 +4702,13 @@ test('employment records and income certificates reach review and the downloaded
     });
     const employmentCandidates = (records: typeof history) =>
       records.map(({ quote, ...row }) => ({
-        field: 'employmentHistory',
+        field: 'employmentHistory' as const,
         value: [row],
         evidence: [evidence(quote)],
       }));
     const incomeCandidates = (employer: string, records: typeof northIncome) =>
       records.map(({ quote, ...row }) => ({
-        field: 'employmentIncome',
+        field: 'employmentIncome' as const,
         value: [{ employer, ...row }],
         evidence: [evidence(taxYear), evidence(employer), evidence(quote)],
       }));
