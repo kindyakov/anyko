@@ -1,3 +1,5 @@
+BEGIN;
+
 CREATE TYPE "TemplateRequirementApplicability" AS ENUM ('usual', 'conditional');
 CREATE TYPE "WorkChecklistDecision" AS ENUM ('found', 'review', 'confirmed', 'rejected');
 
@@ -51,3 +53,5 @@ SELECT template."version", req."key", req."documentKind", req."label",
        req."applicability"::"TemplateRequirementApplicability", req."position"
 FROM requirements req
 JOIN "DocumentTemplateVersion" template ON template."version" = ANY(req."templateVersions");
+
+COMMIT;
