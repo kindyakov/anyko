@@ -147,6 +147,8 @@ function supportedValue(
       : value;
   }
   if (!Array.isArray(value)) return value;
+  if (field === 'attachments' && value.some(({ category }) => !!category))
+    return null;
   if (employmentFields.some((key) => key === field))
     return evidencedEmployment(candidate, value);
   if (

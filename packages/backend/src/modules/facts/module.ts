@@ -19,6 +19,17 @@ export function createFactsModule(deps: FactsDeps): FactsModule {
   const bind = (store: FactsStore): FactsPorts => ({
     internal: {
       erase: (workspaceId, workId) => store.erase(workspaceId, workId),
+      async removeSubmittedAttachment(workspaceId, workId, documentId) {
+        const facts = await store.get(workspaceId, workId);
+        const rows = facts.values.submittedAttachments;
+        if (!Array.isArray(rows)) return;
+        const kept = rows.filter((row) => row.documentId !== documentId);
+        if (kept.length === rows.length) return;
+        await store.save(workspaceId, workId, {
+          ...facts,
+          values: { ...facts.values, submittedAttachments: kept },
+        });
+      },
       async refreshEvidence(workspaceId, workId, refresh) {
         const facts = refreshFactEvidence(
           await store.get(workspaceId, workId),

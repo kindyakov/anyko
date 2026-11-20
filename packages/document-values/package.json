@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./attachments": "./src/attachments.ts",
     "./calendar-date": "./src/calendar-date.ts",
     "./employment": "./src/employment.ts",
     "./money": "./src/money.ts",

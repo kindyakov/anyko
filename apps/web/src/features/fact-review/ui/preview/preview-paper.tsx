@@ -9,6 +9,10 @@ import type {
   PreviewParagraph,
   PreviewRow,
 } from '@anyko/contracts/catalog';
+import {
+  attachmentDescriptions,
+  hasSubmittedAttachments,
+} from '@anyko/document-values/attachments';
 
 import {
   previewEntries,
@@ -38,9 +42,15 @@ export function PreviewPaper({
   const listNumbers = new Map<string, number>();
   const margins = document.margins;
   const obligations = previewObligations(document.version, values);
-  const collectionValue =
-    obligations?.value ?? ((key: FieldKey) => values[key]);
+  const submitted = hasSubmittedAttachments(pack.fields);
+  const collectionValue = (key: FieldKey) =>
+    submitted && key === 'attachments'
+      ? attachmentDescriptions(values.submittedAttachments)
+      : obligations
+        ? obligations.value(key)
+        : values[key];
   const collectionNote = (key: FieldKey, collection: FieldValue) => {
+    if (submitted && key === 'attachments') return null;
     if (obligations?.isCollection(key))
       return obligations.emptyNote(key, collection);
     const field = pack.fields.find((item) => item.key === key);
@@ -84,7 +94,11 @@ export function PreviewPaper({
           ?.columns.find((item) => item.key === key);
         if (key === 'rowNumber' && row && !column)
           return `${String(rowNumber ?? 1)}${suffix}`;
-        if (row && obligations?.isCollection(rowField))
+        if (
+          row &&
+          (obligations?.isCollection(rowField) ||
+            (submitted && rowField === 'attachments'))
+        )
           return (row[key] ?? '[не заполнено]') + suffix;
         const total = !row && obligations?.text(key);
         if (total) return total + suffix;
@@ -135,6 +149,7 @@ export function PreviewPaper({
     if (repeat && !row) {
       const collection = collectionValue(repeat);
       const rows = Array.isArray(collection) ? collection : [];
+      if (submitted && repeat === 'attachments' && !rows.length) return null;
       return (
         <div key={id} data-field={repeat} className="rounded-[3px]">
           {rows.length ? (

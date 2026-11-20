@@ -1,3 +1,8 @@
+import {
+  hasSubmittedAttachments,
+  submittedAttachmentRows,
+} from '@anyko/document-values/attachments';
+
 import type { AuditModule } from '../../modules/audit';
 import type { ConnectionsModule } from '../../modules/connections';
 import type { ResourceLocks } from '../../modules/documents';
@@ -47,6 +52,14 @@ export const startGeneration =
             .in(tx)
             .queries.get(scope, input.workId);
           if (needsReview?.length) throw new WorkError('NOT_READY');
+          const pack = requirePackage(work.packageVersion);
+          if (hasSubmittedAttachments(pack.fields))
+            values.submittedAttachments = submittedAttachmentRows(
+              values.submittedAttachments,
+              new Set(
+                documents.filter(({ deleted }) => !deleted).map(({ id }) => id),
+              ),
+            );
           const generationId = await deps.generation
             .in(tx)
             .commands.create(scope, {
@@ -55,13 +68,11 @@ export const startGeneration =
               confirmed: work.confirmedRevision === work.revision,
               values,
               packageVersion: work.packageVersion,
-              templates: requirePackage(work.packageVersion).documents.map(
-                (template) => ({
-                  templateVersion: template.version,
-                  title: template.title,
-                  filename: template.filename,
-                }),
-              ),
+              templates: pack.documents.map((template) => ({
+                templateVersion: template.version,
+                title: template.title,
+                filename: template.filename,
+              })),
             });
           await deps.processing.in(tx).commands.start(scope, {
             workId: input.workId,

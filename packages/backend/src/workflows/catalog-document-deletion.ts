@@ -39,7 +39,10 @@ interface DeletionPorts extends ImpactPorts {
     documentId: string,
     workIds: string[],
   ): Promise<void>;
-  facts: Pick<FactsPorts['internal'], 'refreshEvidence'>;
+  facts: Pick<
+    FactsPorts['internal'],
+    'refreshEvidence' | 'removeSubmittedAttachment'
+  >;
   works: Pick<WorkStore, 'touch' | 'event' | 'lockRevision'>;
   eraseSession(workspaceId: string, workId: string): Promise<void>;
   threads(workspaceId: string, workId: string): Promise<string[]>;
@@ -120,6 +123,7 @@ export async function deleteCatalogDocument(
         id,
         (entry) => (entry.documentId === documentId ? null : entry),
       );
+      await ports.facts.removeSubmittedAttachment(workspaceId, id, documentId);
       await ports.eraseSession(workspaceId, id);
       threadIds.push(...(await ports.threads(workspaceId, id)));
       await finishSourceChange(
