@@ -46,7 +46,9 @@ test('RouterAI context lookup uses the selected model and the smallest published
     await gateway.contextLimits(connection, 'example/small', signal),
   ).toEqual({ context: 16384, prompt: 14000, completion: 4096 });
   await gateway.contextLimits(connection, 'example/small', signal);
-  await gateway.contextLimits(connection, 'example/large', signal);
+  expect(
+    await gateway.contextLimits(connection, '~example/large', signal),
+  ).toEqual({ context: 16384, prompt: 14000, completion: 4096 });
   expect(
     await gateway.contextLimits(
       { ...connection, baseURL: 'https://fixture.invalid/v1' },
@@ -60,7 +62,7 @@ test('RouterAI context lookup uses the selected model and the smallest published
       authorization: null,
     },
     {
-      url: 'https://routerai.ru/api/v1/models/example/large/endpoints',
+      url: 'https://routerai.ru/api/v1/models/~example/large/endpoints',
       authorization: null,
     },
   ]);

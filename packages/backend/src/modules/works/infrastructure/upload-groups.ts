@@ -98,9 +98,7 @@ export function createUploadGroupsStore(db: Connection) {
       });
       if (!group?.closedAt) return null;
       const documents = await groupDocuments(workspaceId, workId, group.id);
-      if (documents.some(({ ocrRevision }) => ocrRevision === null))
-        return null;
-      const included = documents.length
+      const included = documents.some(({ ocrRevision }) => ocrRevision !== null)
         ? await db.workDocument.findMany({
             where: {
               ...where(workspaceId, workId),
@@ -139,7 +137,7 @@ export function createUploadGroupsStore(db: Connection) {
           documentId,
           removed: false,
           ocrRevision: null,
-          uploadGroup: { is: { dispatchedAt: null } },
+          uploadGroupId: { not: null },
         },
       });
       return result.count === 1;

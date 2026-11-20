@@ -1,5 +1,5 @@
 export class StorageWriteOutcomeUnknown extends Error {
-  constructor() {
+  constructor(readonly retryable = false) {
     super('STORAGE_WRITE_OUTCOME_UNKNOWN');
   }
 }

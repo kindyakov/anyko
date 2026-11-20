@@ -33,7 +33,7 @@ export function createRouterContextLimits(transport: typeof fetch) {
     if (
       connection.id !== 'routerai' ||
       connection.baseURL.replace(/\/$/, '') !== catalogBase ||
-      !/^[\w-]+\/[\w.:-]+$/.test(modelId)
+      !/^~?[\w-]+\/[\w.:-]+$/.test(modelId)
     )
       return null;
 

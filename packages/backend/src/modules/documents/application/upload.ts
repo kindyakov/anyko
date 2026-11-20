@@ -3,7 +3,11 @@ import { DocumentError } from '../errors';
 import type { DocumentUploadInput, InternalUploadInput } from '../index';
 
 import { checksum } from './checksum';
-import type { DocumentDeps, DocumentView } from './ports';
+import {
+  type DocumentDeps,
+  type DocumentView,
+  StorageWriteOutcomeUnknown,
+} from './ports';
 import {
   matchesSourceFormat,
   sourceContentTypes,
@@ -27,64 +31,81 @@ export const uploadDocument = (deps: DocumentDeps) => {
           input.workspaceId,
           input.requestKey,
         );
-        const id = deps.newId();
-        return deps.io.run(
-          {
-            kind: 'document',
-            workspaceId: input.workspaceId,
-            documentId: id,
-            requestKey: input.requestKey,
-          },
-          async () => {
-            const sourceKey = `sources/${input.workspaceId}/${id}.${format}`;
-            const sourceChecksum = await checksum(input.bytes);
-            await deps.store.stageSource(sourceKey, input.workspaceId);
-            await deps.artifacts.stage({
-              key: sourceKey,
+        const upload = (id: string) =>
+          deps.io.run(
+            {
+              kind: 'document',
               workspaceId: input.workspaceId,
               documentId: id,
               requestKey: input.requestKey,
-              kind: 'source',
-              contentType: sourceContentTypes[format],
-              size: input.bytes.length,
-              checksum: sourceChecksum,
-            });
-            signal.throwIfAborted();
-            await deps.storage.put(
-              sourceKey,
-              input.bytes,
-              sourceContentTypes[format],
-              signal,
-            );
-            signal.throwIfAborted();
-            try {
-              const registered = await deps.store.register({
-                id,
-                runId: deps.newId(),
+            },
+            async () => {
+              const sourceKey = `sources/${input.workspaceId}/${id}.${format}`;
+              const sourceChecksum = await checksum(input.bytes);
+              await deps.store.stageSource(sourceKey, input.workspaceId);
+              await deps.artifacts.stage({
+                key: sourceKey,
                 workspaceId: input.workspaceId,
-                filename: input.filename.slice(0, 200),
-                sourceKey,
-                sourceChecksum,
-                size: input.bytes.length,
-                actorId: input.actorId,
-                correlationId: input.correlationId,
+                documentId: id,
                 requestKey: input.requestKey,
+                kind: 'source',
+                contentType: sourceContentTypes[format],
+                size: input.bytes.length,
+                checksum: sourceChecksum,
               });
-              if (registered.id !== id) {
-                await deps.storage.delete(sourceKey);
-                await deps.artifacts.forget(sourceKey);
-                await deps.store.forgetSource(sourceKey);
+              signal.throwIfAborted();
+              await deps.storage.put(
+                sourceKey,
+                input.bytes,
+                sourceContentTypes[format],
+                signal,
+              );
+              signal.throwIfAborted();
+              try {
+                const registered = await deps.store.register({
+                  id,
+                  runId: deps.newId(),
+                  workspaceId: input.workspaceId,
+                  filename: input.filename.slice(0, 200),
+                  sourceKey,
+                  sourceChecksum,
+                  size: input.bytes.length,
+                  actorId: input.actorId,
+                  correlationId: input.correlationId,
+                  requestKey: input.requestKey,
+                });
+                if (registered.id !== id) {
+                  await deps.storage.delete(sourceKey);
+                  await deps.artifacts.forget(sourceKey);
+                  await deps.store.forgetSource(sourceKey);
+                }
+                return registered;
+              } catch (error) {
+                deps.logger.warn({
+                  event: 'source_registration_failed',
+                  correlationId: input.correlationId,
+                });
+                throw error;
               }
-              return registered;
-            } catch (error) {
-              deps.logger.warn({
-                event: 'source_registration_failed',
-                correlationId: input.correlationId,
-              });
-              throw error;
-            }
-          },
-        );
+            },
+          );
+        try {
+          return await upload(deps.newId());
+        } catch (error) {
+          if (
+            !(error instanceof StorageWriteOutcomeUnknown) ||
+            !error.retryable
+          )
+            throw error;
+          signal.throwIfAborted();
+          // A timed-out PUT may still commit. Keep its cleanup barrier and use a fresh key.
+          deps.logger.warn({
+            event: 'source_upload_retry',
+            correlationId: input.correlationId,
+            errorCode: 'STORAGE_WRITE_OUTCOME_UNKNOWN',
+          });
+          return upload(deps.newId());
+        }
       },
     );
   };

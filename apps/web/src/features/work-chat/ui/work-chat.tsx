@@ -1,34 +1,22 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import { MessageSquare, Send } from 'lucide-react';
-import { useState } from 'react';
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { MessageSquare } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 import type { WorkChatTimeline, WorkView } from '@anyko/contracts/works';
-import { Button, Modal, Notice } from '@anyko/ui';
+import { Button, Modal, Spinner } from '@anyko/ui';
+import { MessageScroller } from '@anyko/ui/chat';
 
-import {
-  HistoryError,
-  HistoryPagination,
-  RunHistory,
-} from '@/features/work-agent-history';
-import { describeApiError, sharedCodeTexts } from '@/lib/api/errors';
-import { createIdempotencyKey } from '@/lib/api/idempotency';
+import { HistoryError, RunHistory } from '@/features/work-agent-history';
 
-import { chatMessagesQuery, useSendChatMessage } from '../api/chat';
-import { chatRunErrorText } from '../model/run-error';
+import { chatMessagesQuery } from '../api/chat';
 
-type Entry = WorkChatTimeline['items'][number];
+import { ChatComposer } from './chat-composer';
+import { TimelineEntry } from './timeline-entry';
+
 type Props = { workspaceId: string; view: WorkView };
-
-const statuses: Record<Entry['status'], string> = {
-  queued: 'В очереди',
-  running: 'Выполняется',
-  succeeded: 'Готово',
-  partial: 'Готово частично',
-  failed: 'Ошибка',
-  cancelled: 'Отменено',
-};
+type Entry = WorkChatTimeline['items'][number];
 
 export function WorkChat({ workspaceId, view }: Props) {
   const [open, setOpen] = useState(false);
@@ -41,7 +29,7 @@ export function WorkChat({ workspaceId, view }: Props) {
           setOpen(true);
         }}
       >
-        <MessageSquare size={16} />
+        <MessageSquare size={16} aria-hidden />
         Чат с агентом
       </Button>
       <Modal
@@ -49,6 +37,7 @@ export function WorkChat({ workspaceId, view }: Props) {
         onOpenChange={setOpen}
         title="Чат с агентом"
         size="sheet"
+        scrollBody={false}
       >
         {open && <ChatTimeline workspaceId={workspaceId} view={view} />}
       </Modal>
@@ -57,164 +46,139 @@ export function WorkChat({ workspaceId, view }: Props) {
 }
 
 function ChatTimeline({ workspaceId, view }: Props) {
-  const [page, setPage] = useState(1);
-  const [draft, setDraft] = useState('');
-  const [draftKey, setDraftKey] = useState(createIdempotencyKey);
+  const [selection, setSelection] = useState<Entry | null>(null);
   const workId = view.work.id;
-  const query = useQuery(chatMessagesQuery(workspaceId, workId, page));
-  const send = useSendChatMessage(workspaceId, workId);
-  const writable = query.data?.canSend === true && !send.isPending;
-  return (
-    <div className="grid gap-4">
-      {query.error && (
-        <HistoryError error={query.error} retry={query.refetch} />
-      )}
-      {query.isPending && <p role="status">Загружаем сообщения…</p>}
-      {query.data && (
-        <>
-          {query.data.total === 0 && (
-            <p className="text-muted">
-              Здесь появятся сообщения и результаты автоматического анализа.
-            </p>
-          )}
-          <ol className="grid gap-3">
-            {query.data.items.toReversed().map((entry) => (
-              <TimelineEntry
-                key={entry.runId}
-                workspaceId={workspaceId}
-                view={view}
-                entry={entry}
-              />
-            ))}
-          </ol>
-          <HistoryPagination
-            page={page}
-            pages={Math.ceil(query.data.total / query.data.pageSize)}
-            onPage={setPage}
-          />
-        </>
-      )}
-      {send.error && (
-        <Notice tone="danger" role="alert">
-          {describeApiError(send.error, {
-            codes: {
-              FORBIDDEN: sharedCodeTexts.FORBIDDEN,
-              WORK_BUSY: 'Агент ещё выполняет текущий запуск.',
-              LLM_NOT_CONFIGURED: 'Подключите модель в настройках.',
-            },
-          })}
-        </Notice>
-      )}
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          const userText = draft.trim();
-          if (!writable || !userText) return;
-          send.mutate(
-            { userText, key: draftKey },
-            {
-              onSuccess: () => {
-                setDraft('');
-                setDraftKey(createIdempotencyKey());
-                setPage(1);
-              },
-            },
-          );
-        }}
-        className="border-line grid gap-2 border-t pt-3"
-      >
-        <label htmlFor="work-chat-message" className="text-sm font-medium">
-          Сообщение агенту
-        </label>
-        <textarea
-          id="work-chat-message"
-          value={draft}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            setDraftKey(createIdempotencyKey());
-          }}
-          readOnly={!writable}
-          maxLength={6000}
-          rows={3}
-          className="bg-canvas border-line text-ink focus-visible:ring-accent w-full rounded-xl border p-3 text-sm focus-visible:ring-2"
-        />
-        <Button
-          type="submit"
-          disabled={!writable || !draft.trim()}
-          className="justify-self-end"
-        >
-          <Send size={16} />
-          Отправить
-        </Button>
-      </form>
-    </div>
-  );
-}
+  const query = useInfiniteQuery(chatMessagesQuery(workspaceId, workId));
+  const { isFetching, refetch } = query;
+  const lastCursor = useRef(view.cursor);
+  useEffect(() => {
+    if (isFetching || lastCursor.current === view.cursor) return;
+    lastCursor.current = view.cursor;
+    void refetch({ cancelRefetch: false });
+  }, [isFetching, refetch, view.cursor]);
+  const firstPage = query.data?.pages[0];
+  // New entries can move the page boundary between two requests.
+  const entries = [
+    ...new Map(
+      query.data?.pages
+        .toReversed()
+        .flatMap(({ items }) =>
+          items.toReversed().map((entry) => [entry.runId, entry] as const),
+        ),
+    ).values(),
+  ];
+  const latest = firstPage?.items[0];
+  const busy = latest?.status === 'queued' || latest?.status === 'running';
+  const selected =
+    entries.find(({ runId }) => runId === selection?.runId) ?? selection;
 
-function TimelineEntry({ workspaceId, view, entry }: Props & { entry: Entry }) {
-  const [open, setOpen] = useState(false);
-  const run = {
-    id: entry.runId,
-    status: entry.status,
-    createdAt: entry.createdAt,
-  };
-  const isAnalysis = entry.kind === 'analysis';
-  const failed = entry.status === 'failed' || entry.status === 'partial';
   return (
-    <li
-      className={
-        isAnalysis ? 'border-line rounded-xl border p-3' : 'grid gap-2'
-      }
-    >
-      {isAnalysis ? (
-        <p className="text-sm font-medium">
-          Автоматический анализ · {statuses[entry.status]}
-        </p>
-      ) : (
-        <>
-          <p className="bg-canvas border-line w-fit max-w-[85%] justify-self-end rounded-2xl border p-3 text-sm wrap-anywhere whitespace-pre-wrap">
-            {entry.userText}
-          </p>
-          {failed ? (
-            <Notice
-              tone={entry.status === 'partial' ? 'warning' : 'danger'}
-              role="alert"
-              title={statuses[entry.status]}
-            >
-              <p>{chatRunErrorText(entry.errorCode)}</p>
-              {entry.status === 'partial' && (
-                <p>Откройте подробности, чтобы проверить сохранённые правки.</p>
+    <div className="mt-4 flex min-h-0 flex-1 flex-col border-t border-white/8">
+      <MessageScroller.Provider autoScroll defaultScrollPosition="end">
+        <MessageScroller.Root>
+          <MessageScroller.Viewport
+            aria-label="Переписка с агентом"
+            preserveScrollOnPrepend
+          >
+            {query.hasNextPage && (
+              <div className="flex justify-center px-4 pt-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  loading={query.isFetchingNextPage}
+                  onClick={() => {
+                    void query.fetchNextPage();
+                  }}
+                >
+                  Загрузить ранние сообщения
+                </Button>
+              </div>
+            )}
+            <MessageScroller.Content className="px-4 py-5 sm:px-6">
+              {query.error && (
+                <HistoryError error={query.error} retry={query.refetch} />
               )}
-            </Notice>
-          ) : entry.answer ? (
-            <p className="text-ink text-sm wrap-anywhere whitespace-pre-wrap">
-              {entry.answer}
-            </p>
-          ) : (
-            <p role="status" className="text-muted text-sm">
-              {statuses[entry.status]}
-            </p>
-          )}
-        </>
-      )}
-      <Button
-        variant="ghost"
-        aria-expanded={open}
-        className="mt-1 justify-self-start"
-        onClick={() => {
-          setOpen(!open);
+              {query.isPending && (
+                <p
+                  role="status"
+                  className="text-muted m-auto flex items-center gap-2 text-sm"
+                >
+                  <Spinner className="size-4" />
+                  Загружаем чат…
+                </p>
+              )}
+              {firstPage?.total === 0 && (
+                <div className="m-auto max-w-72 text-center">
+                  <span className="text-brand-hot mx-auto mb-4 grid size-12 place-items-center rounded-2xl border border-white/10 bg-white/5">
+                    <MessageSquare size={22} aria-hidden />
+                  </span>
+                  <p className="text-ink font-semibold">
+                    Чем помочь с документами?
+                  </p>
+                  <p className="text-muted mt-2 text-sm leading-6">
+                    Спросите про сведения из файлов или попросите изменить поле.
+                  </p>
+                </div>
+              )}
+              {entries.map((entry) => (
+                <MessageScroller.Item
+                  key={entry.runId}
+                  messageId={entry.runId}
+                  role="article"
+                >
+                  <TimelineEntry
+                    entry={entry}
+                    onDetails={() => {
+                      setSelection(entry);
+                    }}
+                  />
+                </MessageScroller.Item>
+              ))}
+            </MessageScroller.Content>
+          </MessageScroller.Viewport>
+          <MessageScroller.ScrollButton label="К последним сообщениям" />
+        </MessageScroller.Root>
+      </MessageScroller.Provider>
+      <ChatComposer
+        workspaceId={workspaceId}
+        workId={workId}
+        canSend={firstPage?.canSend === true && !busy}
+        unavailableText={
+          busy
+            ? 'Отправка станет доступна, когда агент закончит.'
+            : firstPage?.canSend === false
+              ? 'Отправка сейчас недоступна.'
+              : undefined
+        }
+      />
+      <Modal
+        size="sheet"
+        open={selected !== null}
+        title={
+          selected?.kind === 'analysis'
+            ? 'Автоматический анализ'
+            : 'Действия агента'
+        }
+        closeLabel="Вернуться к чату"
+        onOpenChange={(open) => {
+          if (!open) setSelection(null);
         }}
       >
-        {open ? 'Скрыть подробности' : 'Подробности запуска'}
-      </Button>
-      {open && (
-        <div className="mt-2 grid gap-2">
-          {entry.errorCode && (isAnalysis || !failed) && (
-            <p className="text-muted text-sm">{entry.errorCode}</p>
-          )}
-          <RunHistory workspaceId={workspaceId} view={view} run={run} />
-        </div>
-      )}
-    </li>
+        {selected && (
+          <RunHistory
+            key={selected.runId}
+            workspaceId={workspaceId}
+            view={view}
+            run={{
+              id: selected.runId,
+              status: selected.status,
+              createdAt: selected.createdAt,
+            }}
+            presentation="chat"
+            errorCode={selected.kind === 'analysis' ? selected.errorCode : null}
+          />
+        )}
+      </Modal>
+    </div>
   );
 }

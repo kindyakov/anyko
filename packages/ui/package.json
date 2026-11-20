@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./chat": "./src/chat/index.ts",
     "./form": "./src/form/index.ts",
     "./brand": "./src/brand/index.ts",
     "./brand/logo": "./src/brand/logo.tsx",
@@ -14,6 +15,7 @@
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",
+    "@shadcn/react": "0.3.1",
     "lucide-react": "1.70.0"
   },
   "devDependencies": {

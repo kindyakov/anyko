@@ -1,5 +1,5 @@
 import {
-  queryOptions,
+  infiniteQueryOptions,
   useMutation,
   useQueryClient,
 } from '@tanstack/react-query';
@@ -18,21 +18,23 @@ import {
 const chatKey = (workspaceId: string, workId: string) =>
   ['work-chat', workspaceId, workId] as const;
 
-export function chatMessagesQuery(
-  workspaceId: string,
-  workId: string,
-  page: number,
-) {
-  return queryOptions({
-    queryKey: [...chatKey(workspaceId, workId), page],
-    queryFn: ({ signal }) =>
+export function chatMessagesQuery(workspaceId: string, workId: string) {
+  return infiniteQueryOptions({
+    queryKey: chatKey(workspaceId, workId),
+    initialPageParam: 1,
+    queryFn: ({ signal, pageParam }) =>
       callApi(listWorkChatMessages, {
         params: { workspaceId, workId },
-        query: { page },
+        query: { page: pageParam },
         signal,
       }),
+    getNextPageParam: ({ page, pageSize, total }) =>
+      page * pageSize < total ? page + 1 : undefined,
     gcTime: 0,
-    refetchInterval: 2500,
+    refetchInterval: ({ state }) => {
+      const status = state.data?.pages[0]?.items[0]?.status;
+      return status === 'queued' || status === 'running' ? 2500 : false;
+    },
   });
 }
 

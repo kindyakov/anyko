@@ -1941,7 +1941,7 @@ test('provider failure is persisted and a user retry can recover without losing 
   expect((await until(input, terminal)).facts.values.personName).toBe('Анна');
 });
 
-test('upload groups close on OCR failure and pass to one agent session in order after file retry', async () => {
+test('a mixed upload group analyzes readable files and a successful OCR retry joins a later group', async () => {
   const input = await create();
   const scope = memberScope(input.workspaceId);
   const heldOcr = pauseStep();
@@ -1970,7 +1970,7 @@ test('upload groups close on OCR failure and pass to one agent session in order 
     await until(input, (view) => view.pendingUploadCount === 2);
     expect(await db.workUploadGroup.count({ where: input })).toBe(1);
     heldOcr.release();
-    const failed = await until(
+    await until(
       input,
       (view) =>
         view.documents.some(
@@ -1980,20 +1980,8 @@ test('upload groups close on OCR failure and pass to one agent session in order 
           (item) => item.id === second.id && item.status === 'failed',
         ),
     );
-    expect(failed.runs).toEqual([]);
-    await until(input, async () => {
-      const group = await db.workUploadGroup.findFirstOrThrow({ where: input });
-      return group.closedAt !== null;
-    });
-    if (!worker) throw new Error('EXPECTED_RUNNING_WORKER');
-    await worker.stop();
-    worker = undefined;
-    await ready();
-    fail = false;
-    await apiBackend.documentHttp.documents.commands.retry(
-      scope,
-      brandDocumentId(second.id),
-      crypto.randomUUID(),
+    await until(input, (view) =>
+      view.runs.some(({ status }) => status === 'running'),
     );
     await heldAgent.entered();
     const third = await upload(input, 'next');
@@ -2006,19 +1994,29 @@ test('upload groups close on OCR failure and pass to one agent session in order 
     expect(waiting.runs).toMatchObject([
       { kind: 'analysis', status: 'running' },
     ]);
-    expect(requests.map(({ ids }) => ids)).toEqual([
-      [first.id, second.id].sort(),
-    ]);
+    expect(requests.map(({ ids }) => ids)).toEqual([[first.id]]);
     heldAgent.release();
-    const completed = await until(input, terminal);
+    await until(input, (view) => view.runs.length === 2 && terminal(view));
+    fail = false;
+    await apiBackend.documentHttp.documents.commands.retry(
+      scope,
+      brandDocumentId(second.id),
+      crypto.randomUUID(),
+    );
+    const completed = await until(
+      input,
+      (view) => view.runs.length === 3 && terminal(view),
+    );
     expect(completed.runs.map(({ status }) => status)).toEqual([
+      'succeeded',
       'succeeded',
       'succeeded',
     ]);
     const sessionId = completed.session?.id;
     if (!sessionId) throw new Error('EXPECTED_WORK_SESSION');
     expect(requests).toEqual([
-      { sessionId, ids: [first.id, second.id].sort() },
+      { sessionId, ids: [first.id] },
+      { sessionId, ids: [first.id, third.id].sort() },
       {
         sessionId,
         ids: [first.id, second.id, third.id].sort(),
@@ -2033,7 +2031,7 @@ test('upload groups close on OCR failure and pass to one agent session in order 
       groups.map(({ documents }) =>
         documents.map(({ documentId }) => documentId).sort(),
       ),
-    ).toEqual([[first.id, second.id].sort(), [third.id]]);
+    ).toEqual([[first.id], [third.id], [second.id]]);
     expect(
       groups.every(({ closedAt, dispatchedAt }) => closedAt && dispatchedAt),
     ).toBe(true);
@@ -2045,7 +2043,7 @@ test('upload groups close on OCR failure and pass to one agent session in order 
   }
 }, 20000);
 
-test('removing an unread file from a closed group automatically starts analysis of the remaining file', async () => {
+test('a failed source can be removed after the readable file was analyzed', async () => {
   const input = await create();
   const held = pauseStep();
   parseFixture = async (bytes) => {
@@ -2059,7 +2057,7 @@ test('removing an unread file from a closed group automatically starts analysis 
     await held.entered();
     const bad = await upload(input, 'unreadable');
     held.release();
-    const blocked = await until(
+    await until(
       input,
       (view) =>
         view.documents.some(
@@ -2069,7 +2067,8 @@ test('removing an unread file from a closed group automatically starts analysis 
           ({ id, status }) => id === bad.id && status === 'failed',
         ),
     );
-    expect(blocked.runs).toEqual([]);
+    const analyzed = await until(input, terminal);
+    expect(analyzed.facts.values.personName).toBe('Анна');
     await apiBackend.workHttp.intake.removeDocument(
       memberScope(input.workspaceId),
       {
@@ -2077,7 +2076,9 @@ test('removing an unread file from a closed group automatically starts analysis 
         documentId: brandDocumentId(bad.id),
       },
     );
-    const completed = await until(input, terminal);
+    const completed = await until(input, (view) =>
+      view.documents.every(({ id }) => id !== bad.id),
+    );
     expect(completed.documents.map(({ id }) => id)).toEqual([good.id]);
     expect(completed.runs).toMatchObject([
       { kind: 'analysis', status: 'succeeded' },
@@ -2089,7 +2090,7 @@ test('removing an unread file from a closed group automatically starts analysis 
   }
 }, 15000);
 
-test('a failed analysis retries its own sources while the next group is blocked by OCR', async () => {
+test('an all-failed upload group dispatches without repeating a previous analysis', async () => {
   const input = await create();
   const extraction = pauseStep();
   failExtraction = true;
@@ -2115,27 +2116,24 @@ test('a failed analysis retries its own sources while the next group is blocked 
       ),
     );
     extraction.release();
-    const blocked = await until(
+    const failed = await until(
       input,
-      (view) => view.runs[0]?.status === 'failed',
+      (view) =>
+        view.runs[0]?.status === 'failed' && view.pendingUploadCount === 0,
     );
-    expect(blocked.pendingUploadCount).toBe(1);
-    expect(blocked.availability.analyze).toEqual({ available: true });
+    expect(failed.runs).toHaveLength(1);
+    expect(failed.availability.analyze).toEqual({ available: true });
     failExtraction = false;
     await analyze(input);
     const recovered = await until(
       input,
       (view) => view.runs.length === 2 && view.runs[0]?.status === 'succeeded',
     );
-    expect(recovered.pendingUploadCount).toBe(1);
+    expect(recovered.pendingUploadCount).toBe(0);
     expect(recovered.runs.map(({ status }) => status)).toEqual([
       'succeeded',
       'failed',
     ]);
-    expect(recovered.availability.analyze).toEqual({
-      available: false,
-      reason: 'WORK_BUSY',
-    });
     expect(recovered.documents.find(({ id }) => id === second.id)?.status).toBe(
       'failed',
     );
@@ -2152,7 +2150,6 @@ test('a failed analysis retries its own sources while the next group is blocked 
         where: { workspaceId: input.workspaceId, documentId: second.id },
       }),
     ).toBe(1);
-    await rejects(analyze(input), 'WORK_BUSY');
   } finally {
     extraction.release();
     failExtraction = false;

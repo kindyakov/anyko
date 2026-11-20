@@ -235,15 +235,19 @@ test('chat field history restores the selected field and keeps other values', as
   const chat = page.getByRole('dialog', { name: 'Чат с агентом' });
   const message = chat.getByRole('textbox', { name: 'Сообщение агенту' });
   const send = chat.getByRole('button', { name: 'Отправить', exact: true });
+  await expect(
+    chat.getByRole('region', { name: 'Переписка с агентом' }),
+  ).toBeVisible();
   await message.fill('Поможете проверить сведения?');
-  await send.click();
+  await expect(send).toBeEnabled();
+  await message.press('Enter');
   await expect(
     chat.getByText('Могу помочь проверить сведения работы.'),
   ).toBeVisible();
 
   await message.fill('Поменяйте фамилию на Петрова.');
   await send.click();
-  const entry = chat.getByRole('listitem').filter({
+  const entry = chat.getByRole('article').filter({
     hasText: 'Поменяйте фамилию на Петрова.',
   });
   await expect(entry.getByText('Фамилия обновлена.')).toBeVisible();
@@ -252,22 +256,35 @@ test('chat field history restores the selected field and keeps other values', as
     lastName: 'Петрова',
     firstName: 'Анна',
   });
-  await entry.getByRole('button', { name: 'Подробности запуска' }).click();
-  const change = entry.getByRole('button', {
-    name: /Диалог с агентом.*Фамилия/,
+  await page.screenshot({ path: testInfo.outputPath('chat-desktop.png') });
+  await entry.getByRole('button', { name: 'Действия агента' }).click();
+  const details = page.getByRole('dialog', { name: 'Действия агента' });
+  await expect(details.getByRole('tab', { name: 'События' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(details.getByText('Вся работа', { exact: true })).toBeHidden();
+  await details.getByRole('tab', { name: 'Расход токенов' }).click();
+  await expect(details.getByText('Вся работа', { exact: true })).toBeVisible();
+  await details.getByRole('tab', { name: 'События' }).click();
+  const change = details.getByRole('button', {
+    name: 'Поле «Фамилия»',
   });
   await change.focus();
   await page.keyboard.press('Enter');
   await expect(
-    entry.getByText('Прежнее значение', { exact: true }),
+    details.getByText('Прежнее значение', { exact: true }),
   ).toBeVisible();
-  await expect(entry.getByText('Иванова', { exact: true })).toBeVisible();
+  await expect(details.getByText('Иванова', { exact: true })).toBeVisible();
   await expect(
-    entry.getByText('Новое значение', { exact: true }),
+    details.getByText('Новое значение', { exact: true }),
   ).toBeVisible();
-  await expect(entry.getByText('Петрова', { exact: true })).toBeVisible();
+  await expect(details.getByText('Петрова', { exact: true })).toBeVisible();
+  await expect(
+    details.getByRole('button', { name: 'Данные вызова' }),
+  ).toHaveAttribute('aria-expanded', 'false');
 
-  const restore = entry.getByRole('button', {
+  const restore = details.getByRole('button', {
     name: 'Восстановить прежнее значение',
   });
   await restore.scrollIntoViewIfNeeded();
@@ -296,13 +313,15 @@ test('chat field history restores the selected field and keeps other values', as
     { times: 1 },
   );
   await restore.click();
-  await expect(entry.getByRole('alert')).toContainText('Сведения изменились.');
+  await expect(details.getByRole('alert')).toContainText(
+    'Сведения изменились.',
+  );
   expect((await loadWork()).facts.values).toMatchObject({
     lastName: 'Петрова',
     firstName: 'Мария',
   });
   await restore.click();
-  await expect(entry.getByText('Значение поля восстановлено.')).toBeVisible();
+  await expect(details.getByText('Значение поля восстановлено.')).toBeVisible();
   const restored = await loadWork();
   expect(restored.facts.values).toMatchObject({
     lastName: 'Иванова',
@@ -311,9 +330,11 @@ test('chat field history restores the selected field and keeps other values', as
   expect(restored.work.inputRevision).toBe(initial.work.inputRevision);
   expect(restored.runs).toEqual(initial.runs);
 
+  await details.getByRole('button', { name: 'Вернуться к чату' }).click();
+  await expect(chat).toBeVisible();
   await message.fill('Запишите таблицу в поле фамилии.');
   await send.click();
-  const rejected = chat.getByRole('listitem').filter({
+  const rejected = chat.getByRole('article').filter({
     hasText: 'Запишите таблицу в поле фамилии.',
   });
   await expect(rejected.getByRole('alert')).toContainText(
@@ -321,6 +342,10 @@ test('chat field history restores the selected field and keeps other values', as
   );
   await expect(rejected.getByText('Фамилия обновлена.')).toHaveCount(0);
   expect((await loadWork()).facts).toEqual(restored.facts);
+  await page.setViewportSize({ width: 390, height: 780 });
+  await expect(message).toBeInViewport();
+  await expect(send).toBeInViewport();
+  await page.screenshot({ path: testInfo.outputPath('chat-mobile.png') });
 });
 
 test('recognition reports a failed file and allows retry', async ({ page }) => {

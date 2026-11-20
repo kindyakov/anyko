@@ -110,7 +110,27 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
     .parse(process.env.TEST_DATABASE_URL);
   const pool = createDatabasePool(databaseUrl);
   const documentId = crypto.randomUUID();
+  const extracted = {
+    field: 'personName',
+    value: 'Анна',
+    origin: 'document',
+    evidence: [{ documentId, imagePath: null, quote: 'Анна' }],
+  } as const;
+  const alternative = {
+    ...extracted,
+    value: 'Анна Мария',
+    evidence: [{ documentId, imagePath: null, quote: 'Анна Мария' }],
+  } as const;
+  const birthplace = {
+    ...extracted,
+    field: 'birthPlace',
+    value: 'Тула',
+    evidence: [{ documentId, imagePath: null, quote: 'Тула' }],
+  } as const;
+  let firstUserMessage: string | undefined;
+  let firstOutputLimit: number | undefined;
   let origin: 'document' | 'inference' = 'document';
+  let returnMixedCandidates = false;
   let quote = 'Анна',
     referencedId = documentId,
     valid = true,
@@ -118,42 +138,71 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
   const agents = createDocumentAgents({
     pool,
     fetch: Object.assign(
-      () =>
-        Promise.resolve(
-          Response.json({
-            id: 'fixture',
-            object: 'chat.completion',
-            created: 1,
-            model: 'fixture',
-            choices: [
-              {
-                index: 0,
-                message: {
-                  role: 'assistant',
-                  content: JSON.stringify({
-                    summary: 'Сопоставлены сведения',
-                    candidates: [
-                      {
-                        origin,
-                        field: 'personName',
-                        value: 'Анна',
-                        evidence: [
-                          { documentId: referencedId, imagePath: null, quote },
-                        ],
-                      },
-                    ],
-                  }),
-                },
-                finish_reason: 'stop',
-              },
-            ],
-            usage: {
-              prompt_tokens: 10,
-              completion_tokens: 5,
-              total_tokens: 15,
+      async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const request = new Request(url, init);
+        if (new URL(request.url).pathname.endsWith('/endpoints')) {
+          return Response.json({
+            data: {
+              endpoints: [
+                { context_length: 1000000, max_completion_tokens: 131072 },
+              ],
             },
-          }),
-        ),
+          });
+        }
+        const { max_tokens } = z
+          .object({ max_tokens: z.number() })
+          .parse(await request.json());
+        firstOutputLimit ??= max_tokens;
+        return Response.json({
+          id: 'fixture',
+          object: 'chat.completion',
+          created: 1,
+          model: 'fixture',
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: JSON.stringify({
+                  summary: 'Сопоставлены сведения',
+                  candidates: [
+                    {
+                      origin,
+                      field: 'personName',
+                      value: 'Анна',
+                      ...(returnMixedCandidates && {
+                        explanation: 'Имя явно указано в документе',
+                      }),
+                      evidence: [
+                        { documentId: referencedId, imagePath: null, quote },
+                      ],
+                    },
+                    ...(returnMixedCandidates
+                      ? [
+                          {
+                            origin: 'inference',
+                            field: 'postalCode',
+                            value: null,
+                            explanation: 'Индекс неизвестен',
+                            evidence: [
+                              { documentId, imagePath: null, quote: 'Анна' },
+                            ],
+                          },
+                        ]
+                      : []),
+                  ],
+                }),
+              },
+              finish_reason: 'stop',
+            },
+          ],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 5,
+            total_tokens: 15,
+          },
+        });
+      },
       { preconnect: fetch.preconnect },
     ),
   });
@@ -163,19 +212,50 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
     threads.push(threadId);
     return agents.reconcile({
       connection: {
-        id: 'fixture',
-        baseURL: 'https://fixture.invalid/v1',
+        id: 'routerai',
+        baseURL: 'https://routerai.ru/api/v1',
         apiKey: crypto.randomUUID(),
       },
-      modelId: 'fixture',
+      modelId: '~deepseek/deepseek-v4-flash-latest',
       resource: crypto.randomUUID(),
       sessionId: crypto.randomUUID(),
       threadId,
       workRevision: 1,
       previousContext: null,
       facts: emptyFacts(),
-      candidates: [],
-      fields: fieldDefinitions.filter((f) => f.key === 'personName'),
+      candidates: [
+        {
+          ...extracted,
+          value: 'А'.repeat(12000),
+          evidence: [...extracted.evidence],
+        },
+        {
+          ...extracted,
+          evidence: [
+            { documentId: crypto.randomUUID(), imagePath: null, quote: 'Анна' },
+          ],
+        },
+        { ...extracted, evidence: [...extracted.evidence] },
+        { ...extracted, evidence: [...extracted.evidence] },
+        { ...alternative, evidence: [...alternative.evidence] },
+        { ...birthplace, evidence: [...birthplace.evidence] },
+      ],
+      observe: (input) => {
+        const request = z
+          .object({
+            messages: z.array(
+              z.object({ role: z.string(), content: z.string() }),
+            ),
+          })
+          .safeParse(JSON.parse(input ?? '{}'));
+        firstUserMessage ??= request.data?.messages.find(
+          ({ role }) => role === 'user',
+        )?.content;
+        return Promise.resolve(() => Promise.resolve());
+      },
+      fields: fieldDefinitions.filter(
+        ({ key }) => key === 'personName' || key === 'birthPlace',
+      ),
       documents: [
         {
           id: documentId,
@@ -192,7 +272,9 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
       },
       readSource: (id, image) =>
         id === documentId && image === null
-          ? Promise.resolve('Имя: Анна.')
+          ? Promise.resolve(
+              'Имя: Анна. В другом фрагменте: Анна Мария. Место рождения: Тула.',
+            )
           : Promise.reject(new Error('SOURCE_NOT_ALLOWED')),
     });
   };
@@ -204,8 +286,22 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
   try {
     await agents.ready();
     const result = await invoke();
+    expect(firstOutputLimit).toBe(8192);
+    const initial = z
+      .object({
+        fields: z.object({ extracted: z.array(z.unknown()) }),
+      })
+      .parse(JSON.parse(firstUserMessage ?? '{}'));
+    expect(initial.fields.extracted).toEqual([
+      extracted,
+      birthplace,
+      alternative,
+    ]);
     expect(result.candidates[0]?.origin).toBe('document');
     expect(checks).toBeGreaterThan(0);
+    returnMixedCandidates = true;
+    expect((await invoke()).candidates).toEqual(result.candidates);
+    returnMixedCandidates = false;
     origin = 'inference';
     expect(await failure(invoke())).toBe('LLM_INVALID_RESPONSE');
     origin = 'document';

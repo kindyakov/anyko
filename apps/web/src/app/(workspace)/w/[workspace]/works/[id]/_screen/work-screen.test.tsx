@@ -177,7 +177,9 @@ test('work chat sends a message and reopens with the saved reply and system entr
     await screen.findByRole('dialog', { name: 'Чат с агентом' }),
   );
   expect(
-    await dialog.findByText('Автоматический анализ · Готово'),
+    await dialog.findByRole('button', {
+      name: /Автоматический анализ.*Готово/,
+    }),
   ).toBeTruthy();
   await user.type(dialog.getByLabelText('Сообщение агенту'), question);
   await user.click(dialog.getByRole('button', { name: 'Отправить' }));

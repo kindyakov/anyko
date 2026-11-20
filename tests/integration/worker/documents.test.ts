@@ -13,6 +13,7 @@ import type {
   SourceFormat,
   SourceStorage,
 } from '../../../packages/backend/src/modules/documents';
+import { createS3Storage } from '../../../packages/backend/src/modules/documents/infrastructure/s3-storage';
 import { createSourceCleanup } from '../../../packages/backend/src/modules/documents/infrastructure/source-cleanup';
 import { documentOcrPolicy } from '../../../packages/backend/src/modules/processing';
 import {
@@ -329,6 +330,86 @@ test('upload atomically persists metadata, run and outbox; foreign workspace can
       }),
     ),
   );
+});
+
+test('a timed-out source PUT can retry without discarding the first write barrier', async () => {
+  const workspaceId = await workspace();
+  const requestKey = crypto.randomUUID();
+  const writes: { path: string; bytes: ArrayBuffer }[] = [];
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    async fetch(request) {
+      if (request.method !== 'PUT') return new Response(null, { status: 405 });
+      const path = new URL(request.url).pathname;
+      writes.push({ path, bytes: await request.arrayBuffer() });
+      if (writes.length === 1) await Bun.sleep(700);
+      return new Response(null, { status: 200 });
+    },
+  });
+  const uploadApi = createBackend(testConfig, {
+    logger,
+    role: 'api',
+    dependencies: {
+      storage: createS3Storage({
+        endpoint: server.url.origin,
+        bucket: 'upload-fixture',
+        accessKeyId: 'fixture-key',
+        secretAccessKey: 'fixture-secret',
+        timeoutMs: 350,
+      }),
+    },
+  });
+  try {
+    const uploaded = await uploadApi.documentHttp.documents.commands.upload(
+      memberScope(workspaceId),
+      {
+        filename: 'fixture.pdf',
+        bytes: pdf,
+        requestKey,
+        correlationId: crypto.randomUUID(),
+      },
+    );
+    const registered = await db.sourceDocument.findMany({
+      where: { workspaceId, requestKey },
+      select: { id: true, sourceKey: true },
+    });
+    expect(registered).toEqual([
+      {
+        id: uploaded.id,
+        sourceKey: `sources/${workspaceId}/${uploaded.id}.pdf`,
+      },
+    ]);
+    expect(writes.map(({ bytes }) => new Uint8Array(bytes))).toEqual([
+      pdf,
+      pdf,
+    ]);
+    expect(writes[0]?.path).not.toBe(writes[1]?.path);
+    expect(writes[1]?.path).toBe(
+      `/upload-fixture/sources/${workspaceId}/${uploaded.id}.pdf`,
+    );
+    const [barrier] = await db.processingIo.findMany({
+      where: { workspaceId, requestKey },
+    });
+    if (!barrier?.documentId)
+      throw new Error('First upload barrier is missing');
+    expect(barrier.uncertain).toBe(true);
+    const firstKey = `sources/${workspaceId}/${barrier.documentId}.pdf`;
+    expect(writes[0]?.path).toBe(`/upload-fixture/${firstKey}`);
+    await db.sourceUpload.update({
+      where: { key: firstKey },
+      data: { createdAt: new Date(0) },
+    });
+    await createSourceCleanup(db, storage)(new Date(1));
+    expect(await db.sourceUpload.count({ where: { key: firstKey } })).toBe(1);
+    expect(await db.documentArtifact.count({ where: { key: firstKey } })).toBe(
+      1,
+    );
+  } finally {
+    await server.stop(true);
+    await uploadApi.stop();
+    await db.processingIo.deleteMany({ where: { workspaceId, requestKey } });
+  }
 });
 
 test('concurrent same-key upload returns the same document; different input conflicts', async () => {

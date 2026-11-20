@@ -20,6 +20,7 @@ export function Modal({
   headerExtra,
   dismissible = true,
   initialFocus,
+  scrollBody = true,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -32,6 +33,7 @@ export function Modal({
   dismissible?: boolean;
   /** Элемент, который получает фокус при открытии; без него фокус берёт Base UI. */
   initialFocus?: RefObject<HTMLElement | null>;
+  scrollBody?: boolean;
 }) {
   const popup =
     size === 'sheet'
@@ -84,7 +86,7 @@ export function Modal({
             </div>
           </div>
           <div
-            className={`min-h-0 flex-1 overflow-y-auto px-6 pb-6 sm:px-8 sm:pb-8 ${size === 'wide' ? 'flex flex-col pt-4' : 'pt-6'}`}
+            className={`min-h-0 flex-1 ${scrollBody ? `overflow-y-auto px-6 pb-6 sm:px-8 sm:pb-8 ${size === 'wide' ? 'flex flex-col pt-4' : 'pt-6'}` : 'flex flex-col overflow-hidden'}`}
           >
             {children}
           </div>

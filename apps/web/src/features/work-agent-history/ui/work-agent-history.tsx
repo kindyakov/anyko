@@ -4,34 +4,15 @@ import { useQuery } from '@tanstack/react-query';
 import { History } from 'lucide-react';
 import { useState } from 'react';
 
-import type {
-  AgentHistoryPage,
-  AgentHistoryRunPage,
-  WorkView,
-} from '@anyko/contracts/works';
+import type { AgentHistoryRunPage, WorkView } from '@anyko/contracts/works';
 import { Button, Disclosure, Modal } from '@anyko/ui';
 
-import { agentHistoryQuery, analysisRunsQuery } from '../api/queries';
+import { analysisRunsQuery } from '../api/queries';
 
-import { FieldChange } from './field-change';
 import { HistoryError, HistoryPagination } from './history-controls';
+import { RunHistory } from './run-history';
 
 type Run = AgentHistoryRunPage['items'][number];
-const stages: Record<string, string> = {
-  vision: 'Описание вложенного изображения',
-  extraction: 'Поиск сведений',
-  reconciliation: 'Сопоставление',
-  chat: 'Диалог с агентом',
-};
-const statuses: Record<string, string> = {
-  running: 'Исход пока неизвестен',
-  responded: 'Ответ получен',
-  failed: 'Ошибка запроса',
-  succeeded: 'Вызов инструмента выполнен',
-  accepted: 'Результат сохранён',
-  rejected: 'Результат отклонён',
-  superseded: 'Устаревшая попытка',
-};
 const runStatuses: Record<Run['status'], string> = {
   queued: 'В очереди',
   running: 'Выполняется',
@@ -129,172 +110,6 @@ function AnalysisRuns({
         view={view}
         run={run}
       />
-    </div>
-  );
-}
-
-export function RunHistory({
-  workspaceId,
-  view,
-  run,
-}: {
-  workspaceId: string;
-  view: WorkView;
-  run: Run;
-}) {
-  const [page, setPage] = useState(1);
-  const { data, error, isPending, refetch } = useQuery(
-    agentHistoryQuery(
-      workspaceId,
-      view.work.id,
-      run.id,
-      page,
-      run.status === 'running' || run.status === 'queued',
-    ),
-  );
-  if (error) return <HistoryError error={error} retry={refetch} />;
-  if (isPending) return <p role="status">Загружаем историю…</p>;
-  const documentName = (id: string | null) =>
-    view.documents.find((document) => document.id === id)?.filename;
-  const fields = new Map(
-    view.package.fields.map((field) => [field.key, field]),
-  );
-  return (
-    <div className="grid gap-3 text-sm">
-      <Usage title="Вся работа" usage={data.workUsage} />
-      <Usage title="Выбранный запуск" usage={data.runUsage} />
-      {data.steps.length > 0 && (
-        <Disclosure title="Расход по этапам">
-          <div className="grid gap-2">
-            {data.steps.map((step) => (
-              <Usage
-                key={`${step.stage}:${step.documentId ?? ''}`}
-                usage={step.usage}
-                title={[
-                  stages[step.stage] ?? step.stage,
-                  documentName(step.documentId),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              />
-            ))}
-          </div>
-        </Disclosure>
-      )}
-      {data.total === 0 && (
-        <p className="text-muted">Для запуска пока нет сохранённых событий.</p>
-      )}
-      {data.items.map((event) => {
-        const change = event.fieldChange;
-        const field = change ? fields.get(change.field) : undefined;
-        return (
-          <Disclosure
-            key={event.id}
-            className="border-line rounded-xl border px-3"
-            title={[
-              stages[event.stage] ?? event.stage,
-              documentName(event.documentId),
-              statuses[event.status] ?? event.status,
-              change ? (field?.label ?? change.field) : undefined,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          >
-            <p className="text-muted">
-              {new Date(event.createdAt).toLocaleString('ru-RU')}
-            </p>
-            {event.model && (
-              <p className="wrap-anywhere">
-                {event.provider} / {event.model}
-              </p>
-            )}
-            {event.kind === 'provider' && (
-              <p className="text-muted">
-                Вход {event.inputTokens ?? 'неизвестно'} · Выход{' '}
-                {event.outputTokens ?? 'неизвестно'}
-              </p>
-            )}
-            {event.errorCode && <p className="text-muted">{event.errorCode}</p>}
-            {change && (
-              <FieldChange
-                change={change}
-                field={field}
-                workspaceId={workspaceId}
-                workId={view.work.id}
-                runId={run.id}
-                eventId={event.id}
-                revision={view.work.revision}
-              />
-            )}
-            {event.input && (
-              <Payload
-                title={
-                  event.kind === 'tool' ? 'Вызов инструмента' : 'Вход модели'
-                }
-                value={event.input}
-              />
-            )}
-            {event.output && (
-              <Payload
-                title={
-                  event.kind === 'decision'
-                    ? 'Решение по предложениям'
-                    : event.kind === 'tool'
-                      ? 'Результат инструмента'
-                      : 'Ответ модели'
-                }
-                value={event.output}
-              />
-            )}
-          </Disclosure>
-        );
-      })}
-      <HistoryPagination
-        page={page}
-        pages={Math.ceil(data.total / data.pageSize)}
-        onPage={setPage}
-      />
-    </div>
-  );
-}
-
-function Payload({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="mt-3">
-      <h4 className="font-medium">{title}</h4>
-      <pre className="bg-canvas mt-1 max-h-72 overflow-auto rounded-lg p-2 text-xs wrap-anywhere whitespace-pre-wrap">
-        {JSON.stringify(JSON.parse(value), null, 2)}
-      </pre>
-    </div>
-  );
-}
-
-function Usage({
-  title,
-  usage,
-}: {
-  title: string;
-  usage: AgentHistoryPage['runUsage'];
-}) {
-  return (
-    <div className="border-line rounded-xl border p-3">
-      <h3 className="font-medium">{title}</h3>
-      <p className="text-muted">
-        {usage.calls} вызовов · Вход {usage.inputTokens ?? '—'} · Выход{' '}
-        {usage.outputTokens ?? '—'}
-      </p>
-      {(usage.unknownInputCalls > 0 || usage.unknownOutputCalls > 0) && (
-        <p className="text-muted">
-          Расход неизвестен · Вход {usage.unknownInputCalls} · Выход{' '}
-          {usage.unknownOutputCalls}
-        </p>
-      )}
-      {usage.cachedInputTokens !== null && (
-        <p className="text-muted">Из кэша {usage.cachedInputTokens}</p>
-      )}
-      {usage.reasoningTokens !== null && (
-        <p className="text-muted">Токены рассуждения {usage.reasoningTokens}</p>
-      )}
     </div>
   );
 }

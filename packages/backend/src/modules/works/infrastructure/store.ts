@@ -156,26 +156,46 @@ export function createWorkStore(
       }));
     },
     async worksForDocument(workspaceId, documentId) {
-      // Hold Work before touching links or events. Cleanup deletes Work and cascades to links.
+      // Serialize recognition updates with changes to the same work's upload groups.
       const rows = await db.$queryRaw<{ workId: string }[]>`
         SELECT work.id AS "workId"
         FROM "WorkDocument" link
         JOIN "Work" work ON work."workspaceId" = link."workspaceId" AND work.id = link."workId"
         WHERE link."workspaceId" = ${workspaceId} AND link."documentId" = ${documentId}
           AND NOT link.removed AND work."deletedAt" IS NULL
-        ORDER BY work.id FOR KEY SHARE OF work
+        ORDER BY work.id FOR NO KEY UPDATE OF work
       `;
       return rows.map(({ workId }) => workId);
     },
     async pinPending(workspaceId, documentId, revision) {
-      await db.workDocument.updateMany({
+      const pending = {
+        workspaceId,
+        documentId,
+        removed: false,
+        ocrRevision: null,
+        work: { deletedAt: null },
+      };
+      const recovered = await db.workDocument.findMany({
         where: {
-          workspaceId,
-          documentId,
-          removed: false,
-          ocrRevision: null,
-          work: { deletedAt: null },
+          ...pending,
+          uploadGroup: { is: { dispatchedAt: { not: null } } },
         },
+        select: { workId: true, uploadGroup: { select: { actorId: true } } },
+      });
+      for (const { workId, uploadGroup } of recovered) {
+        if (!uploadGroup) continue;
+        const uploadGroupId = await uploads.joinUploadGroup(
+          workspaceId,
+          workId,
+          uploadGroup.actorId,
+        );
+        await db.workDocument.updateMany({
+          where: { ...pending, workId },
+          data: { uploadGroupId, ocrRevision: revision },
+        });
+      }
+      await db.workDocument.updateMany({
+        where: pending,
         data: { ocrRevision: revision },
       });
     },
