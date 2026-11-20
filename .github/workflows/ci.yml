@@ -57,12 +57,12 @@ jobs:
           work/processor-tests-venv/bin/pip install --no-deps mineru==4.1.7
           work/processor-tests-venv/bin/pip install -r tests/processor/requirements.txt
           ANYKO_PROCESSOR_TEST_PYTHON=work/processor-tests-venv/bin/python bun run test:processor
-      - name: Worker integration against Redis
+      - name: Apply test migrations
+        run: bun run db:migrate
+      - name: Worker integration against PostgreSQL and Redis
         env:
           TEST_REDIS_URL: redis://127.0.0.1:16379
         run: bun run test:worker:integration
-      - name: Apply test migrations
-        run: bun run db:migrate
       - name: Document and access integration
         run: bun run test:documents:integration && bun run test:access:integration && bun run test:works:integration && bun run test:idempotency:integration && bun run test:audit:integration
       - name: Isolated E2E backend integration

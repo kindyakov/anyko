@@ -182,16 +182,16 @@ try:
         result = json.load(response)
     if 'ANYKO' not in result['markdown'].upper():
         raise RuntimeError('OCR result was not preserved after restart')
-    def request(path, value=None):
+    def request(path, value=None, *, method=None):
+        method = method or ('POST' if value is not None else 'GET')
         headers = {'origin': origin}
         data = None
         if value is not None:
             data = json.dumps(value).encode()
             headers['content-type'] = 'application/json'
-            # v1 требует Idempotency-Key у создания, анализа и генерации; свежий ключ на каждый запрос.
-            headers['idempotency-key'] = str(uuid.uuid4())
-        req = urllib.request.Request(origin+'/api'+path, data=data, headers=headers,
-                                     method='POST' if value is not None else 'GET')
+            if method == 'POST':
+                headers['idempotency-key'] = str(uuid.uuid4())
+        req = urllib.request.Request(origin+'/api'+path, data=data, headers=headers, method=method)
         with opener.open(req, timeout=30) as response:
             return response.read()
     model_state = {'document': '', 'calls': 0}
@@ -241,8 +241,8 @@ try:
             self.wfile.write(payload)
     provider = ThreadingHTTPServer(('127.0.0.1', 0), ModelHandler)
     threading.Thread(target=provider.serve_forever, daemon=True).start()
-    request('/v1/workspaces/local/settings/llm', {'baseURL': f'http://127.0.0.1:{provider.server_port}/v1',
-                              'visionModel': 'fixture', 'extractionModel': 'fixture', 'apiKey': 'synthetic-key'})
+    request('/v1/workspaces/local/connections/llm', {'baseURL': f'http://127.0.0.1:{provider.server_port}/v1',
+                              'visionModel': 'fixture', 'extractionModel': 'fixture', 'apiKey': 'synthetic-key'}, method='PATCH')
     created = json.loads(request('/v1/workspaces/local/works', {'packageVersion': 'bfl-bankruptcy-v4', 'title': 'Synthetic test'}))
     work = created['work']['id']
     boundary = 'anyko-' + uuid.uuid4().hex
@@ -253,7 +253,7 @@ try:
                                              'idempotency-key': str(uuid.uuid4())})
     with opener.open(upload, timeout=30) as response:
         model_state['document'] = json.load(response)['document']['id']
-    request('/v1/workspaces/local/works/'+work+'/analyze', {})
+    # The worker starts analysis after the uploaded source has been recognized.
     end = time.monotonic() + 300
     while time.monotonic() < end:
         analyzed = json.loads(request('/v1/workspaces/local/works/'+work))
@@ -270,7 +270,8 @@ try:
     values = analyzed['facts']['values']
     values['lastName'] = 'Testov'
     values['firstName'] = 'Anyko'
-    edited = json.loads(request('/v1/workspaces/local/works/'+work+'/fields', {'revision': analyzed['work']['revision'], 'values': values}))
+    edited = json.loads(request('/v1/workspaces/local/works/'+work+'/fields',
+                                {'revision': analyzed['work']['revision'], 'values': values}, method='PATCH'))
     request('/v1/workspaces/local/works/'+work+'/generate', {'revision': edited['work']['revision']})
     end = time.monotonic() + 120
     while time.monotonic() < end:

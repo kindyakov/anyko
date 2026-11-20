@@ -115,12 +115,15 @@ export async function startWorker() {
           : 'Не удалось запустить worker.',
       operation: 'worker.start',
     });
-    createLogger({
-      service: 'worker',
-      environment: 'unknown',
-      release: 'unknown',
-      level: 'error',
-    }).fatal({ event: 'startup_failed', errorCode: failure.code, failure });
+    createLogger(
+      {
+        service: 'worker',
+        environment: 'unknown',
+        release: 'unknown',
+        level: 'error',
+      },
+      process.stderr,
+    ).fatal({ event: 'startup_failed', errorCode: failure.code, failure });
     process.exitCode = 1;
   }
 }

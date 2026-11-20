@@ -2207,12 +2207,19 @@ test('a legacy unread source without an OCR run closes its group before another 
     ),
   ).toEqual([[legacyId], [next.id]]);
   expect(groups[0]?.closedAt).toBeInstanceOf(Date);
-  const waiting = await until(input, (view) =>
-    view.documents.some(
-      ({ id, status }) => id === next.id && status === 'succeeded',
-    ),
+  await until(
+    input,
+    (view) =>
+      view.pendingUploadCount === 0 &&
+      view.documents.some(
+        ({ id, status }) => id === next.id && status === 'succeeded',
+      ),
   );
-  expect(waiting.runs).toEqual([]);
+  const runs = await db.run.findMany({
+    where: { ...input, kind: 'work.analysis' },
+    select: { documentIds: true },
+  });
+  expect(runs.map(({ documentIds }) => documentIds)).toEqual([[next.id]]);
 }, 15000);
 
 test('a dispatched upload analysis is redelivered with the same run after the queue is lost', async () => {

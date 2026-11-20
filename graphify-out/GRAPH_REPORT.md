@@ -1,7 +1,7 @@
 # Graph Report - anyko  (2026-11-20)
 
 ## Corpus Check
-- 827 files · ~375,520 words
+- 827 files · ~375,557 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 26 file(s) not represented in the graph (top: (none) 6, .ttf 5, .example 4)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ed669820`
+- Built from commit: `4c212679`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
