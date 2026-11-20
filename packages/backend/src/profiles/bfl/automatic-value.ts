@@ -5,13 +5,25 @@ import {
   datesInText,
 } from '@anyko/document-values/calendar-date';
 import {
+  employmentEvents,
+  employmentFields,
+  employmentMonth,
+} from '@anyko/document-values/employment';
+import {
   canonicalMoneyAmount,
   moneyAmountsInText,
 } from '@anyko/document-values/money';
+import {
+  creditorRegistryColumns,
+  isBankObligation,
+  obligationFields,
+  obligationStatuses,
+} from '@anyko/document-values/obligations';
 
 import type { candidateSchema } from './candidate';
 import {
   fieldIdentity,
+  type FieldRow,
   type FieldValue,
   isCalendarDateField,
   isRublesColumn,
@@ -78,9 +90,9 @@ function attestedAmount(value: string, quote: string, rubles = true) {
   return values.some((amount) => canonicalMoneyAmount(amount) === expected);
 }
 
-function proofLines(evidence: Candidate['evidence']) {
+function proofLines(evidence: Candidate['evidence'], includeVisuals = false) {
   return evidence
-    .filter(({ imagePath }) => imagePath === null)
+    .filter(({ imagePath }) => includeVisuals || imagePath === null)
     .flatMap(({ quote }) =>
       quote
         .replace(/<\/tr>/gi, '\n')
@@ -136,6 +148,19 @@ function supportedValue(
       : value;
   }
   if (!Array.isArray(value)) return value;
+  if (field === 'attachments' && value.some(({ category }) => !!category))
+    return null;
+  if (employmentFields.some((key) => key === field))
+    return evidencedEmployment(candidate, value);
+  if (
+    obligationFields.some((key) => key === field) &&
+    value.some(isBankObligation)
+  ) {
+    const row = value.length === 1 ? value[0] : undefined;
+    return row
+      ? evidencedObligation(candidate.evidence, row, requireText)
+      : null;
+  }
   const identity = fieldIdentity(field);
   const lines = proofLines(candidate.evidence);
   const rows = value.flatMap((row) => {
@@ -150,35 +175,37 @@ function supportedValue(
         ? lines
         : [];
     const supported = Object.fromEntries(
-      Object.entries(row).map(([column, cell]) => {
-        if (cell === null) return [column, cell];
-        const rubles = isRublesColumn(field, column);
-        if (rubles || (field === 'valuables' && column === 'amount'))
+      Object.entries(row)
+        .filter(([column]) => !Object.hasOwn(creditorRegistryColumns, column))
+        .map(([column, cell]) => {
+          if (cell === null) return [column, cell];
+          const rubles = isRublesColumn(field, column);
+          if (rubles || (field === 'valuables' && column === 'amount'))
+            return [
+              column,
+              matching.some((line) => attestedAmount(cell, line, rubles))
+                ? rubles
+                  ? (canonicalMoneyAmount(cell) ?? null)
+                  : cell
+                : null,
+            ];
+          if (column === 'inn') {
+            const identifier = digits(cell);
+            return [
+              column,
+              validInn(identifier, false) &&
+              matching.some((line) => attestedIdentifier(identifier, line))
+                ? cell
+                : null,
+            ];
+          }
           return [
             column,
-            matching.some((line) => attestedAmount(cell, line, rubles))
-              ? rubles
-                ? (canonicalMoneyAmount(cell) ?? null)
-                : cell
-              : null,
+            requireText && !matching.some((line) => mentions(line, cell))
+              ? null
+              : cell,
           ];
-        if (column === 'inn') {
-          const identifier = digits(cell);
-          return [
-            column,
-            validInn(identifier, false) &&
-            matching.some((line) => attestedIdentifier(identifier, line))
-              ? cell
-              : null,
-          ];
-        }
-        return [
-          column,
-          requireText && !matching.some((line) => mentions(line, cell))
-            ? null
-            : cell,
-        ];
-      }),
+        }),
     );
     return requireText &&
       Object.values(supported).every((cell) => cell === null)
@@ -186,4 +213,237 @@ function supportedValue(
       : [supported];
   });
   return requireText && value.length && !rows.length ? null : rows;
+}
+
+function evidencedEmployment(
+  candidate: Candidate,
+  rows: FieldRow[],
+): FieldValue {
+  const documentIds = new Set(
+    candidate.evidence.map(({ documentId }) => documentId),
+  );
+  const documents = [...documentIds].map((id) =>
+    proofLines(
+      candidate.evidence.filter(({ documentId }) => documentId === id),
+      true,
+    ),
+  );
+  const supported = rows.flatMap<FieldRow>((row) => {
+    const employer = row.employer?.trim();
+    if (!employer) return [];
+    const employerSources = documents.filter((lines) =>
+      lines.some((line) => mentions(line, employer)),
+    );
+    if (candidate.field === 'employmentHistory') {
+      const date = canonicalCalendarDate(row.date ?? '');
+      const event = row.event;
+      const pattern =
+        event === employmentEvents.hired
+          ? /(?<![\p{L}])(?:при[её]м|принят[ао]?|назначен[ао]?)(?![\p{L}])/iu
+          : event === employmentEvents.terminated
+            ? /(?<![\p{L}])(?:увольнение|уволен[ао]?|трудов[а-я]+ договор (?:расторгнут|прекращ[её]н))(?![\p{L}])/iu
+            : null;
+      if (
+        date &&
+        event &&
+        pattern &&
+        employerSources.some((lines) =>
+          lines.some((line) => pattern.test(line) && attestedDate(date, line)),
+        )
+      )
+        return [{ employer, date, event }];
+      return [];
+    }
+    const month = employmentMonth(row.month ?? '');
+    const amount = canonicalMoneyAmount(row.amount ?? '');
+    const code = row.code?.trim() || null;
+    if (
+      month &&
+      amount &&
+      !amount.startsWith('-') &&
+      (code === null || /^\d{4}$/u.test(code)) &&
+      employerSources.some((lines) =>
+        evidencedIncomeMonth(lines, month, amount, code),
+      )
+    )
+      return [{ employer, month, code, amount }];
+    return [];
+  });
+  return supported.length ? supported : null;
+}
+
+function evidencedIncomeMonth(
+  lines: string[],
+  month: string,
+  amount: string,
+  code: string | null,
+) {
+  const year = month.slice(0, 4);
+  const number = String(Number(month.slice(5)));
+  const yearHeader = new RegExp(
+    String.raw`(?:^\s*${year}\s*$|(?<!\d)${year}\s*(?:год|г\.)|год\s*[:=]\s*${year}(?!\d))`,
+    'iu',
+  );
+  const monthLabel = new RegExp(
+    String.raw`^\s*(?:\|\s*)?(?:месяц\s*[:=]?\s*)?0?${number}(?=\s|[|:;])`,
+    'iu',
+  );
+  const fullMonth = new RegExp(String.raw`(?<!\d)${month}(?![-\d])`, 'u');
+  const hasYear = lines.some((line) => yearHeader.test(line));
+  return lines.some((line) => {
+    const date =
+      fullMonth.exec(line) ?? (hasYear ? monthLabel.exec(line) : null);
+    if (!date) return false;
+    const payment = line.slice(date.index + date[0].length);
+    if (code === null) return attestedAmount(amount, payment);
+    const codeCell = new RegExp(
+      String.raw`^\s*(?:[|;:]\s*)?${code}(?=\s|[|;:])`,
+      'u',
+    ).exec(payment);
+    return (
+      codeCell !== null &&
+      moneyAmountsInText(
+        payment
+          .slice(codeCell[0].length)
+          .replace(/^\s*[|;:]\s*/u, '')
+          .split(/[|;]/u, 1)[0] ?? '',
+      )[0] === amount
+    );
+  });
+}
+
+/** The caller supplies evidence from one document. */
+export function evidencedContract(
+  evidence: Candidate['evidence'],
+  { name, contractNumber, contractDate }: FieldRow,
+) {
+  if (!name || !contractNumber || !contractDate) return;
+  const lines = proofLines(evidence, true);
+  const number = contractNumber
+    .trim()
+    .replace(/^№\s*/, '')
+    .normalize('NFKC')
+    .toLowerCase();
+  if (
+    lines.some((line) => mentions(line, name)) &&
+    (lines.some(
+      (line) =>
+        line
+          .normalize('NFKC')
+          .toLowerCase()
+          .match(/[\p{L}\p{N}]+(?:[-/._][\p{L}\p{N}]+)*/gu)
+          ?.includes(number) && attestedDate(contractDate, line),
+    ) ||
+      evidence.some((entry) =>
+        proofLines([entry], true).some((line, index, block) => {
+          const labelledNumber =
+            /^\s*номер\s+договора\s*:\s*№?\s*(\S+)\s*$/u.exec(
+              line.normalize('NFKC').toLowerCase(),
+            )?.[1];
+          if (labelledNumber !== number) return false;
+          const labelledDate =
+            /^\s*дата\s+(?:заключения\s+)?договора\s*:\s*(.+)$/iu.exec(
+              block[index + 1] ?? '',
+            )?.[1];
+          const date = canonicalCalendarDate(labelledDate ?? '');
+          return (
+            date !== undefined && date === canonicalCalendarDate(contractDate)
+          );
+        }),
+      ))
+  )
+    return { lines, identity: { name, contractNumber, contractDate } };
+}
+
+function evidencedObligation(
+  evidence: Candidate['evidence'],
+  row: FieldRow,
+  requireText: boolean,
+): FieldValue {
+  const { contractDate, amountDate, debtStatus } = row;
+  if (!contractDate || !amountDate) return null;
+  const active = debtStatus === obligationStatuses.active;
+  const statusPattern =
+    debtStatus === obligationStatuses.closed
+      ? /^\s*(?:(?:кредитный\s+договор|договор|кредит)\s+(?:был\s+)?закрыт|действие\s+договора\s+прекращено)\.?\s*$/iu
+      : debtStatus === obligationStatuses.repaid
+        ? /^\s*(?:(?:кредит|долг)\s+(?:был\s+)?полностью\s+погашен|задолженность\s+(?:полностью\s+погашена|отсутствует)|обязательства\s+(?:по\s+кредитному\s+договору\s+)?исполнены\s+в\s+полном\s+объ[её]ме)\.?\s*$/iu
+        : null;
+  const documentIds = [
+    ...new Set(evidence.map(({ documentId }) => documentId)),
+  ];
+  const sameContract = documentIds.flatMap((id) => {
+    const contract = evidencedContract(
+      evidence.filter(({ documentId }) => documentId === id),
+      row,
+    );
+    return contract?.lines.some((line) => attestedDate(amountDate, line))
+      ? [contract.lines]
+      : [];
+  });
+  const amount = canonicalMoneyAmount(row.amount ?? '');
+  const credible = sameContract.find((lines) =>
+    active
+      ? amount !== undefined &&
+        amount !== '0.00' &&
+        !amount.startsWith('-') &&
+        lines.some((line) => {
+          const total =
+            /(?:общая|полная|итоговая)\s+(?:сумма\s+)?задолженность|(?:сумма|размер)\s+(?:общей\s+|полной\s+)?задолженности|задолженность\s*\(?всего\)?|^\s*задолженность\s*:/i.exec(
+              line,
+            );
+          if (!total) return false;
+          const tail =
+            line
+              .slice(total.index + total[0].length)
+              .replace(/^\s*\|\s*/, '')
+              .split(/[;|]/, 1)[0] ?? '';
+          const withoutDates = datesInText(tail).reduce(
+            (result, date) => result.replace(date, ' '),
+            tail,
+          );
+          return moneyAmountsInText(withoutDates)[0] === amount;
+        })
+      : statusPattern !== null &&
+        lines.some((line) => statusPattern.test(line)),
+  );
+  if (!credible) return null;
+  return [
+    Object.fromEntries(
+      Object.entries({
+        ...row,
+        contractDate: canonicalCalendarDate(contractDate),
+        amountDate: canonicalCalendarDate(amountDate),
+        amount: active ? amount : null,
+      }).flatMap(([column, cell]) => {
+        if (cell == null || Object.hasOwn(creditorRegistryColumns, column))
+          return [];
+        if (
+          [
+            'name',
+            'contractNumber',
+            'contractDate',
+            'amountDate',
+            'debtStatus',
+            'amount',
+          ].includes(column)
+        )
+          return [[column, cell]];
+        if (['arrears', 'penalties', 'interest'].includes(column))
+          return credible.some((line) => attestedAmount(cell, line))
+            ? [[column, canonicalMoneyAmount(cell) ?? cell]]
+            : [];
+        if (column === 'inn') {
+          const identifier = digits(cell);
+          return validInn(identifier, false) &&
+            credible.some((line) => attestedIdentifier(identifier, line))
+            ? [[column, identifier]]
+            : [];
+        }
+        return !requireText || credible.some((line) => mentions(line, cell))
+          ? [[column, cell]]
+          : [];
+      }),
+    ),
+  ];
 }

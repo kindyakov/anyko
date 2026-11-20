@@ -13,13 +13,15 @@ import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
 import {
   type ReadTemplatePlaceholders,
+  type ReadTemplateRequirements,
   requirePackage,
 } from '../../modules/templates';
-import type { WorksModule } from '../../modules/works';
+import { projectChecklist, type WorksModule } from '../../modules/works';
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import { requireWork, workLockKey } from '../work-guards';
 
+import { checklistWithContracts } from './checklist-contracts';
 import { workAvailability } from './work-availability';
 
 // Представление работы: сборка из модулей под блокировкой работы. Курсор читается первым: параллельные
@@ -32,6 +34,7 @@ export const getWork =
     connections: ConnectionsModule;
     generation: GenerationModule;
     templatePlaceholders: ReadTemplatePlaceholders;
+    templateRequirements: ReadTemplateRequirements;
     documents: DocumentsModule;
     agents: AgentsModule;
     locks: ResourceLocks;
@@ -66,6 +69,14 @@ export const getWork =
       const facts = cleanupPending
         ? emptyFacts()
         : await deps.facts.queries.get(scope, workId);
+      const requirements = await deps.templateRequirements(work.packageVersion);
+      const checklist = projectChecklist(
+        requirements,
+        requirements.length && !cleanupPending
+          ? await deps.works.internal.checklistLinks(scope.workspaceId, workId)
+          : [],
+        rows,
+      );
       const availability = await workAvailability(
         deps,
         scope,
@@ -83,6 +94,8 @@ export const getWork =
           deps.templatePlaceholders(requirePackage(work.packageVersion)),
         ),
         documents,
+        checklist: checklistWithContracts(checklist, facts),
+        canEditChecklist: scope.has('works.edit') && !cleanupPending,
         facts: { ...facts, candidates: markSelectedCandidates(facts) },
         discrepancyFields: findFactDiscrepancies(facts),
         runs: cleanupPending

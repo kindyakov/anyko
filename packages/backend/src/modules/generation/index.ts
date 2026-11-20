@@ -24,11 +24,12 @@ interface GenerationRecord {
   confirmed: boolean;
   values: FieldValues;
   packageVersion: string;
+  createdAt: Date;
   files: GenerationFile[];
 }
 export interface GenerationStore {
   create(
-    input: Omit<GenerationRecord, 'files'> & {
+    input: Omit<GenerationRecord, 'createdAt' | 'files'> & {
       files: Pick<
         GenerationFile,
         'id' | 'templateVersion' | 'title' | 'filename'

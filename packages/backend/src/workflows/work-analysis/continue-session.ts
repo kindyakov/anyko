@@ -1,29 +1,31 @@
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
 import { LlmError } from '@anyko/llm';
 
 import {
   type AgentSessionContext,
   type FieldDefinition,
 } from '../../modules/agents';
-import type { DocumentAnalysis } from '../../modules/documents';
 import { candidatesForContext, type WorkFacts } from '../../modules/facts';
 import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
+import type { FieldKey } from '../../profiles/bfl/fields';
 import type { WorkDependencies } from '../work-dependencies';
 import { logWorkFailure } from '../work-execution/failure';
 import { analysisContextRevision } from '../work-execution/run-state';
 import { guardWorkRevision, workLockKey } from '../work-guards';
 
+import { attachmentAnalysis } from './attachment-analysis';
+import {
+  type ChecklistAnalysisSource,
+  validateChecklistSuggestions,
+} from './checklist-suggestions';
 import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
 
-export interface ContinuationSource {
-  id: string;
+export interface ContinuationSource extends ChecklistAnalysisSource {
   filename: string;
   digest: string;
-  text: string;
-  pdfOcr?: DocumentAnalysis['pdfOcr'];
-  visuals: { path: string; description: string }[];
 }
 
 /** One entry point for continuing a logical work session; transport never owns its context. */
@@ -35,6 +37,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
       WorkDependencies['connections']['internal']['connection']
     >;
     fields: FieldDefinition[];
+    excludedFields?: ReadonlySet<FieldKey> | undefined;
     candidates: WorkFacts['candidates'];
     sources: ContinuationSource[];
     failures: number;
@@ -50,6 +53,9 @@ export function createWorkContinuation(deps: WorkDependencies) {
         async (signal) => {
           const work = await input.current();
           const threadId = deps.newId();
+          const requirements = await deps.templateRequirements(
+            work.packageVersion,
+          );
           return workAttempt.write(async (tx) => {
             await guardWorkRevision(
               deps.works.in(tx).internal,
@@ -64,17 +70,19 @@ export function createWorkContinuation(deps: WorkDependencies) {
             await deps.processing
               .in(tx)
               .internal.thread(run.workspaceId, run.workId, threadId);
-            return { work, facts, session, threadId };
+            return { work, facts, session, threadId, requirements };
           }, signal);
         },
         input.signal,
       );
-      const candidates = candidatesForContext(
+      const found = candidatesForContext(
         input.candidates,
         snapshot.facts.candidates,
         run.documentIds,
         input.sources.map(({ id }) => id),
       );
+      const submitted = hasSubmittedAttachments(input.fields);
+      const candidates = submitted ? attachmentAnalysis(found) : found;
       let output:
         Awaited<ReturnType<typeof deps.agents.model.reconcile>> | undefined;
       const historyRef = {
@@ -133,6 +141,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
               modelId: config.extractionModel,
               connection: config.connection,
               fields: input.fields,
+              checklistRequirements: snapshot.requirements,
               workRevision: snapshot.work.revision,
               previousContext: snapshot.session.context,
               facts: snapshot.facts,
@@ -161,7 +170,10 @@ export function createWorkContinuation(deps: WorkDependencies) {
               },
             }),
         });
-        output.candidates = locateEvidence(output.candidates, input.sources);
+        const located = locateEvidence(output.candidates, input.sources);
+        output.candidates = submitted
+          ? attachmentAnalysis(located, candidates)
+          : located;
       } catch (error) {
         output = undefined;
         reconciliationCause = error;
@@ -213,12 +225,38 @@ export function createWorkContinuation(deps: WorkDependencies) {
               workspaceId: run.workspaceId,
               workId: run.workId,
               fields: input.fields.map(({ key }) => key),
+              excludedFields: input.excludedFields,
               confirmed: work.confirmedRevision === work.revision,
               preserveExisting: run.automaticUpload === true,
               candidates,
               ...(validOutput && { contextCandidates: validOutput.candidates }),
             });
             if (!acceptedFacts.contextAccepted) validOutput = undefined;
+            const suggestions = validOutput?.checklistSuggestions;
+            if (suggestions && snapshot.requirements.length) {
+              const documents = await works.documents(
+                run.workspaceId,
+                run.workId,
+              );
+              const sources = input.sources.filter((source) =>
+                documents.some(
+                  (row) =>
+                    !row.deleted &&
+                    row.id === source.id &&
+                    row.ocrRevision === source.ocrRevision,
+                ),
+              );
+              await works.replaceChecklistSuggestions(
+                run.workspaceId,
+                run.workId,
+                sources.map(({ id }) => id),
+                validateChecklistSuggestions(
+                  snapshot.requirements,
+                  sources,
+                  suggestions,
+                ),
+              );
+            }
             await sessions.history.outcome(historyRef, {
               ...interaction,
               status: validOutput ? 'accepted' : 'rejected',

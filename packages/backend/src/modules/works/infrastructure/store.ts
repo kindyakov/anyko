@@ -4,6 +4,7 @@ import { WorkError, workSummarySchema } from '..';
 import type { WorkStore } from '..';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
 
+import { createChecklistStore } from './checklist-store';
 import { createWorkDeletionStore } from './deletion-store';
 import { createUploadGroupsStore } from './upload-groups';
 
@@ -14,6 +15,7 @@ type Connection = Pick<
   | 'workEvent'
   | 'workDeletion'
   | 'workUploadGroup'
+  | 'workChecklistLink'
   | '$queryRaw'
 >;
 // Хранилище внутри транзакции действия: токен превращается в клиент транзакции драйвера.
@@ -42,6 +44,7 @@ export function createWorkStore(
   return {
     ...createWorkDeletionStore(db),
     ...uploads,
+    ...createChecklistStore(db),
     async list(workspaceId, { q, status, page, pageSize }) {
       const revision = db.work.fields.revision;
       const where = {

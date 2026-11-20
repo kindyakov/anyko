@@ -28,7 +28,10 @@ test('the selectable package contains three real versioned templates; archived s
   const packages = availablePackages();
   expect(packages).toHaveLength(1);
   expect(packages[0]?.technical).toBe(false);
-  expect(packages[0]?.version).toBe('bfl-bankruptcy-v6');
+  expect(packages[0]?.version).toBe('bfl-bankruptcy-v8');
+  expect(requirePackage('bfl-bankruptcy-v6').documents[0]?.version).toBe(
+    'bfl-statement-v6',
+  );
   expect(packages[0]?.documents.map((doc) => doc.id)).toEqual([
     'statement',
     'inventory',
@@ -407,4 +410,156 @@ test('the chosen request and explicit absence of attachments cannot be contradic
   expect(xml).not.toContain('прилагаю');
   expect(xml).not.toContain('подтверждаются приложенными документами');
   expect(xml).not.toContain('Отсутствует');
+});
+
+test('the current package uses one active contract total in both DOCX files', () => {
+  const pack = availablePackages()[0];
+  expect(pack?.version).toBe('bfl-bankruptcy-v8');
+  const values = {
+    ...emptyFieldValues(),
+    debtTotal: '99999',
+    debts: [
+      {
+        name: 'АО Синтетический Банк',
+        contractNumber: 'ACT-001',
+        contractDate: '2025-01-03',
+        amountDate: '2026-11-08',
+        debtStatus: 'Действует',
+        amount: '1234.05',
+        penalties: '57.12',
+      },
+      {
+        name: 'АО «Синтетический Банк»',
+        contractNumber: 'ACT-001',
+        contractDate: '03.01.2025',
+        amountDate: '2026-11-09',
+        debtStatus: 'Действует',
+        amount: '1234.05',
+      },
+      {
+        name: 'АО «Синтетический Банк»',
+        contractNumber: 'ACT-002',
+        contractDate: '2025-02-06',
+        amountDate: '2026-11-08',
+        debtStatus: 'Действует',
+        amount: '200.06',
+      },
+      {
+        name: 'Другой закрытый кредитор',
+        contractNumber: 'PAID-003',
+        contractDate: '2024-04-02',
+        debtStatus: 'Погашен',
+        amount: '462.10',
+      },
+    ],
+  };
+  const render = (id: string) => {
+    const doc = pack?.documents.find((template) => template.id === id);
+    if (!doc) throw new Error('Missing template');
+    return (
+      new PizZip(
+        generateDocument(
+          templateBytes(doc.version),
+          templateData(values, doc.version, doc.placeholders),
+        ),
+      )
+        .file('word/document.xml')
+        ?.asText() ?? ''
+    );
+  };
+  const statement = render('statement');
+  const creditors = render('creditors');
+  const header = statement.slice(0, statement.indexOf('</w:tbl>'));
+  expect(header.match(/Синтетический Банк/g)).toHaveLength(1);
+  for (const xml of [statement, creditors]) {
+    expect(xml.match(/ACT-001/g)).toHaveLength(1);
+    expect(xml.match(/ACT-002/g)).toHaveLength(1);
+    expect(xml).toContain('1234,05');
+    expect(xml).toContain('200,06');
+    expect(xml).toContain('1434,11');
+    expect(xml).not.toContain('99999');
+    expect(xml).not.toContain('PAID-003');
+    expect(xml).not.toContain('57,12');
+  }
+  expect(statement).toContain(
+    'одна тысяча четыреста тридцать четыре рубля одиннадцать копеек',
+  );
+});
+
+test('the approved statement preserves its predecessor’s OOXML parts and renders the same request as the preview', () => {
+  const document = requirePackage('bfl-bankruptcy-v8').documents[0];
+  if (!document) throw new Error('Missing statement');
+  const source = new PizZip(templateBytes(document.version));
+  const predecessor = new PizZip(templateBytes('bfl-statement-v7'));
+  expect(Object.keys(source.files)).toEqual(Object.keys(predecessor.files));
+  for (const path of Object.keys(source.files)) {
+    if (path !== 'word/document.xml')
+      expect(source.file(path)?.asText()).toBe(
+        predecessor.file(path)?.asText(),
+      );
+  }
+  const sourceXml = source.file('word/document.xml')?.asText() ?? '';
+  const requestTexts = document.blocks
+    .flatMap((block) =>
+      block.kind === 'paragraph' ? [block.paragraph.text] : [],
+    )
+    .filter((text) =>
+      [
+        'Признать {requestDebtorName}',
+        'Утвердить финансового управляющего',
+        'На основании ст. 213.4 п. 4 абз. 2 ФЗ «О несостоятельности',
+      ].some((prefix) => text.startsWith(prefix)),
+    );
+  expect(requestTexts).toHaveLength(3);
+  for (const text of requestTexts) expect(sourceXml).toContain(text);
+});
+
+test('statement projects current-year income across employers and leaves historical fields editable', () => {
+  const pack = requirePackage('bfl-bankruptcy-v7');
+  const statement = pack.documents[0];
+  if (!statement) throw new Error('STATEMENT_MISSING');
+  const values = {
+    ...emptyFieldValues(),
+    employmentHistory: [
+      { employer: 'ООО Север', date: '05.04.2025', event: 'Приём' },
+      { employer: 'ООО Север', date: '10.02.2026', event: 'Увольнение' },
+      { employer: 'ООО Юг', date: '23.02.2026', event: 'Приём' },
+    ],
+    employmentIncome: [
+      { employer: 'ООО Север', month: '2025-12', amount: '900000.00' },
+      { employer: 'ООО Север', month: '2026-01', amount: '90000.01' },
+      { employer: 'ООО Север', month: '2026-02', amount: '30000.00' },
+      { employer: 'ООО Юг', month: '2026-02', amount: '10000.00' },
+      { employer: 'ООО Юг', month: '2026-03', amount: '80000.00' },
+    ],
+  };
+  expect(pack.fields.map(({ key }) => key)).toContain('employmentHistory');
+  const output = templateData(
+    values,
+    statement.version,
+    statement.placeholders,
+    {
+      fields: pack.fields,
+      referenceDate: '14.03.2026',
+    },
+  );
+  const xml = new PizZip(
+    generateDocument(templateBytes(statement.version), output),
+  )
+    .file('word/document.xml')
+    ?.asText();
+  expect(xml).toContain('В настоящее время работаю в ООО Юг.');
+  expect(xml).toContain('60900,00 руб.');
+  expect(xml).not.toContain('ООО Север');
+
+  const historical = requirePackage('bfl-bankruptcy-v6');
+  expect(historical.fields.map(({ key }) => key)).not.toContain(
+    'employmentHistory',
+  );
+  expect(
+    templateData(
+      { ...emptyFieldValues(), employmentDetails: 'Исторический текст' },
+      historical.documents[0]?.version,
+    ).employmentDetails,
+  ).toBe('Исторический текст');
 });

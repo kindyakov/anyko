@@ -4,6 +4,8 @@ import { useRef, useState } from 'react';
 
 import { type FieldKey } from '@anyko/contracts/catalog';
 import { type WorkView } from '@anyko/contracts/works';
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
+import { hasEmploymentFields } from '@anyko/document-values/employment';
 import { Button, Disclosure, SegmentedControl } from '@anyko/ui';
 import { EventHorizon } from '@anyko/ui/brand';
 
@@ -14,8 +16,10 @@ import {
 
 import type { FactsForm } from './facts-form';
 import { PackagePreview } from './package-preview';
+import { AttachmentReview } from './review/attachment-review';
 import { CandidateList } from './review/candidate-list';
 import { EditConflicts } from './review/edit-conflicts';
+import { EmploymentReview } from './review/employment-review';
 import { SessionContext } from './session-context';
 
 type Document = WorkView['documents'][number];
@@ -126,6 +130,24 @@ export function WorkReview({
             />
           )}
         </div>
+        {hasSubmittedAttachments(view.package.fields) && (
+          <AttachmentReview
+            documents={view.documents}
+            candidates={view.facts.candidates}
+            value={values.submittedAttachments}
+            disabled={busy}
+            onChange={(value) => {
+              facts.change({ submittedAttachments: value });
+            }}
+            onOpen={onOpen}
+          />
+        )}
+        {hasEmploymentFields(view.package.fields) && (
+          <EmploymentReview
+            values={values}
+            needsReview={view.facts.needsReview}
+          />
+        )}
         {quick.length > 1 && (
           <div className="animate-rise mb-5 flex flex-col gap-4 rounded-2xl border border-[#ff3b62]/25 bg-[#db143c]/[0.06] p-4 backdrop-blur-[18px] sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm leading-6">
@@ -187,8 +209,8 @@ export function WorkReview({
             visible={visible}
             values={values}
             view={view}
-            onApply={(key, value) => {
-              facts.change({ [key]: value });
+            onApply={(patch) => {
+              facts.change(patch);
             }}
             busy={busy}
             jump={jump}
@@ -225,6 +247,7 @@ export function WorkReview({
           <PackagePreview
             pack={view.package}
             values={values}
+            needsReview={view.facts.needsReview}
             disabled={busy}
             focus={focus}
             onBack={() => {

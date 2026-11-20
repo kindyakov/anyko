@@ -6,76 +6,32 @@ import type {
   FieldValues,
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
+import {
+  canApplyCreditorRegistryCandidate,
+  containsCreditorRegistryCandidate,
+} from '@anyko/document-values/obligations';
 import { Button, StatusPill } from '@anyko/ui';
 
+import { courtOptions } from '@/features/fact-review/model/court-options';
 import { sameFieldValue } from '@/features/fact-review/model/field-value';
 import {
   candidateSelection,
   invalidReviewValue,
   normalizedReviewValue,
+  reviewCandidateValue,
   type ReviewField,
 } from '@/features/fact-review/model/review';
 
 import { CandidateValue } from '../work-fields';
 
+import { CourtChoices } from './court-choices';
 import {
-  type Evidence,
-  type OpenSource,
-  SourceFragments,
-} from './source-fragments';
-
-type Origin = NonNullable<ReviewField['candidates'][number]['origin']>;
-type Findings = {
-  origin: Origin;
-  evidence: Evidence[];
-  explanations: Set<string>;
-};
-
-const originLabels: Record<Origin, string> = {
-  document: 'Из документа',
-  context: 'Сопоставление файлов',
-  inference: 'Вывод агента',
-};
-
-function FindingSources({
-  findings,
-  documents,
-  onOpen,
-}: {
-  findings: Findings;
-  documents: WorkView['documents'];
-  onOpen: OpenSource;
-}) {
-  const isInference = findings.origin === 'inference';
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusPill tone={isInference ? 'warning' : 'success'}>
-          {originLabels[findings.origin]}
-        </StatusPill>
-        {isInference && (
-          <span className="text-xs text-white/70">
-            Без независимой проверки
-          </span>
-        )}
-      </div>
-      {[...findings.explanations].map((explanation) => (
-        <p
-          key={explanation}
-          className="text-sm leading-5 break-words text-white/85"
-        >
-          {explanation}
-        </p>
-      ))}
-      <SourceFragments
-        evidence={findings.evidence}
-        documents={documents}
-        onOpen={onOpen}
-        {...(isInference && { title: 'Основания для вывода' })}
-      />
-    </div>
-  );
-}
+  type CourtSources,
+  type CreditorSource,
+  type Findings,
+  FindingSources,
+} from './finding-sources';
+import type { OpenSource } from './source-fragments';
 
 export function CandidateList({
   visible,
@@ -91,7 +47,7 @@ export function CandidateList({
   view: WorkView;
   busy: boolean;
   jump: (key: FieldKey) => void;
-  onApply: (key: FieldKey, value: FieldValue) => void;
+  onApply: (patch: Partial<FieldValues>) => void;
   onOpen: OpenSource;
 }) {
   return (
@@ -124,18 +80,44 @@ export function CandidateList({
               included: false,
               evidence: [],
               explanations: new Set<string>(),
+              courtSources: new Map<string, CourtSources>(),
+              creditorSources: new Map<string, CreditorSource>(),
             };
             if (!existing) groups.push(group);
-            group.included ||= isSelected({ ...candidate, value });
+            group.included ||= candidate.creditorSource
+              ? containsCreditorRegistryCandidate(comparable, value)
+              : isSelected({ ...candidate, value });
+            if (candidate.creditorSource)
+              group.creditorSources.set(
+                candidate.creditorSource.url,
+                candidate.creditorSource,
+              );
             group.evidence.push(...candidate.evidence);
             if (candidate.explanation)
               group.explanations.add(candidate.explanation);
+            if (candidate.courtSources)
+              group.courtSources.set(
+                JSON.stringify([
+                  candidate.courtSources.contactUrl,
+                  candidate.courtSources.courtName,
+                ]),
+                candidate.courtSources,
+              );
           }
+          const choicesFor = (group: Findings & { value: FieldValue }) =>
+            courtOptions(
+              values,
+              view.facts.candidates,
+              field.key,
+              group.value,
+              group.courtSources.values(),
+            );
           const { matching = [], options = [] } = Object.groupBy(
             groups,
-            ({ value }) =>
-              !invalidReviewValue(field, value) &&
-              sameFieldValue(comparable, value)
+            (group) =>
+              !invalidReviewValue(field, group.value) &&
+              sameFieldValue(comparable, group.value) &&
+              !choicesFor(group).length
                 ? 'matching'
                 : 'options',
           );
@@ -233,7 +215,14 @@ export function CandidateList({
                           <div className="min-w-0 text-sm font-medium">
                             <CandidateValue value={option.value} />
                           </div>
-                          {invalidReviewValue(field, option.value) ? (
+                          {option.courtSources.size ? (
+                            <CourtChoices
+                              field={field.key}
+                              choices={choicesFor(option)}
+                              busy={busy}
+                              onApply={onApply}
+                            />
+                          ) : invalidReviewValue(field, option.value) ? (
                             <StatusPill tone="warning">
                               {field.valueType === 'date'
                                 ? 'Непроверенная дата'
@@ -249,13 +238,26 @@ export function CandidateList({
                               variant={
                                 current == null ? 'primary' : 'secondary'
                               }
-                              disabled={busy}
+                              disabled={
+                                busy ||
+                                (option.creditorSources.size > 0 &&
+                                  !canApplyCreditorRegistryCandidate(
+                                    current,
+                                    option.value,
+                                  ))
+                              }
                               onClick={(event) => {
                                 event.currentTarget
                                   .closest('article')
                                   ?.querySelector('h3')
                                   ?.focus({ preventScroll: true });
-                                onApply(field.key, option.value);
+                                const value = reviewCandidateValue(
+                                  field.key,
+                                  current,
+                                  option.value,
+                                  option.creditorSources.size > 0,
+                                );
+                                onApply({ [field.key]: value });
                               }}
                             >
                               Подставить это значение

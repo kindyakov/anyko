@@ -1,5 +1,7 @@
 import { expect, test } from 'bun:test';
 
+import { obligationAmounts } from '@anyko/document-values/obligations';
+
 import {
   type AcceptRunCandidatesInput,
   candidatesForContext,
@@ -470,4 +472,232 @@ test('context preparation only reuses document candidates for unreadable sources
       [documentId],
     ),
   ).toEqual([raw, unreadable]);
+});
+
+test('accepts a later documented closure while keeping conflicting active balances for review', async () => {
+  let evidenceNumber = 100;
+  const makeDebt = (
+    contractNumber: string,
+    amount: string,
+    amountDate: string,
+    debtStatus: string,
+    wording: string,
+  ): Candidate => ({
+    field: 'debts',
+    value: [
+      {
+        name: 'АО Синтетический Банк',
+        contractNumber,
+        contractDate: '2025-01-03',
+        amount,
+        amountDate,
+        debtStatus,
+      },
+    ],
+    evidence: [
+      {
+        documentId:
+          ref.workId.slice(0, -3) + String(evidenceNumber++).padStart(3, '0'),
+        imagePath: null,
+        quote:
+          'АО Синтетический Банк\nДоговор № ' +
+          contractNumber +
+          ' от 03.01.2025\nПо состоянию на ' +
+          amountDate +
+          '\n' +
+          wording,
+      },
+    ],
+  });
+  const first = makeDebt(
+    'ACT-1',
+    '100.05',
+    '08.11.2026',
+    'Действует',
+    'Полная задолженность 100,05 руб.',
+  );
+  const repeat = makeDebt(
+    'ACT-1',
+    '100.05',
+    '09.11.2026',
+    'Действует',
+    'Общая задолженность 100,05 руб.',
+  );
+  const second = makeDebt(
+    'ACT-2',
+    '200.06',
+    '09.11.2026',
+    'Действует',
+    'Общая задолженность 200,06 руб.',
+  );
+  const changed = makeDebt(
+    'ACT-1',
+    '110.07',
+    '10.11.2026',
+    'Действует',
+    'Полная задолженность 110,07 руб.',
+  );
+  const closing = makeDebt(
+    'ACT-2',
+    '0',
+    '10.11.2026',
+    'Закрыт',
+    'Кредитный договор закрыт.',
+  );
+  const repayment = makeDebt(
+    'ACT-2',
+    '0',
+    '10.11.2026',
+    'Погашен',
+    'Обязательства по кредитному договору исполнены в полном объеме.',
+  );
+  const turnover = makeDebt(
+    'ACT-3',
+    '9000.10',
+    '09.11.2026',
+    'Действует',
+    'Оборот по счёту: 9000,10 руб.',
+  );
+  const facts = runFacts();
+  const accept = (candidates: Candidate[], preserveExisting = false) =>
+    facts.accept({
+      fields: ['debts'],
+      confirmed: false,
+      candidates,
+      preserveExisting,
+    });
+
+  await accept([first, repeat, second, turnover]);
+  let saved = await facts.saved();
+  expect(saved.values.debts).toEqual([
+    expect.objectContaining({ contractNumber: 'ACT-1', amount: '100.05' }),
+    expect.objectContaining({ contractNumber: 'ACT-2', amount: '200.06' }),
+  ]);
+  expect(saved.candidates).toHaveLength(4);
+  const beforeClosure = saved;
+
+  const negatedRepayment = makeDebt(
+    'ACT-2',
+    '0',
+    '10.11.2026',
+    'Погашен',
+    'Кредит не полностью погашен.',
+  );
+  const incompleteObligations = makeDebt(
+    'ACT-2',
+    '0',
+    '10.11.2026',
+    'Погашен',
+    'Обязательства по кредитному договору не исполнены в полном объёме.',
+  );
+  const negated = runFacts(beforeClosure);
+  await negated.accept({
+    fields: ['debts'],
+    confirmed: false,
+    preserveExisting: true,
+    candidates: [negatedRepayment, incompleteObligations],
+  });
+  const afterNegation = await negated.saved();
+  expect(afterNegation.candidates).toContainEqual(negatedRepayment);
+  expect(afterNegation.candidates).toContainEqual(incompleteObligations);
+  expect(
+    obligationAmounts(afterNegation.values.debts, null).debts,
+  ).toMatchObject([
+    { contractNumber: 'ACT-1', amount: '100,05' },
+    { contractNumber: 'ACT-2', amount: '200,06' },
+  ]);
+
+  const repaid = runFacts(beforeClosure);
+  await repaid.accept({
+    fields: ['debts'],
+    confirmed: false,
+    preserveExisting: true,
+    candidates: [repayment],
+  });
+  const afterRepayment = await repaid.saved();
+  expect(afterRepayment.values.debts).toMatchObject([
+    { contractNumber: 'ACT-1', amount: '100.05' },
+    { contractNumber: 'ACT-2', debtStatus: 'Погашен' },
+  ]);
+  expect(
+    obligationAmounts(afterRepayment.values.debts, null).debts,
+  ).toMatchObject([{ contractNumber: 'ACT-1', amount: '100,05' }]);
+
+  const result = await accept([changed, closing], true);
+  saved = await facts.saved();
+  expect(saved.values.debts).toEqual([
+    expect.objectContaining({ contractNumber: 'ACT-1', amount: '100.05' }),
+    expect.objectContaining({
+      contractNumber: 'ACT-2',
+      debtStatus: 'Закрыт',
+    }),
+  ]);
+  expect(saved.candidates).toHaveLength(6);
+  expect(result.discrepancyFields).toContain('debts');
+  expect(obligationAmounts(saved.values.debts, null).debts).toMatchObject([
+    { contractNumber: 'ACT-1', amount: '100,05' },
+  ]);
+
+  for (const review of ['manual', 'confirmed'] as const) {
+    const reviewed = runFacts({ ...beforeClosure, [review]: ['debts'] });
+    await reviewed.accept({
+      fields: ['debts'],
+      confirmed: false,
+      preserveExisting: true,
+      candidates: [closing],
+    });
+    expect((await reviewed.saved()).values.debts).toEqual(
+      beforeClosure.values.debts,
+    );
+  }
+});
+
+test('accepts a credit certificate with adjacent contract number and date fields from one evidence block', async () => {
+  const row = {
+    name: 'АО Синтетический Банк',
+    contractNumber: 'A-42',
+    contractDate: '2025-01-03',
+    amount: '720.50',
+    amountDate: '2026-11-09',
+    debtStatus: 'Действует',
+  };
+  const numberLine = 'Номер договора: A-42';
+  const dateLine = 'Дата заключения договора: 03.01.2025';
+  const sharedLines =
+    'АО Синтетический Банк\nПо состоянию на 09.11.2026\nОбщая задолженность: 720,50 руб.';
+  const accept = async (quotes: string[]) => {
+    const facts = runFacts();
+    await facts.accept({
+      fields: ['debts'],
+      confirmed: false,
+      candidates: [
+        {
+          field: 'debts',
+          value: [row],
+          evidence: quotes.map((quote) => ({
+            documentId,
+            imagePath: null,
+            quote,
+          })),
+        },
+      ],
+    });
+    return (await facts.saved()).values.debts;
+  };
+
+  expect(await accept([sharedLines + '\n' + numberLine, dateLine])).toBeNull();
+  expect(
+    await accept([
+      [sharedLines, numberLine, 'Номер договора: A-43', dateLine].join('\n'),
+    ]),
+  ).toBeNull();
+  expect(
+    await accept([[sharedLines, numberLine, dateLine].join('\n')]),
+  ).toEqual([
+    expect.objectContaining({
+      ...row,
+      contractDate: '03.01.2025',
+      amountDate: '09.11.2026',
+    }),
+  ]);
 });

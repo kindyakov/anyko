@@ -1,3 +1,4 @@
+import { datedBankruptcyPackage } from '@anyko/document-values/bankruptcy-statement';
 import { LlmError } from '@anyko/llm';
 
 import { visionPromptRevision } from '../../modules/agents';
@@ -108,11 +109,12 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       if (source.status !== 'succeeded' || source.revision === null)
         throw new Error('PARSING_FAILED');
       await step({ stage: 'parsing', documentId, status: 'succeeded' });
-      return deps.documents.internal.queries.analysis({
+      const analysis = await deps.documents.internal.queries.analysis({
         workspaceId,
         documentId,
         revision: source.revision,
       });
+      return { ...analysis, ocrRevision: source.revision };
     };
     const { revision } = await loadConnection(run.settingsRevision);
     const readConnection = () => loadConnection(revision);
@@ -121,6 +123,17 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       await readConnection();
     };
     const pack = requirePackage((await current()).packageVersion);
+    const excludedFields =
+      pack.version === datedBankruptcyPackage
+        ? new Set(
+            pack.fields
+              .filter(
+                ({ key }) => key === 'documentDate' || key.startsWith('sro'),
+              )
+              .map(({ key }) => key),
+          )
+        : undefined;
+    const fields = pack.fields.filter(({ key }) => !excludedFields?.has(key));
     const candidates: WorkFacts['candidates'] = [];
     const sources: ContinuationSource[] = [];
     let failures = 0,
@@ -256,7 +269,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
                   assertCurrent,
                   connection: stepConnection.connection,
                   modelId: stepConnection.extractionModel,
-                  fields: pack.fields,
+                  fields,
                   threadId,
                   resource: `${run.workspaceId}:${run.workId}`,
                   document: {
@@ -292,6 +305,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
               await deps.works.internal.documents(run.workspaceId, run.workId)
             ).find((d) => d.id === documentId)?.filename ?? documentId,
           digest: source.sourceDigest,
+          ocrRevision: source.ocrRevision,
           text: source.text,
           ...(source.pdfOcr && { pdfOcr: source.pdfOcr }),
           visuals: output.visuals,
@@ -336,7 +350,8 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       attempt,
       settingsRevision: revision,
       readConnection,
-      fields: pack.fields,
+      fields,
+      excludedFields,
       candidates,
       sources,
       failures,

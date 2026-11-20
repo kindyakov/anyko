@@ -1,7 +1,18 @@
-import type { FieldValue, FieldValues } from '@anyko/contracts/catalog';
+import type {
+  FieldKey,
+  FieldValue,
+  FieldValues,
+} from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
+import {
+  applyCreditorRegistryCandidate,
+  applyObligationCandidate,
+  isBankObligation,
+  obligationFields,
+} from '@anyko/document-values/obligations';
 
 import { sameFieldValue } from './field-value';
 
@@ -46,6 +57,20 @@ export function candidateSelection(
     unchanged ? candidate.selected : sameFieldValue(value, candidate.value);
 }
 
+export function reviewCandidateValue(
+  key: FieldKey,
+  current: FieldValue | undefined,
+  value: FieldValue,
+  registry: boolean,
+) {
+  if (!Array.isArray(value)) return value;
+  if (registry) return applyCreditorRegistryCandidate(current, value) ?? null;
+  return obligationFields.some((field) => field === key) &&
+    value.some(isBankObligation)
+    ? applyObligationCandidate(current, value)
+    : value;
+}
+
 export function reviewFields(
   view: WorkView,
   values: FieldValues,
@@ -53,7 +78,12 @@ export function reviewFields(
 ) {
   const conflicts = new Set(view.facts.discrepancyFields);
   const evidenceLost = new Set(view.facts.needsReview);
-  const fields: ReviewField[] = view.package.fields.map((field) => {
+  const reviewable = hasSubmittedAttachments(view.package.fields)
+    ? view.package.fields.filter(
+        ({ key }) => key !== 'attachments' && key !== 'submittedAttachments',
+      )
+    : view.package.fields;
+  const fields: ReviewField[] = reviewable.map((field) => {
     const candidates = view.facts.candidates.filter(
       ({ field: key }) => key === field.key,
     );
@@ -97,8 +127,8 @@ export function reviewFields(
           ),
       ),
   );
-  const total = view.package.fields.length;
-  const complete = view.package.fields.filter(
+  const total = reviewable.length;
+  const complete = reviewable.filter(
     (field) => values[field.key] != null,
   ).length;
   return { attention, visible, quick, total, complete };

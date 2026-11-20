@@ -58,6 +58,73 @@ function renderWork() {
   );
 }
 
+test('the Files step links a source and separates conditional checklist requirements', async () => {
+  const document = { ...source, processingRevision: 4 };
+  const address = `${workAddress}/checklist-items/passport/documents/${document.id}`;
+  let confirmed = false;
+  const requests = serveApi(({ method, url }) => {
+    if (method === 'PUT' && url === address) {
+      confirmed = true;
+      return json(200, { status: 'updated' });
+    }
+    if (url !== workAddress) throw new Error(`Unexpected request ${url}`);
+    const view: WorkView = {
+      ...workView,
+      documents: [document],
+      canEditChecklist: true,
+      checklist: [
+        {
+          key: 'passport',
+          label: 'Паспорт гражданина',
+          documentKind: 'identity',
+          applicability: 'usual',
+          status: confirmed ? 'confirmed' : 'missing',
+          sources: confirmed
+            ? [
+                {
+                  documentId: document.id,
+                  status: 'confirmed',
+                  quote: null,
+                  page: null,
+                },
+              ]
+            : [],
+        },
+        {
+          key: 'marriage',
+          label: 'Свидетельство о браке',
+          documentKind: 'civil-status',
+          applicability: 'conditional',
+          status: 'clarify',
+          sources: [],
+        },
+      ],
+    };
+    return json(200, view);
+  });
+  renderWork();
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('tab', { name: /^1\s*Файлы/ }));
+  const usual = within(screen.getByRole('list', { name: 'Обычно нужны' }));
+  const conditional = within(
+    screen.getByRole('list', { name: 'По обстоятельствам' }),
+  );
+  expect(usual.getByText('Не найдено')).toBeTruthy();
+  expect(conditional.getByText('Уточнить')).toBeTruthy();
+  await user.selectOptions(
+    usual.getByRole('combobox', { name: 'Файл для «Паспорт гражданина»' }),
+    document.id,
+  );
+  await user.click(usual.getByRole('button', { name: 'Привязать' }));
+  expect(
+    await usual.findByRole('button', { name: document.filename }),
+  ).toBeTruthy();
+  expect(requests.find(({ method }) => method === 'PUT')).toMatchObject({
+    url: address,
+    body: { decision: 'confirmed', ocrRevision: 4 },
+  });
+});
+
 test('work history can open a retained analysis run outside the recent work view', async () => {
   const run = {
     id: crypto.randomUUID(),
@@ -96,6 +163,7 @@ test('work history can open a retained analysis run outside the recent work view
             input: null,
             output: JSON.stringify({ summary: 'Проверены сведения' }),
             fieldChange: null,
+            checklistChange: null,
             errorCode: null,
             durationMs: null,
             createdAt: run.createdAt,

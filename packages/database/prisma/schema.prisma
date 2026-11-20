@@ -158,10 +158,30 @@ model WorkDocument {
  work Work @relation(fields:[workspaceId,workId],references:[workspaceId,id],onDelete:Cascade)
  document SourceDocument @relation(fields:[workspaceId,documentId],references:[workspaceId,id],onDelete:Restrict)
  ocrRun Run? @relation(fields:[workspaceId,documentId,ocrRevision],references:[workspaceId,documentId,revision],onDelete:Restrict)
+ checklistLinks WorkChecklistLink[]
  @@id([workId,documentId])
+ @@unique([workspaceId,workId,documentId])
  @@index([workspaceId,workId])
  @@index([workspaceId,documentId])
  @@index([workspaceId,workId,uploadGroupId])
+}
+enum WorkChecklistDecision {
+ found
+ review
+ confirmed
+ rejected
+}
+model WorkChecklistLink {
+ workspaceId String
+ workId String
+ documentId String
+ source WorkDocument @relation(fields:[workspaceId,workId,documentId],references:[workspaceId,workId,documentId],onDelete:Cascade)
+ requirementKey String
+ ocrRevision Int?
+ decision WorkChecklistDecision
+ quote String?
+ page Int?
+ @@id([workspaceId,workId,documentId,requirementKey])
 }
 model WorkUploadGroup {
  id BigInt @id @default(autoincrement())
@@ -222,6 +242,22 @@ model DocumentTemplateVersion {
  checksum String
  packages PackageDocument[]
  placeholders DocumentTemplatePlaceholder[]
+ requirements DocumentTemplateRequirement[]
+}
+enum TemplateRequirementApplicability {
+ usual
+ conditional
+}
+model DocumentTemplateRequirement {
+ templateVersion String
+ template DocumentTemplateVersion @relation(fields:[templateVersion],references:[version],onDelete:Cascade)
+ key String
+ documentKind String
+ label String
+ applicability TemplateRequirementApplicability
+ position Int
+ @@id([templateVersion,key])
+ @@unique([templateVersion,position])
 }
 model DocumentTemplatePlaceholder {
  templateVersion String

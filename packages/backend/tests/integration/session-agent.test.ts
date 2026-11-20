@@ -1,14 +1,21 @@
 import { expect, spyOn, test } from 'bun:test';
 import { inspect } from 'node:util';
 
+import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
 import { createDatabasePool } from '@anyko/database';
+import { applyCreditorRegistryCandidate } from '@anyko/document-values/obligations';
 import { llmError } from '@anyko/llm';
 
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
-import { emptyFacts } from '../../src/modules/facts';
-import { requirePackage } from '../../src/modules/templates';
+import { emptyFacts, markSelectedCandidates } from '../../src/modules/facts';
+import { generateDocument } from '../../src/modules/generation';
+import {
+  requirePackage,
+  templateBytes,
+  templateData,
+} from '../../src/modules/templates';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 
 test('real extraction preserves supported candidates when the model also returns a field outside the package', async () => {
@@ -727,6 +734,528 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     for (const { threadId } of mixedAttempts)
       await agents.eraseThread(threadId);
     await agents.stop();
+    await pool.end();
+  }
+});
+
+test('court lookup uses only the territory and sends verified address alternatives to review', async () => {
+  const databaseUrl = z
+    .url()
+    .refine((url) =>
+      /^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(url).pathname),
+    )
+    .parse(process.env.TEST_DATABASE_URL);
+  const pool = createDatabasePool(databaseUrl);
+  const threadId = crypto.randomUUID();
+  const documentId = crypto.randomUUID();
+  const territory = 'Московская область';
+  const officialName = 'Арбитражный суд Московской области';
+  const contactUrl = 'https://asmo.arbitr.ru/about/mode';
+  const addresses = [
+    '107053, Москва, пр-кт Академика Сахарова, 18',
+    '107053, Москва, Садовая-Спасская, 18',
+  ] as const;
+  const requested: string[] = [];
+  const traced: string[] = [];
+  let generation = 0;
+  const agents = createDocumentAgents({
+    pool,
+    fetchCourtPage: (url) => {
+      requested.push(url);
+      if (url === 'https://arbitr.ru/ac/map') {
+        return Promise.resolve(
+          Response.json([
+            {
+              ac1: [
+                {
+                  name: officialName,
+                  s_name: 'Московской области',
+                  cityname: 'Москва',
+                  region_type: 3,
+                  url: 'http://asmo.arbitr.ru',
+                },
+              ],
+            },
+          ]),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          '<div class="info-page__text"><table>' +
+            '<tr><td>Почтовый адрес:</td><td>' +
+            addresses[0] +
+            '</td></tr>' +
+            '<tr><td>Адрес местонахождения суда:</td><td>' +
+            addresses[1] +
+            '</td></tr>' +
+            '</table></div>',
+        ),
+      );
+    },
+    fetch: Object.assign(
+      (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const request = new Request(url, init);
+        if (request.url.endsWith('/endpoints'))
+          return Promise.resolve(
+            Response.json({
+              data: {
+                endpoints: [
+                  { context_length: 32768, max_completion_tokens: 8192 },
+                ],
+              },
+            }),
+          );
+        generation++;
+        return Promise.resolve(
+          Response.json({
+            id: 'fixture',
+            object: 'chat.completion',
+            created: 1,
+            model: 'fixture',
+            choices: [
+              {
+                index: 0,
+                message:
+                  generation === 1
+                    ? {
+                        role: 'assistant',
+                        content: null,
+                        tool_calls: [
+                          {
+                            id: 'lookup',
+                            type: 'function',
+                            function: {
+                              name: 'lookupArbitrationCourt',
+                              arguments: JSON.stringify({ territory }),
+                            },
+                          },
+                        ],
+                      }
+                    : {
+                        role: 'assistant',
+                        content: JSON.stringify({
+                          summary: 'Проверьте адрес суда.',
+                          candidates: [],
+                        }),
+                      },
+                finish_reason: generation === 1 ? 'tool_calls' : 'stop',
+              },
+            ],
+          }),
+        );
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const pack = requirePackage('bfl-bankruptcy-v6');
+  try {
+    await agents.ready();
+    const result = await agents.reconcile({
+      connection: {
+        id: 'fixture',
+        baseURL: 'https://fixture.invalid/v1',
+        apiKey: crypto.randomUUID(),
+      },
+      modelId: 'fixture',
+      resource: crypto.randomUUID(),
+      sessionId: crypto.randomUUID(),
+      threadId,
+      workRevision: 1,
+      previousContext: null,
+      facts: emptyFacts(),
+      fields: pack.fields,
+      candidates: [
+        {
+          field: 'region',
+          origin: 'document',
+          value: territory,
+          evidence: [{ documentId, imagePath: null, quote: territory }],
+        },
+      ],
+      documents: [
+        {
+          id: documentId,
+          filename: 'registration.pdf',
+          digest: 'fixture',
+          images: [],
+        },
+      ],
+      signal: AbortSignal.timeout(10000),
+      assertCurrent: () => Promise.resolve(),
+      readSource: () =>
+        Promise.resolve(
+          'Адрес регистрации: ' + territory + ', г. Химки, ул. Мира, д. 12.',
+        ),
+      traceTool: ({ input }) => {
+        traced.push(input);
+        return Promise.resolve();
+      },
+    });
+    expect(requested).toEqual(['https://arbitr.ru/ac/map', contactUrl]);
+    expect(traced).toEqual([
+      JSON.stringify({
+        tool: 'lookup-arbitration-court',
+        arguments: { territory },
+      }),
+    ]);
+    expect(result.candidates.map(({ field, value }) => [field, value])).toEqual(
+      [
+        ['courtName', officialName],
+        ...addresses.map((address) => ['courtAddress', address]),
+      ],
+    );
+    for (const candidate of result.candidates) {
+      expect(candidate.explanation).toContain('несколько вариантов');
+      expect(Date.parse(candidate.courtSources?.checkedAt ?? '')).not.toBeNaN();
+      expect(candidate).toMatchObject({
+        origin: 'inference',
+        courtSources: {
+          catalogueUrl: 'https://arbitr.ru/',
+          contactUrl,
+        },
+        evidence: [{ documentId, imagePath: null, quote: territory }],
+      });
+    }
+    const statement = pack.documents.find(({ id }) => id === 'statement');
+    if (!statement) throw new Error('EXPECTED_STATEMENT');
+    const values = {
+      ...emptyFacts().values,
+      courtName:
+        result.candidates.find(({ field }) => field === 'courtName')?.value ??
+        null,
+      courtAddress:
+        result.candidates.find(({ value }) => value === addresses[1])?.value ??
+        null,
+    };
+    const xml = unzipSync(
+      generateDocument(
+        templateBytes(statement.version),
+        templateData(values, statement.version, statement.placeholders),
+      ),
+    )['word/document.xml'];
+    if (!xml) throw new Error('EXPECTED_STATEMENT_XML');
+    const header = strFromU8(xml);
+    expect(header).toContain(officialName);
+    expect(header).toContain(addresses[1]);
+    expect(header).not.toContain(addresses[0]);
+  } finally {
+    await agents.eraseThread(threadId);
+    await agents.stop();
+    await pool.end();
+  }
+});
+
+test('official creditor details stay a proposal until selecting them for the linked contract', async () => {
+  const databaseUrl = z
+    .url()
+    .refine((url) =>
+      /^\/anyko_test(?:_[a-z0-9_]+)?$/u.test(new URL(url).pathname),
+    )
+    .parse(process.env.TEST_DATABASE_URL);
+  const pool = createDatabasePool(databaseUrl);
+  const threadId = crypto.randomUUID();
+  const documentId = crypto.randomUUID();
+  const resource = crypto.randomUUID();
+  const quote = 'Кредитор: ПАО ВТБ, адрес: г. Москва, ИНН 7702070139';
+  const row = {
+    name: 'ПАО ВТБ',
+    inn: '7702070139',
+    contractNumber: 'K-42',
+    contractDate: '2024-11-01',
+    amountDate: '2025-04-12',
+    amount: '720.50',
+    debtStatus: 'Действует',
+  };
+  const fullName = 'Банк ВТБ (публичное акционерное общество)';
+  const address = 'Москва, наб. Пресненская, д. 10';
+  const ground = {
+    field: 'debts' as const,
+    value: [row],
+    origin: 'document' as const,
+    evidence: [{ documentId, imagePath: null, quote }],
+  };
+  const otherSources = [
+    { quote: 'АО Пример Плюс, номер договора 1234567890', name: 'АО Пример' },
+    { quote: 'АО Пример', name: 'АО Пример', text: 'АО Пример Плюс' },
+    {
+      quote: 'АО «Пример, Плюс», номер договора 1234567890',
+      name: 'АО Пример',
+    },
+    {
+      quote: 'АО Эталон, номер договора 1234567890',
+      name: 'АО Эталон',
+      inn: '1234567890',
+    },
+    {
+      quote:
+        'Кредитор: АО Образец, адрес: г. Москва, АО Пример, ИНН 7707083893',
+      name: 'АО Образец',
+      inn: '7707083893',
+    },
+    {
+      quote:
+        'Кредитор: АО Образец; адрес: г. Москва Представитель АО Пример; ИНН 7707083893',
+      name: 'АО Образец',
+      inn: '7707083893',
+      contractNumber: 'K-44',
+    },
+    {
+      quote: 'АО Проверка, ИНН 1234567891',
+      name: 'АО Проверка',
+      inn: '1234567891',
+      scope: 'outside',
+    },
+  ].map((source) => ({ id: crypto.randomUUID(), ...source }));
+  const otherCandidates = otherSources.map((source) => ({
+    ...ground,
+    value: [
+      {
+        name: source.name,
+        inn: source.inn ?? null,
+        contractNumber: source.contractNumber ?? 'K-43',
+      },
+    ],
+    evidence: [{ documentId: source.id, imagePath: null, quote: source.quote }],
+  }));
+  const documentIds = [
+    documentId,
+    ...otherSources
+      .filter(({ scope }) => scope !== 'outside')
+      .map(({ id }) => id),
+  ];
+  const readSource = (id: string) => {
+    const source = otherSources.find((entry) => entry.id === id);
+    return Promise.resolve(
+      id === documentId ? quote : (source?.text ?? source?.quote ?? ''),
+    );
+  };
+  const facts = emptyFacts();
+  facts.values.debts = [
+    row,
+    { name: 'АО «Другой кредитор»', basis: 'договор М-6', amount: '10.00' },
+    ...otherCandidates.flatMap(({ value }) => value),
+  ];
+  facts.manual.push('debts');
+  facts.candidates.push(ground, ...otherCandidates);
+  const requests: string[] = [];
+  const registryUrls: string[] = [];
+  const rejectedLookup = 'ООО Человек Из Переписки';
+  let chatMode = false;
+  let chatResponses = 0;
+  let unavailable = false;
+  const agents = createDocumentAgents({
+    pool,
+    fetchCreditorPage: (url, init) => {
+      registryUrls.push(url);
+      requests.push(typeof init.body === 'string' ? init.body : '');
+      return Promise.resolve(
+        unavailable
+          ? new Response(null, { status: 503 })
+          : new Response(
+              '<Envelope><GetFullInfoByINNResult><OGRN>1027739609391</OGRN><INN>7702070139</INN><ShortName>ПАО ВТБ</ShortName><Name>' +
+                fullName +
+                '</Name><Address>' +
+                address +
+                '</Address></GetFullInfoByINNResult></Envelope>',
+            ),
+      );
+    },
+    fetch: Object.assign(
+      (url: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        Promise.resolve(
+          new Request(url, init).url.endsWith('/endpoints')
+            ? Response.json({
+                data: {
+                  endpoints: [
+                    { context_length: 32768, max_completion_tokens: 8192 },
+                  ],
+                },
+              })
+            : Response.json({
+                id: 'fixture',
+                object: 'chat.completion',
+                created: 1,
+                model: 'fixture',
+                choices: [
+                  {
+                    index: 0,
+                    ...(chatMode && chatResponses++ === 0
+                      ? {
+                          message: {
+                            role: 'assistant',
+                            content: null,
+                            tool_calls: [
+                              { source: 'cbr', name: rejectedLookup },
+                              { source: 'cbr', name: 'АО Пример' },
+                              { source: 'cbr', inn: '1234567890' },
+                              { source: 'cbr', inn: '1234567891' },
+                              { source: 'cbr', inn: '7707083893' },
+                              {
+                                source: 'cbr',
+                                name: 'ПАО ВТБ',
+                                inn: '7702070139',
+                              },
+                            ].map((args, index) => ({
+                              id: `creditor-${String(index)}`,
+                              type: 'function',
+                              function: {
+                                name: 'lookupCreditorRegistry',
+                                arguments: JSON.stringify(args),
+                              },
+                            })),
+                          },
+                          finish_reason: 'tool_calls',
+                        }
+                      : {
+                          message: {
+                            role: 'assistant',
+                            content: chatMode
+                              ? 'Проверьте реквизиты.'
+                              : JSON.stringify({
+                                  summary: 'Сверьте реквизиты.',
+                                  candidates: [],
+                                }),
+                          },
+                          finish_reason: 'stop',
+                        }),
+                  },
+                ],
+              }),
+        ),
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const pack = requirePackage('bfl-bankruptcy-v7');
+  const reconcile = () =>
+    agents.reconcile({
+      connection: {
+        id: 'fixture',
+        baseURL: 'https://fixture.invalid/v1',
+        apiKey: crypto.randomUUID(),
+      },
+      modelId: 'fixture',
+      resource,
+      sessionId: crypto.randomUUID(),
+      threadId,
+      workRevision: 1,
+      previousContext: null,
+      facts,
+      fields: pack.fields,
+      candidates: [ground, ...otherCandidates],
+      documents: documentIds.map((id) => ({
+        id,
+        filename: 'certificate.pdf',
+        digest: 'fixture',
+        images: [],
+      })),
+      signal: AbortSignal.timeout(10000),
+      assertCurrent: () => Promise.resolve(),
+      readSource,
+    });
+  try {
+    await agents.ready();
+    const result = await reconcile();
+    expect(requests).toHaveLength(1);
+    expect(registryUrls).toEqual(['https://www.cbr.ru/FO_ZoomWS/FinOrg.asmx']);
+    expect(requests[0]).toContain('<INN>7702070139</INN>');
+    expect(requests[0]).not.toContain('K-42');
+    expect(result.candidates).toHaveLength(1);
+    const proposal = result.candidates[0];
+    expect(proposal).toMatchObject({
+      origin: 'inference',
+      field: 'debts',
+      evidence: ground.evidence,
+      creditorSource: {
+        registry: 'cbr',
+        url: 'https://www.cbr.ru/finorg/foinfo/?ogrn=1027739609391',
+      },
+    });
+    expect(Date.parse(proposal?.creditorSource?.checkedAt ?? '')).not.toBeNaN();
+    if (!proposal || !Array.isArray(proposal.value))
+      throw new Error('EXPECTED_CREDITOR_PROPOSAL');
+    const reviewed = {
+      ...facts,
+      values: { ...facts.values, debts: facts.values.debts.slice(0, 2) },
+      candidates: [ground, proposal],
+    };
+    expect(markSelectedCandidates(reviewed)[1]?.selected).toBe(false);
+    const patched = applyCreditorRegistryCandidate(
+      reviewed.values.debts,
+      proposal.value,
+    );
+    expect(patched).toMatchObject([
+      { amount: '720.50', address, creditorLegalName: fullName },
+      { name: 'АО «Другой кредитор»', amount: '10.00' },
+    ]);
+    expect(
+      markSelectedCandidates({
+        ...reviewed,
+        values: { ...reviewed.values, debts: patched ?? null },
+      })[1]?.selected,
+    ).toBe(true);
+    const data = templateData(
+      { ...reviewed.values, debts: patched ?? null },
+      'bfl-statement-v7',
+    );
+    expect(data.creditorHeaders?.[0]).toMatchObject({
+      name: fullName,
+      address,
+      inn: '7702070139',
+    });
+    expect(
+      templateData(
+        { ...reviewed.values, debts: patched ?? null },
+        'bfl-creditors-v2',
+      ).debts,
+    ).toMatchObject([
+      { name: fullName, address, amount: '720,50' },
+      { amount: '10,00' },
+    ]);
+
+    unavailable = true;
+    const failedLookup = await reconcile();
+    expect(failedLookup.candidates).toEqual([]);
+    expect(failedLookup.summary).toContain('Не удалось проверить');
+    expect(registryUrls.slice(1)).toEqual([
+      'https://www.cbr.ru/FO_ZoomWS/FinOrg.asmx',
+      'https://pb.nalog.ru/search-proc.json',
+    ]);
+
+    unavailable = false;
+    chatMode = true;
+    const chat = (documentIds: string[]) =>
+      agents.chat({
+        connection: {
+          id: 'fixture',
+          baseURL: 'https://fixture.invalid/v1',
+          apiKey: crypto.randomUUID(),
+        },
+        modelId: 'fixture',
+        previousContext: null,
+        facts,
+        fields: pack.fields,
+        documents: documentIds.map((id) => ({
+          id,
+          filename: 'certificate.pdf',
+        })),
+        messages: [],
+        userText: 'Проверь реквизиты кредитора.',
+        appliedFields: [],
+        listSourceImages: () => Promise.resolve([]),
+        readSource,
+        assertCurrent: () => Promise.resolve(),
+        writeField: () => Promise.resolve({ errorCode: 'UNEXPECTED_WRITE' }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    const beforeChat = requests.length;
+    await chat([crypto.randomUUID()]);
+    expect(requests).toHaveLength(beforeChat);
+    chatResponses = 0;
+    await chat(documentIds);
+    expect(requests).toHaveLength(beforeChat + 1);
+    expect(requests[beforeChat]).toContain('<INN>7702070139</INN>');
+  } finally {
+    await agents.eraseThread(threadId);
     await pool.end();
   }
 });

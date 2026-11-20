@@ -57,6 +57,9 @@ export function stubHttpOptions(): {
     internal: {
       get: unused,
       documents: unused,
+      checklistLinks: unused,
+      saveChecklistLink: unused,
+      replaceChecklistSuggestions: unused,
       worksForDocument: unused,
       pinPending: unused,
       updateRecognition: unused,
@@ -115,6 +118,7 @@ export function stubHttpOptions(): {
     editValues: unused,
     restoreField: unused,
     confirmFacts: unused,
+    editChecklistLink: unused,
   };
   const generation: WorkGeneration = {
     startGeneration: unused,

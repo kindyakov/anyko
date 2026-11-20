@@ -10,7 +10,10 @@ import type {
   PreviewRow,
 } from '@anyko/contracts/catalog';
 
-import { previewEntries } from '@/features/fact-review/model/preview';
+import {
+  previewDocumentValues,
+  previewEntries,
+} from '@/features/fact-review/model/preview';
 
 import { FieldEditor, TextSlot } from '../work-fields';
 
@@ -34,7 +37,11 @@ export function PreviewPaper({
 }) {
   const listNumbers = new Map<string, number>();
   const margins = document.margins;
+  const projected = previewDocumentValues(document.version, values);
+  const collectionValue = projected?.value ?? ((key: FieldKey) => values[key]);
   const collectionNote = (key: FieldKey, collection: FieldValue) => {
+    if (projected?.isCollection(key))
+      return projected.emptyNote(key, collection);
     const field = pack.fields.find((item) => item.key === key);
     return (
       <CollectionNote
@@ -76,6 +83,10 @@ export function PreviewPaper({
           ?.columns.find((item) => item.key === key);
         if (key === 'rowNumber' && row && !column)
           return `${String(rowNumber ?? 1)}${suffix}`;
+        if (row && projected?.isCollection(rowField))
+          return (row[key] ?? '[не заполнено]') + suffix;
+        const text = !row && projected?.text(key);
+        if (text) return text + suffix;
         if (row) {
           const slot = (
             <TextSlot
@@ -121,7 +132,7 @@ export function PreviewPaper({
     const loop = /\{#([^{}]+)\}/.exec(p.text)?.[1];
     const repeat = loop || undefined;
     if (repeat && !row) {
-      const collection = values[repeat];
+      const collection = collectionValue(repeat);
       const rows = Array.isArray(collection) ? collection : [];
       return (
         <div key={id} data-field={repeat} className="rounded-[3px]">
@@ -186,10 +197,10 @@ export function PreviewPaper({
   };
   const tableRow = (row: PreviewRow, index: number) => {
     const repeat = row.repeat;
-    const collection = repeat ? values[repeat] : undefined;
+    const collection = repeat ? collectionValue(repeat) : undefined;
     const entries = previewEntries(row, collection);
     if (repeat && Array.isArray(collection) && !collection.length)
-      return (
+      return projected?.isCollection(repeat) ? null : (
         <tr key={index} data-field={repeat}>
           <td
             colSpan={row.cells.reduce((sum, cell) => sum + cell.span, 0)}

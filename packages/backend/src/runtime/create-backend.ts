@@ -69,6 +69,7 @@ import {
 import { createDocumentProcessingStore } from '../modules/processing/infrastructure/store';
 import { hasPackage } from '../modules/templates';
 import { createTemplatePlaceholders } from '../modules/templates/infrastructure/template-placeholders';
+import { createTemplateRequirements } from '../modules/templates/infrastructure/template-requirements';
 import type { WorksModule } from '../modules/works';
 import {
   createWorkStore,
@@ -247,6 +248,7 @@ export function createBackend(
   });
   const processingFacade = createWorkProcessing(db, uow);
   const templatePlaceholders = createTemplatePlaceholders(db);
+  const templateRequirements = createTemplateRequirements(db);
 
   let agentsDelegate: DocumentAgents | undefined = dependencies.agents;
   const agents = () => (agentsDelegate ??= createDocumentAgents({ pool }));
@@ -275,6 +277,7 @@ export function createBackend(
     facts,
     generation,
     templatePlaceholders,
+    templateRequirements,
     processing: processingFacade,
     connections,
     agents: agentsFacade,
@@ -335,6 +338,7 @@ export function createBackend(
       connections,
       generation,
       templatePlaceholders,
+      templateRequirements,
       audit,
       storage,
       locks,
@@ -368,7 +372,7 @@ export function createBackend(
           redactResponses: redactDeletedWorkResponses,
         }),
         review: createWorkReview(workflows),
-        generation: createWorkGeneration(workflows),
+        generation: createWorkGeneration({ ...workflows, clock: systemClock }),
         settings: { ...connections.queries, ...connections.commands },
         documents,
         access,

@@ -9,6 +9,15 @@ import {
   type FieldValue,
   type FieldValues,
 } from '@anyko/contracts/catalog';
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
+import {
+  datedBankruptcyPackage,
+  statementSroValues,
+} from '@anyko/document-values/bankruptcy-statement';
+import {
+  assessEmployment,
+  hasEmploymentFields,
+} from '@anyko/document-values/employment';
 import { Button, Disclosure } from '@anyko/ui';
 
 import { mentions } from '@/features/fact-review/model/preview';
@@ -33,6 +42,7 @@ const PAGE_WIDTH = 794;
 interface Props {
   pack: DocumentPackage;
   values: FieldValues;
+  needsReview?: readonly FieldKey[] | undefined;
   disabled: boolean;
   onChange: (key: FieldKey, value: FieldValue) => void;
   onBack?: () => void;
@@ -41,7 +51,8 @@ interface Props {
 }
 
 export function PackagePreview(props: Props) {
-  const { pack, values, disabled, onChange, onBack, focus } = props;
+  const { pack, values, needsReview, disabled, onChange, onBack, focus } =
+    props;
   const [selected, select] = useState(pack.documents[0]?.version);
   const [handledFocus, setHandledFocus] = useState<
     NonNullable<typeof focus> & { version: string | undefined; inForm: boolean }
@@ -125,6 +136,18 @@ export function PackagePreview(props: Props) {
   const zoomIndex = zooms.findIndex((item) => item.value === scale);
   const zoomClass = zooms[zoomIndex]?.className ?? '';
   const focusedField = pack.fields.find(({ key }) => key === focusKey);
+  const draftValues =
+    document.id === 'statement' && hasEmploymentFields(pack.fields)
+      ? {
+          ...values,
+          employmentDetails: assessEmployment(values, undefined, needsReview)
+            .statement,
+        }
+      : values;
+  const paperValues =
+    pack.version === datedBankruptcyPackage
+      ? { ...draftValues, ...statementSroValues(draftValues) }
+      : draftValues;
   return (
     <Tabs.Root
       value={document.version}
@@ -228,7 +251,7 @@ export function PackagePreview(props: Props) {
             <PreviewPaper
               pack={pack}
               document={document}
-              values={values}
+              values={paperValues}
               disabled={disabled}
               onChange={onChange}
             />
@@ -257,7 +280,12 @@ export function PackagePreview(props: Props) {
             ref={form}
             className="grid gap-4 sm:grid-cols-2 [&_[data-review-highlight]]:outline-2 [&_[data-review-highlight]]:outline-offset-2 [&_[data-review-highlight]]:outline-rose-500"
           >
-            {[...pack.fields]
+            {pack.fields
+              .filter(
+                ({ key }) =>
+                  !hasSubmittedAttachments(pack.fields) ||
+                  (key !== 'attachments' && key !== 'submittedAttachments'),
+              )
               .sort(
                 (a, b) =>
                   Number(b.columns.length > 0) - Number(a.columns.length > 0),
@@ -266,7 +294,7 @@ export function PackagePreview(props: Props) {
                 <FieldEditor
                   key={field.key}
                   field={field}
-                  value={values[field.key] ?? null}
+                  value={paperValues[field.key] ?? null}
                   disabled={disabled}
                   onChange={(next) => {
                     onChange(field.key, next);
