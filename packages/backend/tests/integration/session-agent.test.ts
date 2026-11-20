@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from 'bun:test';
 import { inspect } from 'node:util';
 
+import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
 import { createDatabasePool } from '@anyko/database';
@@ -8,7 +9,12 @@ import { llmError } from '@anyko/llm';
 
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 import { emptyFacts } from '../../src/modules/facts';
-import { requirePackage } from '../../src/modules/templates';
+import { generateDocument } from '../../src/modules/generation';
+import {
+  requirePackage,
+  templateBytes,
+  templateData,
+} from '../../src/modules/templates';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 
 test('real extraction preserves supported candidates when the model also returns a field outside the package', async () => {
@@ -726,6 +732,213 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     await agents.eraseThread(tinyThreadId);
     for (const { threadId } of mixedAttempts)
       await agents.eraseThread(threadId);
+    await agents.stop();
+    await pool.end();
+  }
+});
+
+test('court lookup uses only the territory and sends verified address alternatives to review', async () => {
+  const databaseUrl = z
+    .url()
+    .refine((url) =>
+      /^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(url).pathname),
+    )
+    .parse(process.env.TEST_DATABASE_URL);
+  const pool = createDatabasePool(databaseUrl);
+  const threadId = crypto.randomUUID();
+  const documentId = crypto.randomUUID();
+  const territory = 'Московская область';
+  const officialName = 'Арбитражный суд Московской области';
+  const contactUrl = 'https://asmo.arbitr.ru/about/mode';
+  const addresses = [
+    '107053, Москва, пр-кт Академика Сахарова, 18',
+    '107053, Москва, Садовая-Спасская, 18',
+  ] as const;
+  const requested: string[] = [];
+  const traced: string[] = [];
+  let generation = 0;
+  const agents = createDocumentAgents({
+    pool,
+    fetchCourtPage: (url) => {
+      requested.push(url);
+      if (url === 'https://arbitr.ru/ac/map') {
+        return Promise.resolve(
+          Response.json([
+            {
+              ac1: [
+                {
+                  name: officialName,
+                  s_name: 'Московской области',
+                  cityname: 'Москва',
+                  region_type: 3,
+                  url: 'http://asmo.arbitr.ru',
+                },
+              ],
+            },
+          ]),
+        );
+      }
+      return Promise.resolve(
+        new Response(
+          '<div class="info-page__text"><table>' +
+            '<tr><td>Почтовый адрес:</td><td>' +
+            addresses[0] +
+            '</td></tr>' +
+            '<tr><td>Адрес местонахождения суда:</td><td>' +
+            addresses[1] +
+            '</td></tr>' +
+            '</table></div>',
+        ),
+      );
+    },
+    fetch: Object.assign(
+      (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const request = new Request(url, init);
+        if (request.url.endsWith('/endpoints'))
+          return Promise.resolve(
+            Response.json({
+              data: {
+                endpoints: [
+                  { context_length: 32768, max_completion_tokens: 8192 },
+                ],
+              },
+            }),
+          );
+        generation++;
+        return Promise.resolve(
+          Response.json({
+            id: 'fixture',
+            object: 'chat.completion',
+            created: 1,
+            model: 'fixture',
+            choices: [
+              {
+                index: 0,
+                message:
+                  generation === 1
+                    ? {
+                        role: 'assistant',
+                        content: null,
+                        tool_calls: [
+                          {
+                            id: 'lookup',
+                            type: 'function',
+                            function: {
+                              name: 'lookupArbitrationCourt',
+                              arguments: JSON.stringify({ territory }),
+                            },
+                          },
+                        ],
+                      }
+                    : {
+                        role: 'assistant',
+                        content: JSON.stringify({
+                          summary: 'Проверьте адрес суда.',
+                          candidates: [],
+                        }),
+                      },
+                finish_reason: generation === 1 ? 'tool_calls' : 'stop',
+              },
+            ],
+          }),
+        );
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const pack = requirePackage('bfl-bankruptcy-v6');
+  try {
+    await agents.ready();
+    const result = await agents.reconcile({
+      connection: {
+        id: 'fixture',
+        baseURL: 'https://fixture.invalid/v1',
+        apiKey: crypto.randomUUID(),
+      },
+      modelId: 'fixture',
+      resource: crypto.randomUUID(),
+      sessionId: crypto.randomUUID(),
+      threadId,
+      workRevision: 1,
+      previousContext: null,
+      facts: emptyFacts(),
+      fields: pack.fields,
+      candidates: [
+        {
+          field: 'region',
+          origin: 'document',
+          value: territory,
+          evidence: [{ documentId, imagePath: null, quote: territory }],
+        },
+      ],
+      documents: [
+        {
+          id: documentId,
+          filename: 'registration.pdf',
+          digest: 'fixture',
+          images: [],
+        },
+      ],
+      signal: AbortSignal.timeout(10000),
+      assertCurrent: () => Promise.resolve(),
+      readSource: () =>
+        Promise.resolve(
+          'Адрес регистрации: ' + territory + ', г. Химки, ул. Мира, д. 12.',
+        ),
+      traceTool: ({ input }) => {
+        traced.push(input);
+        return Promise.resolve();
+      },
+    });
+    expect(requested).toEqual(['https://arbitr.ru/ac/map', contactUrl]);
+    expect(traced).toEqual([
+      JSON.stringify({
+        tool: 'lookup-arbitration-court',
+        arguments: { territory },
+      }),
+    ]);
+    expect(result.candidates.map(({ field, value }) => [field, value])).toEqual(
+      [
+        ['courtName', officialName],
+        ...addresses.map((address) => ['courtAddress', address]),
+      ],
+    );
+    for (const candidate of result.candidates) {
+      expect(candidate.explanation).toContain('несколько вариантов');
+      expect(Date.parse(candidate.courtSources?.checkedAt ?? '')).not.toBeNaN();
+      expect(candidate).toMatchObject({
+        origin: 'inference',
+        courtSources: {
+          catalogueUrl: 'https://arbitr.ru/',
+          contactUrl,
+        },
+        evidence: [{ documentId, imagePath: null, quote: territory }],
+      });
+    }
+    const statement = pack.documents.find(({ id }) => id === 'statement');
+    if (!statement) throw new Error('EXPECTED_STATEMENT');
+    const values = {
+      ...emptyFacts().values,
+      courtName:
+        result.candidates.find(({ field }) => field === 'courtName')?.value ??
+        null,
+      courtAddress:
+        result.candidates.find(({ value }) => value === addresses[1])?.value ??
+        null,
+    };
+    const xml = unzipSync(
+      generateDocument(
+        templateBytes(statement.version),
+        templateData(values, statement.version, statement.placeholders),
+      ),
+    )['word/document.xml'];
+    if (!xml) throw new Error('EXPECTED_STATEMENT_XML');
+    const header = strFromU8(xml);
+    expect(header).toContain(officialName);
+    expect(header).toContain(addresses[1]);
+    expect(header).not.toContain(addresses[0]);
+  } finally {
+    await agents.eraseThread(threadId);
     await agents.stop();
     await pool.end();
   }

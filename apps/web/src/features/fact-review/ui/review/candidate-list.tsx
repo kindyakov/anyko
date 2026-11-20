@@ -19,63 +19,11 @@ import {
 import { CandidateValue } from '../work-fields';
 
 import {
-  type Evidence,
-  type OpenSource,
-  SourceFragments,
-} from './source-fragments';
-
-type Origin = NonNullable<ReviewField['candidates'][number]['origin']>;
-type Findings = {
-  origin: Origin;
-  evidence: Evidence[];
-  explanations: Set<string>;
-};
-
-const originLabels: Record<Origin, string> = {
-  document: 'Из документа',
-  context: 'Сопоставление файлов',
-  inference: 'Вывод агента',
-};
-
-function FindingSources({
-  findings,
-  documents,
-  onOpen,
-}: {
-  findings: Findings;
-  documents: WorkView['documents'];
-  onOpen: OpenSource;
-}) {
-  const isInference = findings.origin === 'inference';
-  return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusPill tone={isInference ? 'warning' : 'success'}>
-          {originLabels[findings.origin]}
-        </StatusPill>
-        {isInference && (
-          <span className="text-xs text-white/70">
-            Без независимой проверки
-          </span>
-        )}
-      </div>
-      {[...findings.explanations].map((explanation) => (
-        <p
-          key={explanation}
-          className="text-sm leading-5 break-words text-white/85"
-        >
-          {explanation}
-        </p>
-      ))}
-      <SourceFragments
-        evidence={findings.evidence}
-        documents={documents}
-        onOpen={onOpen}
-        {...(isInference && { title: 'Основания для вывода' })}
-      />
-    </div>
-  );
-}
+  type CourtSources,
+  type Findings,
+  FindingSources,
+} from './finding-sources';
+import type { OpenSource } from './source-fragments';
 
 export function CandidateList({
   visible,
@@ -124,12 +72,18 @@ export function CandidateList({
               included: false,
               evidence: [],
               explanations: new Set<string>(),
+              courtSources: new Map<string, CourtSources>(),
             };
             if (!existing) groups.push(group);
             group.included ||= isSelected({ ...candidate, value });
             group.evidence.push(...candidate.evidence);
             if (candidate.explanation)
               group.explanations.add(candidate.explanation);
+            if (candidate.courtSources)
+              group.courtSources.set(
+                candidate.courtSources.contactUrl,
+                candidate.courtSources,
+              );
           }
           const { matching = [], options = [] } = Object.groupBy(
             groups,

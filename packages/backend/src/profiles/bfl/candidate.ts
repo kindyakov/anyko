@@ -39,12 +39,31 @@ export const candidateSchema = candidateBaseSchema
   .safeExtend({
     origin: z.enum(['document', 'context', 'inference']).optional(),
     explanation: z.string().trim().min(1).max(2000).optional(),
+    courtSources: z
+      .strictObject({
+        catalogueUrl: z.literal('https://arbitr.ru/'),
+        contactUrl: z
+          .url()
+          .regex(/^https:\/\/[a-z0-9-]+\.arbitr\.ru\/about\/mode$/u),
+        checkedAt: z.iso.datetime(),
+      })
+      .optional(),
   })
-  .superRefine(({ origin, explanation }, ctx) => {
+  .superRefine(({ field, origin, explanation, courtSources }, ctx) => {
     if ((origin === 'inference') !== (explanation !== undefined))
       ctx.addIssue({
         code: 'custom',
         path: ['explanation'],
         message: 'Only inferred values require an explanation',
+      });
+    if (
+      courtSources &&
+      (origin !== 'inference' ||
+        (field !== 'courtName' && field !== 'courtAddress'))
+    )
+      ctx.addIssue({
+        code: 'custom',
+        path: ['courtSources'],
+        message: 'Court sources require an inferred court field',
       });
   });
