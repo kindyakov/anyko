@@ -6,6 +6,11 @@ import type {
   FieldValues,
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
+import {
+  applyObligationCandidate,
+  isBankObligation,
+  obligationFields,
+} from '@anyko/document-values/obligations';
 import { Button, StatusPill } from '@anyko/ui';
 
 import { sameFieldValue } from '@/features/fact-review/model/field-value';
@@ -255,7 +260,18 @@ export function CandidateList({
                                   .closest('article')
                                   ?.querySelector('h3')
                                   ?.focus({ preventScroll: true });
-                                onApply(field.key, option.value);
+                                const value =
+                                  obligationFields.some(
+                                    (key) => key === field.key,
+                                  ) &&
+                                  Array.isArray(option.value) &&
+                                  option.value.some(isBankObligation)
+                                    ? applyObligationCandidate(
+                                        current,
+                                        option.value,
+                                      )
+                                    : option.value;
+                                onApply(field.key, value);
                               }}
                             >
                               Подставить это значение

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
+import { obligationColumns } from '@anyko/document-values/obligations';
 import { DiagnosticError } from '@anyko/logger';
 
 import { fieldDefinitions } from '../../profiles/bfl/fields';
@@ -19,10 +20,17 @@ const historicalPackage: DocumentPackage = documentPackageSchema.parse({
   version: 'bfl-bankruptcy-v1',
   title: 'Банкротство гражданина',
   technical: false,
-  fields: fieldDefinitions.filter(
-    ({ key }) =>
-      !['personName', 'registrationAddress', 'observations'].includes(key),
-  ),
+  fields: fieldDefinitions
+    .filter(
+      ({ key }) =>
+        !['personName', 'registrationAddress', 'observations'].includes(key),
+    )
+    .map((field) => ({
+      ...field,
+      columns: field.columns.filter(
+        ({ key }) => !Object.hasOwn(obligationColumns, key),
+      ),
+    })),
   documents: ['bfl-statement-v1', 'bfl-inventory-v1', 'bfl-creditors-v1'].map(
     (version) => manifest.find((doc) => doc.version === version),
   ),
@@ -68,10 +76,21 @@ const amountPackage: DocumentPackage = documentPackageSchema.parse({
       : document,
   ),
 });
+const obligationPackage: DocumentPackage = documentPackageSchema.parse({
+  ...amountPackage,
+  version: 'bfl-bankruptcy-v7',
+  fields: amountPackage.fields
+    .filter(({ key }) => key !== 'debtTotal')
+    .map((field) => fieldDefinitions.find(({ key }) => key === field.key)),
+  documents: ['bfl-statement-v7', 'bfl-inventory-v1', 'bfl-creditors-v2'].map(
+    (version) => manifest.find((doc) => doc.version === version),
+  ),
+});
 export function availablePackages(): DocumentPackage[] {
-  return [amountPackage];
+  return [obligationPackage];
 }
 const knownPackages = [
+  obligationPackage,
   amountPackage,
   bankruptcyPackage,
   fourthPackage,

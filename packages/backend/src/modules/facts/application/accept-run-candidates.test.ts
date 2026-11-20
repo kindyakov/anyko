@@ -471,3 +471,106 @@ test('context preparation only reuses document candidates for unreadable sources
     ),
   ).toEqual([raw, unreadable]);
 });
+
+test('accepts independent evidenced bank contracts and keeps alternate balances and closing certificates for review', async () => {
+  let evidenceNumber = 100;
+  const makeDebt = (
+    contractNumber: string,
+    amount: string,
+    amountDate: string,
+    debtStatus: string,
+    wording: string,
+  ): Candidate => ({
+    field: 'debts',
+    value: [
+      {
+        name: 'АО Синтетический Банк',
+        contractNumber,
+        contractDate: '2025-01-03',
+        amount,
+        amountDate,
+        debtStatus,
+      },
+    ],
+    evidence: [
+      {
+        documentId:
+          ref.workId.slice(0, -3) + String(evidenceNumber++).padStart(3, '0'),
+        imagePath: null,
+        quote:
+          'АО Синтетический Банк\nДоговор № ' +
+          contractNumber +
+          ' от 03.01.2025\nПо состоянию на ' +
+          amountDate +
+          '\n' +
+          wording,
+      },
+    ],
+  });
+  const first = makeDebt(
+    'ACT-1',
+    '100.05',
+    '08.11.2026',
+    'Действует',
+    'Полная задолженность 100,05 руб.',
+  );
+  const repeat = makeDebt(
+    'ACT-1',
+    '100.05',
+    '09.11.2026',
+    'Действует',
+    'Общая задолженность 100,05 руб.',
+  );
+  const second = makeDebt(
+    'ACT-2',
+    '200.06',
+    '09.11.2026',
+    'Действует',
+    'Общая задолженность 200,06 руб.',
+  );
+  const changed = makeDebt(
+    'ACT-1',
+    '110.07',
+    '10.11.2026',
+    'Действует',
+    'Полная задолженность 110,07 руб.',
+  );
+  const closing = makeDebt(
+    'ACT-2',
+    '0',
+    '10.11.2026',
+    'Закрыт',
+    'Кредитный договор закрыт.',
+  );
+  const turnover = makeDebt(
+    'ACT-3',
+    '9000.10',
+    '09.11.2026',
+    'Действует',
+    'Оборот по счёту: 9000,10 руб.',
+  );
+  const facts = runFacts();
+  const accept = (candidates: Candidate[]) =>
+    facts.accept({
+      fields: ['debts'],
+      confirmed: false,
+      candidates,
+    });
+
+  await accept([first, repeat, second, turnover]);
+  let saved = await facts.saved();
+  expect(saved.values.debts).toEqual([
+    expect.objectContaining({ contractNumber: 'ACT-1', amount: '100.05' }),
+    expect.objectContaining({ contractNumber: 'ACT-2', amount: '200.06' }),
+  ]);
+  expect(saved.candidates).toHaveLength(4);
+
+  const result = await accept([changed, closing]);
+  saved = await facts.saved();
+  expect(saved.values.debts).toEqual([
+    expect.objectContaining({ contractNumber: 'ACT-1', amount: '100.05' }),
+    expect.objectContaining({ contractNumber: 'ACT-2', amount: '200.06' }),
+  ]);
+  expect(saved.candidates).toHaveLength(6);
+  expect(result.discrepancyFields).toContain('debts');
+});

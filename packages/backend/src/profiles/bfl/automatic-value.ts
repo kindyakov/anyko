@@ -8,10 +8,16 @@ import {
   canonicalMoneyAmount,
   moneyAmountsInText,
 } from '@anyko/document-values/money';
+import {
+  isBankObligation,
+  obligationFields,
+  obligationStatuses,
+} from '@anyko/document-values/obligations';
 
 import type { candidateSchema } from './candidate';
 import {
   fieldIdentity,
+  type FieldRow,
   type FieldValue,
   isCalendarDateField,
   isRublesColumn,
@@ -78,9 +84,9 @@ function attestedAmount(value: string, quote: string, rubles = true) {
   return values.some((amount) => canonicalMoneyAmount(amount) === expected);
 }
 
-function proofLines(evidence: Candidate['evidence']) {
+function proofLines(evidence: Candidate['evidence'], includeVisuals = false) {
   return evidence
-    .filter(({ imagePath }) => imagePath === null)
+    .filter(({ imagePath }) => includeVisuals || imagePath === null)
     .flatMap(({ quote }) =>
       quote
         .replace(/<\/tr>/gi, '\n')
@@ -136,6 +142,15 @@ function supportedValue(
       : value;
   }
   if (!Array.isArray(value)) return value;
+  if (
+    obligationFields.some((key) => key === field) &&
+    value.some(isBankObligation)
+  ) {
+    const row = value.length === 1 ? value[0] : undefined;
+    return row
+      ? evidencedObligation(candidate.evidence, row, requireText)
+      : null;
+  }
   const identity = fieldIdentity(field);
   const lines = proofLines(candidate.evidence);
   const rows = value.flatMap((row) => {
@@ -186,4 +201,113 @@ function supportedValue(
       : [supported];
   });
   return requireText && value.length && !rows.length ? null : rows;
+}
+
+function evidencedObligation(
+  evidence: Candidate['evidence'],
+  row: FieldRow,
+  requireText: boolean,
+): FieldValue {
+  const { name, contractNumber, contractDate, amountDate, debtStatus } = row;
+  if (!name || !contractNumber || !contractDate || !amountDate) return null;
+  const active = debtStatus === obligationStatuses.active;
+  const statusPattern =
+    debtStatus === obligationStatuses.closed
+      ? /(?:договор|кредит)\s+(?:был\s+)?закрыт|действие договора прекращено/iu
+      : debtStatus === obligationStatuses.repaid
+        ? /полностью погашен|исполнены в полном объ[её]ме|задолженность отсутствует/iu
+        : null;
+  const documentIds = [
+    ...new Set(evidence.map(({ documentId }) => documentId)),
+  ];
+  const sameContract = documentIds
+    .map((id) =>
+      proofLines(
+        evidence.filter(({ documentId }) => documentId === id),
+        true,
+      ),
+    )
+    .filter(
+      (lines) =>
+        lines.some((line) => mentions(line, name)) &&
+        lines.some((line) =>
+          line
+            .normalize('NFKC')
+            .toLowerCase()
+            .match(/[\p{L}\p{N}]+(?:[-/._][\p{L}\p{N}]+)*/gu)
+            ?.includes(
+              contractNumber
+                .trim()
+                .replace(/^№\s*/, '')
+                .normalize('NFKC')
+                .toLowerCase(),
+            ),
+        ) &&
+        lines.some((line) => attestedDate(contractDate, line)) &&
+        lines.some((line) => attestedDate(amountDate, line)),
+    );
+  const amount = canonicalMoneyAmount(row.amount ?? '');
+  const credible = sameContract.find((lines) =>
+    active
+      ? amount !== undefined &&
+        amount !== '0.00' &&
+        !amount.startsWith('-') &&
+        lines.some((line) => {
+          const total =
+            /(?:общая|полная|итоговая)\s+(?:сумма\s+)?задолженность|(?:сумма|размер)\s+(?:общей\s+|полной\s+)?задолженности|задолженность\s*\(?всего\)?|^\s*задолженность\s*:/i.exec(
+              line,
+            );
+          if (!total) return false;
+          const tail =
+            line
+              .slice(total.index + total[0].length)
+              .replace(/^\s*\|\s*/, '')
+              .split(/[;|]/, 1)[0] ?? '';
+          const withoutDates = datesInText(tail).reduce(
+            (result, date) => result.replace(date, ' '),
+            tail,
+          );
+          return moneyAmountsInText(withoutDates)[0] === amount;
+        })
+      : statusPattern !== null &&
+        lines.some((line) => statusPattern.test(line)),
+  );
+  if (!credible) return null;
+  return [
+    Object.fromEntries(
+      Object.entries({
+        ...row,
+        contractDate: canonicalCalendarDate(contractDate),
+        amountDate: canonicalCalendarDate(amountDate),
+        amount: active ? amount : null,
+      }).flatMap(([column, cell]) => {
+        if (cell == null) return [];
+        if (
+          [
+            'name',
+            'contractNumber',
+            'contractDate',
+            'amountDate',
+            'debtStatus',
+            'amount',
+          ].includes(column)
+        )
+          return [[column, cell]];
+        if (['arrears', 'penalties', 'interest'].includes(column))
+          return credible.some((line) => attestedAmount(cell, line))
+            ? [[column, canonicalMoneyAmount(cell) ?? cell]]
+            : [];
+        if (column === 'inn') {
+          const identifier = digits(cell);
+          return validInn(identifier, false) &&
+            credible.some((line) => attestedIdentifier(identifier, line))
+            ? [[column, identifier]]
+            : [];
+        }
+        return !requireText || credible.some((line) => mentions(line, cell))
+          ? [[column, cell]]
+          : [];
+      }),
+    ),
+  ];
 }

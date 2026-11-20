@@ -7,8 +7,10 @@ for (const version of [
   'bfl-statement-v4',
   'bfl-statement-v5',
   'bfl-statement-v6',
+  'bfl-statement-v7',
   'bfl-inventory-v1',
   'bfl-creditors-v1',
+  'bfl-creditors-v2',
 ]) {
   if (!templateBytes(version).length)
     throw new Error(`Empty template: ${version}`);
