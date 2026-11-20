@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { readOfficialResponse } from './official-response';
+
 const cbrEndpoint = 'https://www.cbr.ru/FO_ZoomWS/FinOrg.asmx';
 const fnsEndpoint = 'https://pb.nalog.ru/';
 const maximumMatches = 6;
@@ -149,7 +151,7 @@ async function lookupCbr(query: CreditorQuery, request: Request) {
       },
       body: envelope,
     });
-    const xml = await response.text();
+    const xml = await readOfficialResponse(response);
     const body = new RegExp(
       '<' +
         operation +
@@ -158,8 +160,7 @@ async function lookupCbr(query: CreditorQuery, request: Request) {
         'Result>',
       'u',
     ).exec(xml)?.[1];
-    if (body === undefined || xml.length > 2_000_000)
-      throw new Error('CBR_RESPONSE_INVALID');
+    if (body === undefined) throw new Error('CBR_RESPONSE_INVALID');
     return body;
   }
 
@@ -275,8 +276,7 @@ async function lookupFns(
       method: 'POST',
       body: new URLSearchParams(data),
     });
-    const body = await response.text();
-    if (body.length > 2_000_000) throw new Error('FNS_RESPONSE_INVALID');
+    const body = await readOfficialResponse(response);
     return body.trim() ? (JSON.parse(body) as unknown) : null;
   }
 

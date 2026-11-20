@@ -85,6 +85,7 @@ function courtCandidates(
         catalogueUrl: lookup.catalogueUrl,
         contactUrl,
         checkedAt: lookup.checkedAt,
+        courtName: name,
       },
     };
     const proposals = [

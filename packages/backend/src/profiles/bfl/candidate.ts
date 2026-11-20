@@ -57,6 +57,7 @@ export const candidateSchema = candidateBaseSchema
           .url()
           .regex(/^https:\/\/[a-z0-9-]+\.arbitr\.ru\/about\/mode$/u),
         checkedAt: z.iso.datetime(),
+        courtName: z.string().trim().min(1).max(250).optional(),
       })
       .optional(),
   })

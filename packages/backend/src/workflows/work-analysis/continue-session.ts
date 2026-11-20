@@ -53,6 +53,9 @@ export function createWorkContinuation(deps: WorkDependencies) {
         async (signal) => {
           const work = await input.current();
           const threadId = deps.newId();
+          const requirements = await deps.templateRequirements(
+            work.packageVersion,
+          );
           return workAttempt.write(async (tx) => {
             await guardWorkRevision(
               deps.works.in(tx).internal,
@@ -67,9 +70,6 @@ export function createWorkContinuation(deps: WorkDependencies) {
             await deps.processing
               .in(tx)
               .internal.thread(run.workspaceId, run.workId, threadId);
-            const requirements = await deps.templateRequirements(
-              work.packageVersion,
-            );
             return { work, facts, session, threadId, requirements };
           }, signal);
         },

@@ -48,8 +48,8 @@ export function createWorkChatRun(
       deps.agents.internal.chat.context({ ...scope, sessionId: session.id }),
       deps.works.internal.documents(workspaceId, workId),
     ]);
-    const documents = links.flatMap(({ id, filename, ocrRevision }) =>
-      run.documentIds.includes(id) && ocrRevision !== null
+    const documents = links.flatMap(({ id, filename, ocrRevision, deleted }) =>
+      !deleted && run.documentIds.includes(id) && ocrRevision !== null
         ? [{ id, filename, revision: ocrRevision }]
         : [],
     );

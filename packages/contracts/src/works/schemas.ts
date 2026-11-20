@@ -44,6 +44,7 @@ export const candidateSchema = z
           .url()
           .regex(/^https:\/\/[a-z0-9-]+\.arbitr\.ru\/about\/mode$/u),
         checkedAt: z.iso.datetime(),
+        courtName: z.string().trim().min(1).max(250).optional(),
       })
       .optional(),
     field: fieldKeySchema,
@@ -161,6 +162,17 @@ const checklistItemSchema = z.object({
   documentKind: z.string(),
   label: z.string(),
   applicability: z.enum(['usual', 'conditional']),
+  contracts: z
+    .array(
+      z.object({
+        creditor: z.string(),
+        contractNumber: z.string(),
+        contractDate: z.string().nullable(),
+        status: z.enum(['confirmed', 'found', 'review', 'missing']),
+        documentIds: z.array(z.uuid()),
+      }),
+    )
+    .optional(),
   status: z.enum(['confirmed', 'found', 'review', 'missing', 'clarify']),
   sources: z.array(
     z.object({

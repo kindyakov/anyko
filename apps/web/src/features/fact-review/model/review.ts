@@ -1,8 +1,18 @@
-import type { FieldValue, FieldValues } from '@anyko/contracts/catalog';
+import type {
+  FieldKey,
+  FieldValue,
+  FieldValues,
+} from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
+import {
+  applyCreditorRegistryCandidate,
+  applyObligationCandidate,
+  isBankObligation,
+  obligationFields,
+} from '@anyko/document-values/obligations';
 
 import { sameFieldValue } from './field-value';
 
@@ -45,6 +55,20 @@ export function candidateSelection(
   const unchanged = sameFieldValue(value, saved);
   return (candidate: ReviewField['candidates'][number]) =>
     unchanged ? candidate.selected : sameFieldValue(value, candidate.value);
+}
+
+export function reviewCandidateValue(
+  key: FieldKey,
+  current: FieldValue | undefined,
+  value: FieldValue,
+  registry: boolean,
+) {
+  if (!Array.isArray(value)) return value;
+  if (registry) return applyCreditorRegistryCandidate(current, value) ?? null;
+  return obligationFields.some((field) => field === key) &&
+    value.some(isBankObligation)
+    ? applyObligationCandidate(current, value)
+    : value;
 }
 
 export function reviewFields(

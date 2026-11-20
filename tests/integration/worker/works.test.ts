@@ -77,6 +77,7 @@ const threads = new Set<string>();
 let reconcileHook: DocumentAgents['reconcile'] | undefined;
 let chatHook: DocumentAgents['chat'] | undefined;
 let extractionCount = 0;
+const extractionDocuments = new Map<string, string[]>();
 let failExtraction = false;
 let failDocument: string | undefined;
 let actualAgents: DocumentAgents | undefined;
@@ -124,6 +125,9 @@ const agents: DocumentAgents = {
     if (actualAgents) return actualAgents.extract(input);
     if (extractFixture) return extractFixture(input);
     extractionCount++;
+    const extracted = extractionDocuments.get(input.resource) ?? [];
+    extracted.push(input.document.id);
+    extractionDocuments.set(input.resource, extracted);
     extractionModel = input.modelId;
     threads.add(input.threadId);
     await waitForExtraction?.(input);
@@ -286,12 +290,39 @@ test('the source checklist preserves scoped manual decisions when the work is an
     (await set('passport', crypto.randomUUID(), 'confirmed', null)).status,
   ).toBe(404);
 
-  const quote = 'Итого задолженность 42 руб.';
-  parseFixture = () =>
+  const quote =
+    'АО Синтетический Банк\nДоговор № A-42 от 03.01.2025\nПо состоянию на 08.11.2026\nПолная задолженность 42 руб.';
+  const obligation = {
+    name: 'АО Синтетический Банк',
+    contractNumber: 'A-42',
+    contractDate: '03.01.2025',
+    amountDate: '08.11.2026',
+    debtStatus: 'Действует',
+    amount: '42.00',
+  };
+  extractFixture = ({ document }) =>
     Promise.resolve({
+      candidates:
+        document.text.includes(quote) && document.id === certificateId
+          ? [
+              {
+                field: 'debts',
+                value: [obligation],
+                evidence: [{ documentId: document.id, imagePath: null, quote }],
+              },
+            ]
+          : [],
+      usage: { inputTokens: 7, outputTokens: 9 },
+    });
+  let certificateId: string | undefined;
+  const certificateUpload = pauseStep();
+  parseFixture = async () => {
+    await certificateUpload.wait();
+    return {
       markdown: quote,
       processorVersion: 'checklist-fixture',
-    });
+    };
+  };
   reconcileHook = ({ documents, checklistRequirements }) => {
     expect(
       checklistRequirements?.some(({ key }) => key === 'debt-certificate'),
@@ -329,6 +360,8 @@ test('the source checklist preserves scoped manual decisions when the work is an
   };
   try {
     const first = await upload(input, 'first checklist input');
+    certificateId = first.id;
+    certificateUpload.release();
     const second = await upload(input, 'second checklist input');
     const view = await until(
       input,
@@ -341,6 +374,15 @@ test('the source checklist preserves scoped manual decisions when the work is an
       ({ id }) => id === first.id,
     )?.processingRevision;
     if (!current) throw new Error('CHECKLIST_SOURCE_NOT_RECOGNISED');
+    const beforeEdits = await apiBackend.workHttp.views.get(scope, workId);
+    await apiBackend.workHttp.review.editValues(scope, {
+      workId,
+      revision: beforeEdits.work.revision,
+      values: {
+        ...beforeEdits.facts.values,
+        debts: [obligation, { ...obligation, contractNumber: 'B-42' }],
+      },
+    });
     expect(
       (await set('debt-certificate', first.id, 'confirmed', current + 1))
         .status,
@@ -356,6 +398,10 @@ test('the source checklist preserves scoped manual decisions when the work is an
     const checklist = await read();
     const debts = checklist.find(({ key }) => key === 'debt-certificate');
     expect(debts?.status).toBe('confirmed');
+    expect(debts?.contracts).toMatchObject([
+      { contractNumber: 'A-42', status: 'confirmed', documentIds: [first.id] },
+      { contractNumber: 'B-42', status: 'missing', documentIds: [] },
+    ]);
     expect(
       debts?.sources.find(({ documentId }) => documentId === first.id),
     ).toMatchObject({
@@ -386,7 +432,9 @@ test('the source checklist preserves scoped manual decisions when the work is an
       (await read()).find(({ key }) => key === 'debt-certificate')?.sources,
     ).toMatchObject([{ documentId: second.id, status: 'found' }]);
   } finally {
+    certificateUpload.release();
     parseFixture = undefined;
+    extractFixture = undefined;
     reconcileHook = undefined;
   }
 });
@@ -1432,6 +1480,108 @@ test('chat tool edits one field, records its history, and restores through the w
     await db.user.delete({ where: { id: userId } });
   }
 });
+
+test('chat recovery cannot acknowledge a checklist confirmation superseded by a manual rejection', async () => {
+  const input = await create('bfl-bankruptcy-v7');
+  const { workspaceId, workId } = input;
+  const userId = await createChatActor(workspaceId);
+  const scope = memberScope(workspaceId, userId);
+  const { chat, review, views } = apiBackend.workHttp;
+  const source = await upload(input, 'recovered checklist source');
+  const view = await until(input, terminal);
+  const ocrRevision = view.documents.find(
+    ({ id }) => id === source.id,
+  )?.processingRevision;
+  if (!ocrRevision) throw new Error('CHECKLIST_SOURCE_NOT_RECOGNISED');
+  const args = {
+    requirementKey: 'passport',
+    documentId: source.id,
+    decision: 'confirmed',
+  } as const;
+  const beforeRestart = pauseStep();
+  let replay: unknown;
+  let recovered: unknown;
+  let deliveries = 0;
+  chatHook = async (turn) => {
+    if (!turn.checklist) throw new Error('EXPECTED_CHECKLIST_TOOL');
+    deliveries++;
+    if (deliveries === 1) {
+      expect(
+        await turn.checklist.write(args, 'first-confirm', turn.signal),
+      ).toMatchObject({ after: 'confirmed' });
+      await beforeRestart.wait();
+    } else {
+      recovered = turn.checklist.applied;
+      replay = await turn.checklist.write(
+        args,
+        'replayed-confirm',
+        turn.signal,
+      );
+    }
+    return {
+      answer: 'Готово.',
+      usage: { inputTokens: null, outputTokens: null },
+    };
+  };
+  try {
+    if (!worker) throw new Error('EXPECTED_RUNNING_WORKER');
+    const { runId } = await chat.send(scope, {
+      workId,
+      userText: 'Подтверди паспорт.',
+      correlationId: crypto.randomUUID(),
+    });
+    await beforeRestart.entered();
+    await review.editChecklistLink(scope, {
+      ...args,
+      workId,
+      documentId: brandDocumentId(source.id),
+      ocrRevision,
+      decision: 'rejected',
+    });
+    const draining = worker.stop();
+    await db.run.update({
+      where: { id: runId },
+      data: { leaseUntil: new Date(0) },
+    });
+    beforeRestart.release();
+    await draining;
+    await workerBackend.jobs.reconcile();
+    worker = await startJobWorker(workerBackend.jobs, {
+      prefix: workerPrefix + '-checklist-restarted',
+    });
+
+    const deadline = Date.now() + 15_000;
+    for (;;) {
+      const { items } = await chat.list(scope, {
+        workId,
+        page: 1,
+        pageSize: 15,
+      });
+      const entry = items.find((item) => item.runId === runId);
+      if (entry && !['queued', 'running'].includes(entry.status)) {
+        expect(entry).toMatchObject({
+          status: 'partial',
+          errorCode: 'REVISION_CONFLICT',
+          answer: null,
+        });
+        break;
+      }
+      if (Date.now() >= deadline) throw new Error('CHAT_RECOVERY_TIMEOUT');
+      await Bun.sleep(50);
+    }
+    expect(deliveries).toBe(2);
+    expect(recovered).toEqual([]);
+    expect(replay).toEqual({ errorCode: 'REVISION_CONFLICT' });
+    const after = await views.get(scope, workId);
+    expect(
+      after.checklist.find(({ key }) => key === 'passport')?.sources,
+    ).toEqual([]);
+  } finally {
+    beforeRestart.release();
+    chatHook = undefined;
+    await db.user.delete({ where: { id: userId } });
+  }
+}, 30_000);
 
 test('recovery of a chat turn does not reapply a field value superseded before restart', async () => {
   const { workspaceId, workId } = await create();
@@ -2802,8 +2952,10 @@ test('deletion during model execution hides derivatives immediately and fences t
 
 test('confirmation survives added sources and repeated analysis; only the new file calls the model', async () => {
   const input = await create();
-  await upload(input);
+  const resource = `${input.workspaceId}:${input.workId}`;
+  const first = await upload(input);
   const initial = await until(input, terminal);
+  expect(extractionDocuments.get(resource)).toEqual([first.id]);
   await apiBackend.workHttp.review.confirmFacts(
     memberScope(input.workspaceId),
     {
@@ -2811,17 +2963,16 @@ test('confirmation survives added sources and repeated analysis; only the new fi
       revision: initial.work.revision,
     },
   );
-  const before = extractionCount;
   extractedName = 'Ирина';
   try {
-    await upload(input);
+    const second = await upload(input);
     const changed = await until(input, terminal);
     expect(changed.facts.values.personName).toBe('Анна');
     expect(changed.work.confirmedRevision).toBeNull();
-    expect(extractionCount - before).toBe(1);
+    expect(extractionDocuments.get(resource)).toEqual([first.id, second.id]);
     await analyze(input);
     expect((await until(input, terminal)).facts.values.personName).toBe('Анна');
-    expect(extractionCount - before).toBe(1);
+    expect(extractionDocuments.get(resource)).toEqual([first.id, second.id]);
   } finally {
     extractedName = 'Анна';
   }

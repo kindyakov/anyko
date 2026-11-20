@@ -1,7 +1,12 @@
+import {
+  canonicalCalendarDate,
+  formatCalendarDate,
+} from '@anyko/document-values/calendar-date';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
 import {
   isBankObligation,
   obligationFields,
+  obligationStatuses,
   sameObligation,
 } from '@anyko/document-values/obligations';
 
@@ -19,6 +24,25 @@ function sameBalance(a: FieldRow, b: FieldRow) {
     a.debtStatus === b.debtStatus &&
     canonicalMoneyAmount(a.amount ?? '') ===
       canonicalMoneyAmount(b.amount ?? '')
+  );
+}
+
+function isClosure(row: FieldRow) {
+  return (
+    row.debtStatus === obligationStatuses.closed ||
+    row.debtStatus === obligationStatuses.repaid
+  );
+}
+
+export function supersedesObligation(closure: FieldRow, older: FieldRow) {
+  if (!isClosure(closure)) return false;
+  const closureDate = canonicalCalendarDate(closure.amountDate ?? '');
+  const olderDate = canonicalCalendarDate(older.amountDate ?? '');
+  return (
+    !!closureDate &&
+    !!olderDate &&
+    formatCalendarDate(closureDate, 'YYYY-MM-DD') >
+      formatCalendarDate(olderDate, 'YYYY-MM-DD')
   );
 }
 
@@ -68,7 +92,27 @@ export function reconcileObligations(
     const first = group[0];
     if (!first) continue;
     const old = previous.find((row) => sameObligation(row, first));
-    if (group.some((row) => !sameBalance(first, row))) {
+    const observations = old ? [...group, old] : group;
+    const closure = group.find(
+      (row) =>
+        isClosure(row) &&
+        observations.every(
+          (observation) =>
+            sameBalance(row, observation) ||
+            supersedesObligation(row, observation),
+        ),
+    );
+    if (
+      closure &&
+      observations.some((row) => supersedesObligation(closure, row))
+    ) {
+      accepted.push(closure);
+      continue;
+    }
+    if (
+      group.some((row) => !sameBalance(first, row)) ||
+      (old && isClosure(first) && !sameBalance(old, first))
+    ) {
       if (old) accepted.push(old);
       continue;
     }

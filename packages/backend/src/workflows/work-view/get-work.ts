@@ -21,6 +21,7 @@ import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import { requireWork, workLockKey } from '../work-guards';
 
+import { checklistWithContracts } from './checklist-contracts';
 import { workAvailability } from './work-availability';
 
 // Представление работы: сборка из модулей под блокировкой работы. Курсор читается первым: параллельные
@@ -93,7 +94,7 @@ export const getWork =
           deps.templatePlaceholders(requirePackage(work.packageVersion)),
         ),
         documents,
-        checklist,
+        checklist: checklistWithContracts(checklist, facts),
         canEditChecklist: scope.has('works.edit') && !cleanupPending,
         facts: { ...facts, candidates: markSelectedCandidates(facts) },
         discrepancyFields: findFactDiscrepancies(facts),

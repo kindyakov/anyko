@@ -956,18 +956,17 @@ test('official creditor details stay a proposal until selecting them for the lin
   const threadId = crypto.randomUUID();
   const documentId = crypto.randomUUID();
   const resource = crypto.randomUUID();
-  const quote = 'Кредитор ООО МКК «Озон Кредит», ИНН 9703026898';
+  const quote = 'Кредитор ПАО ВТБ, ИНН 7702070139';
   const row = {
-    name: 'ООО МКК «Озон Кредит»',
-    inn: '9703026898',
+    name: 'ПАО ВТБ',
+    inn: '7702070139',
     contractNumber: 'K-42',
     contractDate: '2024-11-01',
     amountDate: '2025-04-12',
     amount: '720.50',
     debtStatus: 'Действует',
   };
-  const fullName =
-    'Общество с ограниченной ответственностью Микрокредитная компания «Озон Кредит»';
+  const fullName = 'Банк ВТБ (публичное акционерное общество)';
   const address = 'Москва, наб. Пресненская, д. 10';
   const ground = {
     field: 'debts' as const,
@@ -983,17 +982,21 @@ test('official creditor details stay a proposal until selecting them for the lin
   facts.manual.push('debts');
   facts.candidates.push(ground);
   const requests: string[] = [];
+  const registryUrls: string[] = [];
+  const rejectedLookup = 'ООО Человек Из Переписки';
+  let chatMode = false;
+  let chatResponses = 0;
   let unavailable = false;
   const agents = createDocumentAgents({
     pool,
     fetchCreditorPage: (url, init) => {
-      expect(url).toBe('https://www.cbr.ru/FO_ZoomWS/FinOrg.asmx');
+      registryUrls.push(url);
       requests.push(typeof init.body === 'string' ? init.body : '');
       return Promise.resolve(
         unavailable
           ? new Response(null, { status: 503 })
           : new Response(
-              '<Envelope><GetFullInfoByINNResult><OGRN>1217700060820</OGRN><INN>9703026898</INN><ShortName>ООО МКК «Озон Кредит»</ShortName><Name>' +
+              '<Envelope><GetFullInfoByINNResult><OGRN>1027739609391</OGRN><INN>7702070139</INN><ShortName>ПАО ВТБ</ShortName><Name>' +
                 fullName +
                 '</Name><Address>' +
                 address +
@@ -1020,14 +1023,42 @@ test('official creditor details stay a proposal until selecting them for the lin
                 choices: [
                   {
                     index: 0,
-                    message: {
-                      role: 'assistant',
-                      content: JSON.stringify({
-                        summary: 'Сверьте реквизиты.',
-                        candidates: [],
-                      }),
-                    },
-                    finish_reason: 'stop',
+                    ...(chatMode && chatResponses++ === 0
+                      ? {
+                          message: {
+                            role: 'assistant',
+                            content: null,
+                            tool_calls: [
+                              { source: 'cbr', name: rejectedLookup },
+                              { source: 'cbr', inn: '1234567890' },
+                              {
+                                source: 'cbr',
+                                name: 'ПАО ВТБ',
+                                inn: '7702070139',
+                              },
+                            ].map((args, index) => ({
+                              id: `creditor-${String(index)}`,
+                              type: 'function',
+                              function: {
+                                name: 'lookupCreditorRegistry',
+                                arguments: JSON.stringify(args),
+                              },
+                            })),
+                          },
+                          finish_reason: 'tool_calls',
+                        }
+                      : {
+                          message: {
+                            role: 'assistant',
+                            content: chatMode
+                              ? 'Проверьте реквизиты.'
+                              : JSON.stringify({
+                                  summary: 'Сверьте реквизиты.',
+                                  candidates: [],
+                                }),
+                          },
+                          finish_reason: 'stop',
+                        }),
                   },
                 ],
               }),
@@ -1068,7 +1099,8 @@ test('official creditor details stay a proposal until selecting them for the lin
     await agents.ready();
     const result = await reconcile();
     expect(requests).toHaveLength(1);
-    expect(requests[0]).toContain('<INN>9703026898</INN>');
+    expect(registryUrls).toEqual(['https://www.cbr.ru/FO_ZoomWS/FinOrg.asmx']);
+    expect(requests[0]).toContain('<INN>7702070139</INN>');
     expect(requests[0]).not.toContain('K-42');
     expect(result.candidates).toHaveLength(1);
     const proposal = result.candidates[0];
@@ -1078,7 +1110,7 @@ test('official creditor details stay a proposal until selecting them for the lin
       evidence: ground.evidence,
       creditorSource: {
         registry: 'cbr',
-        url: 'https://www.cbr.ru/finorg/foinfo/?ogrn=1217700060820',
+        url: 'https://www.cbr.ru/finorg/foinfo/?ogrn=1027739609391',
       },
     });
     expect(Date.parse(proposal?.creditorSource?.checkedAt ?? '')).not.toBeNaN();
@@ -1107,7 +1139,7 @@ test('official creditor details stay a proposal until selecting them for the lin
     expect(data.creditorHeaders?.[0]).toMatchObject({
       name: fullName,
       address,
-      inn: '9703026898',
+      inn: '7702070139',
     });
     expect(
       templateData(
@@ -1123,7 +1155,44 @@ test('official creditor details stay a proposal until selecting them for the lin
     const failedLookup = await reconcile();
     expect(failedLookup.candidates).toEqual([]);
     expect(failedLookup.summary).toContain('Не удалось проверить');
-    expect(requests).toHaveLength(2);
+    expect(registryUrls.slice(1)).toEqual([
+      'https://www.cbr.ru/FO_ZoomWS/FinOrg.asmx',
+      'https://pb.nalog.ru/search-proc.json',
+    ]);
+
+    unavailable = false;
+    chatMode = true;
+    const chat = (documentIds: string[]) =>
+      agents.chat({
+        connection: {
+          id: 'fixture',
+          baseURL: 'https://fixture.invalid/v1',
+          apiKey: crypto.randomUUID(),
+        },
+        modelId: 'fixture',
+        previousContext: null,
+        facts,
+        fields: pack.fields,
+        documents: documentIds.map((id) => ({
+          id,
+          filename: 'certificate.pdf',
+        })),
+        messages: [],
+        userText: 'Проверь реквизиты кредитора.',
+        appliedFields: [],
+        listSourceImages: () => Promise.resolve([]),
+        readSource: (id) => Promise.resolve(id === documentId ? quote : ''),
+        assertCurrent: () => Promise.resolve(),
+        writeField: () => Promise.resolve({ errorCode: 'UNEXPECTED_WRITE' }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    const beforeChat = requests.length;
+    await chat([crypto.randomUUID()]);
+    expect(requests).toHaveLength(beforeChat);
+    chatResponses = 0;
+    await chat([documentId]);
+    expect(requests).toHaveLength(beforeChat + 1);
+    expect(requests[beforeChat]).toContain('<INN>7702070139</INN>');
   } finally {
     await agents.eraseThread(threadId);
     await pool.end();
