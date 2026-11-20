@@ -13,6 +13,9 @@ type Origin = NonNullable<ReviewField['candidates'][number]['origin']>;
 export type CourtSources = NonNullable<
   ReviewField['candidates'][number]['courtSources']
 >;
+export type CreditorSource = NonNullable<
+  ReviewField['candidates'][number]['creditorSource']
+>;
 const formatSourceDate = new Intl.DateTimeFormat('ru-RU', {
   dateStyle: 'medium',
   timeZone: 'UTC',
@@ -23,6 +26,7 @@ export type Findings = {
   evidence: Evidence[];
   explanations: Set<string>;
   courtSources: Map<string, CourtSources>;
+  creditorSources: Map<string, CreditorSource>;
 };
 
 const originLabels: Record<Origin, string> = {
@@ -47,11 +51,13 @@ export function FindingSources({
         <StatusPill tone={isInference ? 'warning' : 'success'}>
           {originLabels[findings.origin]}
         </StatusPill>
-        {isInference && findings.courtSources.size === 0 && (
-          <span className="text-xs text-white/70">
-            Без независимой проверки
-          </span>
-        )}
+        {isInference &&
+          findings.courtSources.size === 0 &&
+          findings.creditorSources.size === 0 && (
+            <span className="text-xs text-white/70">
+              Без независимой проверки
+            </span>
+          )}
       </div>
       {[...findings.explanations].map((explanation) => (
         <p
@@ -82,6 +88,28 @@ export function FindingSources({
               className="underline"
             >
               Контакты суда
+            </a>
+            <time dateTime={checkedAt}>
+              Проверено {formatSourceDate.format(new Date(checkedAt))}
+            </time>
+          </div>
+        ),
+      )}
+      {[...findings.creditorSources.values()].map(
+        ({ registry, url, checkedAt }) => (
+          <div
+            key={url}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-white/75"
+          >
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              {registry === 'cbr'
+                ? 'Реестр Банка России'
+                : 'ЕГРЮЛ (ФНС России)'}
             </a>
             <time dateTime={checkedAt}>
               Проверено {formatSourceDate.format(new Date(checkedAt))}

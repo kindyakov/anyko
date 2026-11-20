@@ -1,6 +1,7 @@
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
 import {
+  containsCreditorRegistryCandidate,
   isBankObligation,
   sameObligation,
 } from '@anyko/document-values/obligations';
@@ -103,18 +104,31 @@ export function findFactDiscrepancies(current: WorkFacts) {
       );
       if (!candidates.length) return false;
       const saved = current.values[key] ?? null;
+      const documentCandidates = candidates.filter(
+        ({ creditorSource }) => !creditorSource,
+      );
+      if (
+        !current.confirmed.includes(key) &&
+        candidates.some(
+          (candidate) =>
+            candidate.creditorSource &&
+            !containsCreditorRegistryCandidate(saved, candidate.value),
+        )
+      )
+        return true;
+      if (!documentCandidates.length) return false;
       if (
         usesBankObligations(key, [
           saved,
           ...candidates.map(({ value }) => value),
         ])
       )
-        return candidates.some(
+        return documentCandidates.some(
           (candidate) =>
             !containsObligations(saved, candidate.value) &&
             !containsObligations(saved, automaticValue(candidate)),
         );
-      const original = reconcileCandidates(key, candidates);
+      const original = reconcileCandidates(key, documentCandidates);
       if (original === null) return true;
 
       const manual = current.manual.includes(key);
@@ -130,7 +144,11 @@ export function findFactDiscrepancies(current: WorkFacts) {
         )
       )
         return false;
-      const automatic = reconcileCandidates(key, candidates, automaticValue);
+      const automatic = reconcileCandidates(
+        key,
+        documentCandidates,
+        automaticValue,
+      );
       return comparableFactValue(automatic) !== comparableSaved;
     })
     .map(({ key }) => key);
@@ -147,14 +165,16 @@ export function markSelectedCandidates({
     const selected =
       saved !== null &&
       !needsReview?.includes(field) &&
-      (usesBankObligations(field, [saved, value])
-        ? containsObligations(saved, value) ||
-          containsObligations(saved, automaticValue(candidate))
-        : includesFactValue(field, saved, value) ||
-          // Автозаполнение может опустить ячейку. Оно не скрывает сохранённое противоречие.
-          (candidate.origin !== 'inference' &&
-            reconcile(field, [saved, value]) !== null &&
-            includesFactValue(field, saved, automaticValue(candidate))));
+      (candidate.creditorSource
+        ? containsCreditorRegistryCandidate(saved, value)
+        : usesBankObligations(field, [saved, value])
+          ? containsObligations(saved, value) ||
+            containsObligations(saved, automaticValue(candidate))
+          : includesFactValue(field, saved, value) ||
+            // Автозаполнение может опустить ячейку. Оно не скрывает сохранённое противоречие.
+            (candidate.origin !== 'inference' &&
+              reconcile(field, [saved, value]) !== null &&
+              includesFactValue(field, saved, automaticValue(candidate))));
     return { ...candidate, selected };
   });
 }

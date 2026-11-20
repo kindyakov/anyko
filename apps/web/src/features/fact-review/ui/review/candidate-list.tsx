@@ -7,7 +7,10 @@ import type {
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 import {
+  applyCreditorRegistryCandidate,
   applyObligationCandidate,
+  canApplyCreditorRegistryCandidate,
+  containsCreditorRegistryCandidate,
   isBankObligation,
   obligationFields,
 } from '@anyko/document-values/obligations';
@@ -25,6 +28,7 @@ import { CandidateValue } from '../work-fields';
 
 import {
   type CourtSources,
+  type CreditorSource,
   type Findings,
   FindingSources,
 } from './finding-sources';
@@ -78,9 +82,17 @@ export function CandidateList({
               evidence: [],
               explanations: new Set<string>(),
               courtSources: new Map<string, CourtSources>(),
+              creditorSources: new Map<string, CreditorSource>(),
             };
             if (!existing) groups.push(group);
-            group.included ||= isSelected({ ...candidate, value });
+            group.included ||= candidate.creditorSource
+              ? containsCreditorRegistryCandidate(comparable, value)
+              : isSelected({ ...candidate, value });
+            if (candidate.creditorSource)
+              group.creditorSources.set(
+                candidate.creditorSource.url,
+                candidate.creditorSource,
+              );
             group.evidence.push(...candidate.evidence);
             if (candidate.explanation)
               group.explanations.add(candidate.explanation);
@@ -208,12 +220,32 @@ export function CandidateList({
                               variant={
                                 current == null ? 'primary' : 'secondary'
                               }
-                              disabled={busy}
+                              disabled={
+                                busy ||
+                                (option.creditorSources.size > 0 &&
+                                  !canApplyCreditorRegistryCandidate(
+                                    current,
+                                    option.value,
+                                  ))
+                              }
                               onClick={(event) => {
                                 event.currentTarget
                                   .closest('article')
                                   ?.querySelector('h3')
                                   ?.focus({ preventScroll: true });
+                                if (
+                                  option.creditorSources.size > 0 &&
+                                  Array.isArray(option.value)
+                                ) {
+                                  onApply(
+                                    field.key,
+                                    applyCreditorRegistryCandidate(
+                                      current,
+                                      option.value,
+                                    ) ?? null,
+                                  );
+                                  return;
+                                }
                                 const value =
                                   obligationFields.some(
                                     (key) => key === field.key,

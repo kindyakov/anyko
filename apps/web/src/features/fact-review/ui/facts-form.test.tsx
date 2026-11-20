@@ -265,6 +265,104 @@ test('court alternatives expose the official source and the selected address ent
   expect(screen.queryByDisplayValue(alternative)).toBeNull();
 });
 
+test('chooses one registry entry for an existing obligation and keeps the entered amount', async () => {
+  const row = {
+    name: 'ООО «Меридиан»',
+    basis: 'Договор № 15',
+    amount: '720.50',
+  };
+  const initial = viewWith({ debts: [row] });
+  const creditorPackage = documentPackageSchema.parse({
+    ...pack,
+    fields: [
+      {
+        key: 'debts',
+        label: 'Кредиторы',
+        kind: 'rows',
+        multiline: false,
+        limits: {},
+        columns: [
+          { key: 'name', label: 'Название из договора', maxLength: 100 },
+          { key: 'basis', label: 'Договор', maxLength: 100 },
+          { key: 'amount', label: 'Сумма', maxLength: 100 },
+          {
+            key: 'creditorLegalName',
+            label: 'Полное наименование по реестру',
+            maxLength: 100,
+          },
+          { key: 'inn', label: 'ИНН', maxLength: 10 },
+          { key: 'ogrn', label: 'ОГРН', maxLength: 13 },
+        ],
+      },
+    ],
+  });
+  const first =
+    'https://pb.nalog.ru/search.html#mode=search-ul&queryUl=1027700132195';
+  const candidates: WorkView['facts']['candidates'] = [
+    [
+      '1027700132195',
+      '7707083893',
+      'Общество с ограниченной ответственностью «Меридиан»',
+    ],
+    [
+      '1217700060820',
+      '9703026898',
+      'Общество с ограниченной ответственностью «Меридиан»',
+    ],
+  ].map(([ogrn, inn, creditorLegalName]) => ({
+    field: 'debts',
+    selected: false,
+    origin: 'inference',
+    explanation: 'Есть одноимённые организации. Сверьте ИНН.',
+    evidence: [
+      { documentId: crypto.randomUUID(), imagePath: null, quote: row.name },
+    ],
+    value: [
+      {
+        ...row,
+        amount: '8000.00',
+        creditorLegalName: creditorLegalName ?? null,
+        inn: inn ?? null,
+        ogrn: ogrn ?? null,
+      },
+    ],
+    creditorSource: {
+      registry: 'fns',
+      url:
+        'https://pb.nalog.ru/search.html#mode=search-ul&queryUl=' +
+        (ogrn ?? ''),
+      checkedAt: '2026-11-20T00:00:00.000Z',
+    },
+  }));
+  installEventSource();
+  serveApi(() =>
+    json(200, {
+      ...initial,
+      package: creditorPackage,
+      facts: { ...initial.facts, candidates, discrepancyFields: ['debts'] },
+    }),
+  );
+  renderFacts();
+  const review = await screen.findByRole('article', { name: /Кредиторы/ });
+  const options = within(review).getByRole('region', {
+    name: 'Варианты модели',
+  });
+  const links = within(options).getAllByRole('link', {
+    name: 'ЕГРЮЛ (ФНС России)',
+  });
+  expect(links.map((link) => link.getAttribute('href'))).toEqual([
+    first,
+    'https://pb.nalog.ru/search.html#mode=search-ul&queryUl=1217700060820',
+  ]);
+  const [choice] = within(options).getAllByRole('button', {
+    name: 'Подставить это значение',
+  });
+  if (!choice) throw new Error('EXPECTED_REGISTRY_CHOICE');
+  await userEvent.setup().click(choice);
+  expect(await within(review).findByText(/720\.50.*7707083893/u)).toBeDefined();
+  expect(within(review).queryByText(/720\.50.*9703026898/u)).toBeNull();
+});
+
 test('an internal link asks before discarding edits, and staying preserves the draft', async () => {
   window.location.href = 'http://localhost/w/workspace-1/works/current';
   serveWork(viewWith({ personName: 'Иван' }));

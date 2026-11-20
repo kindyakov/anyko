@@ -17,6 +17,7 @@ import { obligationInstructions } from '../../../profiles/bfl/obligation-instruc
 
 import { findArbitrationCourt } from './arbitration-court';
 import { createChatAgent } from './chat';
+import { findCreditor } from './creditor-registry';
 import { createReconciliationAgent } from './reconcile';
 import { retryVisionResponse } from './vision-retry';
 
@@ -36,6 +37,7 @@ export function createDocumentAgents(options: {
   timeoutMs?: number;
   fetch?: typeof fetch;
   fetchCourtPage?: Parameters<typeof findArbitrationCourt>[2];
+  fetchCreditorPage?: Parameters<typeof findCreditor>[2];
 }): DocumentAgents {
   const storage = new PostgresStore({
     id: 'anyko-agent-storage',
@@ -61,12 +63,15 @@ export function createDocumentAgents(options: {
     AbortSignal.any([signal, AbortSignal.timeout(options.timeoutMs ?? 120000)]);
   const lookupCourt: typeof findArbitrationCourt = (territory, signal) =>
     findArbitrationCourt(territory, signal, options.fetchCourtPage);
+  const lookupCreditor: typeof findCreditor = (query, signal) =>
+    findCreditor(query, signal, options.fetchCreditorPage);
   return {
     ready: () => storage.init(),
     chat: createChatAgent({
       mastra,
       gateway,
       lookupCourt,
+      lookupCreditor,
       timeoutMs: options.timeoutMs ?? 120000,
     }),
     reconcile: createReconciliationAgent({
@@ -74,6 +79,7 @@ export function createDocumentAgents(options: {
       mastra,
       gateway,
       lookupCourt,
+      lookupCreditor,
       timeoutMs: options.timeoutMs ?? 120000,
     }),
     async describe(input) {

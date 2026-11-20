@@ -26,6 +26,17 @@ export const candidateSchema = z
   .object({
     origin: z.enum(['document', 'context', 'inference']).optional(),
     explanation: z.string().trim().min(1).max(2000).optional(),
+    creditorSource: z
+      .strictObject({
+        registry: z.enum(['cbr', 'fns']),
+        url: z
+          .url()
+          .regex(
+            /^https:\/\/(?:www\.cbr\.ru\/finorg\/foinfo\/\?ogrn=|pb\.nalog\.ru\/search\.html#mode=search-ul&queryUl=)[15]\d{12}$/u,
+          ),
+        checkedAt: z.iso.datetime(),
+      })
+      .optional(),
     courtSources: z
       .strictObject({
         catalogueUrl: z.literal('https://arbitr.ru/'),
