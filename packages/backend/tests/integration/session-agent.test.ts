@@ -5,10 +5,11 @@ import { strFromU8, unzipSync } from 'fflate';
 import { z } from 'zod';
 
 import { createDatabasePool } from '@anyko/database';
+import { applyCreditorRegistryCandidate } from '@anyko/document-values/obligations';
 import { llmError } from '@anyko/llm';
 
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
-import { emptyFacts } from '../../src/modules/facts';
+import { emptyFacts, markSelectedCandidates } from '../../src/modules/facts';
 import { generateDocument } from '../../src/modules/generation';
 import {
   requirePackage,
@@ -940,6 +941,191 @@ test('court lookup uses only the territory and sends verified address alternativ
   } finally {
     await agents.eraseThread(threadId);
     await agents.stop();
+    await pool.end();
+  }
+});
+
+test('official creditor details stay a proposal until selecting them for the linked contract', async () => {
+  const databaseUrl = z
+    .url()
+    .refine((url) =>
+      /^\/anyko_test(?:_[a-z0-9_]+)?$/u.test(new URL(url).pathname),
+    )
+    .parse(process.env.TEST_DATABASE_URL);
+  const pool = createDatabasePool(databaseUrl);
+  const threadId = crypto.randomUUID();
+  const documentId = crypto.randomUUID();
+  const resource = crypto.randomUUID();
+  const quote = 'Кредитор ООО МКК «Озон Кредит», ИНН 9703026898';
+  const row = {
+    name: 'ООО МКК «Озон Кредит»',
+    inn: '9703026898',
+    contractNumber: 'K-42',
+    contractDate: '2024-11-01',
+    amountDate: '2025-04-12',
+    amount: '720.50',
+    debtStatus: 'Действует',
+  };
+  const fullName =
+    'Общество с ограниченной ответственностью Микрокредитная компания «Озон Кредит»';
+  const address = 'Москва, наб. Пресненская, д. 10';
+  const ground = {
+    field: 'debts' as const,
+    value: [row],
+    origin: 'document' as const,
+    evidence: [{ documentId, imagePath: null, quote }],
+  };
+  const facts = emptyFacts();
+  facts.values.debts = [
+    row,
+    { name: 'АО «Другой кредитор»', basis: 'договор М-6', amount: '10.00' },
+  ];
+  facts.manual.push('debts');
+  facts.candidates.push(ground);
+  const requests: string[] = [];
+  let unavailable = false;
+  const agents = createDocumentAgents({
+    pool,
+    fetchCreditorPage: (url, init) => {
+      expect(url).toBe('https://www.cbr.ru/FO_ZoomWS/FinOrg.asmx');
+      requests.push(typeof init.body === 'string' ? init.body : '');
+      return Promise.resolve(
+        unavailable
+          ? new Response(null, { status: 503 })
+          : new Response(
+              '<Envelope><GetFullInfoByINNResult><OGRN>1217700060820</OGRN><INN>9703026898</INN><ShortName>ООО МКК «Озон Кредит»</ShortName><Name>' +
+                fullName +
+                '</Name><Address>' +
+                address +
+                '</Address></GetFullInfoByINNResult></Envelope>',
+            ),
+      );
+    },
+    fetch: Object.assign(
+      (url: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        Promise.resolve(
+          new Request(url, init).url.endsWith('/endpoints')
+            ? Response.json({
+                data: {
+                  endpoints: [
+                    { context_length: 32768, max_completion_tokens: 8192 },
+                  ],
+                },
+              })
+            : Response.json({
+                id: 'fixture',
+                object: 'chat.completion',
+                created: 1,
+                model: 'fixture',
+                choices: [
+                  {
+                    index: 0,
+                    message: {
+                      role: 'assistant',
+                      content: JSON.stringify({
+                        summary: 'Сверьте реквизиты.',
+                        candidates: [],
+                      }),
+                    },
+                    finish_reason: 'stop',
+                  },
+                ],
+              }),
+        ),
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const pack = requirePackage('bfl-bankruptcy-v7');
+  const reconcile = () =>
+    agents.reconcile({
+      connection: {
+        id: 'fixture',
+        baseURL: 'https://fixture.invalid/v1',
+        apiKey: crypto.randomUUID(),
+      },
+      modelId: 'fixture',
+      resource,
+      sessionId: crypto.randomUUID(),
+      threadId,
+      workRevision: 1,
+      previousContext: null,
+      facts,
+      fields: pack.fields,
+      candidates: [ground],
+      documents: [
+        {
+          id: documentId,
+          filename: 'certificate.pdf',
+          digest: 'fixture',
+          images: [],
+        },
+      ],
+      signal: AbortSignal.timeout(10000),
+      assertCurrent: () => Promise.resolve(),
+      readSource: () => Promise.resolve(quote),
+    });
+  try {
+    await agents.ready();
+    const result = await reconcile();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toContain('<INN>9703026898</INN>');
+    expect(requests[0]).not.toContain('K-42');
+    expect(result.candidates).toHaveLength(1);
+    const proposal = result.candidates[0];
+    expect(proposal).toMatchObject({
+      origin: 'inference',
+      field: 'debts',
+      evidence: ground.evidence,
+      creditorSource: {
+        registry: 'cbr',
+        url: 'https://www.cbr.ru/finorg/foinfo/?ogrn=1217700060820',
+      },
+    });
+    expect(Date.parse(proposal?.creditorSource?.checkedAt ?? '')).not.toBeNaN();
+    if (!proposal || !Array.isArray(proposal.value))
+      throw new Error('EXPECTED_CREDITOR_PROPOSAL');
+    const reviewed = { ...facts, candidates: [ground, proposal] };
+    expect(markSelectedCandidates(reviewed)[1]?.selected).toBe(false);
+    const patched = applyCreditorRegistryCandidate(
+      reviewed.values.debts,
+      proposal.value,
+    );
+    expect(patched).toMatchObject([
+      { amount: '720.50', address, creditorLegalName: fullName },
+      { name: 'АО «Другой кредитор»', amount: '10.00' },
+    ]);
+    expect(
+      markSelectedCandidates({
+        ...reviewed,
+        values: { ...reviewed.values, debts: patched ?? null },
+      })[1]?.selected,
+    ).toBe(true);
+    const data = templateData(
+      { ...reviewed.values, debts: patched ?? null },
+      'bfl-statement-v7',
+    );
+    expect(data.creditorHeaders?.[0]).toMatchObject({
+      name: fullName,
+      address,
+      inn: '9703026898',
+    });
+    expect(
+      templateData(
+        { ...reviewed.values, debts: patched ?? null },
+        'bfl-creditors-v2',
+      ).debts,
+    ).toMatchObject([
+      { name: fullName, address, amount: '720,50' },
+      { amount: '10,00' },
+    ]);
+
+    unavailable = true;
+    const failedLookup = await reconcile();
+    expect(failedLookup.candidates).toEqual([]);
+    expect(failedLookup.summary).toContain('Не удалось проверить');
+    expect(requests).toHaveLength(2);
+  } finally {
+    await agents.eraseThread(threadId);
     await pool.end();
   }
 });

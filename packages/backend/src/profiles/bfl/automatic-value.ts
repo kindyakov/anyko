@@ -14,6 +14,7 @@ import {
   moneyAmountsInText,
 } from '@anyko/document-values/money';
 import {
+  creditorRegistryColumns,
   isBankObligation,
   obligationFields,
   obligationStatuses,
@@ -172,35 +173,37 @@ function supportedValue(
         ? lines
         : [];
     const supported = Object.fromEntries(
-      Object.entries(row).map(([column, cell]) => {
-        if (cell === null) return [column, cell];
-        const rubles = isRublesColumn(field, column);
-        if (rubles || (field === 'valuables' && column === 'amount'))
+      Object.entries(row)
+        .filter(([column]) => !Object.hasOwn(creditorRegistryColumns, column))
+        .map(([column, cell]) => {
+          if (cell === null) return [column, cell];
+          const rubles = isRublesColumn(field, column);
+          if (rubles || (field === 'valuables' && column === 'amount'))
+            return [
+              column,
+              matching.some((line) => attestedAmount(cell, line, rubles))
+                ? rubles
+                  ? (canonicalMoneyAmount(cell) ?? null)
+                  : cell
+                : null,
+            ];
+          if (column === 'inn') {
+            const identifier = digits(cell);
+            return [
+              column,
+              validInn(identifier, false) &&
+              matching.some((line) => attestedIdentifier(identifier, line))
+                ? cell
+                : null,
+            ];
+          }
           return [
             column,
-            matching.some((line) => attestedAmount(cell, line, rubles))
-              ? rubles
-                ? (canonicalMoneyAmount(cell) ?? null)
-                : cell
-              : null,
+            requireText && !matching.some((line) => mentions(line, cell))
+              ? null
+              : cell,
           ];
-        if (column === 'inn') {
-          const identifier = digits(cell);
-          return [
-            column,
-            validInn(identifier, false) &&
-            matching.some((line) => attestedIdentifier(identifier, line))
-              ? cell
-              : null,
-          ];
-        }
-        return [
-          column,
-          requireText && !matching.some((line) => mentions(line, cell))
-            ? null
-            : cell,
-        ];
-      }),
+        }),
     );
     return requireText &&
       Object.values(supported).every((cell) => cell === null)
@@ -385,7 +388,8 @@ function evidencedObligation(
         amountDate: canonicalCalendarDate(amountDate),
         amount: active ? amount : null,
       }).flatMap(([column, cell]) => {
-        if (cell == null) return [];
+        if (cell == null || Object.hasOwn(creditorRegistryColumns, column))
+          return [];
         if (
           [
             'name',

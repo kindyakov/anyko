@@ -663,3 +663,41 @@ test('a candidate for an empty table only matches a saved empty table', () => {
   });
   expect(markSelectedCandidates(manuallyEdited)[0]?.selected).toBe(false);
 });
+
+test('registry candidates cannot replace a document-backed obligation before review', () => {
+  const row = { name: 'ООО «Меридиан»', basis: 'Договор 15' };
+  const document = {
+    field: 'debts' as const,
+    value: [row],
+    evidence: [
+      { documentId: crypto.randomUUID(), imagePath: null, quote: row.name },
+    ],
+  };
+  const registry = {
+    ...document,
+    origin: 'inference' as const,
+    value: [
+      {
+        ...row,
+        creditorLegalName:
+          'Общество с ограниченной ответственностью «Меридиан»',
+        inn: '7707083893',
+        ogrn: '1027700132195',
+      },
+    ],
+    explanation: 'Сведения из ЕГРЮЛ',
+    creditorSource: {
+      registry: 'fns' as const,
+      url: 'https://pb.nalog.ru/search.html#mode=search-ul&queryUl=1027700132195',
+      checkedAt: '2026-11-20T00:00:00.000Z',
+    },
+  };
+  const analyzed = mergeCandidates(emptyFacts(), [document, registry], false);
+  expect(analyzed.values.debts).toEqual([row]);
+  expect(
+    markSelectedCandidates(analyzed).map(({ selected }) => selected),
+  ).toEqual([true, false]);
+  const unavailable = mergeCandidates(analyzed, [document], false, true);
+  expect(unavailable.values.debts).toEqual([row]);
+  expect(unavailable.candidates).toEqual([document]);
+});
