@@ -477,6 +477,7 @@ test('the latest statement preview groups creditors and shows only active contra
 test('the approved statement updates the request from the same name and date the lawyer edits', () => {
   const prepared = documentPackageSchema.parse({
     ...pack,
+    version: 'bfl-bankruptcy-v8',
     fields: [
       ...fieldDefinitions.filter(({ key }) => key === 'lastName'),
       ...[

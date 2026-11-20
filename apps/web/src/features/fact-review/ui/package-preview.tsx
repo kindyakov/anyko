@@ -10,7 +10,7 @@ import {
   type FieldValues,
 } from '@anyko/contracts/catalog';
 import {
-  approvedStatementTemplate,
+  datedBankruptcyPackage,
   statementSroValues,
 } from '@anyko/document-values/bankruptcy-statement';
 import {
@@ -144,7 +144,7 @@ export function PackagePreview(props: Props) {
         }
       : values;
   const paperValues =
-    document.version === approvedStatementTemplate
+    pack.version === datedBankruptcyPackage
       ? { ...draftValues, ...statementSroValues(draftValues) }
       : draftValues;
   return (
