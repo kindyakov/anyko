@@ -1,5 +1,9 @@
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
+import {
+  isBankObligation,
+  sameObligation,
+} from '@anyko/document-values/obligations';
 
 import {
   automaticValue,
@@ -17,6 +21,11 @@ import {
   isRublesField,
   readFieldValues,
 } from '../../../profiles/bfl/fields';
+import {
+  containsObligations,
+  reconcileObligations,
+  usesBankObligations,
+} from '../../../profiles/bfl/reconcile-obligations';
 import { factsSchema, type WorkFacts } from '../schemas';
 
 export function emptyFacts(): WorkFacts {
@@ -49,6 +58,22 @@ export function mergeCandidates(
     const proposals = candidates.filter((candidate) => candidate.field === key);
     const found = proposals.filter(({ origin }) => origin !== 'inference');
     if (!found.length && proposals.length) continue;
+    if (usesBankObligations(key, [saved, ...found.map(({ value }) => value)])) {
+      const proposed = reconcileObligations(saved, found.map(automaticValue));
+      if (preserveExisting && Array.isArray(saved)) {
+        values[key] = [
+          ...saved,
+          ...(Array.isArray(proposed)
+            ? proposed.filter(
+                (row) => !saved.some((old) => sameObligation(old, row)),
+              )
+            : []),
+        ];
+      } else {
+        values[key] = proposed;
+      }
+      continue;
+    }
     const proposed =
       reconcileCandidates(key, found) === null
         ? null
@@ -77,11 +102,22 @@ export function findFactDiscrepancies(current: WorkFacts) {
         (c) => c.field === key && reconcile(key, [c.value]) !== null,
       );
       if (!candidates.length) return false;
+      const saved = current.values[key] ?? null;
+      if (
+        usesBankObligations(key, [
+          saved,
+          ...candidates.map(({ value }) => value),
+        ])
+      )
+        return candidates.some(
+          (candidate) =>
+            !containsObligations(saved, candidate.value) &&
+            !containsObligations(saved, automaticValue(candidate)),
+        );
       const original = reconcileCandidates(key, candidates);
       if (original === null) return true;
 
       const manual = current.manual.includes(key);
-      const saved = current.values[key] ?? null;
       if (manual && saved === null) return true;
       if (saved === null) return false;
 
@@ -111,11 +147,14 @@ export function markSelectedCandidates({
     const selected =
       saved !== null &&
       !needsReview?.includes(field) &&
-      (includesFactValue(field, saved, value) ||
-        // Автозаполнение может опустить ячейку. Оно не скрывает сохранённое противоречие.
-        (candidate.origin !== 'inference' &&
-          reconcile(field, [saved, value]) !== null &&
-          includesFactValue(field, saved, automaticValue(candidate))));
+      (usesBankObligations(field, [saved, value])
+        ? containsObligations(saved, value) ||
+          containsObligations(saved, automaticValue(candidate))
+        : includesFactValue(field, saved, value) ||
+          // Автозаполнение может опустить ячейку. Оно не скрывает сохранённое противоречие.
+          (candidate.origin !== 'inference' &&
+            reconcile(field, [saved, value]) !== null &&
+            includesFactValue(field, saved, automaticValue(candidate))));
     return { ...candidate, selected };
   });
 }
@@ -250,7 +289,11 @@ function supportedParts(
   for (const [index, original] of saved.entries()) {
     const row = comparableRow(field, original);
     const key = rowKey(row);
-    const matching = rows.filter((candidate) => rowKey(candidate) === key);
+    const matching = rows.filter((candidate) =>
+      isBankObligation(row)
+        ? sameObligation(row, candidate)
+        : rowKey(candidate) === key,
+    );
     for (const [column, cell] of Object.entries(row))
       if (
         cell !== null &&

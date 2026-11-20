@@ -1,6 +1,12 @@
 import { expect, spyOn, test } from 'bun:test';
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { documentPackageSchema } from '@anyko/contracts/catalog';
@@ -412,4 +418,58 @@ test('repeated rows use their own column labels and limits and preserve a rowNum
   expect(view).toMatch(/aria-label="Заявление: Длинное"[^>]*maxlength="20"/i);
   expect(view).toContain('Реквизит-77');
   expect(view).toContain('Заявление: Реквизит');
+});
+
+test('the latest statement preview groups creditors and shows only active contracts with the shared total', () => {
+  const prepared = documentPackageSchema.parse({
+    ...pack,
+    documents: [
+      {
+        ...pack.documents[0],
+        id: 'statement',
+        version: 'bfl-statement-v7',
+        blocks: [
+          {
+            kind: 'paragraph',
+            paragraph: paragraph('{#creditorHeaders}{name}{/creditorHeaders}'),
+          },
+          {
+            kind: 'paragraph',
+            paragraph: paragraph('{#debts}{basis}: {amount} руб.{/debts}'),
+          },
+          {
+            kind: 'paragraph',
+            paragraph: paragraph('Итого: {debtTotal} ({debtTotalWords})'),
+          },
+        ],
+      },
+    ],
+  });
+  render(
+    <PackagePreview
+      pack={prepared}
+      values={{
+        debts: [
+          { name: 'АО Банк', contractNumber: 'TEST-1', amount: '1.01' },
+          { name: 'АО «Банк»', contractNumber: 'TEST-2', amount: '2.02' },
+          {
+            name: 'Другой банк',
+            contractNumber: 'TEST-3',
+            debtStatus: 'Закрыт',
+            amount: '50.10',
+          },
+        ],
+        debtTotal: '1000',
+      }}
+      disabled
+      onChange={() => {}}
+    />,
+  );
+  const paper = within(screen.getByRole('article', { name: 'Заявление' }));
+  expect(paper.getByText('АО Банк')).toBeTruthy();
+  expect(paper.queryByText('АО «Банк»')).toBeNull();
+  expect(paper.getByText('Договор № TEST-1: 1,01 руб.')).toBeTruthy();
+  expect(paper.getByText('Договор № TEST-2: 2,02 руб.')).toBeTruthy();
+  expect(paper.queryByText(/TEST-3/)).toBeNull();
+  expect(paper.getByText('Итого: 3,03 (три рубля три копейки)')).toBeTruthy();
 });

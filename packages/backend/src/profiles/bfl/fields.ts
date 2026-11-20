@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { obligationColumns } from '@anyko/document-values/obligations';
+
 const scalar = (key: FieldKey, label: string, multiline = false) => ({
   key,
   label,
@@ -67,7 +69,7 @@ const columns = (labels: Record<string, string>) =>
     label,
     maxLength: 4000,
   }));
-const obligationColumns = columns({
+const obligationColumnsBase = columns({
   type: 'Содержание обязательства',
   name: 'Кредитор / должник',
   address: 'Адрес',
@@ -79,6 +81,10 @@ const obligationColumns = columns({
   penalties: 'Санкции, руб.',
   proof: 'Подтверждающий документ, дата',
 });
+const bankObligationColumns = [
+  ...obligationColumnsBase,
+  ...columns(obligationColumns),
+];
 const paymentColumns = columns({
   name: 'Наименование платежа',
   amount: 'Недоимка / возврат, руб.',
@@ -87,22 +93,22 @@ const paymentColumns = columns({
 const collectionLabels = {
   debts: {
     label: 'Кредиторы: личные обязательства',
-    columns: obligationColumns,
+    columns: bankObligationColumns,
     identity: ['name', 'basis'],
   },
   businessDebts: {
     label: 'Кредиторы: предпринимательские обязательства',
-    columns: obligationColumns,
+    columns: bankObligationColumns,
     identity: ['name', 'basis'],
   },
   receivables: {
     label: 'Должники: личные обязательства',
-    columns: obligationColumns,
+    columns: obligationColumnsBase,
     identity: ['name', 'basis'],
   },
   businessReceivables: {
     label: 'Должники: предпринимательские обязательства',
-    columns: obligationColumns,
+    columns: obligationColumnsBase,
     identity: ['name', 'basis'],
   },
   mandatoryPayments: {
@@ -279,7 +285,8 @@ const dateFields = new Set([
 export const isCalendarDateField = (field: string) => dateFields.has(field);
 export const isRublesField = (field: string) => field === 'debtTotal';
 export const isRublesColumn = (field: string, column: string) =>
-  field !== 'valuables' && ['amount', 'arrears', 'penalties'].includes(column);
+  field !== 'valuables' &&
+  ['amount', 'arrears', 'penalties', 'interest'].includes(column);
 export const fieldDefinitions: FieldDefinition[] = [
   ...Object.entries(scalarLabels).map(([key, label]) => ({
     ...scalar(

@@ -4001,3 +4001,232 @@ test('server rejects upload at the work source limit and reports the reason', as
   });
   await rejects(upload(input), 'INVALID_WORK_INPUT');
 });
+
+test('bank certificates retain evidence and a manual contract decision, and both downloaded DOCX agree', async () => {
+  const { workspaceId } = await create();
+  const scope = memberScope(workspaceId, 'fixture');
+  const workId = await apiBackend.workHttp.intake.createWork(scope, {
+    packageVersion: 'bfl-bankruptcy-v7',
+    title: 'Синтетические банковские справки',
+  });
+  const input = { workspaceId, workId };
+  const certificates = {
+    primary: {
+      number: 'BANK-01',
+      date: '08.11.2026',
+      total: '1234,05',
+      status: 'Действует',
+      text: 'Полная задолженность 1234,05 руб. Неустойка 8,15 руб.',
+    },
+    copy: {
+      number: 'BANK-01',
+      date: '09.11.2026',
+      total: '1234,05',
+      status: 'Действует',
+      text: 'Общая задолженность 1234,05 руб.',
+    },
+    other: {
+      number: 'BANK-02',
+      date: '08.11.2026',
+      total: '200,06',
+      status: 'Действует',
+      text: 'Полная задолженность 200,06 руб.',
+    },
+    paid: {
+      number: 'BANK-03',
+      date: '08.11.2026',
+      total: null,
+      status: 'Погашен',
+      text: 'Кредит полностью погашен.',
+    },
+    turnover: {
+      number: 'BANK-04',
+      date: '08.11.2026',
+      total: '7000,10',
+      status: 'Действует',
+      text: 'Обороты по банковскому счёту: 7000,10 руб.',
+    },
+    changed: {
+      number: 'BANK-01',
+      date: '10.11.2026',
+      total: '2222,10',
+      status: 'Действует',
+      text: 'Общая задолженность 2222,10 руб.',
+    },
+    closed: {
+      number: 'BANK-02',
+      date: '10.11.2026',
+      total: null,
+      status: 'Закрыт',
+      text: 'Кредитный договор закрыт.',
+    },
+  };
+  const name = 'АО Синтетический Банк';
+  const sourceText = ({
+    number,
+    date,
+    text,
+  }: (typeof certificates)[keyof typeof certificates]) =>
+    [
+      name,
+      'Договор № ' + number + ' от 03.01.2025',
+      'По состоянию на ' + date,
+      text,
+    ].join('\n');
+  parseFixture = (bytes) => {
+    const marker = new TextDecoder().decode(bytes).split('\n').at(-1)?.trim();
+    const certificate = Object.entries(certificates).find(
+      ([key]) => key === marker,
+    )?.[1];
+    if (!certificate) throw new Error('UNKNOWN_BANK_FIXTURE');
+    return Promise.resolve({
+      markdown: sourceText(certificate),
+      processorVersion: 'fixture',
+    });
+  };
+  extractFixture = ({ document, fields }) => {
+    const certificate = Object.values(certificates).find((entry) =>
+      document.text.includes(sourceText(entry)),
+    );
+    if (
+      !certificate ||
+      !fields
+        ?.find(({ key }) => key === 'debts')
+        ?.columns.some(({ key }) => key === 'amountDate')
+    )
+      throw new Error('EXPECTED_BANK_FIELDS');
+    return Promise.resolve({
+      candidates: [
+        {
+          field: 'debts',
+          value: [
+            {
+              name,
+              contractNumber: certificate.number,
+              contractDate: '03.01.2025',
+              amountDate: certificate.date,
+              debtStatus: certificate.status,
+              amount: certificate.total,
+              ...(certificate === certificates.primary && {
+                penalties: '8.15',
+              }),
+            },
+          ],
+          evidence: [
+            {
+              documentId: document.id,
+              imagePath: null,
+              quote: sourceText(certificate),
+            },
+          ],
+        },
+      ],
+      usage: { inputTokens: 4, outputTokens: 4 },
+    });
+  };
+
+  const addCertificate = async (key: keyof typeof certificates) => {
+    const source = await upload(input, key);
+    await until(
+      input,
+      (view) =>
+        terminal(view) &&
+        view.documents.some(
+          (doc) => doc.id === source.id && doc.status === 'succeeded',
+        ),
+    );
+    return source;
+  };
+
+  try {
+    const primary = await addCertificate('primary');
+    const copy = await addCertificate('copy');
+    await addCertificate('other');
+    await addCertificate('paid');
+    await addCertificate('turnover');
+    const original = await until(input, terminal);
+    const debts = original.facts.values.debts;
+    if (!Array.isArray(debts)) throw new Error('BANK_FACTS_MISSING');
+    expect(debts).toHaveLength(3);
+    const primaryDebt = debts.find(
+      ({ contractNumber }) => contractNumber === 'BANK-01',
+    );
+    expect(primaryDebt).toMatchObject({
+      amount: '1234.05',
+      amountDate: '08.11.2026',
+      penalties: '8.15',
+    });
+    expect(
+      debts.find(({ contractNumber }) => contractNumber === 'BANK-02')?.amount,
+    ).toBe('200.06');
+    expect(
+      debts.find(({ contractNumber }) => contractNumber === 'BANK-03')
+        ?.debtStatus,
+    ).toBe('Погашен');
+    const selectedSources = original.facts.candidates
+      .filter(({ selected, field }) => selected && field === 'debts')
+      .flatMap(({ evidence }) => evidence.map(({ documentId }) => documentId));
+    expect(selectedSources).toContain(primary.id);
+    expect(selectedSources).toContain(copy.id);
+
+    const manual = debts.map((row) =>
+      row.contractNumber === 'BANK-01' ? { ...row, amount: '1234.15' } : row,
+    );
+    await apiBackend.workHttp.review.editValues(scope, {
+      workId,
+      revision: original.work.revision,
+      values: { ...original.facts.values, debts: manual, lastName: 'Тестовый' },
+    });
+    const changed = await addCertificate('changed');
+    const closed = await addCertificate('closed');
+    const reviewed = await until(input, terminal);
+    expect(reviewed.facts.values.debts).toEqual(manual);
+    expect(reviewed.discrepancyFields).toContain('debts');
+    const alternatives = reviewed.facts.candidates
+      .filter(({ selected }) => !selected)
+      .flatMap(({ evidence }) => evidence.map(({ documentId }) => documentId));
+    expect(alternatives).toContain(changed.id);
+    expect(alternatives).toContain(closed.id);
+
+    await apiBackend.workHttp.generation.startGeneration(scope, {
+      workId,
+      revision: reviewed.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    const generated = await until(input, (view) =>
+      view.generations.some(({ status }) => status === 'succeeded'),
+    );
+    const generation = generated.generations[0];
+    if (!generation) throw new Error('GENERATION_MISSING');
+
+    const files = generation.files.filter(({ templateVersion }) =>
+      ['bfl-statement-v7', 'bfl-creditors-v2'].includes(templateVersion),
+    );
+    expect(files).toHaveLength(2);
+    for (const { id, templateVersion } of files) {
+      const result = await apiBackend.workHttp.generation.downloadResult(
+        scope,
+        {
+          workId,
+          generationId: brandGenerationId(generation.id),
+          fileId: brandFileId(id),
+        },
+      );
+      const xml = strFromU8(
+        unzipSync(result.bytes)['word/document.xml'] ?? new Uint8Array(),
+      );
+      expect(xml).toContain('1434,21');
+      expect(xml).toContain('1234,15');
+      expect(xml).toContain('200,06');
+      expect(xml.match(/BANK-01/g)).toHaveLength(1);
+      expect(xml).not.toMatch(/BANK-03|BANK-04|7000,10|2222,10|8,15/);
+      if (templateVersion === 'bfl-statement-v7') {
+        const header = xml.slice(0, xml.indexOf('</w:tbl>'));
+        expect(header.match(/Синтетический Банк/g)).toHaveLength(1);
+      }
+    }
+  } finally {
+    parseFixture = undefined;
+    extractFixture = undefined;
+  }
+}, 60000);
