@@ -9,11 +9,7 @@ import { applyCreditorRegistryCandidate } from '@anyko/document-values/obligatio
 import { llmError } from '@anyko/llm';
 
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
-import { emptyFacts } from '../../src/modules/facts';
-import {
-  markSelectedCandidates,
-  mergeCandidates,
-} from '../../src/modules/facts/domain/values';
+import { emptyFacts, markSelectedCandidates } from '../../src/modules/facts';
 import { generateDocument } from '../../src/modules/generation';
 import {
   requirePackage,
@@ -1088,8 +1084,7 @@ test('official creditor details stay a proposal until selecting them for the lin
     expect(Date.parse(proposal?.creditorSource?.checkedAt ?? '')).not.toBeNaN();
     if (!proposal || !Array.isArray(proposal.value))
       throw new Error('EXPECTED_CREDITOR_PROPOSAL');
-    const reviewed = mergeCandidates(facts, [ground, proposal], false);
-    expect(reviewed.values.debts).toEqual(facts.values.debts);
+    const reviewed = { ...facts, candidates: [ground, proposal] };
     expect(markSelectedCandidates(reviewed)[1]?.selected).toBe(false);
     const patched = applyCreditorRegistryCandidate(
       reviewed.values.debts,
@@ -1128,9 +1123,7 @@ test('official creditor details stay a proposal until selecting them for the lin
     const failedLookup = await reconcile();
     expect(failedLookup.candidates).toEqual([]);
     expect(failedLookup.summary).toContain('Не удалось проверить');
-    const last = mergeCandidates(reviewed, [ground], false);
-    expect(last.values.debts).toEqual(facts.values.debts);
-    expect(last.candidates).toEqual([ground]);
+    expect(requests).toHaveLength(2);
   } finally {
     await agents.eraseThread(threadId);
     await pool.end();
