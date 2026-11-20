@@ -5,7 +5,7 @@ const fnsEndpoint = 'https://pb.nalog.ru/';
 const maximumMatches = 6;
 const innSchema = z.string().regex(/^\d{10}$/u);
 const ogrnSchema = z.string().regex(/^[15]\d{12}$/u);
-export const creditorNameSchema = z
+const creditorNameSchema = z
   .string()
   .trim()
   .min(2)
@@ -25,7 +25,7 @@ export const creditorLookupInput = z
   .refine(({ inn, ogrn, name }) => Boolean(inn || ogrn || name));
 
 export type CreditorQuery = z.infer<typeof creditorLookupInput>;
-export type CreditorOrganisation = {
+type CreditorOrganisation = {
   fullName: string;
   shortName?: string;
   inn: string;
