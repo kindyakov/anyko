@@ -22,6 +22,7 @@ import {
   createdWorkResponseSchema,
   createWorkSchema,
   defaultWorkPageSize,
+  editChecklistLinkSchema,
   editWorkSchema,
   queuedStatusSchema,
   revisionSchema,
@@ -334,6 +335,28 @@ export const editWorkDocumentRecognition = endpoint({
     'CLEANUP_PENDING',
     'NOT_READY',
     'WORK_BUSY',
+    'INVALID_WORK_INPUT',
+  ],
+  invalid: 'INVALID_WORK_INPUT',
+  idempotency: 'natural',
+});
+
+export const editWorkChecklistLink = endpoint({
+  summary:
+    'Подтверждает или снимает сопоставление пункта чек-листа с файлом работы',
+  method: 'PUT',
+  path: '/workspaces/:workspaceId/works/:workId/checklist-items/:requirementId/documents/:documentId',
+  params: workDocumentParams.extend({
+    requirementId: z.string().regex(/^[a-z][a-z0-9-]{0,79}$/),
+  }),
+  body: json(editChecklistLinkSchema),
+  response: json(z.object({ status: z.literal('updated') })),
+  status: 200,
+  errors: [
+    'FORBIDDEN',
+    'NOT_FOUND',
+    'CLEANUP_PENDING',
+    'REVISION_CONFLICT',
     'INVALID_WORK_INPUT',
   ],
   invalid: 'INVALID_WORK_INPUT',

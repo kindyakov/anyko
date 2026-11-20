@@ -24,6 +24,7 @@ import {
   deleteWork,
   downloadGeneratedFile,
   editWork,
+  editWorkChecklistLink,
   editWorkDocumentRecognition,
   generateWork,
   getWork,
@@ -251,6 +252,15 @@ export function worksRoutes(
       workId: brandWorkId(params.workId),
       documentId: brandDocumentId(params.documentId),
       ocrRevision: body.ocrRevision,
+    });
+    return { status: 'updated' as const };
+  });
+  route(app, editWorkChecklistLink, async ({ scope, params, body }) => {
+    await review.editChecklistLink(scope, {
+      workId: brandWorkId(params.workId),
+      documentId: brandDocumentId(params.documentId),
+      requirementKey: params.requirementId,
+      ...body,
     });
     return { status: 'updated' as const };
   });
