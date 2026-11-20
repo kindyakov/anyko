@@ -9,6 +9,7 @@ import { candidatesForContext, type WorkFacts } from '../../modules/facts';
 import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
+import type { FieldKey } from '../../profiles/bfl/fields';
 import type { WorkDependencies } from '../work-dependencies';
 import { logWorkFailure } from '../work-execution/failure';
 import { analysisContextRevision } from '../work-execution/run-state';
@@ -36,6 +37,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
       WorkDependencies['connections']['internal']['connection']
     >;
     fields: FieldDefinition[];
+    excludedFields?: ReadonlySet<FieldKey> | undefined;
     candidates: WorkFacts['candidates'];
     sources: ContinuationSource[];
     failures: number;
@@ -223,6 +225,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
               workspaceId: run.workspaceId,
               workId: run.workId,
               fields: input.fields.map(({ key }) => key),
+              excludedFields: input.excludedFields,
               confirmed: work.confirmedRevision === work.revision,
               preserveExisting: run.automaticUpload === true,
               candidates,

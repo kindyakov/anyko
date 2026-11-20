@@ -4,16 +4,32 @@ import type {
   FieldValues,
   PreviewRow,
 } from '@anyko/contracts/catalog';
+import { attachmentDescriptions } from '@anyko/document-values/attachments';
+import {
+  approvedStatementTemplate,
+  statementRequestValues,
+} from '@anyko/document-values/bankruptcy-statement';
 import {
   obligationAmounts,
   obligationTemplate,
 } from '@anyko/document-values/obligations';
 
-export function previewObligations(version: string, values: FieldValues) {
+export function previewDocumentValues(version: string, values: FieldValues) {
   if (!obligationTemplate(version)) return null;
   const { debts, businessDebts, creditorHeaders, total, totalWords } =
     obligationAmounts(values.debts, values.businessDebts);
-  const rows = { debts, businessDebts, creditorHeaders };
+  const rows = {
+    debts,
+    businessDebts,
+    creditorHeaders,
+    ...(version === approvedStatementTemplate && {
+      attachments: attachmentDescriptions(values.submittedAttachments),
+    }),
+  };
+  const request =
+    version === approvedStatementTemplate
+      ? statementRequestValues(values)
+      : undefined;
   const isCollection = (key: string | undefined): key is keyof typeof rows =>
     key !== undefined && Object.hasOwn(rows, key);
   return {
@@ -26,7 +42,7 @@ export function previewObligations(version: string, values: FieldValues) {
     text: (key: string) => {
       if (key === 'debtTotal') return total ?? '[не заполнено]';
       if (key === 'debtTotalWords') return totalWords ?? '[не заполнено]';
-      return undefined;
+      return request && Object.hasOwn(request, key) ? request[key] : undefined;
     },
   };
 }

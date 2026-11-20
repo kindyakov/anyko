@@ -9,14 +9,10 @@ import type {
   PreviewParagraph,
   PreviewRow,
 } from '@anyko/contracts/catalog';
-import {
-  attachmentDescriptions,
-  hasSubmittedAttachments,
-} from '@anyko/document-values/attachments';
 
 import {
+  previewDocumentValues,
   previewEntries,
-  previewObligations,
 } from '@/features/fact-review/model/preview';
 
 import { FieldEditor, TextSlot } from '../work-fields';
@@ -41,18 +37,11 @@ export function PreviewPaper({
 }) {
   const listNumbers = new Map<string, number>();
   const margins = document.margins;
-  const obligations = previewObligations(document.version, values);
-  const submitted = hasSubmittedAttachments(pack.fields);
-  const collectionValue = (key: FieldKey) =>
-    submitted && key === 'attachments'
-      ? attachmentDescriptions(values.submittedAttachments)
-      : obligations
-        ? obligations.value(key)
-        : values[key];
+  const projected = previewDocumentValues(document.version, values);
+  const collectionValue = projected?.value ?? ((key: FieldKey) => values[key]);
   const collectionNote = (key: FieldKey, collection: FieldValue) => {
-    if (submitted && key === 'attachments') return null;
-    if (obligations?.isCollection(key))
-      return obligations.emptyNote(key, collection);
+    if (projected?.isCollection(key))
+      return projected.emptyNote(key, collection);
     const field = pack.fields.find((item) => item.key === key);
     return (
       <CollectionNote
@@ -94,14 +83,10 @@ export function PreviewPaper({
           ?.columns.find((item) => item.key === key);
         if (key === 'rowNumber' && row && !column)
           return `${String(rowNumber ?? 1)}${suffix}`;
-        if (
-          row &&
-          (obligations?.isCollection(rowField) ||
-            (submitted && rowField === 'attachments'))
-        )
+        if (row && projected?.isCollection(rowField))
           return (row[key] ?? '[не заполнено]') + suffix;
-        const total = !row && obligations?.text(key);
-        if (total) return total + suffix;
+        const text = !row && projected?.text(key);
+        if (text) return text + suffix;
         if (row) {
           const slot = (
             <TextSlot
@@ -149,7 +134,6 @@ export function PreviewPaper({
     if (repeat && !row) {
       const collection = collectionValue(repeat);
       const rows = Array.isArray(collection) ? collection : [];
-      if (submitted && repeat === 'attachments' && !rows.length) return null;
       return (
         <div key={id} data-field={repeat} className="rounded-[3px]">
           {rows.length ? (
@@ -216,7 +200,7 @@ export function PreviewPaper({
     const collection = repeat ? collectionValue(repeat) : undefined;
     const entries = previewEntries(row, collection);
     if (repeat && Array.isArray(collection) && !collection.length)
-      return obligations?.isCollection(repeat) ? null : (
+      return projected?.isCollection(repeat) ? null : (
         <tr key={index} data-field={repeat}>
           <td
             colSpan={row.cells.reduce((sum, cell) => sum + cell.span, 0)}

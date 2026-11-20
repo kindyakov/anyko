@@ -1,8 +1,15 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
+import {
+  approvedStatementTemplate,
+  datedBankruptcyPackage,
+} from '@anyko/document-values/bankruptcy-statement';
 import { employmentFields } from '@anyko/document-values/employment';
-import { obligationColumns } from '@anyko/document-values/obligations';
+import {
+  creditorRegistryColumns,
+  obligationColumns,
+} from '@anyko/document-values/obligations';
 import { DiagnosticError } from '@anyko/logger';
 
 import { fieldDefinitions } from '../../profiles/bfl/fields';
@@ -37,12 +44,16 @@ const historicalPackage: DocumentPackage = documentPackageSchema.parse({
           'registrationAddress',
           'observations',
           ...employmentFields,
+          'submittedAttachments',
         ].includes(key),
     )
     .map((field) => ({
       ...field,
       columns: field.columns.filter(
-        ({ key }) => !Object.hasOwn(obligationColumns, key),
+        ({ key }) =>
+          !Object.hasOwn(obligationColumns, key) &&
+          !Object.hasOwn(creditorRegistryColumns, key) &&
+          key !== 'category',
       ),
     })),
   documents: ['bfl-statement-v1', 'bfl-inventory-v1', 'bfl-creditors-v1'].map(
@@ -93,20 +104,50 @@ const amountPackage: DocumentPackage = documentPackageSchema.parse({
 const obligationPackage: DocumentPackage = documentPackageSchema.parse({
   ...amountPackage,
   version: 'bfl-bankruptcy-v7',
-  fields: fieldDefinitions.filter(
-    ({ key }) =>
-      !['debtTotal', 'employmentDetails'].includes(key) &&
-      (amountPackage.fields.some((field) => field.key === key) ||
-        employmentFields.some((field) => field === key)),
-  ),
+  fields: fieldDefinitions
+    .filter(
+      ({ key }) =>
+        !['debtTotal', 'employmentDetails'].includes(key) &&
+        (amountPackage.fields.some((field) => field.key === key) ||
+          employmentFields.some((field) => field === key)),
+    )
+    .map((field) => ({
+      ...field,
+      columns: field.columns.filter(({ key }) => key !== 'category'),
+    })),
   documents: ['bfl-statement-v7', 'bfl-inventory-v1', 'bfl-creditors-v2'].map(
     (version) => manifest.find((doc) => doc.version === version),
   ),
 });
+const datedPackage: DocumentPackage = documentPackageSchema.parse({
+  ...obligationPackage,
+  version: datedBankruptcyPackage,
+  fields: [
+    ...obligationPackage.fields
+      .filter(
+        ({ key }) =>
+          !['debtAsOfDate', 'requestsDetails', 'attachments'].includes(key),
+      )
+      .map((field) =>
+        field.key === 'documentDate'
+          ? { ...field, label: 'Дата заполнения комплекта' }
+          : field,
+      ),
+    ...fieldDefinitions.filter(
+      ({ key }) => key === 'attachments' || key === 'submittedAttachments',
+    ),
+  ],
+  documents: obligationPackage.documents.map((document) =>
+    document.id === 'statement'
+      ? manifest.find(({ version }) => version === approvedStatementTemplate)
+      : document,
+  ),
+});
 export function availablePackages(): DocumentPackage[] {
-  return [obligationPackage];
+  return [datedPackage];
 }
 const knownPackages = [
+  datedPackage,
   obligationPackage,
   amountPackage,
   bankruptcyPackage,

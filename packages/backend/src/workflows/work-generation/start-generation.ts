@@ -2,6 +2,7 @@ import {
   hasSubmittedAttachments,
   submittedAttachmentRows,
 } from '@anyko/document-values/attachments';
+import { datedBankruptcyPackage } from '@anyko/document-values/bankruptcy-statement';
 
 import type { AuditModule } from '../../modules/audit';
 import type { ConnectionsModule } from '../../modules/connections';
@@ -11,6 +12,7 @@ import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
 import { requirePackage } from '../../modules/templates';
 import { WorkError, type WorksModule } from '../../modules/works';
+import type { Clock } from '../../platform/clock';
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
@@ -21,6 +23,7 @@ import { workCommandPolicy } from '../work-command-guards';
 export const startGeneration =
   (deps: {
     uow: UnitOfWork;
+    clock: Clock;
     works: WorksModule;
     facts: FactsModule;
     processing: ProcessingModule;
@@ -48,9 +51,11 @@ export const startGeneration =
           const connection = await deps.connections
             .in(tx)
             .internal.configuration(scope.workspaceId);
-          const { values, needsReview } = await deps.facts
-            .in(tx)
-            .queries.get(scope, input.workId);
+          const facts = deps.facts.in(tx);
+          const { values, needsReview } = await facts.queries.get(
+            scope,
+            input.workId,
+          );
           if (needsReview?.length) throw new WorkError('NOT_READY');
           const pack = requirePackage(work.packageVersion);
           if (hasSubmittedAttachments(pack.fields))
@@ -60,12 +65,35 @@ export const startGeneration =
                 documents.filter(({ deleted }) => !deleted).map(({ id }) => id),
               ),
             );
+          const confirmed = work.confirmedRevision === work.revision;
+          let revision = work.revision;
+          if (
+            work.packageVersion === datedBankruptcyPackage &&
+            values.documentDate === null
+          ) {
+            const date = deps.clock
+              .now()
+              .toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });
+            await facts.internal.defaultDocumentDate(
+              scope.workspaceId,
+              input.workId,
+              date,
+            );
+            await deps.works
+              .in(tx)
+              .internal.touch(scope.workspaceId, input.workId, {
+                expectedRevision: work.revision,
+                confirmed,
+              });
+            values.documentDate = date;
+            revision++;
+          }
           const generationId = await deps.generation
             .in(tx)
             .commands.create(scope, {
               workId: input.workId,
-              revision: work.revision,
-              confirmed: work.confirmedRevision === work.revision,
+              revision,
+              confirmed,
               values,
               packageVersion: work.packageVersion,
               templates: pack.documents.map((template) => ({

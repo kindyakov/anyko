@@ -372,7 +372,7 @@ export function createBackend(
           redactResponses: redactDeletedWorkResponses,
         }),
         review: createWorkReview(workflows),
-        generation: createWorkGeneration(workflows),
+        generation: createWorkGeneration({ ...workflows, clock: systemClock }),
         settings: { ...connections.queries, ...connections.commands },
         documents,
         access,

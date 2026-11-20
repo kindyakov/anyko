@@ -1,7 +1,9 @@
+import { attachmentDescriptions } from '@anyko/document-values/attachments';
 import {
-  attachmentDescriptions,
-  hasSubmittedAttachments,
-} from '@anyko/document-values/attachments';
+  approvedStatementTemplate,
+  statementRequestValues,
+  statementSroValues,
+} from '@anyko/document-values/bankruptcy-statement';
 import {
   assessEmployment,
   hasEmploymentFields,
@@ -33,8 +35,10 @@ export function templateData(
   creditorHeaders?: FieldValues['debts'];
 } {
   const values = readFieldValues(input);
+  if (templateVersion === approvedStatementTemplate)
+    Object.assign(values, statementSroValues(values));
   const output = emptyFieldValues();
-  const submitted = context && hasSubmittedAttachments(context.fields);
+  const submitted = templateVersion === approvedStatementTemplate;
   if (submitted)
     values.attachments = attachmentDescriptions(values.submittedAttachments);
   if (context && hasEmploymentFields(context.fields)) {
@@ -120,6 +124,8 @@ export function templateData(
     .join('');
   return {
     ...output,
+    ...(templateVersion === approvedStatementTemplate &&
+      statementRequestValues(values)),
     ...(obligations && {
       creditorHeaders: obligations.creditorHeaders.map((row) =>
         Object.fromEntries(

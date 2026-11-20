@@ -473,3 +473,80 @@ test('the latest statement preview groups creditors and shows only active contra
   expect(paper.queryByText(/TEST-3/)).toBeNull();
   expect(paper.getByText('Итого: 3,03 (три рубля три копейки)')).toBeTruthy();
 });
+
+test('the approved statement updates the request from the same name and date the lawyer edits', () => {
+  const prepared = documentPackageSchema.parse({
+    ...pack,
+    version: 'bfl-bankruptcy-v8',
+    fields: [
+      ...fieldDefinitions.filter(({ key }) => key === 'lastName'),
+      ...[
+        { key: 'firstName', label: 'Имя' },
+        { key: 'middleName', label: 'Отчество' },
+        { key: 'documentDate', label: 'Дата заполнения комплекта' },
+        { key: 'sroName', label: 'СРО' },
+      ].map((field) => ({
+        ...field,
+        kind: 'text',
+        multiline: false,
+        limits: {},
+        columns: [],
+      })),
+    ],
+    documents: [
+      {
+        ...pack.documents[0],
+        id: 'statement',
+        version: 'bfl-statement-v8',
+        blocks: [
+          'Я, {lastName} {firstName} {middleName}',
+          'По состоянию на {documentDate}',
+          'Признать {requestDebtorName} {requestInsolvency}',
+          'Утвердить управляющего из {sroName}',
+          '{documentDate}',
+        ].map((text) => ({ kind: 'paragraph', paragraph: paragraph(text) })),
+      },
+    ],
+  });
+  const initial = {
+    ...emptyFieldValues(),
+    lastName: 'Синтетическая',
+    firstName: 'Ирина',
+    middleName: 'Ильинична',
+    documentDate: '20.11.2026',
+  };
+  const props = { pack: prepared, disabled: false, onChange: () => undefined };
+  const { rerender } = render(<PackagePreview {...props} values={initial} />);
+  const paper = within(screen.getByRole('article', { name: 'Заявление' }));
+  expect(
+    paper.getByText(
+      'Признать Синтетическую Ирину Ильиничну несостоятельной (банкротом)',
+    ),
+  ).toBeTruthy();
+  expect(paper.getAllByDisplayValue('20.11.2026')).toHaveLength(2);
+  expect(paper.getByDisplayValue(/Содружество/)).toBeTruthy();
+
+  rerender(
+    <PackagePreview
+      {...props}
+      values={{
+        ...initial,
+        lastName: 'Синтетический',
+        firstName: 'Николай',
+        middleName: 'Ильич',
+        documentDate: '21.11.2026',
+        sroName: 'Другое объединение управляющих',
+      }}
+    />,
+  );
+  expect(
+    paper.getByText(
+      'Признать Синтетического Николая Ильича несостоятельным (банкротом)',
+    ),
+  ).toBeTruthy();
+  expect(paper.getAllByDisplayValue('21.11.2026')).toHaveLength(2);
+  expect(
+    paper.getByDisplayValue('Другое объединение управляющих'),
+  ).toBeTruthy();
+  expect(paper.queryByDisplayValue(/Содружество/)).toBeNull();
+});

@@ -132,7 +132,8 @@ export function WorkReview({
         </div>
         {hasSubmittedAttachments(view.package.fields) && (
           <AttachmentReview
-            view={view}
+            documents={view.documents}
+            candidates={view.facts.candidates}
             value={values.submittedAttachments}
             disabled={busy}
             onChange={(value) => {

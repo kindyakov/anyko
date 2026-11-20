@@ -14,13 +14,15 @@ type Document = WorkView['documents'][number];
 const control = `${fieldSurface} min-h-9 w-full px-2.5 py-1.5 text-sm`;
 
 export function AttachmentReview({
-  view,
+  documents,
+  candidates,
   value,
   disabled,
   onChange,
   onOpen,
 }: {
-  view: WorkView;
+  documents: WorkView['documents'];
+  candidates: WorkView['facts']['candidates'];
   value: FieldValue | undefined;
   disabled: boolean;
   onChange: (value: FieldValue) => void;
@@ -28,10 +30,10 @@ export function AttachmentReview({
 }) {
   const selected = submittedAttachmentRows(
     value,
-    new Set(view.documents.map(({ id }) => id)),
+    new Set(documents.map(({ id }) => id)),
   );
   const suggestions = new Map<string, { row: FieldRow; page?: number }>();
-  for (const candidate of view.facts.candidates) {
+  for (const candidate of candidates) {
     if (
       candidate.field !== 'attachments' ||
       candidate.origin === 'inference' ||
@@ -59,7 +61,7 @@ export function AttachmentReview({
     if (existing)
       onChange(
         selected.flatMap((item) =>
-          item.documentId === documentId ? (row ?? []) : item,
+          item.documentId === documentId ? (row ? [row] : []) : [item],
         ),
       );
     else if (row) onChange([...selected, row]);
@@ -72,7 +74,7 @@ export function AttachmentReview({
       <legend className="font-heading px-1 text-base font-bold">
         Подаваемые приложения
       </legend>
-      {view.documents.length === 0 ? (
+      {documents.length === 0 ? (
         <p className="text-muted text-sm">
           Добавьте файл к работе, чтобы выбрать его для подачи.
         </p>
@@ -82,7 +84,7 @@ export function AttachmentReview({
             Укажите вид экземпляра для каждого файла, который подаёте.
           </p>
           <ul className="grid gap-3">
-            {view.documents.map((document) => {
+            {documents.map((document) => {
               const suggestion = suggestions.get(document.id);
               const row = selected.find(
                 ({ documentId }) => documentId === document.id,

@@ -11,6 +11,10 @@ import {
 } from '@anyko/contracts/catalog';
 import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
 import {
+  datedBankruptcyPackage,
+  statementSroValues,
+} from '@anyko/document-values/bankruptcy-statement';
+import {
   assessEmployment,
   hasEmploymentFields,
 } from '@anyko/document-values/employment';
@@ -132,7 +136,7 @@ export function PackagePreview(props: Props) {
   const zoomIndex = zooms.findIndex((item) => item.value === scale);
   const zoomClass = zooms[zoomIndex]?.className ?? '';
   const focusedField = pack.fields.find(({ key }) => key === focusKey);
-  const paperValues =
+  const draftValues =
     document.id === 'statement' && hasEmploymentFields(pack.fields)
       ? {
           ...values,
@@ -140,6 +144,10 @@ export function PackagePreview(props: Props) {
             .statement,
         }
       : values;
+  const paperValues =
+    pack.version === datedBankruptcyPackage
+      ? { ...draftValues, ...statementSroValues(draftValues) }
+      : draftValues;
   return (
     <Tabs.Root
       value={document.version}
@@ -286,7 +294,7 @@ export function PackagePreview(props: Props) {
                 <FieldEditor
                   key={field.key}
                   field={field}
-                  value={values[field.key] ?? null}
+                  value={paperValues[field.key] ?? null}
                   disabled={disabled}
                   onChange={(next) => {
                     onChange(field.key, next);

@@ -29,6 +29,7 @@ export interface AnalysisFactsRef {
 
 export interface AcceptRunCandidatesInput extends AnalysisFactsRef {
   fields: readonly FieldKey[];
+  excludedFields?: ReadonlySet<FieldKey> | undefined;
   confirmed: boolean;
   preserveExisting?: boolean;
   candidates: WorkFacts['candidates'];
@@ -72,6 +73,11 @@ export interface FactsPorts {
       workspaceId: string,
       workId: string,
       documentId: string,
+    ): Promise<void>;
+    defaultDocumentDate(
+      workspaceId: string,
+      workId: string,
+      date: string,
     ): Promise<void>;
     refreshEvidence(
       workspaceId: string,

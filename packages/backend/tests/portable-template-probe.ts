@@ -8,6 +8,7 @@ for (const version of [
   'bfl-statement-v5',
   'bfl-statement-v6',
   'bfl-statement-v7',
+  'bfl-statement-v8',
   'bfl-inventory-v1',
   'bfl-creditors-v1',
   'bfl-creditors-v2',
