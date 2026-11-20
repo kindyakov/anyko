@@ -1,6 +1,12 @@
 import type { ProviderCallObserver } from '@anyko/llm';
 
-import type { AgentFieldChange, AgentFieldReceipt } from './chat';
+import type {
+  AgentChecklistChange,
+  AgentChecklistWrite,
+  AgentFieldChange,
+  AgentFieldWrite,
+  AgentWriteReceipt,
+} from './chat';
 
 type AgentStage = 'vision' | 'extraction' | 'reconciliation' | 'chat';
 interface AgentRunRef {
@@ -64,6 +70,7 @@ interface HistoryPage {
     output: string | null;
     errorCode: string | null;
     fieldChange: AgentFieldChange | null;
+    checklistChange: AgentChecklistChange | null;
     durationMs: number | null;
     createdAt: string;
   }[];
@@ -80,7 +87,12 @@ export interface AgentHistoryStore {
   fieldChange(
     ref: AgentRunRef & { eventId: string },
   ): Promise<AgentFieldChange | null>;
-  fieldWrites(ref: AgentHistoryRef): Promise<AgentFieldReceipt[]>;
+  fieldWrites(
+    ref: AgentHistoryRef,
+  ): Promise<AgentWriteReceipt<AgentFieldWrite, AgentFieldChange>[]>;
+  checklistWrites(
+    ref: AgentHistoryRef,
+  ): Promise<AgentWriteReceipt<AgentChecklistWrite, AgentChecklistChange>[]>;
   read(
     ref: AgentRunRef,
     page: number,

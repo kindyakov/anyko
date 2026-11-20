@@ -8,10 +8,12 @@ import type { Tx } from '../../platform/transactions';
 
 import type {
   AgentChatMessage,
+  AgentChecklistChange,
+  AgentChecklistWrite,
   AgentFieldChange,
   AgentFieldWrite,
 } from './application/chat';
-export { fieldWriteTool } from './application/chat';
+export { checklistWriteTool, fieldWriteTool } from './application/chat';
 import type { ChecklistSuggestion } from './application/checklist';
 import type { AgentToolEvent } from './application/history';
 export type { ChecklistSuggestion } from './application/checklist';
@@ -109,6 +111,16 @@ export interface DocumentAgents {
       userText: string;
       signal: AbortSignal;
       appliedFields: AgentFieldChange['field'][];
+      checklist?: {
+        requirements: readonly { key: string; label: string }[];
+        sources: { id: string; filename: string }[];
+        applied: AgentChecklistChange[];
+        write(
+          args: AgentChecklistWrite,
+          toolCallId: string,
+          signal: AbortSignal,
+        ): Promise<AgentChecklistChange | { errorCode: string }>;
+      };
       writeField(
         args: AgentFieldWrite,
         toolCallId: string,

@@ -6,7 +6,10 @@ import {
   datedBankruptcyPackage,
 } from '@anyko/document-values/bankruptcy-statement';
 import { employmentFields } from '@anyko/document-values/employment';
-import { obligationColumns } from '@anyko/document-values/obligations';
+import {
+  creditorRegistryColumns,
+  obligationColumns,
+} from '@anyko/document-values/obligations';
 import { DiagnosticError } from '@anyko/logger';
 
 import { fieldDefinitions } from '../../profiles/bfl/fields';
@@ -46,7 +49,9 @@ const historicalPackage: DocumentPackage = documentPackageSchema.parse({
     .map((field) => ({
       ...field,
       columns: field.columns.filter(
-        ({ key }) => !Object.hasOwn(obligationColumns, key),
+        ({ key }) =>
+          !Object.hasOwn(obligationColumns, key) &&
+          !Object.hasOwn(creditorRegistryColumns, key),
       ),
     })),
   documents: ['bfl-statement-v1', 'bfl-inventory-v1', 'bfl-creditors-v1'].map(

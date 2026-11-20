@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
-import { obligationColumns } from '@anyko/document-values/obligations';
+import {
+  creditorRegistryColumns,
+  obligationColumns,
+} from '@anyko/document-values/obligations';
 
 const scalar = (key: FieldKey, label: string, multiline = false) => ({
   key,
@@ -84,6 +87,7 @@ const obligationColumnsBase = columns({
 const bankObligationColumns = [
   ...obligationColumnsBase,
   ...columns(obligationColumns),
+  ...columns(creditorRegistryColumns),
 ];
 const paymentColumns = columns({
   name: 'Наименование платежа',

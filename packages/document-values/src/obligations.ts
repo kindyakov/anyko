@@ -19,6 +19,19 @@ export const obligationColumns = {
   interest: 'Проценты, руб.',
 } as const;
 
+export const creditorRegistryColumns = {
+  creditorLegalName: 'Полное наименование по реестру',
+  creditorShortName: 'Краткое наименование по реестру',
+  kpp: 'КПП',
+  bic: 'БИК',
+} as const;
+const registryKeys = [
+  ...Object.keys(creditorRegistryColumns),
+  'inn',
+  'ogrn',
+  'address',
+];
+
 export const obligationTemplate = (version: string | undefined) =>
   version === 'bfl-statement-v7' ||
   version === 'bfl-statement-v8' ||
@@ -63,6 +76,59 @@ export function sameObligation(a: DebtRow, b: DebtRow) {
   return !!basis && basis === normalized(b.basis);
 }
 
+/** Registry choices change only organisation details of a previously linked obligation. */
+export function applyCreditorRegistryCandidate(
+  saved: DebtValue,
+  proposed: DebtRow[],
+) {
+  if (!Array.isArray(saved)) return saved;
+  return saved.map((current) => {
+    const match = proposed.find((row) => sameObligation(current, row));
+    return match
+      ? {
+          ...current,
+          ...Object.fromEntries(
+            registryKeys.flatMap((key) =>
+              match[key] ? [[key, match[key]]] : [],
+            ),
+          ),
+        }
+      : current;
+  });
+}
+
+export function containsCreditorRegistryCandidate(
+  saved: DebtValue,
+  proposed: DebtValue,
+) {
+  return (
+    Array.isArray(saved) &&
+    Array.isArray(proposed) &&
+    proposed.length > 0 &&
+    proposed.every((row) =>
+      saved.some(
+        (current) =>
+          sameObligation(current, row) &&
+          registryKeys.every((key) => !row[key] || row[key] === current[key]),
+      ),
+    )
+  );
+}
+
+export function canApplyCreditorRegistryCandidate(
+  saved: DebtValue,
+  proposed: DebtValue,
+) {
+  return (
+    Array.isArray(saved) &&
+    Array.isArray(proposed) &&
+    proposed.every(
+      (row) =>
+        saved.filter((current) => sameObligation(current, row)).length === 1,
+    )
+  );
+}
+
 export function applyObligationCandidate(
   saved: DebtValue,
   proposed: DebtRow[],
@@ -76,7 +142,7 @@ export function applyObligationCandidate(
       rows[index] = {
         ...row,
         ...Object.fromEntries(
-          ['address', 'ogrn', 'inn'].flatMap((key) =>
+          registryKeys.flatMap((key) =>
             !row[key] && previous?.[key] ? [[key, previous[key]]] : [],
           ),
         ),
@@ -101,8 +167,7 @@ export function obligationAmounts(debts: DebtValue, businessDebts: DebtValue) {
       registered.push(row);
       const creditor = headers.find((previous) => sameCreditor(previous, row));
       if (creditor) {
-        for (const key of ['address', 'ogrn', 'inn'])
-          creditor[key] ??= row[key] ?? null;
+        for (const key of registryKeys) creditor[key] ??= row[key] ?? null;
       } else {
         headers.push({ ...row });
       }
@@ -138,10 +203,15 @@ export function obligationAmounts(debts: DebtValue, businessDebts: DebtValue) {
     (personal === null && business === null)
       ? null
       : String(sum / 100n) + '.' + String(sum % 100n).padStart(2, '0');
+  const withOfficialNames = (rows: DebtRow[] | null): DebtRow[] | null =>
+    rows?.map((row) => ({
+      ...row,
+      name: row.creditorLegalName || row.name || null,
+    })) ?? null;
   return {
-    debts: personal,
-    businessDebts: business,
-    creditorHeaders: headers,
+    debts: withOfficialNames(personal),
+    businessDebts: withOfficialNames(business),
+    creditorHeaders: withOfficialNames(headers) ?? [],
     total: total === null ? null : formatMoneyAmount(total, 'RUB_DECIMAL'),
     totalWords: total === null ? null : formatMoneyAmount(total, 'RUB_WORDS'),
   };

@@ -93,11 +93,16 @@ export function RunHistory({
       )}
       {data.items.map((event) => {
         const change = event.fieldChange;
+        const checklist = event.checklistChange;
+        const checklistAction = checklist && checklistChangeLabel(checklist);
         const field = change ? fields.get(change.field) : undefined;
         const title = [
           stages[event.stage] ?? event.stage,
-          documentName(event.documentId),
-          statuses[event.status] ?? event.status,
+          checklist?.filename ?? documentName(event.documentId),
+          checklist
+            ? checklistAction
+            : (statuses[event.status] ?? event.status),
+          checklist?.requirementLabel,
           change ? (field?.label ?? change.field) : undefined,
         ]
           .filter(Boolean)
@@ -154,8 +159,13 @@ export function RunHistory({
                 revision={view.work.revision}
               />
             )}
+            {checklist && presentation === 'chat' && (
+              <p>
+                {checklistAction} · {checklist.filename}
+              </p>
+            )}
             {payload &&
-              (presentation === 'chat' && change ? (
+              (presentation === 'chat' && (change || checklist) ? (
                 <Disclosure title="Данные вызова">{payload}</Disclosure>
               ) : (
                 payload
@@ -172,7 +182,11 @@ export function RunHistory({
                 <Activity size={14} />
               )
             }
-            title={change ? `Поле «${field?.label ?? change.field}»` : title}
+            title={
+              change
+                ? `Поле «${field?.label ?? change.field}»`
+                : (checklist?.requirementLabel ?? title)
+            }
           >
             {details}
           </TraceStep>
@@ -224,6 +238,18 @@ export function RunHistory({
       {history}
     </div>
   );
+}
+
+function checklistChangeLabel({
+  before,
+  after,
+}: {
+  before: string | null;
+  after: 'confirmed' | 'rejected';
+}) {
+  if (after === 'confirmed')
+    return before === after ? 'Отметка уже стоит' : 'Отметка поставлена';
+  return before === after ? 'Отметка уже снята' : 'Отметка снята';
 }
 
 function Payload({ title, value }: { title: string; value: string }) {

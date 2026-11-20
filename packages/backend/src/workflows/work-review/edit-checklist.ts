@@ -9,6 +9,15 @@ type ChecklistDeps = Pick<
   WorkDependencies,
   'uow' | 'works' | 'processing' | 'locks' | 'templateRequirements'
 >;
+type ChecklistChange = {
+  requirementKey: string;
+  requirementLabel: string;
+  documentId: string;
+  filename: string;
+  before: 'found' | 'review' | 'confirmed' | 'rejected' | null;
+  after: 'confirmed' | 'rejected';
+  revision: number;
+};
 
 export const editChecklistLink =
   (deps: ChecklistDeps) =>
@@ -20,24 +29,24 @@ export const editChecklistLink =
       documentId: DocumentId;
       decision: 'confirmed' | 'rejected';
       ocrRevision: number | null;
+      revision?: number;
     },
-    afterEdit?: (
-      tx: Tx,
-      change: {
-        requirementKey: string;
-        requirementLabel: string;
-        documentId: string;
-        filename: string;
-        decision: 'confirmed' | 'rejected';
-      },
-    ) => Promise<void>,
+    afterEdit?: (tx: Tx, change: ChecklistChange) => Promise<void>,
   ) => {
     scope.require('works.edit');
     const { workId, requirementKey, documentId, decision, ocrRevision } = input;
+    let change: ChecklistChange | undefined;
     await changeWork(
       deps,
       scope,
-      { workId, command: 'edit', event: 'checklist.changed' },
+      {
+        workId,
+        ...(input.revision !== undefined && {
+          expectedRevision: input.revision,
+        }),
+        command: 'edit',
+        event: 'checklist.changed',
+      },
       async ({ work, documents }) => {
         const requirement = (
           await deps.templateRequirements(work.packageVersion)
@@ -67,22 +76,30 @@ export const editChecklistLink =
               link.documentId === documentId &&
               link.ocrRevision === ocrRevision,
           );
-          await works.internal.saveChecklistLink(scope.workspaceId, workId, {
-            documentId,
-            requirementKey,
-            decision,
-            ocrRevision,
-            quote: decision === 'confirmed' ? (previous?.quote ?? null) : null,
-            page: decision === 'confirmed' ? (previous?.page ?? null) : null,
-          });
-          await afterEdit?.(tx, {
+          if (previous?.decision !== decision) {
+            await works.internal.saveChecklistLink(scope.workspaceId, workId, {
+              documentId,
+              requirementKey,
+              decision,
+              ocrRevision,
+              quote:
+                decision === 'confirmed' ? (previous?.quote ?? null) : null,
+              page: decision === 'confirmed' ? (previous?.page ?? null) : null,
+            });
+          }
+          change = {
             requirementKey,
             requirementLabel: requirement.label,
             documentId,
             filename: source.filename,
-            decision,
-          });
+            before: previous?.decision ?? null,
+            after: decision,
+            revision: work.revision,
+          };
+          await afterEdit?.(tx, change);
         };
       },
     );
+    if (!change) throw new Error('CHECKLIST_CHANGE_MISSING');
+    return change;
   };
