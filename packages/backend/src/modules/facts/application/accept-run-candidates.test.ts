@@ -569,6 +569,29 @@ test('accepts a later documented closure while keeping conflicting active balanc
   expect(saved.candidates).toHaveLength(4);
   const beforeClosure = saved;
 
+  const negatedRepayment = makeDebt(
+    'ACT-2',
+    '0',
+    '10.11.2026',
+    'Погашен',
+    'Кредит не полностью погашен.',
+  );
+  const negated = runFacts(beforeClosure);
+  await negated.accept({
+    fields: ['debts'],
+    confirmed: false,
+    preserveExisting: true,
+    candidates: [negatedRepayment],
+  });
+  const afterNegation = await negated.saved();
+  expect(afterNegation.candidates).toContainEqual(negatedRepayment);
+  expect(
+    obligationAmounts(afterNegation.values.debts, null).debts,
+  ).toMatchObject([
+    { contractNumber: 'ACT-1', amount: '100,05' },
+    { contractNumber: 'ACT-2', amount: '200,06' },
+  ]);
+
   const result = await accept([changed, closing], true);
   saved = await facts.saved();
   expect(saved.values.debts).toEqual([

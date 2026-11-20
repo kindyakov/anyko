@@ -974,13 +974,52 @@ test('official creditor details stay a proposal until selecting them for the lin
     origin: 'document' as const,
     evidence: [{ documentId, imagePath: null, quote }],
   };
+  const otherSources = [
+    { quote: 'АО Пример Плюс, номер договора 1234567890', name: 'АО Пример' },
+    { quote: 'АО Пример', name: 'АО Пример', text: 'АО Пример Плюс' },
+    {
+      quote: 'АО «Пример, Плюс», номер договора 1234567890',
+      name: 'АО Пример',
+    },
+    {
+      quote: 'АО Эталон, номер договора 1234567890',
+      name: 'АО Эталон',
+      inn: '1234567890',
+    },
+    {
+      quote: 'АО Проверка, ИНН 1234567891',
+      name: 'АО Проверка',
+      inn: '1234567891',
+      scope: 'outside',
+    },
+  ].map((source) => ({ id: crypto.randomUUID(), ...source }));
+  const otherCandidates = otherSources.map((source) => ({
+    ...ground,
+    value: [
+      { name: source.name, inn: source.inn ?? null, contractNumber: 'K-43' },
+    ],
+    evidence: [{ documentId: source.id, imagePath: null, quote: source.quote }],
+  }));
+  const documentIds = [
+    documentId,
+    ...otherSources
+      .filter(({ scope }) => scope !== 'outside')
+      .map(({ id }) => id),
+  ];
+  const readSource = (id: string) => {
+    const source = otherSources.find((entry) => entry.id === id);
+    return Promise.resolve(
+      id === documentId ? quote : (source?.text ?? source?.quote ?? ''),
+    );
+  };
   const facts = emptyFacts();
   facts.values.debts = [
     row,
     { name: 'АО «Другой кредитор»', basis: 'договор М-6', amount: '10.00' },
+    ...otherCandidates.flatMap(({ value }) => value),
   ];
   facts.manual.push('debts');
-  facts.candidates.push(ground);
+  facts.candidates.push(ground, ...otherCandidates);
   const requests: string[] = [];
   const registryUrls: string[] = [];
   const rejectedLookup = 'ООО Человек Из Переписки';
@@ -1030,7 +1069,9 @@ test('official creditor details stay a proposal until selecting them for the lin
                             content: null,
                             tool_calls: [
                               { source: 'cbr', name: rejectedLookup },
+                              { source: 'cbr', name: 'АО Пример' },
                               { source: 'cbr', inn: '1234567890' },
+                              { source: 'cbr', inn: '1234567891' },
                               {
                                 source: 'cbr',
                                 name: 'ПАО ВТБ',
@@ -1082,18 +1123,16 @@ test('official creditor details stay a proposal until selecting them for the lin
       previousContext: null,
       facts,
       fields: pack.fields,
-      candidates: [ground],
-      documents: [
-        {
-          id: documentId,
-          filename: 'certificate.pdf',
-          digest: 'fixture',
-          images: [],
-        },
-      ],
+      candidates: [ground, ...otherCandidates],
+      documents: documentIds.map((id) => ({
+        id,
+        filename: 'certificate.pdf',
+        digest: 'fixture',
+        images: [],
+      })),
       signal: AbortSignal.timeout(10000),
       assertCurrent: () => Promise.resolve(),
-      readSource: () => Promise.resolve(quote),
+      readSource,
     });
   try {
     await agents.ready();
@@ -1116,7 +1155,11 @@ test('official creditor details stay a proposal until selecting them for the lin
     expect(Date.parse(proposal?.creditorSource?.checkedAt ?? '')).not.toBeNaN();
     if (!proposal || !Array.isArray(proposal.value))
       throw new Error('EXPECTED_CREDITOR_PROPOSAL');
-    const reviewed = { ...facts, candidates: [ground, proposal] };
+    const reviewed = {
+      ...facts,
+      values: { ...facts.values, debts: facts.values.debts.slice(0, 2) },
+      candidates: [ground, proposal],
+    };
     expect(markSelectedCandidates(reviewed)[1]?.selected).toBe(false);
     const patched = applyCreditorRegistryCandidate(
       reviewed.values.debts,
@@ -1181,7 +1224,7 @@ test('official creditor details stay a proposal until selecting them for the lin
         userText: 'Проверь реквизиты кредитора.',
         appliedFields: [],
         listSourceImages: () => Promise.resolve([]),
-        readSource: (id) => Promise.resolve(id === documentId ? quote : ''),
+        readSource,
         assertCurrent: () => Promise.resolve(),
         writeField: () => Promise.resolve({ errorCode: 'UNEXPECTED_WRITE' }),
         signal: AbortSignal.timeout(10_000),
@@ -1190,7 +1233,7 @@ test('official creditor details stay a proposal until selecting them for the lin
     await chat([crypto.randomUUID()]);
     expect(requests).toHaveLength(beforeChat);
     chatResponses = 0;
-    await chat([documentId]);
+    await chat(documentIds);
     expect(requests).toHaveLength(beforeChat + 1);
     expect(requests[beforeChat]).toContain('<INN>7702070139</INN>');
   } finally {

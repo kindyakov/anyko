@@ -5,7 +5,7 @@ import {
 
 import type { WorkFacts } from '../../modules/facts';
 import type { ChecklistItem } from '../../modules/works';
-import { automaticValue } from '../../profiles/bfl/automatic-value';
+import { evidencedContract } from '../../profiles/bfl/automatic-value';
 import type { FieldRow } from '../../profiles/bfl/fields';
 
 type ChecklistWithContracts = ChecklistItem & {
@@ -38,8 +38,10 @@ export function checklistWithContracts(
       if (Array.isArray(value)) value.forEach(add);
     }
     const evidence = facts.candidates.flatMap((candidate) => {
+      const { value } = candidate;
       if (
         candidate.origin === 'inference' ||
+        !Array.isArray(value) ||
         !obligationFields.some((field) => field === candidate.field)
       )
         return [];
@@ -47,15 +49,15 @@ export function checklistWithContracts(
         candidate.evidence.map(({ documentId }) => documentId),
       );
       return [...documents].flatMap((documentId) => {
-        const rows = automaticValue({
-          ...candidate,
-          evidence: candidate.evidence.filter(
-            (entry) => entry.documentId === documentId,
-          ),
+        const quotes = candidate.evidence.filter(
+          (entry) => entry.documentId === documentId,
+        );
+        return value.flatMap((row) => {
+          const contract = evidencedContract(quotes, row);
+          if (!contract) return [];
+          add(contract.identity);
+          return [{ documentId, row: contract.identity }];
         });
-        if (!Array.isArray(rows)) return [];
-        rows.forEach(add);
-        return rows.map((row) => ({ documentId, row }));
       });
     });
     return {

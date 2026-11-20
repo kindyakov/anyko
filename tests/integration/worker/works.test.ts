@@ -290,8 +290,7 @@ test('the source checklist preserves scoped manual decisions when the work is an
     (await set('passport', crypto.randomUUID(), 'confirmed', null)).status,
   ).toBe(404);
 
-  const quote =
-    'АО Синтетический Банк\nДоговор № A-42 от 03.01.2025\nПо состоянию на 08.11.2026\nПолная задолженность 42 руб.';
+  const quote = 'АО Синтетический Банк\nДоговор № A-42 от 03.01.2025';
   const obligation = {
     name: 'АО Синтетический Банк',
     contractNumber: 'A-42',
@@ -307,7 +306,13 @@ test('the source checklist preserves scoped manual decisions when the work is an
           ? [
               {
                 field: 'debts',
-                value: [obligation],
+                value: [
+                  {
+                    name: obligation.name,
+                    contractNumber: obligation.contractNumber,
+                    contractDate: obligation.contractDate,
+                  },
+                ],
                 evidence: [{ documentId: document.id, imagePath: null, quote }],
               },
             ]

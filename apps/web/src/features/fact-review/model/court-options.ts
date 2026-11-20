@@ -61,6 +61,7 @@ export function courtOptions(
   return [...options.values()].filter(
     ({ courtName, courtAddress }) =>
       !sameFieldValue(current.courtName, courtName) ||
-      !sameFieldValue(current.courtAddress, courtAddress),
+      (courtAddress !== null &&
+        !sameFieldValue(current.courtAddress, courtAddress)),
   );
 }
