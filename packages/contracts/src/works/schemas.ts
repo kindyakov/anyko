@@ -26,6 +26,15 @@ export const candidateSchema = z
   .object({
     origin: z.enum(['document', 'context', 'inference']).optional(),
     explanation: z.string().trim().min(1).max(2000).optional(),
+    courtSources: z
+      .strictObject({
+        catalogueUrl: z.literal('https://arbitr.ru/'),
+        contactUrl: z
+          .url()
+          .regex(/^https:\/\/[a-z0-9-]+\.arbitr\.ru\/about\/mode$/u),
+        checkedAt: z.iso.datetime(),
+      })
+      .optional(),
     field: fieldKeySchema,
     selected: z
       .boolean()
