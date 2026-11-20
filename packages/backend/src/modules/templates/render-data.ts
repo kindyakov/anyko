@@ -1,4 +1,9 @@
 import {
+  approvedStatementTemplate,
+  statementRequestValues,
+  statementSroValues,
+} from '@anyko/document-values/bankruptcy-statement';
+import {
   assessEmployment,
   hasEmploymentFields,
 } from '@anyko/document-values/employment';
@@ -29,6 +34,8 @@ export function templateData(
   creditorHeaders?: FieldValues['debts'];
 } {
   const values = readFieldValues(input);
+  if (templateVersion === approvedStatementTemplate)
+    Object.assign(values, statementSroValues(values));
   const output = emptyFieldValues();
   if (context && hasEmploymentFields(context.fields)) {
     values.employmentDetails = assessEmployment(
@@ -108,6 +115,8 @@ export function templateData(
     .join('');
   return {
     ...output,
+    ...(templateVersion === approvedStatementTemplate &&
+      statementRequestValues(values)),
     ...(obligations && {
       creditorHeaders: obligations.creditorHeaders.map((row) =>
         Object.fromEntries(

@@ -429,6 +429,110 @@ test('a bankruptcy statement can be formed, downloaded and the work confirmed wi
   expect(final.work.confirmedRevision).toBe(final.work.revision);
 });
 
+test('one persisted package date reaches all four printed positions and previous downloads stay intact', async () => {
+  const input = await create('bfl-bankruptcy-v8');
+  const scope = memberScope(input.workspaceId);
+  const { workId } = input;
+  const { views, review, generation } = apiBackend.workHttp;
+  const initial = await views.get(scope, workId);
+  expect(initial.facts.values.documentDate).toBeNull();
+  expect(initial.checklist.some(({ key }) => key === 'passport')).toBe(true);
+  await review.editValues(scope, {
+    workId,
+    revision: initial.work.revision,
+    values: {
+      ...initial.facts.values,
+      firstName: 'Елена',
+      lastName: 'Тестова',
+      middleName: 'Павловна',
+      inn: '123456789012',
+    },
+  });
+  const generate = async () => {
+    const before = await views.get(scope, workId);
+    await generation.startGeneration(scope, {
+      workId,
+      revision: before.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    return until(
+      input,
+      (state) =>
+        terminal(state) && state.generations.length > before.generations.length,
+    );
+  };
+  const read = async (item: WorkView['generations'][number], date: string) => {
+    expect(item.status).toBe('succeeded');
+    expect(item.files).toHaveLength(3);
+    const contents = new Map<string, string>();
+    for (const file of item.files) {
+      const { bytes } = await generation.downloadResult(scope, {
+        workId,
+        generationId: brandGenerationId(item.id),
+        fileId: brandFileId(file.id),
+      });
+      const xml = strFromU8(
+        unzipSync(bytes)['word/document.xml'] ?? new Uint8Array(),
+      );
+      const printed = [...xml.matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g)]
+        .map((match) => match[1])
+        .join('');
+      expect(printed.split(date)).toHaveLength(
+        file.templateVersion === 'bfl-statement-v8' ? 3 : 2,
+      );
+      contents.set(file.templateVersion, printed);
+    }
+    return contents.get('bfl-statement-v8');
+  };
+  const first = await generate();
+  const chosenDate = first.facts.values.documentDate;
+  expect(chosenDate).toMatch(/^\d{2}\.\d{2}\.\d{4}$/);
+  if (typeof chosenDate !== 'string' || !first.generations[0])
+    throw new Error('MISSING_DATED_GENERATION');
+  const firstStatement = await read(first.generations[0], chosenDate);
+  expect(firstStatement).toContain('Тестова Елена Павловна');
+  expect(firstStatement).toContain('Признать Тестову Елену Павловну');
+  expect(firstStatement).toContain('несостоятельной (банкротом)');
+  expect(firstStatement).toContain('Содружество');
+  expect(firstStatement).toContain(
+    'На основании ст. 213.4 п. 4 абз. 2 ФЗ «О несостоятельности (банкротстве)» предоставить мне отсрочку внесения средств на выплату вознаграждения финансовому управляющему сроком до даты судебного заседания по рассмотрению обоснованности заявления о признании банкротом.',
+  );
+
+  const source = await upload(input, 'source added after generation');
+  await until(
+    input,
+    (view) =>
+      terminal(view) && view.documents.some(({ id }) => id === source.id),
+  );
+  const repeated = await generate();
+  expect(repeated.facts.values.documentDate).toBe(chosenDate);
+  if (!repeated.generations[0]) throw new Error('MISSING_DATED_GENERATION');
+  await read(repeated.generations[0], chosenDate);
+
+  await review.editValues(scope, {
+    workId,
+    revision: repeated.work.revision,
+    values: {
+      ...repeated.facts.values,
+      documentDate: '2024-06-30',
+      firstName: 'Иван',
+      lastName: 'Тестов',
+      middleName: 'Павлович',
+      sroName: 'Синтетическое объединение управляющих',
+    },
+  });
+  const next = await generate();
+  expect(next.facts.values.documentDate).toBe('30.06.2024');
+  if (!next.generations[0]) throw new Error('MISSING_DATED_GENERATION');
+  const newStatement = await read(next.generations[0], '30.06.2024');
+  expect(newStatement).toContain('Тестов Иван Павлович');
+  expect(newStatement).toContain('Признать Тестова Ивана Павловича');
+  expect(newStatement).toContain('несостоятельным (банкротом)');
+  expect(newStatement).toContain('Синтетическое объединение управляющих');
+  expect(newStatement).not.toContain('Содружество');
+  expect(await read(first.generations[0], chosenDate)).toBe(firstStatement);
+});
+
 test('reprocesses an older PDF, traces its quote to the page and renders only the supported value', async () => {
   const input = await create();
   const name = 'Тестова Мария';

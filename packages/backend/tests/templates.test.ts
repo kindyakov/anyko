@@ -28,7 +28,7 @@ test('the selectable package contains three real versioned templates; archived s
   const packages = availablePackages();
   expect(packages).toHaveLength(1);
   expect(packages[0]?.technical).toBe(false);
-  expect(packages[0]?.version).toBe('bfl-bankruptcy-v7');
+  expect(packages[0]?.version).toBe('bfl-bankruptcy-v8');
   expect(requirePackage('bfl-bankruptcy-v6').documents[0]?.version).toBe(
     'bfl-statement-v6',
   );
@@ -414,7 +414,7 @@ test('the chosen request and explicit absence of attachments cannot be contradic
 
 test('the current package uses one active contract total in both DOCX files', () => {
   const pack = availablePackages()[0];
-  expect(pack?.version).toBe('bfl-bankruptcy-v7');
+  expect(pack?.version).toBe('bfl-bankruptcy-v8');
   const values = {
     ...emptyFieldValues(),
     debtTotal: '99999',
@@ -484,6 +484,34 @@ test('the current package uses one active contract total in both DOCX files', ()
   expect(statement).toContain(
     'одна тысяча четыреста тридцать четыре рубля одиннадцать копеек',
   );
+});
+
+test('the approved statement preserves its predecessor’s OOXML parts and renders the same request as the preview', () => {
+  const document = requirePackage('bfl-bankruptcy-v8').documents[0];
+  if (!document) throw new Error('Missing statement');
+  const source = new PizZip(templateBytes(document.version));
+  const predecessor = new PizZip(templateBytes('bfl-statement-v7'));
+  expect(Object.keys(source.files)).toEqual(Object.keys(predecessor.files));
+  for (const path of Object.keys(source.files)) {
+    if (path !== 'word/document.xml')
+      expect(source.file(path)?.asText()).toBe(
+        predecessor.file(path)?.asText(),
+      );
+  }
+  const sourceXml = source.file('word/document.xml')?.asText() ?? '';
+  const requestTexts = document.blocks
+    .flatMap((block) =>
+      block.kind === 'paragraph' ? [block.paragraph.text] : [],
+    )
+    .filter((text) =>
+      [
+        'Признать {requestDebtorName}',
+        'Утвердить финансового управляющего',
+        'На основании ст. 213.4 п. 4 абз. 2 ФЗ «О несостоятельности',
+      ].some((prefix) => text.startsWith(prefix)),
+    );
+  expect(requestTexts).toHaveLength(3);
+  for (const text of requestTexts) expect(sourceXml).toContain(text);
 });
 
 test('statement projects current-year income across employers and leaves historical fields editable', () => {

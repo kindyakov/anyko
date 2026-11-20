@@ -9,6 +9,10 @@ import type {
   PreviewParagraph,
   PreviewRow,
 } from '@anyko/contracts/catalog';
+import {
+  approvedStatementTemplate,
+  statementRequestValues,
+} from '@anyko/document-values/bankruptcy-statement';
 
 import {
   previewEntries,
@@ -38,6 +42,10 @@ export function PreviewPaper({
   const listNumbers = new Map<string, number>();
   const margins = document.margins;
   const obligations = previewObligations(document.version, values);
+  const request =
+    document.version === approvedStatementTemplate
+      ? statementRequestValues(values)
+      : undefined;
   const collectionValue =
     obligations?.value ?? ((key: FieldKey) => values[key]);
   const collectionNote = (key: FieldKey, collection: FieldValue) => {
@@ -86,6 +94,8 @@ export function PreviewPaper({
           return `${String(rowNumber ?? 1)}${suffix}`;
         if (row && obligations?.isCollection(rowField))
           return (row[key] ?? '[не заполнено]') + suffix;
+        if (!row && request && Object.hasOwn(request, key))
+          return (request[key] ?? '') + suffix;
         const total = !row && obligations?.text(key);
         if (total) return total + suffix;
         if (row) {

@@ -44,10 +44,12 @@ export function mergeCandidates(
   candidates: WorkFacts['candidates'],
   confirmed: boolean,
   preserveExisting = false,
+  excludedFields?: ReadonlySet<Candidate['field']>,
 ): WorkFacts {
   const values = { ...current.values };
   const confirmedFields = new Set(current.confirmed);
   for (const { key } of fieldDefinitions) {
+    if (excludedFields?.has(key)) continue;
     const saved = values[key] ?? null;
     const isConfirmed = confirmed || confirmedFields.has(key);
     if (

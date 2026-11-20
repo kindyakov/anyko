@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
+import {
+  approvedStatementTemplate,
+  datedBankruptcyPackage,
+} from '@anyko/document-values/bankruptcy-statement';
 import { employmentFields } from '@anyko/document-values/employment';
 import { obligationColumns } from '@anyko/document-values/obligations';
 import { DiagnosticError } from '@anyko/logger';
@@ -103,10 +107,27 @@ const obligationPackage: DocumentPackage = documentPackageSchema.parse({
     (version) => manifest.find((doc) => doc.version === version),
   ),
 });
+const datedPackage: DocumentPackage = documentPackageSchema.parse({
+  ...obligationPackage,
+  version: datedBankruptcyPackage,
+  fields: obligationPackage.fields
+    .filter(({ key }) => key !== 'debtAsOfDate' && key !== 'requestsDetails')
+    .map((field) =>
+      field.key === 'documentDate'
+        ? { ...field, label: 'Дата заполнения комплекта' }
+        : field,
+    ),
+  documents: obligationPackage.documents.map((document) =>
+    document.id === 'statement'
+      ? manifest.find(({ version }) => version === approvedStatementTemplate)
+      : document,
+  ),
+});
 export function availablePackages(): DocumentPackage[] {
-  return [obligationPackage];
+  return [datedPackage];
 }
 const knownPackages = [
+  datedPackage,
   obligationPackage,
   amountPackage,
   bankruptcyPackage,
