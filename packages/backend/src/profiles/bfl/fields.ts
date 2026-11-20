@@ -91,6 +91,25 @@ const paymentColumns = columns({
   penalties: 'Санкции / проценты, руб.',
 });
 const collectionLabels = {
+  employmentHistory: {
+    label: 'Кадровые записи из трудовой книжки',
+    columns: columns({
+      employer: 'Работодатель',
+      date: 'Дата записи',
+      event: 'Приём / увольнение',
+    }),
+    identity: ['employer', 'date', 'event'],
+  },
+  employmentIncome: {
+    label: 'Доход по месяцам и работодателям до вычета налога',
+    columns: columns({
+      employer: 'Работодатель',
+      month: 'Месяц (ГГГГ-ММ)',
+      code: 'Код дохода',
+      amount: 'Начислено, руб.',
+    }),
+    identity: ['employer', 'month', 'code'],
+  },
   debts: {
     label: 'Кредиторы: личные обязательства',
     columns: bankObligationColumns,
@@ -238,6 +257,8 @@ export const fieldKeySchema = z.enum([
   'debtTotal',
   'debtTotalWords',
   'employmentDetails',
+  'employmentHistory',
+  'employmentIncome',
   'familyDetails',
   'companyParticipationDetails',
   'majorTransactionsDetails',
