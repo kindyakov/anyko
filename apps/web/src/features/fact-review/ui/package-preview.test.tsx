@@ -163,10 +163,10 @@ test('the statement preview identifies attachment paragraphs omitted from the do
   );
   expect(status.textContent).toContain('справки о задолженности');
   expect(status.textContent).toContain('сведения о лицевом счёте');
-  expect(status.textContent).toContain('опись имущества');
+  expect(status.textContent).not.toContain('опись имущества');
   expect(status.textContent).not.toContain('список кредиторов');
   expect(screen.getByText(/Список своих кредиторов и должников/)).toBeTruthy();
-  expect(screen.queryByText(/в прилагаемой описи/)).toBeNull();
+  expect(screen.getByText(/Как видно из приведенного выше/)).toBeTruthy();
 
   rerender(
     <PackagePreview
@@ -182,7 +182,7 @@ test('the statement preview identifies attachment paragraphs omitted from the do
     />,
   );
   expect(screen.queryByRole('status')).toBeNull();
-  expect(screen.getByText(/в прилагаемой описи/)).toBeTruthy();
+  expect(screen.getByText(/Как видно из приведенного выше/)).toBeTruthy();
 });
 
 test('the draft displays one amount with cents and in words', () => {

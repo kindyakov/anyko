@@ -121,7 +121,30 @@ test('statement v9 keeps the approved frozen templates and composes an address w
     'гражданина Российской Федерации, 05.07.1984 г. рождения',
   );
   expect(text).toContain('16.09.2004 г.');
-  expect(text).toContain('в течение более одного месяца');
+  expect(text).toContain(
+    'Я прекратила расчеты с Кредиторами, то есть перестала исполнять денежные обязательства',
+  );
+  expect(text).toContain('в течение более чем трёх месяцев');
+  expect(text).not.toContain('одного месяца');
+  expect(text).toContain(
+    'Размер моей задолженности превышает стоимость моего имущества, в том числе право требования.',
+  );
+  expect(text).toContain(
+    'Как видно из приведенного выше, общий (совокупный) размер моих обязательств превышает общую стоимость имущества.',
+  );
+});
+
+test('the statement states insolvency in the grammatical gender of a male debtor', () => {
+  const text = renderedText('bfl-statement-v11', {
+    ...emptyFieldValues(),
+    lastName: 'ИВАНОВ',
+    firstName: 'ИВАН',
+    middleName: 'ИВАНОВИЧ',
+  });
+  expect(text).toContain(
+    'Я прекратил расчеты с Кредиторами, то есть перестал исполнять денежные обязательства',
+  );
+  expect(text).not.toContain('перестала');
 });
 
 test('statement v10 groups the obligations of one creditor and omits closed contracts', () => {

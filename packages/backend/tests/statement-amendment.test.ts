@@ -48,5 +48,7 @@ test('the revised statement uses lowercase passport label and terminates each at
   expect(xml).toContain('Список кредиторов и должников (оригинал);');
   expect(xml).toContain('Копия паспорта (копия);');
   expect(xml).toContain('Список своих кредиторов и должников');
-  expect(xml).not.toContain('в прилагаемой описи');
+  expect(xml).toContain(
+    'Как видно из приведенного выше, общий (совокупный) размер моих обязательств превышает общую стоимость имущества.',
+  );
 });

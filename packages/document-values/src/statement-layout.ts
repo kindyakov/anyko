@@ -67,13 +67,6 @@ function statementAttachmentClauses(values: Values) {
       label: 'сведения о лицевом счёте',
       text: 'Справку о состоянии моего индивидуального лицевого счета застрахованного лица в системе обязательного пенсионного страхования прилагаю.',
     },
-    {
-      included: attachments.some(
-        ({ documentId }) => documentId === 'package:inventory',
-      ),
-      label: 'опись имущества',
-      text: 'Общий (совокупный) размер моих обязательств приведён в настоящем заявлении, сведения об имуществе — в прилагаемой описи.',
-    },
   ] as const;
 }
 
@@ -93,7 +86,7 @@ export function statementLayout(version: string | undefined, values: Values) {
   const feminine = statementDebtorGender(values) === 'female';
   const citizenship = text(values, 'citizenship');
   const russian = /^(?:российская федерация|россии|рф)$/iu.test(citizenship);
-  const [creditors, debtCertificates, pensionAccount, inventory] =
+  const [creditors, debtCertificates, pensionAccount] =
     statementAttachmentClauses(values);
   const debtorAddress = [
     ...['postalCode', 'region', 'district', 'city', 'locality', 'street'].map(
@@ -122,13 +115,15 @@ export function statementLayout(version: string | undefined, values: Values) {
     statementAttachmentReferences: [creditors, debtCertificates, pensionAccount]
       .flatMap(({ included, text }) => (included ? [text] : []))
       .join('\n'),
+    // Wording of the lawyer's sample, confirmed for every statement (#70).
     statementGroundsText: [
-      'Согласно п. 3 ст. 213.6 Федерального закона от 26.10.2002 г. № 127-ФЗ «О несостоятельности (банкротстве)» при оценке неплатёжеспособности гражданина учитываются, в частности, следующие обстоятельства:',
-      '— прекращение расчётов с кредиторами по обязательствам, срок исполнения которых наступил;',
-      '— неисполнение более десяти процентов совокупного размера обязательств с наступившим сроком исполнения в течение более одного месяца;',
-      '— превышение размера задолженности над стоимостью имущества гражданина, включая права требования.',
+      'У меня имеются обстоятельства, очевидно свидетельствующие о том, что я не в состоянии удовлетворить в полном объеме требования Кредитора по денежным обязательствам, у меня имеются признаки неплатежеспособности, установленные п. 3 ст. 213.6 Федерального закона от 26.10.2002 г. № 127-ФЗ «О несостоятельности (банкротстве)», а именно:',
+      `Я ${feminine ? 'прекратила' : 'прекратил'} расчеты с Кредиторами, то есть ${feminine ? 'перестала' : 'перестал'} исполнять денежные обязательства, срок исполнения которых наступил;`,
+      'Более чем десять процентов совокупного размера денежных обязательств, которые имеются у меня и срок исполнения которых наступил, не исполнены мной в течение более чем трёх месяцев со дня, когда такие обязательства должны быть исполнены;',
+      'Размер моей задолженности превышает стоимость моего имущества, в том числе право требования.',
     ].join('\n'),
-    statementBalanceConclusion: inventory.included ? inventory.text : '',
+    statementBalanceConclusion:
+      'Как видно из приведенного выше, общий (совокупный) размер моих обязательств превышает общую стоимость имущества.',
   };
 }
 
