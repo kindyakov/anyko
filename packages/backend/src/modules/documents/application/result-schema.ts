@@ -15,11 +15,20 @@ export const pdfOcrSchema = z.object({
         omittedLines: z.number().int().nonnegative(),
         lines: z
           .array(
-            z.object({
-              text: z.string().min(1).max(2000),
-              confidence: coordinate,
-              bbox: box,
-            }),
+            z.union([
+              z.object({
+                text: z.string().min(1).max(2000),
+                confidence: coordinate,
+                bbox: box,
+                source: z.never().optional(),
+              }),
+              z.object({
+                text: z.string().min(1).max(2000),
+                bbox: box,
+                source: z.literal('primary-ocr'),
+                confidence: z.never().optional(),
+              }),
+            ]),
           )
           .max(1000),
       }),
@@ -28,6 +37,10 @@ export const pdfOcrSchema = z.object({
 });
 
 export const cloudImageOcrVersion = 'vision-ocr.1';
+
+export function hasPdfOcrProcessorVersion(version: string) {
+  return /\+(?:eslav|cyrillic-pdf)\.\d+$/u.test(version);
+}
 
 export const documentResultSchema = z.object({
   version: z.literal(2),

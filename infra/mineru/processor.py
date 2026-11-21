@@ -163,6 +163,7 @@ class Processor:
         self.guard = asyncio.Lock()
         self.capacity = asyncio.Semaphore(1)
         self.parse = parse
+        self.ocr_model = None
         self.lock = None
 
     def job_dir(self, identity):
@@ -242,11 +243,9 @@ class Processor:
                     result = await parse(source, tier='flash' if extension == 'docx' else 'basic', ocr_mode='auto', image_analysis=False)
                     writer = ZipWriter()
                     if extension == 'pdf' and self.parse is None:
-                        from mineru.config import get_config
                         from mineru.utils.async_utils import run_sync
-                        from pdf_ocr import MODEL_NAME, save_pdf
-                        model = Path(get_config().model.base_dir) / 'anyko' / MODEL_NAME
-                        await run_sync(save_pdf, source, result.middle_json, writer, model)
+                        from pdf_ocr import save_pdf
+                        await run_sync(save_pdf, source, result.middle_json, writer, self.ocr_model)
                     else:
                         result.save(writer)
                     if unplaced_visuals:
@@ -255,7 +254,7 @@ class Processor:
                         writer.replace_markdown(f'{markdown}\n\n> {SKIPPED_VISUAL} Количество: {unplaced_visuals}.')
                     if extension in RASTER_FORMATS and self.parse is None:
                         from mineru.utils.async_utils import run_sync
-                        await run_sync(save_raster_text, writer, data, extension)
+                        await run_sync(save_raster_text, writer, data, extension, self.ocr_model)
                     else:
                         visual_inputs(writer, data, extension)
                     return writer.archive()
@@ -310,8 +309,14 @@ processor = Processor(os.environ.get('ANYKO_PROCESSOR_ROOT', 'work/mineru/proces
 
 @asynccontextmanager
 async def lifespan(_app):
+    from pdf_ocr import MODEL_NAME, MODEL_SHA256, configure_primary_ocr
+
+    processor.ocr_model = configure_primary_ocr(version('mineru'))
+    from loguru import logger as sdk_logger
+
     processor.start()
     try:
+        sdk_logger.info('MinerU OCR recognizer={} sha256={}', MODEL_NAME, MODEL_SHA256)
         yield
     finally:
         for identity in list(processor.active):
@@ -322,12 +327,9 @@ async def lifespan(_app):
 app = FastAPI(lifespan=lifespan)
 
 
-def save_raster_text(writer, data, extension):
+def save_raster_text(writer, data, extension, model):
     import numpy as np
-    from mineru.config import get_config
-    from pdf_ocr import MODEL_NAME, read_image_lines, recover_image_markdown
-
-    model = Path(get_config().model.base_dir) / 'anyko' / MODEL_NAME
+    from pdf_ocr import read_image_lines, recover_image_markdown
 
     def recognize(image):
         bgr = np.ascontiguousarray(np.asarray(image)[:, :, ::-1])
@@ -341,9 +343,12 @@ def save_raster_text(writer, data, extension):
 
 @app.get('/v1/health')
 async def health():
+    from pdf_ocr import MODEL_NAME, MODEL_SHA256
+
     return {'status': 'ok', 'mode': 'stateless-sdk', 'pdfOcrVersion': 1, 'pdfPageLayoutVersion': 1, 'imageOcrVersion': 1, 'docxVisualExportVersion': 1,
             'imageFormats': sorted(RASTER_FORMATS), 'maxImages': MAX_IMAGES,
-            'pdfFormulaVersion': 1, 'docxLegacyVisualVersion': 1, 'visualInputsVersion': 1}
+            'pdfFormulaVersion': 1, 'docxLegacyVisualVersion': 1, 'visualInputsVersion': 1,
+            'ocrRecognizer': {'model': MODEL_NAME, 'sha256': MODEL_SHA256}}
 
 
 async def parse_source(identity: uuid.UUID, request: Request, format: str, visual_only: bool):
@@ -363,8 +368,10 @@ async def parse_source(identity: uuid.UUID, request: Request, format: str, visua
         processor_version = version('mineru')
         if visual_only:
             processor_version += '+visual-inputs.1'
+        elif format == 'pdf':
+            processor_version += '+cyrillic-pdf.1'
         elif format in RASTER_FORMATS:
-            processor_version += '+eslav-image.1'
+            processor_version += '+cyrillic-image.1'
         return Response(result, media_type='application/zip', headers={'x-mineru-version': processor_version})
     except asyncio.CancelledError:
         raise HTTPException(409, 'ATTEMPT_CANCELLED')

@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 import tempfile
 import threading
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 import uuid
@@ -29,6 +30,111 @@ import processor as module
 
 
 class PdfRecoveryReview(unittest.TestCase):
+    def test_large_primary_evidence_does_not_displace_recovered_pages(self):
+        import json
+
+        line = {'text': 'Текст', 'bbox': [.1, .1, .7, .2]}
+        recovered = {'page': 2, 'omittedLines': 0, 'lines': [{**line, 'confidence': .99}]}
+        primary = {**line, 'source': 'primary-ocr'}
+        too_large = {
+            'page': 1, 'omittedLines': 0,
+            'lines': [{**primary, 'text': 'я' * 1200}] * 1000,
+        }
+        fits = {'page': 3, 'omittedLines': 0, 'lines': [primary]}
+        text = pdf_ocr.export_page_evidence([recovered], [too_large, fits])
+        self.assertEqual(json.loads(text)['pages'], [recovered, fits])
+
+    def test_scan_checks_geometry_before_repeating_recognition(self):
+        import numpy as np
+        import pypdfium2
+
+        def detect(image):
+            height, width = image.shape[:2]
+            return [np.array([[.1, .1], [.5, .1], [.5, .2], [.1, .2]]) * [width, height]]
+
+        with closing(pypdfium2.PdfDocument.new()) as document:
+            with closing(document.new_page(200, 100)) as page:
+                with (patch.object(pdf_ocr, 'detect_image_boxes', side_effect=detect),
+                      patch.object(pdf_ocr, 'read_image_lines', return_value=[]) as recognize):
+                    pdf_ocr.read_lines(page, Path('unused-model.onnx'), True, [(0.05, 0.05, 0.6, 0.25)])
+                    recognize.assert_not_called()
+                    pdf_ocr.read_lines(page, Path('unused-model.onnx'), True, [(0.05, 0.4, 0.6, 0.5)])
+                    recognize.assert_called_once()
+
+    def test_scan_recovers_a_missing_line_inside_one_coarse_block(self):
+        import numpy as np
+        import pypdfium2
+        from docvortex.schema import MiddleJson
+
+        label = 'Номер страхового документа 123-456-789'
+        lines = [
+            {'text': 'Документ', 'bbox': [.1, .1, .4, .2], 'confidence': .99},
+            {'text': label, 'bbox': [.1, .3, .7, .4], 'confidence': .99},
+        ]
+        middle = MiddleJson.model_validate({
+            'metadata': {'file_suffix': 'pdf', 'producer': {'name': 'fixture', 'version': '1'}},
+            'is_full_document': True,
+            'pages': [{'page_idx': 0, 'blocks': [{
+                'type': 'text', 'index': 0, 'bbox': [.05, .05, .9, .55],
+                'content': [{'type': 'text', 'content': 'Документ'}],
+            }]}],
+        })
+        source = io.BytesIO()
+        with closing(pypdfium2.PdfDocument.new()) as document:
+            document.new_page(200, 100).close()
+            document.save(source)
+
+        def detect(image):
+            height, width = image.shape[:2]
+            return [
+                np.array([[left, top], [right, top], [right, bottom], [left, bottom]]) * [width, height]
+                for left, top, right, bottom in (line['bbox'] for line in lines)
+            ]
+
+        writer = module.ZipWriter()
+        with (patch.object(pdf_ocr, 'detect_image_boxes', side_effect=detect),
+              patch.object(pdf_ocr, 'read_image_lines', return_value=lines)):
+            pdf_ocr.save_pdf(source.getvalue(), middle, writer, Path('unused-model.onnx'))
+        self.assertIn(label, writer.files['markdown.md'].decode())
+
+    def test_scan_without_recovery_exports_primary_text_and_geometry(self):
+        import json
+        import numpy as np
+        import pypdfium2
+        from docvortex.schema import MiddleJson
+
+        label = 'Страховой номер индивидуального лицевого счёта 000-000-001 00'
+        bbox = [.05, .05, .8, .25]
+        middle = MiddleJson.model_validate({
+            'metadata': {'file_suffix': 'pdf', 'producer': {'name': 'fixture', 'version': '1'}},
+            'is_full_document': True,
+            'pages': [{'page_idx': 0, 'blocks': [{
+                'type': 'text', 'index': 0, 'bbox': bbox,
+                'content': [{'type': 'text', 'content': label}],
+            }]}],
+        })
+        source = io.BytesIO()
+        with closing(pypdfium2.PdfDocument.new()) as document:
+            document.new_page(200, 100).close()
+            document.save(source)
+
+        def detect(image):
+            height, width = image.shape[:2]
+            return [np.array([[.1, .1], [.7, .1], [.7, .2], [.1, .2]]) * [width, height]]
+
+        writer = module.ZipWriter()
+        with (patch.object(pdf_ocr, 'detect_image_boxes', side_effect=detect),
+              patch.object(pdf_ocr, 'read_image_lines') as recognize):
+            pdf_ocr.save_pdf(source.getvalue(), middle, writer, Path('unused-model.onnx'))
+            recognize.assert_not_called()
+        self.assertIn(label, writer.files['markdown.md'].decode())
+        self.assertEqual(json.loads(writer.files['pdf-ocr.json']), {
+            'version': 1,
+            'pages': [{'page': 1, 'omittedLines': 0, 'lines': [
+                {'text': label, 'bbox': bbox, 'source': 'primary-ocr'},
+            ]}],
+        })
+
     def test_scanned_card_exports_cyrillic_and_the_full_printed_number(self):
         import json
         import pypdfium2
@@ -75,7 +181,10 @@ class PdfRecoveryReview(unittest.TestCase):
         ]
         sharpened = [{**primary[1], 'text': label + ' 000-000-001 00', 'confidence': 0.9649}]
         writer = module.ZipWriter()
-        with patch.object(pdf_ocr, 'read_image_lines', side_effect=[primary, sharpened]):
+        with (patch.object(pdf_ocr, 'detect_image_boxes', return_value=[
+                [[0, 0], [10, 0], [10, 10], [0, 10]],
+              ]),
+              patch.object(pdf_ocr, 'read_image_lines', side_effect=[primary, sharpened])):
             pdf_ocr.save_pdf(source.getvalue(), middle, writer, Path('unused-model.onnx'))
 
         markdown = writer.files['markdown.md'].decode('utf-8')
@@ -226,7 +335,7 @@ class PdfRecoveryReview(unittest.TestCase):
             {'text': 'Номер 123459', 'confidence': 0.10, 'bbox': [0.05, 0.95, 0.4, 0.98]},
         ]
         writer = module.ZipWriter()
-        with patch.object(pdf_ocr, 'read_lines', side_effect=[lines, []]):
+        with patch.object(pdf_ocr, 'read_lines', side_effect=[(lines, []), ([], [])]):
             pdf_ocr.save_pdf(source.getvalue(), middle, writer, Path('unused-model.onnx'))
         markdown = writer.files['markdown.md'].decode('utf-8')
         first, second = markdown.split('## Страница 2')
@@ -268,6 +377,11 @@ class PdfRecoveryReview(unittest.TestCase):
 
 
 class RasterRecoveryReview(unittest.TestCase):
+    def test_ocr_repairs_latin_lookalikes_only_with_an_unambiguous_latin_letter(self):
+        observed = 'Справки QA-VТ-51 и QА-Т-62, VТВ Bank и TВank. ABСервис B2BСервис ПАО ООО AO.'
+        expected = 'Справки QA-VT-51 и QA-T-62, VTB Bank и TBank. ABСервис B2BСервис ПАО ООО AO.'
+        self.assertEqual(pdf_ocr.normalize_ocr_text(observed), expected)
+
     def test_missing_cyrillic_replaces_symbols_and_keeps_row_order(self):
         frames = [[
             {'text': 'Жареная', 'confidence': 0.98, 'bbox': [0.5, 0.1, 0.9, 0.2]},
@@ -288,6 +402,27 @@ class RasterRecoveryReview(unittest.TestCase):
 class Result:
     def save(self, writer):
         writer.write('markdown.md', b'# SYNTHETIC')
+
+
+class OcrStartupReview(unittest.IsolatedAsyncioTestCase):
+    async def test_incompatible_sdk_is_rejected_before_service_starts(self):
+        incompatible = (
+            ('4.1.8', None, 'requires MinerU 4.1.7'),
+            ('4.1.7', SimpleNamespace(), 'atom_model_init'),
+            ('4.1.7', SimpleNamespace(atom_model_init=lambda name: None), 'atom_model_init'),
+            ('4.1.7', SimpleNamespace(atom_model_init=lambda model_name, **kwargs: None), '_select'),
+        )
+        for sdk_version, hybrid, diagnostic in incompatible:
+            with self.subTest(sdk_version=sdk_version, hybrid=hybrid), tempfile.TemporaryDirectory() as root:
+                processor = module.Processor(Path(root) / 'processor')
+                with (patch.object(module, 'processor', processor),
+                      patch.object(module, 'version', return_value=sdk_version),
+                      patch.object(pdf_ocr, 'import_module', return_value=hybrid)):
+                    with self.assertRaisesRegex(RuntimeError, diagnostic):
+                        async with module.lifespan(module.app):
+                            self.fail('Incompatible MinerU started accepting requests')
+                self.assertFalse(processor.jobs.exists())
+
 
 class ProcessorReview(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { Database } from '@anyko/database';
 
 import type { DocumentStore, DocumentView } from '../application/ports';
+import { hasPdfOcrProcessorVersion } from '../application/result-schema';
 
 import { createReadyResults } from './ready-results';
 
@@ -58,7 +59,7 @@ export function createDocumentReadModel(
       row.sourceKey.endsWith('.pdf') &&
       run?.status === 'succeeded' &&
       run.processorVersion?.startsWith('mineru-') &&
-      !run.processorVersion.includes('+eslav.')
+      !hasPdfOcrProcessorVersion(run.processorVersion)
     );
   }
 

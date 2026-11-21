@@ -116,6 +116,49 @@ test('a successful response from the old processor is rejected for PDF', async (
   }
 });
 
+test('preserves the Cyrillic PDF version and primary OCR coordinates without confidence', async () => {
+  const pdfOcr = {
+    version: 1,
+    pages: [
+      {
+        page: 1,
+        omittedLines: 0,
+        lines: [
+          {
+            text: 'Форма АДИ-РЕГ',
+            bbox: [0.1, 0.15, 0.6, 0.25],
+            source: 'primary-ocr',
+          },
+        ],
+      },
+    ],
+  };
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: () =>
+      new Response(
+        zipSync({
+          'markdown.md': strToU8('Форма АДИ-РЕГ'),
+          'pdf-ocr.json': strToU8(JSON.stringify(pdfOcr)),
+        }),
+        { headers: { 'x-mineru-version': '4.1.7+cyrillic-pdf.1' } },
+      ),
+  });
+  try {
+    const parser = createMineruParser({
+      baseUrl: `http://127.0.0.1:${String(server.port)}`,
+      timeoutMs: 1000,
+    });
+    expect(await parser.parseDocument(pdf, 'pdf', identity)).toMatchObject({
+      processorVersion: 'mineru-4.1.7+cyrillic-pdf.1',
+      pdfOcr,
+    });
+  } finally {
+    await server.stop(true);
+  }
+});
+
 test('visual input preparation never calls the local OCR route on an older processor', async () => {
   const paths: string[] = [];
   const server = Bun.serve({
