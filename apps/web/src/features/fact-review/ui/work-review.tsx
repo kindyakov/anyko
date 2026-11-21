@@ -68,6 +68,18 @@ export function WorkReview({
             { value: 'drafts', label: 'Черновики документов' },
           ]}
         />
+        {hasSubmittedAttachments(view.package.fields) && (
+          <AttachmentReview
+            documents={view.documents}
+            candidates={view.facts.candidates}
+            value={values.submittedAttachments}
+            disabled={busy}
+            onChange={(value) => {
+              facts.change({ submittedAttachments: value });
+            }}
+            onOpen={onOpen}
+          />
+        )}
         <div className="flex w-full flex-col gap-1.5 rounded-xl border border-[#ff3b62]/25 bg-[#db143c]/[0.08] px-3.5 py-2.5 sm:w-auto sm:min-w-48">
           <p className="flex items-baseline justify-between gap-3 text-sm font-medium text-white/85">
             Заполнено
@@ -130,18 +142,6 @@ export function WorkReview({
             />
           )}
         </div>
-        {hasSubmittedAttachments(view.package.fields) && (
-          <AttachmentReview
-            documents={view.documents}
-            candidates={view.facts.candidates}
-            value={values.submittedAttachments}
-            disabled={busy}
-            onChange={(value) => {
-              facts.change({ submittedAttachments: value });
-            }}
-            onOpen={onOpen}
-          />
-        )}
         {hasEmploymentFields(view.package.fields) && (
           <EmploymentReview
             values={values}

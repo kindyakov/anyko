@@ -1,12 +1,13 @@
 import { expect, mock, test } from 'bun:test';
 
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import type { WorkView } from '@anyko/contracts/works';
 
 import { AttachmentReview } from './attachment-review';
 
-test('a visible stamp leaves the file unselected until the lawyer chooses the copy type', () => {
+test('a visible stamp leaves the file unselected until the lawyer chooses the copy type', async () => {
   const document = {
     id: 'approved-file',
     filename: 'Справка.pdf',
@@ -16,13 +17,23 @@ test('a visible stamp leaves the file unselected until the lawyer chooses the co
   const candidates: WorkView['facts']['candidates'] = [
     {
       field: 'attachments',
-      value: [{ description: 'Справка с печатью', category: 'other' }],
+      value: [{ description: 'Справка', category: 'other' }],
+      selected: false,
+      evidence: [
+        { documentId: document.id, imagePath: null, quote: 'Справка' },
+      ],
+    },
+    {
+      field: 'attachments',
+      value: [
+        { description: 'Справка с печатью от 20.11.2026', category: 'other' },
+      ],
       selected: false,
       evidence: [
         {
           documentId: document.id,
           imagePath: null,
-          quote: 'Справка с печатью',
+          quote: 'Справка с печатью от 20.11.2026',
           page: 2,
         },
       ],
@@ -38,18 +49,28 @@ test('a visible stamp leaves the file unselected until the lawyer chooses the co
     onOpen: open,
   };
   const { rerender } = render(<AttachmentReview {...input} value={null} />);
+  const user = userEvent.setup();
+  const openAttachments = () =>
+    user.click(screen.getByRole('button', { name: /Приложения/u }));
+  expect(screen.queryByRole('combobox')).toBeNull();
+  await openAttachments();
+  fireEvent.click(screen.getByRole('button', { name: 'Справка.pdf' }));
+  expect(open).toHaveBeenCalledWith(document, 2);
+  await openAttachments();
   const choice = screen.getByRole('combobox', {
     name: 'Вид подаваемого экземпляра для Справка.pdf',
   });
-  expect(choice).toHaveProperty('value', '');
+  const choose = async (label: string) => {
+    await user.click(choice);
+    await user.click(await screen.findByRole('option', { name: label }));
+  };
+  expect(choice.textContent).toContain('Не подавать');
   expect(change).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Справка.pdf' }));
-  expect(open).toHaveBeenCalledWith(document, 2);
-  fireEvent.change(choice, { target: { value: 'copy' } });
+  await choose('Копия');
   const selected = [
     {
       documentId: document.id,
-      description: 'Справка с печатью',
+      description: 'Справка с печатью от 20.11.2026',
       category: 'other',
       copyKind: 'copy',
     },
@@ -57,11 +78,43 @@ test('a visible stamp leaves the file unselected until the lawyer chooses the co
   expect(change).toHaveBeenLastCalledWith(selected);
 
   rerender(<AttachmentReview {...input} value={selected} />);
-  expect(choice).toHaveProperty('value', 'copy');
-  fireEvent.change(choice, { target: { value: 'paperOriginal' } });
+  expect(choice.textContent).toContain('Копия');
+  await choose('Бумажный оригинал');
   expect(change).toHaveBeenLastCalledWith([
     { ...selected[0], copyKind: 'paperOriginal' },
   ]);
-  fireEvent.change(choice, { target: { value: '' } });
+  await choose('Не подавать');
   expect(change).toHaveBeenLastCalledWith([]);
+});
+
+test('includes the generated inventory without a source file', async () => {
+  const change = mock();
+  render(
+    <AttachmentReview
+      documents={[]}
+      candidates={[]}
+      disabled={false}
+      onChange={change}
+      onOpen={mock()}
+      value={null}
+    />,
+  );
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: /Приложения/u }));
+  await user.click(
+    screen.getByRole('combobox', {
+      name: /Вид подаваемого экземпляра для Опись имущества/u,
+    }),
+  );
+  expect(change).not.toHaveBeenCalled();
+  await user.click(await screen.findByRole('option', { name: 'Оригинал' }));
+  expect(change).toHaveBeenLastCalledWith([
+    {
+      documentId: 'package:inventory',
+      description:
+        'Опись имущества гражданина по форме, утверждённой Приказом Минэкономразвития России от 05.08.2015 № 530',
+      category: 'other',
+      copyKind: 'paperOriginal',
+    },
+  ]);
 });

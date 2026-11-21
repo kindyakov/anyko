@@ -105,15 +105,26 @@ test('the Files step links a source and separates conditional checklist requirem
   renderWork();
   const user = userEvent.setup();
   await user.click(await screen.findByRole('tab', { name: /^1\s*Файлы/ }));
-  const usual = within(screen.getByRole('list', { name: 'Обычно нужны' }));
-  const conditional = within(
-    screen.getByRole('list', { name: 'По обстоятельствам' }),
+  const checklist = within(
+    screen.getByRole('complementary', { name: 'Чек-лист документов' }),
   );
-  expect(usual.getByText('Не найдено')).toBeTruthy();
-  expect(conditional.getByText('Уточнить')).toBeTruthy();
-  await user.selectOptions(
+  expect(screen.getAllByRole('list', { name: 'Обычно нужны' })).toHaveLength(1);
+  const usual = within(checklist.getByRole('list', { name: 'Обычно нужны' }));
+  const conditional = within(
+    checklist.getByRole('list', { name: 'По обстоятельствам' }),
+  );
+  expect(
+    usual.getByText('Не найдено', { selector: 'summary span' }),
+  ).toBeTruthy();
+  expect(
+    conditional.getByText('Уточнить', { selector: 'summary span' }),
+  ).toBeTruthy();
+  await user.click(usual.getByText('Паспорт гражданина'));
+  await user.click(
     usual.getByRole('combobox', { name: 'Файл для «Паспорт гражданина»' }),
-    document.id,
+  );
+  await user.click(
+    await screen.findByRole('option', { name: document.filename }),
   );
   await user.click(usual.getByRole('button', { name: 'Привязать' }));
   expect(
@@ -123,6 +134,10 @@ test('the Files step links a source and separates conditional checklist requirem
     url: address,
     body: { decision: 'confirmed', ocrRevision: 4 },
   });
+  await user.click(screen.getByRole('tab', { name: /^3\s*Проверка/ }));
+  expect(
+    checklist.getByRole('button', { name: document.filename }),
+  ).toBeTruthy();
 });
 
 test('work history can open a retained analysis run outside the recent work view', async () => {

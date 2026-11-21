@@ -8,6 +8,7 @@ export { fieldSurface, Input } from './input';
 export { Modal } from './modal';
 export { RelativeTime } from './relative-time';
 export { SegmentedControl } from './segmented-control';
+export { Select } from './select';
 export { Skeleton } from './skeleton';
 export { Spinner } from './spinner';
 export { Notice, StatusPill, type Tone } from './status';

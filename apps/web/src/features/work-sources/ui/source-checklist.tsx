@@ -1,7 +1,15 @@
 'use client';
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Eye, Unlink } from 'lucide-react';
+import {
+  Check,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  CircleHelp,
+  Eye,
+  Unlink,
+} from 'lucide-react';
 
 import {
   editWorkChecklistLink,
@@ -13,6 +21,8 @@ import { Button, StatusPill, type Tone } from '@anyko/ui';
 import { describeWorkCommandError, invalidateWork } from '@/features/works';
 import { callApi } from '@/lib/api/call';
 import { useWorkspaceId } from '@/lib/api/workspace';
+
+import { ChecklistLinkForm } from './checklist-link-form';
 
 type Document = WorkView['documents'][number];
 const statuses: Record<WorkChecklistItem['status'], [string, Tone]> = {
@@ -26,6 +36,13 @@ const groups = [
   { applicability: 'usual', title: 'Обычно нужны' },
   { applicability: 'conditional', title: 'По обстоятельствам' },
 ] as const;
+const statusIcons = {
+  confirmed: CheckCircle2,
+  found: Check,
+  review: CircleHelp,
+  missing: Circle,
+  clarify: CircleHelp,
+};
 
 export function SourceChecklist({
   view,
@@ -63,13 +80,7 @@ export function SourceChecklist({
   );
 
   return (
-    <section className="grid gap-4" aria-labelledby="source-checklist-title">
-      <h2
-        id="source-checklist-title"
-        className="font-heading text-xl font-bold tracking-tight"
-      >
-        Чек-лист исходных документов
-      </h2>
+    <div className="grid min-w-0 gap-3">
       {mutation.isError && (
         <p role="alert" className="text-sm text-red-200">
           {describeWorkCommandError(mutation.error)}
@@ -81,14 +92,15 @@ export function SourceChecklist({
         );
         if (!items?.length) return null;
         return (
-          <div key={applicability} className="grid gap-2">
-            <h3 className="text-muted text-sm font-medium">{title}</h3>
+          <div key={applicability}>
+            <h3 className="text-muted px-1 text-xs font-medium">{title}</h3>
             <ul
               aria-label={title}
-              className="glass divide-y divide-white/10 rounded-2xl border border-white/10"
+              className="mt-1 divide-y divide-white/[0.06]"
             >
               {items.map((item) => {
-                const [label, tone] = statuses[item.status];
+                const [label] = statuses[item.status];
+                const Status = statusIcons[item.status];
                 const remaining = view.documents.filter(
                   (document) =>
                     !item.sources.some(
@@ -96,187 +108,176 @@ export function SourceChecklist({
                     ),
                 );
                 return (
-                  <li key={item.key} className="grid gap-3 px-4 py-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="text-sm font-medium">{item.label}</span>
-                      <StatusPill tone={tone}>{label}</StatusPill>
-                    </div>
-                    {!!item.contracts?.length && (
-                      <ul
-                        aria-label="Справки по договорам"
-                        className="grid gap-2"
+                  <li key={item.key}>
+                    <details className="group">
+                      <summary
+                        className="focus-visible:outline-brand-hot flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-md px-1 py-1.5 text-sm leading-tight hover:bg-white/[0.04] focus-visible:outline-2 [&::-webkit-details-marker]:hidden"
+                        title={label}
                       >
-                        {item.contracts.map((contract) => (
-                          <li
-                            key={JSON.stringify([
-                              contract.creditor,
-                              contract.contractNumber,
-                              contract.contractDate,
-                            ])}
-                            className="flex flex-wrap items-center gap-2 border-l border-white/10 pl-3"
+                        <Status
+                          size={15}
+                          aria-hidden
+                          className={`shrink-0 ${item.status === 'confirmed' || item.status === 'found' ? 'text-emerald-300' : item.status === 'review' ? 'text-amber-300' : 'text-muted'}`}
+                        />
+                        <span className="min-w-0 flex-1">{item.label}</span>
+                        <span className="sr-only">{label}</span>
+                        <ChevronDown
+                          size={13}
+                          aria-hidden
+                          className="text-muted shrink-0 group-open:rotate-180"
+                        />
+                      </summary>
+                      <div className="grid min-w-0 gap-2 pb-2 pl-2">
+                        <p className="text-muted text-xs">{label}</p>
+                        {!!item.contracts?.length && (
+                          <ul
+                            aria-label="Справки по договорам"
+                            className="grid gap-2"
                           >
-                            <span className="text-sm wrap-anywhere">
-                              {contract.creditor} · Договор №{' '}
-                              {contract.contractNumber}
-                              {contract.contractDate &&
-                                ` от ${contract.contractDate}`}
-                            </span>
-                            <StatusPill tone={statuses[contract.status][1]}>
-                              {statuses[contract.status][0]}
-                            </StatusPill>
-                            {contract.documentIds.map((id) => {
-                              const document = byId.get(id);
-                              const source = item.sources.find(
-                                ({ documentId }) => documentId === id,
-                              );
-                              return (
-                                document && (
-                                  <Button
-                                    key={id}
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      onOpen(
-                                        document,
-                                        source?.page ?? undefined,
-                                      );
-                                    }}
-                                  >
-                                    <Eye size={15} aria-hidden />
-                                    {document.filename}
-                                  </Button>
-                                )
-                              );
-                            })}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {item.sources.length > 0 && (
-                      <ul
-                        aria-label={`Источники для «${item.label}»`}
-                        className="grid gap-2"
-                      >
-                        {item.sources.map((source) => {
-                          const document = byId.get(source.documentId);
-                          if (!document) return null;
-                          const [sourceLabel, sourceTone] =
-                            statuses[source.status];
-                          return (
-                            <li
-                              key={source.documentId}
-                              className="border-l border-white/10 pl-3"
-                            >
-                              <div className="flex flex-wrap items-center gap-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => {
-                                    onOpen(document, source.page ?? undefined);
-                                  }}
-                                >
-                                  <Eye size={15} aria-hidden />
-                                  {document.filename}
-                                </Button>
-                                <StatusPill tone={sourceTone}>
-                                  {sourceLabel}
+                            {item.contracts.map((contract) => (
+                              <li
+                                key={JSON.stringify([
+                                  contract.creditor,
+                                  contract.contractNumber,
+                                  contract.contractDate,
+                                ])}
+                                className="flex flex-wrap items-center gap-2 border-l border-white/10 pl-3"
+                              >
+                                <span className="text-sm wrap-anywhere">
+                                  {contract.creditor} · Договор №{' '}
+                                  {contract.contractNumber}
+                                  {contract.contractDate &&
+                                    ` от ${contract.contractDate}`}
+                                </span>
+                                <StatusPill tone={statuses[contract.status][1]}>
+                                  {statuses[contract.status][0]}
                                 </StatusPill>
-                                {source.page && (
-                                  <span className="text-muted text-xs">
-                                    Стр. {source.page}
-                                  </span>
-                                )}
-                                {view.canEditChecklist &&
-                                  source.status !== 'confirmed' && (
+                                {contract.documentIds.map((id) => {
+                                  const document = byId.get(id);
+                                  const source = item.sources.find(
+                                    ({ documentId }) => documentId === id,
+                                  );
+                                  return (
+                                    document && (
+                                      <Button
+                                        key={id}
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          onOpen(
+                                            document,
+                                            source?.page ?? undefined,
+                                          );
+                                        }}
+                                      >
+                                        <Eye size={15} aria-hidden />
+                                        {document.filename}
+                                      </Button>
+                                    )
+                                  );
+                                })}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {item.sources.length > 0 && (
+                          <ul
+                            aria-label={`Источники для «${item.label}»`}
+                            className="grid gap-2"
+                          >
+                            {item.sources.map((source) => {
+                              const document = byId.get(source.documentId);
+                              if (!document) return null;
+                              const [sourceLabel, sourceTone] =
+                                statuses[source.status];
+                              return (
+                                <li
+                                  key={source.documentId}
+                                  className="border-l border-white/10 pl-3"
+                                >
+                                  <div className="flex flex-wrap items-center gap-2">
                                     <Button
-                                      variant="secondary"
+                                      variant="ghost"
                                       size="sm"
-                                      disabled={mutation.isPending}
                                       onClick={() => {
-                                        mutation.mutate({
-                                          requirementKey: item.key,
+                                        onOpen(
                                           document,
-                                          decision: 'confirmed',
-                                        });
+                                          source.page ?? undefined,
+                                        );
                                       }}
                                     >
-                                      Подтвердить
+                                      <Eye size={15} aria-hidden />
+                                      {document.filename}
                                     </Button>
+                                    <StatusPill tone={sourceTone}>
+                                      {sourceLabel}
+                                    </StatusPill>
+                                    {source.page && (
+                                      <span className="text-muted text-xs">
+                                        Стр. {source.page}
+                                      </span>
+                                    )}
+                                    {view.canEditChecklist &&
+                                      source.status !== 'confirmed' && (
+                                        <Button
+                                          variant="secondary"
+                                          size="sm"
+                                          disabled={mutation.isPending}
+                                          onClick={() => {
+                                            mutation.mutate({
+                                              requirementKey: item.key,
+                                              document,
+                                              decision: 'confirmed',
+                                            });
+                                          }}
+                                        >
+                                          Подтвердить
+                                        </Button>
+                                      )}
+                                    {view.canEditChecklist && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        disabled={mutation.isPending}
+                                        aria-label={`Отвязать «${document.filename}» от «${item.label}»`}
+                                        onClick={() => {
+                                          mutation.mutate({
+                                            requirementKey: item.key,
+                                            document,
+                                            decision: 'rejected',
+                                          });
+                                        }}
+                                      >
+                                        <Unlink size={15} aria-hidden />
+                                      </Button>
+                                    )}
+                                  </div>
+                                  {source.quote && (
+                                    <p className="text-muted text-xs wrap-anywhere">
+                                      {source.quote}
+                                    </p>
                                   )}
-                                {view.canEditChecklist && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon-sm"
-                                    disabled={mutation.isPending}
-                                    aria-label={`Отвязать «${document.filename}» от «${item.label}»`}
-                                    onClick={() => {
-                                      mutation.mutate({
-                                        requirementKey: item.key,
-                                        document,
-                                        decision: 'rejected',
-                                      });
-                                    }}
-                                  >
-                                    <Unlink size={15} aria-hidden />
-                                  </Button>
-                                )}
-                              </div>
-                              {source.quote && (
-                                <p className="text-muted text-xs wrap-anywhere">
-                                  {source.quote}
-                                </p>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                    {view.canEditChecklist && remaining.length > 0 && (
-                      <form
-                        className="flex flex-wrap items-center gap-2"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          const id = new FormData(event.currentTarget).get(
-                            'document',
-                          );
-                          const document = remaining.find(
-                            (entry) => entry.id === id,
-                          );
-                          if (document)
-                            mutation.mutate({
-                              requirementKey: item.key,
-                              document,
-                              decision: 'confirmed',
-                            });
-                        }}
-                      >
-                        <select
-                          name="document"
-                          required
-                          defaultValue=""
-                          disabled={mutation.isPending}
-                          aria-label={`Файл для «${item.label}»`}
-                          className="bg-surface max-w-full min-w-0 rounded-lg border border-white/15 px-2 py-1.5 text-sm"
-                        >
-                          <option value="" disabled>
-                            Выбрать файл
-                          </option>
-                          {remaining.map((document) => (
-                            <option key={document.id} value={document.id}>
-                              {document.filename}
-                            </option>
-                          ))}
-                        </select>
-                        <Button
-                          type="submit"
-                          size="sm"
-                          variant="secondary"
-                          disabled={mutation.isPending}
-                        >
-                          Привязать
-                        </Button>
-                      </form>
-                    )}
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                        {view.canEditChecklist && remaining.length > 0 && (
+                          <ChecklistLinkForm
+                            label={item.label}
+                            documents={remaining}
+                            pending={mutation.isPending}
+                            onLink={(document) => {
+                              mutation.mutate({
+                                requirementKey: item.key,
+                                document,
+                                decision: 'confirmed',
+                              });
+                            }}
+                          />
+                        )}
+                      </div>
+                    </details>
                   </li>
                 );
               })}
@@ -284,6 +285,6 @@ export function SourceChecklist({
           </div>
         );
       })}
-    </section>
+    </div>
   );
 }

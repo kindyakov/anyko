@@ -26,7 +26,6 @@ import { useWorkspaceId } from '@/lib/api/workspace';
 
 import { DocumentPicker } from './document-picker';
 import { OcrRevisionAction } from './ocr-revision-action';
-import { SourceChecklist } from './source-checklist';
 
 type Document = WorkView['documents'][number];
 
@@ -109,9 +108,6 @@ export function WorkSources({
             </li>
           ))}
         </ul>
-      )}
-      {!!view.checklist?.length && (
-        <SourceChecklist view={view} onOpen={onOpen} />
       )}
       <section aria-labelledby="sources-title">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">

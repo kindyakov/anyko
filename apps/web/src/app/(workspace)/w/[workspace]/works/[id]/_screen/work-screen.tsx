@@ -22,7 +22,7 @@ import { WorkAgentHistory } from '@/features/work-agent-history';
 import { WorkChat } from '@/features/work-chat';
 import { WorkResults } from '@/features/work-generation';
 import { WorkPipeline } from '@/features/work-processing';
-import { WorkSources } from '@/features/work-sources';
+import { WorkChecklist, WorkSources } from '@/features/work-sources';
 import {
   type StepKey,
   stepOf,
@@ -152,148 +152,165 @@ function WorkBody({
   const openedRevision = openedSource?.processingRevision;
   return (
     <>
-      <div className="animate-rise">
-        <Link
-          href={routes.works(workspaceId)}
-          className="text-muted hover:text-ink group inline-flex items-center gap-1.5 text-sm transition-colors"
-        >
-          <ArrowLeft
-            size={15}
-            className="transition-transform group-hover:-translate-x-0.5"
-          />
-          Все работы
-        </Link>
-        <div className="mt-4 mb-6 flex flex-wrap items-end justify-between gap-4">
-          <div className="min-w-0">
-            <h1 className="font-heading text-2xl font-bold tracking-tight wrap-anywhere sm:text-3xl">
-              {view.work.title}
-            </h1>
-            <p className="text-muted mt-2 text-sm">{view.package.title}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <WorkAgentHistory workspaceId={workspaceId} view={view} />
-            <WorkChat workspaceId={workspaceId} view={view} />
-            {view.work.confirmedRevision === view.work.revision ? (
-              <StatusPill tone="success">Подтверждена</StatusPill>
-            ) : (
-              <StatusPill tone="brand">В работе</StatusPill>
-            )}
-            <span
-              role="status"
-              className="text-muted flex items-center gap-2 rounded-full border border-white/[0.07] px-2.5 py-1 text-xs"
-            >
-              <span
-                className={`size-1.5 rounded-full ${live === 'live' ? 'animate-blink bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-amber-400'}`}
-              />
-              {live === 'live'
-                ? 'Обновляется автоматически'
-                : live === 'connecting'
-                  ? 'Подключаемся'
-                  : 'Переподключаемся — данные сохранены'}
-            </span>
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 gap-4">
-        {(commands.error || loadError) && (
-          <Notice tone="danger" role="alert">
-            {commands.error || loadError}
-          </Notice>
-        )}
-        {commands.reasons.length > 0 && (
-          <Notice tone="warning" role="status">
-            <ul>
-              {commands.reasons.map((reason) => (
-                <li key={reason}>{reason}</li>
-              ))}
-            </ul>
-          </Notice>
-        )}
-        {view.cleanupPending && (
-          <Notice
-            tone="progress"
-            role="status"
-            title="Обновляем источники работы"
-          >
-            Очищаем сведения и готовые документы этой работы. Исходный файл
-            сохраняется в каталоге.
-          </Notice>
-        )}
-        <Hero
-          stage={stage}
-          step={current}
-          busy={commands.pending}
-          generateDisabled={commands.disabled.generate}
-          onStep={setStep}
-          onGenerate={generate}
-        />
-      </div>
-      <Tabs.Root
-        value={current}
-        onValueChange={(value: unknown) => {
-          if (
-            value === 'files' ||
-            value === 'extraction' ||
-            value === 'review' ||
-            value === 'documents'
-          )
-            setStep(value);
-        }}
-        className="mt-6"
+      <div
+        className={
+          view.checklist?.length
+            ? 'grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_16.5rem] 2xl:grid-cols-[minmax(0,1fr)_18rem]'
+            : undefined
+        }
       >
-        <Stepper current={stepOf(stage)} />
-        <div className="mt-8">
-          <Tabs.Panel
-            value="files"
-            keepMounted
-            className="animate-rise outline-none"
-          >
-            <WorkSources
-              view={view}
-              disabled={commands.disabled}
-              uploads={commands.uploads}
-              onUpload={commands.upload}
-              onOpen={openDocument}
-              onDelete={deleteDocument}
-              onRetry={commands.retry}
-              removing={commands.removing}
-              retryDisabled={commands.editingBlocked}
-              retryingId={commands.retryingId}
-            />
-          </Tabs.Panel>
-          <Tabs.Panel value="extraction" className="animate-rise outline-none">
-            <WorkPipeline
-              view={view}
-              analyzeDisabled={commands.disabled.analyze}
+        <div className="min-w-0">
+          <div className="animate-rise">
+            <Link
+              href={routes.works(workspaceId)}
+              className="text-muted hover:text-ink group inline-flex items-center gap-1.5 text-sm transition-colors"
+            >
+              <ArrowLeft
+                size={15}
+                className="transition-transform group-hover:-translate-x-0.5"
+              />
+              Все работы
+            </Link>
+            <div className="mt-4 mb-6 flex flex-wrap items-end justify-between gap-4">
+              <div className="min-w-0">
+                <h1 className="font-heading text-2xl font-bold tracking-tight wrap-anywhere sm:text-3xl">
+                  {view.work.title}
+                </h1>
+                <p className="text-muted mt-2 text-sm">{view.package.title}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <WorkAgentHistory workspaceId={workspaceId} view={view} />
+                <WorkChat workspaceId={workspaceId} view={view} />
+                {view.work.confirmedRevision === view.work.revision ? (
+                  <StatusPill tone="success">Подтверждена</StatusPill>
+                ) : (
+                  <StatusPill tone="brand">В работе</StatusPill>
+                )}
+                <span
+                  role="status"
+                  className="text-muted flex items-center gap-2 rounded-full border border-white/[0.07] px-2.5 py-1 text-xs"
+                >
+                  <span
+                    className={`size-1.5 rounded-full ${live === 'live' ? 'animate-blink bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-amber-400'}`}
+                  />
+                  {live === 'live'
+                    ? 'Обновляется автоматически'
+                    : live === 'connecting'
+                      ? 'Подключаемся'
+                      : 'Переподключаемся — данные сохранены'}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-4">
+            {(commands.error || loadError) && (
+              <Notice tone="danger" role="alert">
+                {commands.error || loadError}
+              </Notice>
+            )}
+            {commands.reasons.length > 0 && (
+              <Notice tone="warning" role="status">
+                <ul>
+                  {commands.reasons.map((reason) => (
+                    <li key={reason}>{reason}</li>
+                  ))}
+                </ul>
+              </Notice>
+            )}
+            {view.cleanupPending && (
+              <Notice
+                tone="progress"
+                role="status"
+                title="Обновляем источники работы"
+              >
+                Очищаем сведения и готовые документы этой работы. Исходный файл
+                сохраняется в каталоге.
+              </Notice>
+            )}
+            <Hero
+              stage={stage}
+              step={current}
               busy={commands.pending}
-              onOpen={openDocument}
-              onAnalyze={analyze}
-            />
-          </Tabs.Panel>
-          <Tabs.Panel value="review" className="animate-rise outline-none">
-            <WorkReview
-              view={view}
-              facts={facts}
-              busy={commands.editingBlocked}
-              onOpen={openDocument}
-            />
-          </Tabs.Panel>
-          <Tabs.Panel value="documents" className="animate-rise outline-none">
-            <WorkResults
-              view={view}
-              confirmDisabled={commands.disabled.confirm}
               generateDisabled={commands.disabled.generate}
-              busy={commands.pending}
-              hasDraft={facts.hasEdits}
-              onReview={() => {
-                setStep('review');
-              }}
-              onConfirm={commands.confirm}
+              onStep={setStep}
               onGenerate={generate}
             />
-          </Tabs.Panel>
+          </div>
+          <Tabs.Root
+            value={current}
+            onValueChange={(value: unknown) => {
+              if (
+                value === 'files' ||
+                value === 'extraction' ||
+                value === 'review' ||
+                value === 'documents'
+              )
+                setStep(value);
+            }}
+            className="mt-6"
+          >
+            <Stepper current={stepOf(stage)} />
+            <div className="mt-8">
+              <Tabs.Panel
+                value="files"
+                keepMounted
+                className="animate-rise outline-none"
+              >
+                <WorkSources
+                  view={view}
+                  disabled={commands.disabled}
+                  uploads={commands.uploads}
+                  onUpload={commands.upload}
+                  onOpen={openDocument}
+                  onDelete={deleteDocument}
+                  onRetry={commands.retry}
+                  removing={commands.removing}
+                  retryDisabled={commands.editingBlocked}
+                  retryingId={commands.retryingId}
+                />
+              </Tabs.Panel>
+              <Tabs.Panel
+                value="extraction"
+                className="animate-rise outline-none"
+              >
+                <WorkPipeline
+                  view={view}
+                  analyzeDisabled={commands.disabled.analyze}
+                  busy={commands.pending}
+                  onOpen={openDocument}
+                  onAnalyze={analyze}
+                />
+              </Tabs.Panel>
+              <Tabs.Panel value="review" className="animate-rise outline-none">
+                <WorkReview
+                  view={view}
+                  facts={facts}
+                  busy={commands.editingBlocked}
+                  onOpen={openDocument}
+                />
+              </Tabs.Panel>
+              <Tabs.Panel
+                value="documents"
+                className="animate-rise outline-none"
+              >
+                <WorkResults
+                  view={view}
+                  confirmDisabled={commands.disabled.confirm}
+                  generateDisabled={commands.disabled.generate}
+                  busy={commands.pending}
+                  hasDraft={facts.hasEdits}
+                  onReview={() => {
+                    setStep('review');
+                  }}
+                  onConfirm={commands.confirm}
+                  onGenerate={generate}
+                />
+              </Tabs.Panel>
+            </div>
+          </Tabs.Root>
         </div>
-      </Tabs.Root>
+        <WorkChecklist view={view} onOpen={openDocument} />
+      </div>
       <UnsavedNavigation dirty={facts.hasEdits} />
       {commands.uploadMatchDialog}
       <UnsavedFactsBar facts={facts} busy={commands.editingBlocked} />
