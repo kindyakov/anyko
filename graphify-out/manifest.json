@@ -1044,21 +1044,21 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/index.ts": {
-    "mtime": 1795285069.852788,
-    "seen": 1795285111.8150349,
-    "ast_hash": "a3f37ba2d8186eb7d94dd010f8ce5c26",
+    "mtime": 1795298932.9139042,
+    "seen": 1795299073.652454,
+    "ast_hash": "f056717f86c79231e907eee393bd89d9",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/infrastructure/mastra.ts": {
-    "mtime": 1795291449.756291,
-    "seen": 1795291615.9261506,
-    "ast_hash": "70d86f11138fe38ea378d4b265696338",
+    "mtime": 1795298449.6105387,
+    "seen": 1795299073.6524768,
+    "ast_hash": "b9bfb7bd73e75a135ba563219b18fc73",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/facts.test.ts": {
-    "mtime": 1795194188.1410787,
-    "seen": 1795244937.3207994,
-    "ast_hash": "dc5196932b97c10d619ff4a5f49727ea",
+    "mtime": 1795296924.1212497,
+    "seen": 1795297041.3318205,
+    "ast_hash": "2e7e10b3a723423fbc54c28d7d2d65d4",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/index.ts": {
@@ -1254,9 +1254,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/infrastructure/reconcile.ts": {
-    "mtime": 1795283158.1245096,
-    "seen": 1795283462.0127542,
-    "ast_hash": "97b6cb5c4ddb8348eec2778925e4973f",
+    "mtime": 1795298930.0228858,
+    "seen": 1795299073.6524844,
+    "ast_hash": "bb2ff8388e540b0b2fd5feeac5420655",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/infrastructure/session-store.ts": {
@@ -1266,9 +1266,9 @@
     "semantic_hash": ""
   },
   "packages/backend/tests/integration/session-agent.test.ts": {
-    "mtime": 1795291579.470275,
-    "seen": 1795291615.9266636,
-    "ast_hash": "05b6733a123aeca1094c666dfe035fb3",
+    "mtime": 1795299005.787077,
+    "seen": 1795299073.652984,
+    "ast_hash": "7b4422664cd84a7061880d308517a4ee",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611060012_work_agent_sessions/migration.sql": {
@@ -2958,9 +2958,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/index.ts": {
-    "mtime": 1795291221.757237,
-    "seen": 1795291615.9265828,
-    "ast_hash": "3a2bc85f2e69f19e0e32a506ff4dd78f",
+    "mtime": 1795299005.787077,
+    "seen": 1795299073.6528845,
+    "ast_hash": "59c33d172fb3e0e0d8eb3a580ce1f64e",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/model-call.ts": {
@@ -3582,9 +3582,9 @@
     "semantic_hash": ""
   },
   "tests/integration/worker/works.test.ts": {
-    "mtime": 1795292318.8305202,
-    "seen": 1795292462.3689346,
-    "ast_hash": "5b5e1fc6fd587a3592e37b970b565b33",
+    "mtime": 1795299005.7891624,
+    "seen": 1795299073.6533117,
+    "ast_hash": "cd72ea4a096ce8a4e9dc8ed2702783ca",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/io.ts": {
@@ -4560,9 +4560,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/domain/values.ts": {
-    "mtime": 1795275164.2255974,
-    "seen": 1795275314.5289087,
-    "ast_hash": "5fa6a7a012525acabb2314eee3318b03",
+    "mtime": 1795296731.872464,
+    "seen": 1795297041.3318179,
+    "ast_hash": "43ff7f5b1c2551ceb059edbb75d77d58",
     "semantic_hash": ""
   },
   "apps/web/src/features/fact-review/model/facts-draft.test.ts": {
@@ -5430,15 +5430,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/profiles/bfl/employment-instructions.ts": {
-    "mtime": 1795194188.149137,
-    "seen": 1795244937.3209152,
-    "ast_hash": "89e555092275cb81875ba55db72e82b9",
+    "mtime": 1795298577.66454,
+    "seen": 1795299073.6528292,
+    "ast_hash": "397583e60c704c8fef4e3a6526ca0861",
     "semantic_hash": ""
   },
   "packages/backend/src/profiles/bfl/obligation-instructions.ts": {
-    "mtime": 1795252586.1752248,
-    "seen": 1795253506.03856,
-    "ast_hash": "2b08fba8e065e81ab17e97da40d39882",
+    "mtime": 1795298718.924484,
+    "seen": 1795299073.652834,
+    "ast_hash": "52b5ff2e14cae731e66dc121c6a0fbc5",
     "semantic_hash": ""
   },
   "packages/backend/src/profiles/bfl/reconcile-obligations.ts": {
@@ -5526,8 +5526,8 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/infrastructure/model-field-value.ts": {
-    "mtime": 1795245321.636233,
-    "seen": 1795245457.9407718,
+    "mtime": 1795298781.9631581,
+    "seen": 1795299073.6524804,
     "ast_hash": "24d08a0b426c2c9bcd512b32f3857b66",
     "semantic_hash": ""
   },
@@ -5847,6 +5847,12 @@
     "mtime": 1795294461.876283,
     "seen": 1795294623.1778495,
     "ast_hash": "1e207f7746bb2216a59843a0d5a82d7f",
+    "semantic_hash": ""
+  },
+  "packages/backend/src/profiles/bfl/fact-instructions.ts": {
+    "mtime": 1795298826.749996,
+    "seen": 1795299073.652831,
+    "ast_hash": "b2cd59d7f006d56eb8e9070f864e44e4",
     "semantic_hash": ""
   }
 }

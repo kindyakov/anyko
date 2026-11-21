@@ -1,3 +1,4 @@
+import { formatPreviousNames } from '@anyko/document-values/bankruptcy-projection';
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
 import { employmentFields } from '@anyko/document-values/employment';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
@@ -253,8 +254,9 @@ function includesFactValue(
 ) {
   if (!Array.isArray(saved) || !Array.isArray(proposed))
     return (
-      comparableFactValue(saved) ===
-      comparableFactValue(reconcile(key, [proposed]))
+      comparableFactValue(
+        key === 'previousNames' ? reconcile(key, [saved]) : saved,
+      ) === comparableFactValue(reconcile(key, [proposed]))
     );
   return (
     comparableFactValue(reconcile(key, [saved, proposed])) ===
@@ -464,7 +466,9 @@ function reconcile(key: string, found: FieldValue[]): FieldValue {
         ? canonicalCalendarDate(value)
         : isRublesField(key)
           ? canonicalMoneyAmount(value)
-          : value;
+          : key === 'previousNames'
+            ? formatPreviousNames(value)
+            : value;
       if (canonical === undefined) continue;
       const comparable = comparableText(canonical);
       if (!distinct.has(comparable)) distinct.set(comparable, canonical);

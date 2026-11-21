@@ -4300,7 +4300,7 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
   }
 });
 
-test('rerunning analysis refreshes old visual descriptions and reuses the refreshed result', async () => {
+test('rerunning analysis refreshes changed vision and extraction prompts independently', async () => {
   const input = await create();
   const resource = `${input.workspaceId}:${input.workId}`;
   imageFixture = [
@@ -4320,9 +4320,9 @@ test('rerunning analysis refreshes old visual descriptions and reuses the refres
     expect(
       await db.$executeRaw`
         UPDATE "RunStep"
-        SET output = jsonb_set(output, '{sourceDigest}', to_jsonb(split_part(output->>'sourceDigest', ':', 2)))
+        SET output = jsonb_set(output, '{sourceDigest}', to_jsonb(regexp_replace(output->>'sourceDigest', '^(extraction-[0-9]+:)?vision-[0-9]+:', '')))
         WHERE "runId" = ${run.id} AND stage IN ('vision', 'extraction')
-          AND output->>'sourceDigest' LIKE 'vision-%:%'
+          AND output->>'sourceDigest' ~ '^(extraction-[0-9]+:)?vision-[0-9]+:'
       `,
     ).toBe(2);
     expect(descriptionsByResource.get(resource)).toBe(1);
@@ -4345,6 +4345,27 @@ test('rerunning analysis refreshes old visual descriptions and reuses the refres
     expect(cached.runs[0]?.status).toBe('succeeded');
     expect(descriptionsByResource.get(resource)).toBe(2);
     expect(extractionDocuments.get(resource)).toEqual([source.id, source.id]);
+
+    const refreshedRun = refreshed.runs[0];
+    if (!refreshedRun) throw new Error('MISSING_REFRESHED_ANALYSIS');
+    const downgraded = await db.$executeRaw`
+      UPDATE "RunStep"
+      SET output = jsonb_set(output, '{sourceDigest}', to_jsonb(regexp_replace(output->>'sourceDigest', '^extraction-[0-9]+:', '')))
+      WHERE "runId" = ${refreshedRun.id} AND stage = 'extraction'
+    `;
+    expect(downgraded).toBe(1);
+    await analyze(input);
+    const extractedAgain = await until(
+      input,
+      (view) => terminal(view) && view.runs[0]?.id !== cached.runs[0]?.id,
+    );
+    expect(extractedAgain.runs[0]?.status).toBe('succeeded');
+    expect(descriptionsByResource.get(resource)).toBe(2);
+    expect(extractionDocuments.get(resource)).toEqual([
+      source.id,
+      source.id,
+      source.id,
+    ]);
   } finally {
     imageFixture = [];
   }

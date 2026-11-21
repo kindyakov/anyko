@@ -19,6 +19,29 @@ const candidate = (value: string): WorkFacts['candidates'][number] => ({
     { documentId: crypto.randomUUID(), imagePath: null, quote: value },
   ],
 });
+test('equivalent declarations of unchanged names yield one automatic dash', () => {
+  const sources: WorkFacts['candidates'] = [
+    'ФИО не менялись',
+    'Не меняла',
+    'Фамилия, имя и отчество не изменялись',
+    'Не изменял',
+  ].map((value) => ({ ...candidate(value), field: 'previousNames' }));
+  const facts = mergeCandidates(emptyFacts(), sources, false);
+  expect(facts.values.previousNames).toBe('-');
+  expect(facts.candidates).toEqual(sources);
+  expect(findFactDiscrepancies(facts)).toEqual([]);
+  expect(markSelectedCandidates(facts).map(({ selected }) => selected)).toEqual(
+    [true, true, true, true],
+  );
+  expect(
+    mergeCandidates(
+      emptyFacts(),
+      [...sources, { ...candidate('Петров'), field: 'previousNames' }],
+      false,
+    ).values.previousNames,
+  ).toBeNull();
+});
+
 test('refresh preserves a value supported by another source and a manual value without that evidence', () => {
   const removed = candidate('Анна');
   const retained = candidate('Анна');

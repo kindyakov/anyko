@@ -1,7 +1,10 @@
 import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
 import { LlmError } from '@anyko/llm';
 
-import { visionPromptRevision } from '../../modules/agents';
+import {
+  extractionPromptRevision,
+  visionPromptRevision,
+} from '../../modules/agents';
 import { DocumentError } from '../../modules/documents';
 import type { WorkFacts } from '../../modules/facts';
 import { stepOutputSchema, type WorkAttempt } from '../../modules/processing';
@@ -229,10 +232,11 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           });
         }
         stage = 'extraction';
+        const extractionDigest = `extraction-${String(extractionPromptRevision)}:${cacheSourceDigest}`;
         let extracted = await attempt.cached(
           documentId,
           stage,
-          cacheSourceDigest,
+          extractionDigest,
         );
         if (!extracted) {
           await step({ stage, documentId, status: 'running' });
@@ -313,7 +317,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           }
           extracted = stepOutputSchema.parse({
             version: 1,
-            sourceDigest: cacheSourceDigest,
+            sourceDigest: extractionDigest,
             visuals: output.visuals,
             candidates: found,
           });

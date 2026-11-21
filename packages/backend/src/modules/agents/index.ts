@@ -50,6 +50,7 @@ export interface WorkReadContext {
 }
 // Bump when the visual instructions change the context passed to extraction.
 export const visionPromptRevision = 2;
+export const extractionPromptRevision = 2;
 
 export interface DocumentAgents {
   ready(): Promise<void>;

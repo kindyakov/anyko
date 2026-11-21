@@ -95,7 +95,7 @@ test('real extraction preserves candidates with valid citations when other field
     ),
   });
   const threads: string[] = [];
-  const fields = requirePackage('bfl-bankruptcy-v3').fields;
+  const fields = requirePackage('bfl-bankruptcy-v13').fields;
   const extract = (text: string) => {
     const threadId = crypto.randomUUID();
     threads.push(threadId);
@@ -149,6 +149,28 @@ test('real extraction preserves candidates with valid citations when other field
       finishReason: 'stop',
       reasoning: 'Синтетическая проверка цитаты.',
       usage: { reasoningTokens: 3 },
+      prompt: {
+        response_format: {
+          json_schema: {
+            schema: {
+              properties: {
+                candidates: {
+                  items: {
+                    properties: {
+                      field: {
+                        enum: fields
+                          .map(({ key }) => key)
+                          .filter((key) => key !== 'submittedAttachments'),
+                      },
+                      value: { anyOf: [{ type: 'string' }, { type: 'array' }] },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
       parse: {
         status: 'accepted',
         accepted: [{ ...candidate, origin: 'document' }],
@@ -663,7 +685,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     'fixture/mixed-full-first',
   ].map((modelId) => ({ modelId, threadId: crypto.randomUUID() }));
   // Fit the mandatory input and a short tool result, but not a full source page.
-  const mixedSummary = 'Q\u0308!/д'.repeat(650);
+  const mixedSummary = 'Q\u0308!/д'.repeat(490);
   const mixedText = '@!?.:,'.repeat(1166) + '!!!!!г. Тула';
   const oldText = 'Строка большого первичного документа. '.repeat(1000);
   const oldSource = {

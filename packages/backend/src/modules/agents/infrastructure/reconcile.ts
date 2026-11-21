@@ -9,6 +9,7 @@ import type { DocumentAgents } from '..';
 import { attachmentInstructions } from '../../../profiles/bfl/attachment-instructions';
 import { candidateSchema } from '../../../profiles/bfl/candidate';
 import { employmentInstructions } from '../../../profiles/bfl/employment-instructions';
+import { factInstructions } from '../../../profiles/bfl/fact-instructions';
 import { obligationInstructions } from '../../../profiles/bfl/obligation-instructions';
 import { checklistSuggestionSchema } from '../application/checklist';
 import { reconciliationSchema } from '../application/session';
@@ -87,10 +88,14 @@ export function createReconciliationAgent(options: {
       signal,
       lookupCourt: options.lookupCourt,
     });
-    const fieldLabels = Object.fromEntries(
-      input.fields.map(({ key, label }) => [key, label]),
+    const available = input.fields.filter(
+      ({ key }) => key !== 'submittedAttachments',
     );
-    const allowed = new Set(input.fields.map(({ key }) => key));
+    const fieldLabels = Object.fromEntries(
+      available.map(({ key, label }) => [key, label]),
+    );
+    const allowed = new Set(available.map(({ key }) => key));
+    const profileInstructions = factInstructions(available);
     const documents = new Map(input.documents.map((doc) => [doc.id, doc]));
     type Candidate = (typeof input.candidates)[number];
     type Excerpt = { excerpt: Candidate; characters: number };
@@ -161,7 +166,7 @@ export function createReconciliationAgent(options: {
 Для кредитора сохраняй точное название юридического лица из справки или договора. Если в источнике рядом с названием указан ИНН или ОГРН кредитора, добавь этот реквизит в строку обязательства и его цитату в evidence. Сведения заемщика к кредитору не относятся. Реквизиты из реестра сервер проверяет отдельно.
 Для каждой значимой сущности, названной в источниках, проверь, какие пустые поля можно дополнить её однозначно известными свойствами и связями, включая принадлежность к более общей сущности. Верни каждый обоснованный вывод в candidates. Для этого можно использовать устойчивые общие знания без внешнего поиска. Проверь, что исходный факт относится к нужному человеку, объекту, событию и периоду. Например, место одного события само по себе ничего не говорит о месте другого события.
 Когда доступны поля суда и адрес места жительства заявителя, вызови lookupArbitrationCourt для каждого обоснованного субъекта РФ. Если источники расходятся, проверь все варианты. Передавай только наименование субъекта РФ. Если субъект выводится из названия населённого пункта, верни подтверждённый инструментом вариант courtName с объяснением связи населённого пункта и субъекта, а в evidence укажи точную цитату исходного кандидата region, registrationAddress, city или locality. Реквизиты суда вне официального поиска возвращай только при прямом указании в исходном документе.
-${modelFieldValueInstructions} В evidence каждого предложения указывай documentId, imagePath и точную quote из исходника. Для origin="document" цитата содержит само значение. Для origin="inference" цитата подтверждает исходный факт, а explanation описывает, как из него получено значение. Поля пакета: ${JSON.stringify(fieldLabels)}. ${obligationInstructions(input.fields)} ${employmentInstructions(input.fields)} ${attachmentInstructions(input.fields)} Если нужны тип, ограничения или колонки поля, уточни их через readField. В summary пиши простым языком без внутренних ID, названий API и технических полей.${checklistInstructions}`,
+${modelFieldValueInstructions} В evidence каждого предложения указывай documentId, imagePath и точную quote из исходника. Для origin="document" цитата содержит само значение. Для origin="inference" цитата подтверждает исходный факт, а explanation описывает, как из него получено значение. Поля пакета: ${JSON.stringify(fieldLabels)}. ${obligationInstructions(input.fields)} ${employmentInstructions(input.fields)} ${attachmentInstructions(input.fields)} Если нужны тип, ограничения или колонки поля, уточни их через readField. В summary пиши простым языком без внутренних ID, названий API и технических полей.${profileInstructions ? ` ${profileInstructions}` : ''}${checklistInstructions}`,
     });
     try {
       const stream = await agent.stream(
