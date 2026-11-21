@@ -85,6 +85,7 @@ let extractedName = 'Анна';
 let imageFixture: { path: string; contentType: string; bytes: Uint8Array }[] =
   [];
 let describeCount = 0;
+const descriptionsByResource = new Map<string, number>();
 let waitForVision: (() => Promise<void>) | undefined;
 let extractionModel: string | undefined;
 let waitForExtraction:
@@ -111,6 +112,10 @@ const agents: DocumentAgents = {
   },
   async describe(input) {
     describeCount++;
+    descriptionsByResource.set(
+      input.resource,
+      (descriptionsByResource.get(input.resource) ?? 0) + 1,
+    );
     if (actualAgents) return actualAgents.describe(input);
     await waitForVision?.();
     return {
@@ -4249,6 +4254,7 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
 
 test('rerunning analysis refreshes old visual descriptions and reuses the refreshed result', async () => {
   const input = await create();
+  const resource = `${input.workspaceId}:${input.workId}`;
   imageFixture = [
     {
       path: 'images/picture.png',
@@ -4257,7 +4263,7 @@ test('rerunning analysis refreshes old visual descriptions and reuses the refres
     },
   ];
   try {
-    await upload(input);
+    const source = await upload(input);
     const first = await until(input, terminal);
     const run = first.runs[0];
     expect(run?.status).toBe('succeeded');
@@ -4271,16 +4277,26 @@ test('rerunning analysis refreshes old visual descriptions and reuses the refres
           AND output->>'sourceDigest' LIKE 'vision-%:%'
       `,
     ).toBe(2);
-    const before = { describe: describeCount, extract: extractionCount };
-    await analyze(input);
-    expect((await until(input, terminal)).runs[0]?.status).toBe('succeeded');
-    expect(describeCount - before.describe).toBe(1);
-    expect(extractionCount - before.extract).toBe(1);
+    expect(descriptionsByResource.get(resource)).toBe(1);
+    expect(extractionDocuments.get(resource)).toEqual([source.id]);
 
     await analyze(input);
-    expect((await until(input, terminal)).runs[0]?.status).toBe('succeeded');
-    expect(describeCount - before.describe).toBe(1);
-    expect(extractionCount - before.extract).toBe(1);
+    const refreshed = await until(
+      input,
+      (view) => terminal(view) && view.runs[0]?.id !== run.id,
+    );
+    expect(refreshed.runs[0]?.status).toBe('succeeded');
+    expect(descriptionsByResource.get(resource)).toBe(2);
+    expect(extractionDocuments.get(resource)).toEqual([source.id, source.id]);
+
+    await analyze(input);
+    const cached = await until(
+      input,
+      (view) => terminal(view) && view.runs[0]?.id !== refreshed.runs[0]?.id,
+    );
+    expect(cached.runs[0]?.status).toBe('succeeded');
+    expect(descriptionsByResource.get(resource)).toBe(2);
+    expect(extractionDocuments.get(resource)).toEqual([source.id, source.id]);
   } finally {
     imageFixture = [];
   }
@@ -4367,6 +4383,241 @@ test('failed context continuation preserves previous facts and marks its old sum
     expect(next.session?.revision).toBe(before.session?.revision);
     expect(next.session?.context?.workRevision).not.toBe(next.work.revision);
   } finally {
+    reconcileHook = undefined;
+  }
+});
+
+test('invalid reconciliation preserves direct passport facts and a rerun keeps lawyer choices and citations', async () => {
+  const input = await create('bfl-bankruptcy-v8');
+  const scope = memberScope(input.workspaceId);
+  const workId = brandWorkId(input.workId);
+  const heading = 'Паспорт гражданина Российской Федерации';
+  const surname = 'Фамилия ИВАНОВ';
+  const birthplace = 'Место рождения ГОР. КИРОВ';
+  const recentCalls: number[] = [];
+  parseFixture = (bytes) => {
+    const marker = new TextDecoder().decode(bytes);
+    return Promise.resolve({
+      markdown: marker.includes('passport-preserved')
+        ? [heading, surname, birthplace].join('\n')
+        : 'Сопроводительное письмо',
+      processorVersion: 'fixture',
+    });
+  };
+  extractFixture = ({ document }) =>
+    Promise.resolve({
+      candidates: document.text.includes(heading)
+        ? [
+            {
+              field: 'lastName',
+              value: 'ИВАНОВ',
+              evidence: [
+                { documentId: document.id, imagePath: null, quote: surname },
+              ],
+            },
+            {
+              field: 'birthPlace',
+              value: 'ГОР. КИРОВ',
+              evidence: [
+                { documentId: document.id, imagePath: null, quote: birthplace },
+              ],
+            },
+          ]
+        : [],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+  reconcileHook = ({ documents }) => {
+    recentCalls.push(documents.length);
+    return Promise.reject(new LlmError('LLM_INVALID_RESPONSE'));
+  };
+  try {
+    const passport = await upload(input, 'passport-preserved');
+    await upload(input, 'letter-preserved');
+    const first = await until(
+      input,
+      (view) => terminal(view) && view.documents.length === 2,
+    );
+    expect(first.runs[0]?.status).toBe('partial');
+    expect(
+      first.runs[0]?.steps.find(({ stage }) => stage === 'reconciliation'),
+    ).toMatchObject({
+      status: 'failed',
+      errorCode: 'LLM_INVALID_RESPONSE',
+    });
+    expect(first.facts.values).toMatchObject({
+      lastName: 'ИВАНОВ',
+      birthPlace: 'ГОР. КИРОВ',
+      citizenship: 'Российская Федерация',
+    });
+    for (const [field, quote] of [
+      ['lastName', surname],
+      ['birthPlace', birthplace],
+      ['citizenship', heading],
+    ] as const) {
+      const candidate = first.facts.candidates.find(
+        (item) =>
+          item.field === field &&
+          item.evidence.some((source) => source.quote === quote),
+      );
+      expect(candidate?.selected).toBe(true);
+      expect(candidate?.evidence).toEqual([
+        { documentId: passport.id, imagePath: null, quote },
+      ]);
+    }
+    await apiBackend.workHttp.review.editValues(scope, {
+      workId,
+      revision: first.work.revision,
+      values: { ...first.facts.values, lastName: 'Исправлено юристом' },
+    });
+    await analyze(input);
+    const second = await until(
+      input,
+      (view) => terminal(view) && view.runs[0]?.id !== first.runs[0]?.id,
+    );
+    expect(recentCalls).toContain(2);
+    expect(second.runs[0]?.status).toBe('partial');
+    expect(second.facts.values.lastName).toBe('Исправлено юристом');
+    expect(second.facts.values.birthPlace).toBe('ГОР. КИРОВ');
+    expect(
+      second.facts.candidates.filter(({ field }) => field === 'citizenship'),
+    ).toHaveLength(1);
+    expect(
+      second.facts.candidates.filter(({ field }) => field === 'birthPlace'),
+    ).toHaveLength(1);
+  } finally {
+    parseFixture = undefined;
+    extractFixture = undefined;
+    reconcileHook = undefined;
+  }
+});
+
+test('statement and creditor list keep a newer documented balance after reconciliation fails', async () => {
+  const input = await create('bfl-bankruptcy-v12');
+  const scope = memberScope(input.workspaceId);
+  const workId = brandWorkId(input.workId);
+  const parsing = pauseStep();
+  const certificates = [
+    {
+      contractNumber: 'QA-VT-51',
+      amount: '151000.00',
+      amountDate: '28.10.2026',
+      name: 'Банк ВТБ (ПАО)',
+    },
+    {
+      contractNumber: 'QA-VT-51',
+      amount: '145006.47',
+      amountDate: '18.11.2026',
+      name: 'Банк ВТБ (ПАО)',
+    },
+    {
+      contractNumber: 'QA-VT-52',
+      amount: '11500.25',
+      amountDate: '18.11.2026',
+      name: 'Банк ВТБ (ПАО)',
+    },
+    {
+      contractNumber: 'QA-T-62',
+      amount: '15993.53',
+      amountDate: '20.11.2026',
+      name: 'АО «ТБанк»',
+    },
+  ];
+  const text = ({
+    name,
+    contractNumber,
+    amount,
+    amountDate,
+  }: (typeof certificates)[number]) =>
+    [
+      name,
+      `Кредитный договор № ${contractNumber} от 03.01.2025`,
+      `По состоянию на ${amountDate}`,
+      `Полная задолженность ${amount.replace('.', ',')} руб.`,
+    ].join('\n');
+  parseFixture = async (bytes) => {
+    await parsing.wait();
+    return {
+      markdown: new TextDecoder().decode(bytes).slice('%PDF-1.7\n '.length),
+      processorVersion: 'fixture',
+    };
+  };
+  extractFixture = ({ document }) =>
+    Promise.resolve({
+      candidates: certificates
+        .filter((row) => text(row) === document.text.trim())
+        .map((row) => ({
+          field: 'debts',
+          value: [
+            {
+              ...row,
+              contractDate: '03.01.2025',
+              debtStatus: 'Действует',
+              type: 'Кредит',
+            },
+          ],
+          evidence: [
+            { documentId: document.id, imagePath: null, quote: text(row) },
+          ],
+        })),
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+  reconcileHook = () => Promise.reject(new LlmError('LLM_INVALID_RESPONSE'));
+  try {
+    for (const row of certificates) await upload(input, text(row));
+    parsing.release();
+    const draft = await until(
+      input,
+      (view) => terminal(view) && view.documents.length === certificates.length,
+    );
+    expect(draft.runs[0]?.status).toBe('partial');
+    expect(draft.facts.values.debts).toHaveLength(3);
+    expect(
+      draft.facts.candidates.filter(({ field }) => field === 'debts'),
+    ).toHaveLength(4);
+    await apiBackend.workHttp.review.confirmFacts(scope, {
+      workId,
+      revision: draft.work.revision,
+    });
+    const confirmed = await until(
+      input,
+      (view) => view.work.confirmedRevision === view.work.revision,
+    );
+    await apiBackend.workHttp.generation.startGeneration(scope, {
+      workId,
+      revision: confirmed.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    const output = await until(input, (view) =>
+      view.generations.some(({ status }) => status === 'succeeded'),
+    );
+    const generation = output.generations.find(
+      ({ status }) => status === 'succeeded',
+    );
+    if (!generation) throw new Error('DEBT_GENERATION_MISSING');
+    for (const version of ['bfl-statement-v11', 'bfl-creditors-v3']) {
+      const file = generation.files.find(
+        ({ templateVersion }) => templateVersion === version,
+      );
+      if (!file) throw new Error('DEBT_DOCUMENT_MISSING');
+      const { bytes } = await apiBackend.workHttp.generation.downloadResult(
+        scope,
+        {
+          workId,
+          generationId: brandGenerationId(generation.id),
+          fileId: brandFileId(file.id),
+        },
+      );
+      const xml = strFromU8(
+        unzipSync(bytes)['word/document.xml'] ?? new Uint8Array(),
+      );
+      expect(xml.replace(/\s/gu, ' ')).toContain('172 500,25');
+      expect(xml).toContain('QA-VT-51');
+      expect(xml).not.toContain('151 000');
+    }
+  } finally {
+    parsing.release();
+    parseFixture = undefined;
+    extractFixture = undefined;
     reconcileHook = undefined;
   }
 });
@@ -5172,8 +5423,15 @@ test('an EGRN source fills inventory and only confirmed supported files enter th
       evidence.some(({ documentId }) => documentId === extract),
     );
     expect(
-      sourceFacts.find(({ field }) => field === 'attachments')?.value,
-    ).toEqual([{ description: egrn, category: 'egrn' }]);
+      sourceFacts
+        .filter(({ field }) => field === 'attachments')
+        .map(({ value }) => value),
+    ).toContainEqual([
+      {
+        description: 'Выписка из Единого государственного реестра недвижимости',
+        category: 'egrn',
+      },
+    ]);
     expect(
       sourceFacts.find(({ field }) => field === 'realEstate')?.value,
     ).toEqual([realEstate]);
@@ -5210,7 +5468,27 @@ test('an EGRN source fills inventory and only confirmed supported files enter th
         copyKind: 'copy',
         category: 'other',
       },
+      {
+        documentId: 'package:inventory',
+        description:
+          'Опись имущества гражданина по форме, утверждённой Приказом Минэкономразвития России от 05.08.2015 № 530',
+        copyKind: 'paperOriginal',
+        category: 'other',
+      },
     ];
+    const generated = selected.at(-1);
+    if (!generated) throw new Error('INVENTORY_ATTACHMENT_MISSING');
+    await rejects(
+      apiBackend.workHttp.review.editValues(scope, {
+        workId,
+        revision: initial.work.revision,
+        values: {
+          ...initial.facts.values,
+          submittedAttachments: [{ ...generated, copyKind: 'copy' }],
+        },
+      }),
+      'INVALID_WORK_INPUT',
+    );
     await apiBackend.workHttp.review.editValues(scope, {
       workId,
       revision: initial.work.revision,
@@ -5249,11 +5527,10 @@ test('an EGRN source fills inventory and only confirmed supported files enter th
     const inventory = await readDocument('inventory.docx');
     expect(inventory).toContain('ул. Синтетическая, 101');
     expect(statement).not.toContain('ул. Синтетическая, 101');
-    expect(statement).toContain('Выписка из ЕГРН (электронный оригинал)');
-    expect(statement).toContain(
-      'Чек № 101 — расходы по процедуре (бумажный оригинал)',
-    );
+    expect(statement).toContain('Выписка из ЕГРН (оригинал)');
+    expect(statement).toContain('Чек № 101 — расходы по процедуре (оригинал)');
     expect(statement).toContain('Справка с изображением печати (копия)');
+    expect(statement).toContain('№ 530 (оригинал)');
     expect(statement).not.toContain(remuneration);
     expect(statement).not.toContain(misc);
   } finally {

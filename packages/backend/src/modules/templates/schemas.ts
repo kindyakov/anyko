@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { calendarDatePlaceholders } from '@anyko/document-values/calendar-date';
+import { inventorySectionKeys } from '@anyko/document-values/inventory-layout';
 import { moneyPlaceholders } from '@anyko/document-values/money';
 
 import {
@@ -30,7 +31,7 @@ const cell = z.object({
   merge: z.enum(['none', 'start', 'continue']),
 });
 const row = z.object({
-  repeat: fieldKeySchema.nullable(),
+  repeat: z.union([fieldKeySchema, z.enum(inventorySectionKeys)]).nullable(),
   cells: z.array(cell),
 });
 const block = z.discriminatedUnion('kind', [

@@ -10,17 +10,13 @@ import {
   type FieldValues,
 } from '@anyko/contracts/catalog';
 import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
-import {
-  datedBankruptcyPackage,
-  statementSroValues,
-} from '@anyko/document-values/bankruptcy-statement';
-import {
-  assessEmployment,
-  hasEmploymentFields,
-} from '@anyko/document-values/employment';
+import { omittedStatementAttachments } from '@anyko/document-values/statement-layout';
 import { Button, Disclosure } from '@anyko/ui';
 
-import { mentions } from '@/features/fact-review/model/preview';
+import {
+  mentions,
+  previewStatementValues,
+} from '@/features/fact-review/model/preview';
 
 import { PreviewPaper } from './preview/preview-paper';
 import { FieldEditor } from './work-fields';
@@ -136,18 +132,16 @@ export function PackagePreview(props: Props) {
   const zoomIndex = zooms.findIndex((item) => item.value === scale);
   const zoomClass = zooms[zoomIndex]?.className ?? '';
   const focusedField = pack.fields.find(({ key }) => key === focusKey);
-  const draftValues =
-    document.id === 'statement' && hasEmploymentFields(pack.fields)
-      ? {
-          ...values,
-          employmentDetails: assessEmployment(values, undefined, needsReview)
-            .statement,
-        }
-      : values;
-  const paperValues =
-    pack.version === datedBankruptcyPackage
-      ? { ...draftValues, ...statementSroValues(draftValues) }
-      : draftValues;
+  const paperValues = previewStatementValues(
+    pack,
+    document.id,
+    values,
+    needsReview,
+  );
+  const omittedAttachments = omittedStatementAttachments(
+    document.version,
+    values,
+  );
   return (
     <Tabs.Root
       value={document.version}
@@ -232,6 +226,11 @@ export function PackagePreview(props: Props) {
         </div>
       </div>
       <Tabs.Panel value={document.version}>
+        {omittedAttachments.length > 0 && (
+          <p role="status" className="mb-3 text-xs text-amber-100">
+            {`Абзацы об этих приложениях не войдут в заявление — ${omittedAttachments.join(', ')}.`}
+          </p>
+        )}
         <div className="text-muted mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
           <span className="flex items-center gap-2">
             <span className="h-3 w-6 rounded-[2px] border-b border-dotted border-zinc-400 bg-sky-100" />

@@ -432,6 +432,8 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     'fixture/mixed-short-first',
     'fixture/mixed-full-first',
   ].map((modelId) => ({ modelId, threadId: crypto.randomUUID() }));
+  // Fit the mandatory input and a short tool result, but not a full source page.
+  const mixedSummary = 'Q\u0308!/д'.repeat(650);
   const mixedText = '@!?.:,'.repeat(1166) + '!!!!!г. Тула';
   const oldText = 'Строка большого первичного документа. '.repeat(1000);
   const oldSource = {
@@ -683,6 +685,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     expect(requests.some(({ model }) => model === 'fixture/tiny')).toBe(false);
 
     for (const attempt of mixedAttempts) {
+      const previousToolCount = toolHistory.length;
       const outcome = await agents
         .reconcile({
           ...input,
@@ -700,7 +703,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
             inputRevision: 1,
             settingsRevision: 1,
             promptVersion: 'work-context-v1',
-            summary: 'Q\u0308!/д'.repeat(800),
+            summary: mixedSummary,
             documents: [],
             missingFields: [],
             conflictFields: [],
@@ -716,6 +719,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
       if (attempt.modelId === 'fixture/mixed-all-full') {
         expect(outcome).toBe('LLM_REQUEST_REJECTED');
         expect(mixedRequests).toHaveLength(1);
+        expect(toolHistory.slice(previousToolCount)).toHaveLength(2);
         continue;
       }
       expect(outcome).toBe('succeeded');

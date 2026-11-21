@@ -5,6 +5,7 @@ import type {
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
+import { statementDefaultValue } from '@anyko/document-values/bankruptcy-projection';
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
 import {
@@ -13,6 +14,8 @@ import {
   isBankObligation,
   obligationFields,
 } from '@anyko/document-values/obligations';
+import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
+import { comparableText } from '@anyko/document-values/text-value';
 
 import { sameFieldValue } from './field-value';
 
@@ -54,7 +57,16 @@ export function candidateSelection(
 ) {
   const unchanged = sameFieldValue(value, saved);
   return (candidate: ReviewField['candidates'][number]) =>
-    unchanged ? candidate.selected : sameFieldValue(value, candidate.value);
+    unchanged ? candidate.selected : sameReviewValue(value, candidate.value);
+}
+
+export function sameReviewValue(
+  a: FieldValue | undefined,
+  b: FieldValue | undefined,
+): boolean {
+  return typeof a === 'string' && typeof b === 'string'
+    ? comparableText(a) === comparableText(b)
+    : sameFieldValue(a, b);
 }
 
 export function reviewCandidateValue(
@@ -97,6 +109,8 @@ export function reviewFields(
       attention:
         conflict ||
         lost ||
+        (isDatedBankruptcyPackage(view.package.version) &&
+          statementDefaultValue(values, field.key) !== undefined) ||
         (view.facts.values[field.key] == null && candidates.length > 0),
     };
   });
@@ -121,7 +135,7 @@ export function reviewFields(
         ({ origin, value }) =>
           origin !== 'inference' &&
           !invalidReviewValue(field, value) &&
-          sameFieldValue(
+          sameReviewValue(
             normalizedReviewValue(field, value),
             normalizedReviewValue(field, candidates[0]?.value),
           ),

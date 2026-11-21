@@ -28,7 +28,7 @@ test('the selectable package contains three real versioned templates; archived s
   const packages = availablePackages();
   expect(packages).toHaveLength(1);
   expect(packages[0]?.technical).toBe(false);
-  expect(packages[0]?.version).toBe('bfl-bankruptcy-v8');
+  expect(packages[0]?.version).toBe('bfl-bankruptcy-v12');
   expect(requirePackage('bfl-bankruptcy-v6').documents[0]?.version).toBe(
     'bfl-statement-v6',
   );
@@ -413,8 +413,7 @@ test('the chosen request and explicit absence of attachments cannot be contradic
 });
 
 test('the current package uses one active contract total in both DOCX files', () => {
-  const pack = availablePackages()[0];
-  expect(pack?.version).toBe('bfl-bankruptcy-v8');
+  const pack = requirePackage('bfl-bankruptcy-v8');
   const values = {
     ...emptyFieldValues(),
     debtTotal: '99999',
@@ -454,13 +453,16 @@ test('the current package uses one active contract total in both DOCX files', ()
     ],
   };
   const render = (id: string) => {
-    const doc = pack?.documents.find((template) => template.id === id);
+    const doc = pack.documents.find((template) => template.id === id);
     if (!doc) throw new Error('Missing template');
     return (
       new PizZip(
         generateDocument(
           templateBytes(doc.version),
-          templateData(values, doc.version, doc.placeholders),
+          templateData(values, doc.version, doc.placeholders, {
+            fields: pack.fields,
+            referenceDate: '21.11.2026',
+          }),
         ),
       )
         .file('word/document.xml')
@@ -474,9 +476,9 @@ test('the current package uses one active contract total in both DOCX files', ()
   for (const xml of [statement, creditors]) {
     expect(xml.match(/ACT-001/g)).toHaveLength(1);
     expect(xml.match(/ACT-002/g)).toHaveLength(1);
-    expect(xml).toContain('1234,05');
+    expect(xml).toContain('1 234,05');
     expect(xml).toContain('200,06');
-    expect(xml).toContain('1434,11');
+    expect(xml).toContain('1 434,11');
     expect(xml).not.toContain('99999');
     expect(xml).not.toContain('PAID-003');
     expect(xml).not.toContain('57,12');
@@ -512,6 +514,76 @@ test('the approved statement preserves its predecessor’s OOXML parts and rende
     );
   expect(requestTexts).toHaveLength(3);
   for (const text of requestTexts) expect(sourceXml).toContain(text);
+});
+
+test('the v8 statement formats the original evidence, projects default paragraphs and omits blank debt rows', () => {
+  const pack = requirePackage('bfl-bankruptcy-v8');
+  const doc = pack.documents.find(({ id }) => id === 'statement');
+  const inventory = pack.documents.find(({ id }) => id === 'inventory');
+  if (!doc || !inventory) throw new Error('Missing templates');
+  const values = {
+    ...emptyFieldValues(),
+    lastName: 'ИВАНОВА',
+    firstName: 'ИВАННА',
+    middleName: 'ИВАНОВНА',
+    birthPlace: 'ГОР. КИРОВ',
+    documentNumber: '0000 000000',
+    documentDate: '10.03.2026',
+    passportIssuer: 'УМВД РОССИИ ПО КИРОВСКОЙ ОБЛАСТИ',
+    familyDetails: 'Не состою в браке. На иждивении имею ребёнка.',
+    majorTransactionsDetails: 'Подтверждённый текст о сделках.',
+    debts: [
+      {},
+      {
+        name: 'АО "ТЕСТОВЫЙ БАНК"',
+        creditorLegalName: 'АКЦИОНЕРНОЕ ОБЩЕСТВО "ТЕСТОВЫЙ БАНК"',
+        creditorShortName: 'АО "ТЕСТОВЫЙ БАНК"',
+        address: 'ГОРОД МОСКВА, УЛ. ТЕСТОВАЯ, Д. 1',
+        contractNumber: 'TEST-01',
+        amount: '161000.00',
+      },
+    ],
+    realEstate: [],
+    employmentHistory: [
+      { employer: 'ООО Пример', date: '01.03.2026', event: 'Приём' },
+    ],
+    employmentIncome: [
+      { employer: 'ООО Пример', month: '2026-03', amount: '20000.00' },
+    ],
+  };
+  const context = { fields: pack.fields, referenceDate: '10.03.2026' };
+  const data = templateData(values, doc.version, doc.placeholders, context);
+  expect(data).toMatchObject({
+    lastName: 'Иванова',
+    birthPlace: 'гор. Киров',
+    documentNumber: '00 00 № 000000',
+    passportIssuer: 'УМВД России по Кировской области',
+    familyDetails: 'Не состою в браке. На иждивении имею ребёнка.',
+    majorTransactionsDetails: 'Подтверждённый текст о сделках.',
+    debtTotal: '161 000,00',
+    signerName: 'Иванова И.И.',
+    debts: [{ amount: '161 000,00', name: 'АО «Тестовый Банк»' }],
+    creditorHeaders: [
+      {
+        name: 'Акционерное общество «Тестовый Банк» (АО «Тестовый Банк»)',
+        address: 'город Москва, ул. Тестовая, д. 1',
+      },
+    ],
+  });
+  expect(data.employmentDetails).toContain(
+    'В настоящее время я, Иванова Иванна Ивановна, осуществляю трудовую деятельность в ООО Пример.',
+  );
+  expect(data.employmentDetails).toContain(
+    '17 400,00 (семнадцать тысяч четыреста рублей ноль копеек), после налогообложения.',
+  );
+  expect(data.companyParticipationDetails).toContain('не являлась');
+  expect(data.liabilityDetails).toContain('не привлекалась');
+  expect(data.businessDebts).toEqual([]);
+  expect(
+    templateData(values, inventory.version, inventory.placeholders, context)
+      .realEstate,
+  ).toMatchObject([{ description: '-', rowNumber: '-' }]);
+  expect(values.lastName).toBe('ИВАНОВА');
 });
 
 test('statement projects current-year income across employers and leaves historical fields editable', () => {

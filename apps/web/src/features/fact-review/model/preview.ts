@@ -1,48 +1,129 @@
 import type {
   DocumentPackage,
+  FieldKey,
   FieldValue,
   FieldValues,
   PreviewRow,
 } from '@anyko/contracts/catalog';
 import { attachmentDescriptions } from '@anyko/document-values/attachments';
 import {
-  approvedStatementTemplate,
+  employmentStatement,
+  familyStatement,
+  formatPreviousNames,
+  projectBankruptcyCollections,
+  statementDefaultValue,
+  usesBankruptcyProjection,
+} from '@anyko/document-values/bankruptcy-projection';
+import {
+  bankruptcyStatement,
   statementRequestValues,
+  statementSroValues,
 } from '@anyko/document-values/bankruptcy-statement';
 import {
-  obligationAmounts,
-  obligationTemplate,
-} from '@anyko/document-values/obligations';
+  assessEmployment,
+  hasEmploymentFields,
+} from '@anyko/document-values/employment';
+import { inventorySections } from '@anyko/document-values/inventory-layout';
+import {
+  filingMoneyWords,
+  isDatedBankruptcyPackage,
+  revisedStatementTemplate,
+  statementDebtNarratives,
+  statementLayout,
+  withFilingDateSuffix,
+} from '@anyko/document-values/statement-layout';
 
-export function previewDocumentValues(version: string, values: FieldValues) {
-  if (!obligationTemplate(version)) return null;
-  const { debts, businessDebts, creditorHeaders, total, totalWords } =
-    obligationAmounts(values.debts, values.businessDebts);
-  const rows = {
-    debts,
-    businessDebts,
-    creditorHeaders,
-    ...(version === approvedStatementTemplate && {
-      attachments: attachmentDescriptions(values.submittedAttachments),
+export function previewStatementValues(
+  pack: DocumentPackage,
+  documentId: string,
+  values: FieldValues,
+  needsReview?: readonly FieldKey[],
+): FieldValues {
+  if (documentId !== 'statement') return values;
+  const modern = isDatedBankruptcyPackage(pack.version);
+  const statementVersion = pack.documents.find(
+    ({ id }) => id === documentId,
+  )?.version;
+  const employment = hasEmploymentFields(pack.fields)
+    ? assessEmployment(values, undefined, needsReview)
+    : undefined;
+  return {
+    ...values,
+    ...(modern && statementSroValues(values)),
+    ...(employment && {
+      employmentDetails: modern
+        ? employmentStatement(
+            values,
+            employment,
+            revisedStatementTemplate(statementVersion),
+          )
+        : employment.statement,
     }),
   };
-  const request =
-    version === approvedStatementTemplate
-      ? statementRequestValues(values)
-      : undefined;
-  const isCollection = (key: string | undefined): key is keyof typeof rows =>
+}
+
+export function previewDocumentValues(
+  version: string,
+  values: FieldValues,
+  fields: DocumentPackage['fields'],
+) {
+  const modern = usesBankruptcyProjection(version, fields);
+  const obligations = projectBankruptcyCollections(version, values, modern);
+  if (!modern && !obligations) return null;
+  const statement = bankruptcyStatement(version);
+  const revised = revisedStatementTemplate(version);
+  const narratives = statementDebtNarratives(version, values);
+  const rows: FieldValues = {
+    ...(obligations && {
+      debts: obligations.debts,
+      businessDebts: obligations.businessDebts,
+      creditorHeaders: obligations.creditorHeaders,
+    }),
+    ...(statement && {
+      attachments: attachmentDescriptions(values.submittedAttachments).map(
+        ({ description }) => ({
+          description: revised
+            ? withFilingDateSuffix(description)
+            : description,
+        }),
+      ),
+    }),
+    ...(narratives && { statementDebts: narratives }),
+    ...inventorySections(version, values),
+  };
+  const request: Record<string, string> = {
+    ...(statement && statementRequestValues(values)),
+    ...statementLayout(version, values),
+  };
+  const isCollection = (key: string | undefined) =>
     key !== undefined && Object.hasOwn(rows, key);
   return {
+    modern,
     isCollection,
     emptyNote: (key: string, collection: FieldValue) =>
       key === 'creditorHeaders' || collection !== null
         ? null
         : '[не заполнено]',
     value: (key: string) => (isCollection(key) ? rows[key] : values[key]),
+    defaultText: (key: string) =>
+      statement ? statementDefaultValue(values, key) : undefined,
+    translatedText: (key: string, value: string) => {
+      if (statement && key === 'familyDetails') return familyStatement(value);
+      if (
+        (version === 'bfl-creditors-v3' || version === 'bfl-inventory-v2') &&
+        key === 'previousNames'
+      )
+        return formatPreviousNames(value);
+      return value;
+    },
     text: (key: string) => {
-      if (key === 'debtTotal') return total ?? '[не заполнено]';
-      if (key === 'debtTotalWords') return totalWords ?? '[не заполнено]';
-      return request && Object.hasOwn(request, key) ? request[key] : undefined;
+      if (obligations && key === 'debtTotal')
+        return obligations.total ?? '[не заполнено]';
+      if (obligations && key === 'debtTotalWords')
+        return revised && obligations.total
+          ? filingMoneyWords(obligations.total)
+          : (obligations.totalWords ?? '[не заполнено]');
+      return Object.hasOwn(request, key) ? request[key] : undefined;
     },
   };
 }

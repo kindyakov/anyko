@@ -1,4 +1,4 @@
-import { datedBankruptcyPackage } from '@anyko/document-values/bankruptcy-statement';
+import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
 import { LlmError } from '@anyko/llm';
 
 import { visionPromptRevision } from '../../modules/agents';
@@ -123,16 +123,15 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       await readConnection();
     };
     const pack = requirePackage((await current()).packageVersion);
-    const excludedFields =
-      pack.version === datedBankruptcyPackage
-        ? new Set(
-            pack.fields
-              .filter(
-                ({ key }) => key === 'documentDate' || key.startsWith('sro'),
-              )
-              .map(({ key }) => key),
-          )
-        : undefined;
+    const excludedFields = isDatedBankruptcyPackage(pack.version)
+      ? new Set(
+          pack.fields
+            .filter(
+              ({ key }) => key === 'documentDate' || key.startsWith('sro'),
+            )
+            .map(({ key }) => key),
+        )
+      : undefined;
     const fields = pack.fields.filter(({ key }) => !excludedFields?.has(key));
     const candidates: WorkFacts['candidates'] = [];
     const sources: ContinuationSource[] = [];

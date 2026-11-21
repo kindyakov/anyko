@@ -10,6 +10,7 @@ import {
   creditorRegistryColumns,
   obligationColumns,
 } from '@anyko/document-values/obligations';
+import { revisedBankruptcyPackages } from '@anyko/document-values/statement-layout';
 import { DiagnosticError } from '@anyko/logger';
 
 import { fieldDefinitions } from '../../profiles/bfl/fields';
@@ -43,6 +44,7 @@ const historicalPackage: DocumentPackage = documentPackageSchema.parse({
           'personName',
           'registrationAddress',
           'observations',
+          'cashOnHand',
           ...employmentFields,
           'submittedAttachments',
         ].includes(key),
@@ -143,10 +145,48 @@ const datedPackage: DocumentPackage = documentPackageSchema.parse({
       : document,
   ),
 });
+const revisedStatementVersions = [
+  'bfl-statement-v9',
+  'bfl-statement-v10',
+  'bfl-statement-v10',
+  'bfl-statement-v11',
+];
+const revisedPackages = revisedBankruptcyPackages.map((version, index) =>
+  documentPackageSchema.parse({
+    ...datedPackage,
+    version,
+    fields:
+      index < 2
+        ? datedPackage.fields
+        : [
+            ...datedPackage.fields.map((field) =>
+              ['realEstate', 'vehicles', 'valuables'].includes(field.key)
+                ? (fieldDefinitions.find(({ key }) => key === field.key) ??
+                  field)
+                : field,
+            ),
+            ...fieldDefinitions.filter(({ key }) => key === 'cashOnHand'),
+          ],
+    documents: [
+      manifest.find(
+        ({ version }) => version === revisedStatementVersions[index],
+      ),
+      manifest.find(
+        ({ version }) =>
+          version === (index >= 2 ? 'bfl-inventory-v2' : 'bfl-inventory-v1'),
+      ),
+      manifest.find(
+        ({ version }) =>
+          version === (index >= 2 ? 'bfl-creditors-v3' : 'bfl-creditors-v2'),
+      ),
+    ],
+  }),
+);
 export function availablePackages(): DocumentPackage[] {
-  return [datedPackage];
+  return [requirePackage('bfl-bankruptcy-v12')];
 }
 const knownPackages = [
+  ...revisedPackages,
   datedPackage,
   obligationPackage,
   amountPackage,

@@ -5,10 +5,16 @@ import type {
   FieldValues,
   PreviewParagraph,
 } from '@anyko/contracts/catalog';
+import { formatBankruptcyScalar } from '@anyko/document-values/bankruptcy-format';
 
-export function signerName(values: FieldValues): string {
+export function signerName(values: FieldValues, modern = false): string {
   const surname =
-    typeof values.lastName === 'string' ? values.lastName.trim() : '';
+    typeof values.lastName === 'string'
+      ? (modern
+          ? formatBankruptcyScalar('lastName', values.lastName)
+          : values.lastName
+        ).trim()
+      : '';
   const initials = [values.firstName, values.middleName]
     .map((value) =>
       typeof value === 'string'

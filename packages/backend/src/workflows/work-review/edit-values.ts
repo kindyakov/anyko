@@ -2,6 +2,7 @@ import {
   attachmentCategory,
   attachmentCopyKind,
   hasSubmittedAttachments,
+  packageAttachment,
 } from '@anyko/document-values/attachments';
 
 import { requirePackage } from '../../modules/templates';
@@ -59,10 +60,15 @@ async function validateSubmittedAttachments(
     rows.some(({ documentId, description, category, copyKind }) => {
       if (!documentId || seen.has(documentId)) return true;
       seen.add(documentId);
+      const fixed = packageAttachment(documentId);
       return (
         !description?.trim() ||
         !attachmentCategory(category) ||
-        !attachmentCopyKind(copyKind)
+        !attachmentCopyKind(copyKind) ||
+        (fixed !== undefined &&
+          (fixed.description !== description ||
+            fixed.category !== category ||
+            (fixed.originalOnly && copyKind !== 'paperOriginal')))
       );
     })
   ) {
@@ -74,7 +80,8 @@ async function validateSubmittedAttachments(
   const active = new Set(
     documents.filter(({ deleted }) => !deleted).map(({ id }) => id),
   );
-  if ([...seen].some((id) => !active.has(id))) throw new WorkError('NOT_FOUND');
+  if ([...seen].some((id) => !active.has(id) && !packageAttachment(id)))
+    throw new WorkError('NOT_FOUND');
 }
 
 function saveWorkEdit(

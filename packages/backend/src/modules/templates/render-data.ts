@@ -1,6 +1,19 @@
 import { attachmentDescriptions } from '@anyko/document-values/attachments';
 import {
-  approvedStatementTemplate,
+  formatBankruptcyMoney,
+  formatBankruptcyScalar,
+} from '@anyko/document-values/bankruptcy-format';
+import {
+  bankruptcyCollectionCell,
+  employmentStatement,
+  familyStatement,
+  formatPreviousNames,
+  projectBankruptcyCollections,
+  statementDefaults,
+  usesBankruptcyProjection,
+} from '@anyko/document-values/bankruptcy-projection';
+import {
+  bankruptcyStatement,
   statementRequestValues,
   statementSroValues,
 } from '@anyko/document-values/bankruptcy-statement';
@@ -8,11 +21,15 @@ import {
   assessEmployment,
   hasEmploymentFields,
 } from '@anyko/document-values/employment';
+import { inventorySections } from '@anyko/document-values/inventory-layout';
+import { obligationFields } from '@anyko/document-values/obligations';
 import {
-  obligationAmounts,
-  obligationFields,
-  obligationTemplate,
-} from '@anyko/document-values/obligations';
+  filingMoneyWords,
+  revisedStatementTemplate,
+  statementDebtNarratives,
+  statementLayout,
+  withFilingDateSuffix,
+} from '@anyko/document-values/statement-layout';
 import { formatTemplateValue } from '@anyko/document-values/template-value';
 
 import {
@@ -35,32 +52,51 @@ export function templateData(
   creditorHeaders?: FieldValues['debts'];
 } {
   const values = readFieldValues(input);
-  if (templateVersion === approvedStatementTemplate)
+  if (
+    (templateVersion === 'bfl-creditors-v3' ||
+      templateVersion === 'bfl-inventory-v2') &&
+    typeof values.previousNames === 'string'
+  )
+    values.previousNames = formatPreviousNames(values.previousNames);
+  const statement = bankruptcyStatement(templateVersion);
+  const revised = revisedStatementTemplate(templateVersion);
+  const modern = usesBankruptcyProjection(templateVersion, context?.fields);
+  const emptyCell = templateVersion === 'bfl-creditors-v3' ? '-' : '—';
+  const defaults: Record<string, string> = statement
+    ? statementDefaults(values)
+    : {};
+  if (statement) {
     Object.assign(values, statementSroValues(values));
-  const output = emptyFieldValues();
-  const submitted = templateVersion === approvedStatementTemplate;
-  if (submitted)
-    values.attachments = attachmentDescriptions(values.submittedAttachments);
-  if (context && hasEmploymentFields(context.fields)) {
-    values.employmentDetails = assessEmployment(
-      values,
-      context.referenceDate,
-    ).statement;
+    if (typeof values.familyDetails === 'string')
+      values.familyDetails = familyStatement(values.familyDetails);
   }
-  const obligations = obligationTemplate(templateVersion)
-    ? obligationAmounts(values.debts, values.businessDebts)
+  const output = emptyFieldValues();
+  if (statement)
+    values.attachments = attachmentDescriptions(
+      values.submittedAttachments,
+    ).map(({ description }) => ({
+      description: revised ? withFilingDateSuffix(description) : description,
+    }));
+  if (context && hasEmploymentFields(context.fields)) {
+    const employment = assessEmployment(values, context.referenceDate);
+    values.employmentDetails = statement
+      ? employmentStatement(values, employment, revised)
+      : employment.statement;
+  }
+  const obligations = templateVersion
+    ? projectBankruptcyCollections(templateVersion, values, modern)
     : null;
   if (obligations) {
     for (const field of obligationFields) values[field] = obligations[field];
   }
   for (const field of fieldDefinitions) {
-    const value = values[field.key];
+    const value = values[field.key] ?? defaults[field.key] ?? null;
     if (
       (templateVersion === 'bfl-statement-v4' ||
         templateVersion === 'bfl-statement-v5' ||
         templateVersion === 'bfl-statement-v6' ||
-        obligationTemplate(templateVersion) ||
-        (submitted && field.key === 'attachments')) &&
+        obligations ||
+        (statement && field.key === 'attachments')) &&
       Array.isArray(value) &&
       !value.length &&
       ['debts', 'businessDebts', 'attachments'].includes(field.key)
@@ -69,7 +105,12 @@ export function templateData(
       continue;
     }
     if (!field.columns.length) {
-      output[field.key] = typeof value === 'string' ? value : '[не заполнено]';
+      output[field.key] =
+        typeof value === 'string'
+          ? modern
+            ? formatBankruptcyScalar(field.key, value)
+            : value
+          : '[не заполнено]';
       continue;
     }
     const rows =
@@ -83,7 +124,7 @@ export function templateData(
                   ? value === null
                     ? '[не заполнено]'
                     : 'Отсутствует'
-                  : '—',
+                  : emptyCell,
               ]),
             ),
           ];
@@ -93,9 +134,16 @@ export function templateData(
           .filter(
             ({ key }) => field.key !== 'attachments' || key !== 'category',
           )
-          .map(({ key }) => [key, row[key] ?? '[не заполнено]']),
+          .map(({ key }) => [
+            key,
+            bankruptcyCollectionCell(key, row[key], value, modern),
+          ]),
       ),
-      rowNumber: String(index + 1),
+      rowNumber:
+        row.rowNumber ??
+        (modern && Array.isArray(value) && !value.length
+          ? '-'
+          : String(index + 1)),
     }));
   }
   for (const { tag, field, placeholder } of placeholders) {
@@ -104,16 +152,26 @@ export function templateData(
     Object.assign(output, {
       [tag]:
         typeof value === 'string'
-          ? formatTemplateValue(value, placeholder)
+          ? modern && placeholder === 'RUB_DECIMAL'
+            ? formatBankruptcyMoney(value)
+            : formatTemplateValue(value, placeholder)
           : '[не заполнено]',
     });
   }
   if (obligations) {
     output.debtTotal = obligations.total ?? '[не заполнено]';
-    output.debtTotalWords = obligations.totalWords ?? '[не заполнено]';
+    output.debtTotalWords =
+      revised && obligations.total
+        ? filingMoneyWords(obligations.total)
+        : (obligations.totalWords ?? '[не заполнено]');
   }
   const surname =
-    typeof values.lastName === 'string' ? values.lastName.trim() : '';
+    typeof values.lastName === 'string'
+      ? (modern
+          ? formatBankruptcyScalar('lastName', values.lastName)
+          : values.lastName
+        ).trim()
+      : '';
   const initials = [values.firstName, values.middleName]
     .map((value) =>
       typeof value === 'string'
@@ -122,10 +180,13 @@ export function templateData(
     )
     .flatMap((initial) => (initial ? [`${initial.toUpperCase()}.`] : []))
     .join('');
+  const narratives = statementDebtNarratives(templateVersion, input);
   return {
     ...output,
-    ...(templateVersion === approvedStatementTemplate &&
-      statementRequestValues(values)),
+    ...(statement && statementRequestValues(values)),
+    ...statementLayout(templateVersion, input),
+    ...(narratives && { statementDebts: narratives }),
+    ...inventorySections(templateVersion, input),
     ...(obligations && {
       creditorHeaders: obligations.creditorHeaders.map((row) =>
         Object.fromEntries(

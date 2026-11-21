@@ -2,7 +2,7 @@ import {
   hasSubmittedAttachments,
   submittedAttachmentRows,
 } from '@anyko/document-values/attachments';
-import { datedBankruptcyPackage } from '@anyko/document-values/bankruptcy-statement';
+import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
 
 import type { AuditModule } from '../../modules/audit';
 import type { ConnectionsModule } from '../../modules/connections';
@@ -68,7 +68,7 @@ export const startGeneration =
           const confirmed = work.confirmedRevision === work.revision;
           let revision = work.revision;
           if (
-            work.packageVersion === datedBankruptcyPackage &&
+            isDatedBankruptcyPackage(work.packageVersion) &&
             values.documentDate === null
           ) {
             const date = deps.clock

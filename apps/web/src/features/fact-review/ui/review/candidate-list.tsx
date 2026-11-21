@@ -6,10 +6,12 @@ import type {
   FieldValues,
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
+import { statementDefaultValue } from '@anyko/document-values/bankruptcy-projection';
 import {
   canApplyCreditorRegistryCandidate,
   containsCreditorRegistryCandidate,
 } from '@anyko/document-values/obligations';
+import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
 import { Button, StatusPill } from '@anyko/ui';
 
 import { courtOptions } from '@/features/fact-review/model/court-options';
@@ -20,11 +22,13 @@ import {
   normalizedReviewValue,
   reviewCandidateValue,
   type ReviewField,
+  sameReviewValue,
 } from '@/features/fact-review/model/review';
 
 import { CandidateValue } from '../work-fields';
 
 import { CourtChoices } from './court-choices';
+import { CurrentCandidateValue } from './current-candidate-value';
 import {
   type CourtSources,
   type CreditorSource,
@@ -56,6 +60,9 @@ export function CandidateList({
         ({ field, candidates, conflict, evidenceLost, attention }) => {
           const saved = view.facts.values[field.key];
           const current = values[field.key];
+          const defaultText = isDatedBankruptcyPackage(view.package.version)
+            ? statementDefaultValue(values, field.key)
+            : undefined;
           const changed = !sameFieldValue(current, saved);
           const comparable = normalizedReviewValue(field, current);
           const isSelected = candidateSelection(
@@ -72,7 +79,7 @@ export function CandidateList({
             const value = normalizedReviewValue(field, candidate.value);
             const existing = groups.find(
               (group) =>
-                group.origin === origin && sameFieldValue(group.value, value),
+                group.origin === origin && sameReviewValue(group.value, value),
             );
             const group = existing ?? {
               origin,
@@ -87,6 +94,11 @@ export function CandidateList({
             group.included ||= candidate.creditorSource
               ? containsCreditorRegistryCandidate(comparable, value)
               : isSelected({ ...candidate, value });
+            if (
+              typeof comparable === 'string' &&
+              sameReviewValue(comparable, value)
+            )
+              group.value = comparable;
             if (candidate.creditorSource)
               group.creditorSources.set(
                 candidate.creditorSource.url,
@@ -116,7 +128,7 @@ export function CandidateList({
             groups,
             (group) =>
               !invalidReviewValue(field, group.value) &&
-              sameFieldValue(comparable, group.value) &&
+              sameReviewValue(comparable, group.value) &&
               !choicesFor(group).length
                 ? 'matching'
                 : 'options',
@@ -161,28 +173,16 @@ export function CandidateList({
                     Показать поле в документе
                   </Button>
                 </header>
-                <div
-                  className={`mt-3 rounded-xl border px-3.5 py-3 ${current != null && !evidenceLost ? 'border-emerald-400/20 bg-emerald-400/[0.04]' : 'border-white/[0.08] bg-black/20'}`}
+                <CurrentCandidateValue
+                  value={current}
+                  defaultText={defaultText}
+                  changed={changed}
+                  evidenceLost={evidenceLost}
+                  busy={busy}
+                  onConfirmDefault={(text) => {
+                    onApply({ [field.key]: text });
+                  }}
                 >
-                  <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                    <p className="text-xs font-medium text-white/70">
-                      В документ подставится
-                    </p>
-                    {changed && (
-                      <span className="text-xs text-amber-200" role="status">
-                        Не сохранено
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-base leading-6 font-semibold break-words">
-                    {current == null ? (
-                      <span className="text-white/65">Пока не заполнено</span>
-                    ) : Array.isArray(current) && current.length === 0 ? (
-                      <span>Записей нет</span>
-                    ) : (
-                      <CandidateValue value={current} />
-                    )}
-                  </div>
                   {matching.map((findings, index) => (
                     <div
                       key={index}
@@ -195,7 +195,7 @@ export function CandidateList({
                       />
                     </div>
                   ))}
-                </div>
+                </CurrentCandidateValue>
                 {options.length > 0 && (
                   <section
                     className="mt-4 space-y-2"
