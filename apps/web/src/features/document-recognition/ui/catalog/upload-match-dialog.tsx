@@ -7,6 +7,7 @@ import { Button, FileIcon, Modal, Notice, StatusPill } from '@anyko/ui';
 import { HorizonLoader } from '@anyko/ui/brand';
 
 import { useWorkspaceEvents } from '@/lib/api/live-events';
+import { liveQuery } from '@/lib/api/live-query';
 
 import { findUploadMatches } from '../../api/upload-matches';
 import { describeDocumentError } from '../../model/error-texts';
@@ -45,6 +46,7 @@ export function UploadMatchDialog({
   const [cursors, setCursors] = useState<string[]>([]);
   const after = cursors.at(-1);
   const page = useQuery({
+    meta: liveQuery(workspaceId, 'recognition-list'),
     queryKey: ['upload-matches', workspaceId, checksum, after],
     queryFn: ({ signal }) =>
       findUploadMatches(workspaceId, checksum, signal, after),

@@ -10,7 +10,7 @@ import {
   ProviderStreamIdleError,
   watchProviderStream,
 } from './provider-stream';
-import { createRouterContextLimits } from './router-context';
+import { createModelContextLimits } from './router-context';
 
 export type { ProviderCallObserver } from './provider-calls';
 export type { ModelTraceContext } from './local-trace';
@@ -110,6 +110,7 @@ export function llmError(error: unknown, signal?: AbortSignal): LlmError {
 export function createModelGateway(
   options: { fetch?: typeof fetch; traceDirectory?: string } = {},
 ) {
+  const contextLimits = createModelContextLimits(options.fetch ?? fetch);
   return {
     trace(
       context: ModelTraceContext | undefined,
@@ -124,8 +125,20 @@ export function createModelGateway(
           connection,
         );
     },
-    contextLimits: createRouterContextLimits(options.fetch ?? fetch),
-    reasoningOptions(connection: ModelConnection, effort: 'none' | 'high') {
+    contextLimits(
+      connection: ModelConnection,
+      modelId: string,
+      signal: AbortSignal,
+    ) {
+      const parsed = connectionSchema.safeParse(connection);
+      return parsed.success
+        ? contextLimits(parsed.data, modelId, signal)
+        : Promise.resolve(null);
+    },
+    reasoningOptions(
+      connection: ModelConnection,
+      effort: 'none' | 'medium' | 'high',
+    ) {
       return { [connection.id]: { reasoning: { effort } } };
     },
     model(

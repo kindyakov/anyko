@@ -147,7 +147,7 @@ export function stubHttpOptions(): {
         list: unused,
         send: unused,
         progress: undefined,
-        progressActive: undefined,
+        progressRun: undefined,
       },
       intake,
       deletion: { request: unused, status: unused, pending: unused },

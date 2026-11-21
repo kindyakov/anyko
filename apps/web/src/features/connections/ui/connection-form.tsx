@@ -122,7 +122,7 @@ export function ConnectionForm({
       baseURL: current?.baseURL ?? defaultBaseURL,
       visionModel: current?.visionModel ?? defaultModel,
       extractionModel: current?.extractionModel ?? defaultModel,
-      visionDisableReasoning: current?.visionDisableReasoning ?? false,
+      visionDisableReasoning: current?.visionDisableReasoning ?? true,
       extractionEnableReasoning: current?.extractionEnableReasoning ?? true,
       apiKey: '',
     },
@@ -170,7 +170,7 @@ export function ConnectionForm({
                 'visionDisableReasoning',
                 form.getFieldValue('visionModel') === saved?.visionModel
                   ? saved.visionDisableReasoning
-                  : false,
+                  : true,
               );
               form.setFieldValue(
                 'extractionEnableReasoning',
@@ -193,7 +193,7 @@ export function ConnectionForm({
                 value === current.visionModel;
               form.setFieldValue(
                 'visionDisableReasoning',
-                saved ? current.visionDisableReasoning : false,
+                saved ? current.visionDisableReasoning : true,
               );
             },
           }}
@@ -210,7 +210,7 @@ export function ConnectionForm({
           {(field) => (
             <ReasoningSwitch
               label={visionReasoningLabel}
-              description="Включайте, если модель умеет отключать рассуждения. В остальных случаях действует настройка провайдера."
+              description="Для новой модели включено. Если модель не поддерживает отключение рассуждений, можно оставить режим провайдера."
               checked={field.state.value}
               onCheckedChange={field.handleChange}
             />
@@ -243,7 +243,7 @@ export function ConnectionForm({
           {(field) => (
             <ReasoningSwitch
               label={extractionReasoningLabel}
-              description="Включайте, если модель поддерживает высокий уровень. При выключенном переключателе Anyko не передаёт уровень рассуждений, и режим определяет провайдер."
+              description="При выключенном переключателе запрос использует средний уровень рассуждений."
               checked={field.state.value}
               onCheckedChange={field.handleChange}
             />

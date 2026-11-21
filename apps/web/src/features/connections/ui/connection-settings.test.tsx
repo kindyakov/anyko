@@ -41,6 +41,7 @@ const configured = {
     revision: 3,
     baseURL: 'https://models.example.test/v1',
     visionModel: 'vision-model',
+    visionDisableReasoning: false,
     extractionModel: 'extraction-model',
     extractionEnableReasoning: true,
     configured: true,

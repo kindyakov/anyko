@@ -20,11 +20,15 @@ export function createWorkChat(
 ) {
   const feed = deps.chatProgress;
   return {
-    progressActive:
+    progressRun:
       deps.chatProgress &&
-      ((scope: WorkspaceScope, workId: WorkId) => {
+      (async (scope: WorkspaceScope, workId: WorkId) => {
         scope.require('works.read');
-        return deps.processing.queries.isActive(scope, workId, 'chat');
+        const runId = await deps.processing.queries.activeChatId(scope, workId);
+        if (!runId) return null;
+        await requireWork(deps.works.queries, scope, workId);
+        const sources = await deps.works.queries.sources(scope, workId);
+        return sources.cleanupPending ? null : runId;
       }),
     progress:
       feed &&

@@ -62,6 +62,7 @@ export function createWorkDeletionApi(deps: {
             target: { kind: 'work', id: workId },
             correlationId,
           });
+          await work.internal.event(workspaceId, workId, 'work.deleting');
           return { status: 'deleting' as const };
         }),
       );

@@ -187,6 +187,7 @@ test('Redis blocking reads wake on append and can resume from their last ID', as
     await first;
     const next = new AbortController();
     const second = feed.subscribe(scope, cursor, next.signal, (rows) => {
+      if (!rows.length) return;
       expect(rows.map(({ delta }) => delta.text)).toEqual(['B']);
       next.abort();
     });
@@ -204,3 +205,75 @@ test('Redis blocking reads wake on append and can resume from their last ID', as
     feed.close();
   }
 });
+
+test('a work change and its concurrent journal entry acquire locks in the same order', async () => {
+  const db = createDatabasePool(url);
+  const workspace = crypto.randomUUID();
+  const work = crypto.randomUUID();
+  const writer = await db.connect();
+  const observer = await db.connect();
+  const append =
+    'INSERT INTO "WorkEvent" ("workspaceId","workId",kind) VALUES ($1,$2,$3) RETURNING id::text';
+  let queued: Promise<unknown> | undefined;
+  try {
+    await db.query('INSERT INTO "AnykoWorkspace" (id,name) VALUES ($1,$1)', [
+      workspace,
+    ]);
+    await db.query(
+      'INSERT INTO "Work" (id,"workspaceId","packageVersion",title,"createdBy","updatedAt") SELECT $1,$2,version,$1,$1,now() FROM "DocumentPackageVersion" ORDER BY version LIMIT 1',
+      [work, workspace],
+    );
+    await writer.query('BEGIN');
+    await writer.query(
+      'SELECT id FROM "Work" WHERE "workspaceId"=$1 AND id=$2 FOR UPDATE',
+      [workspace, work],
+    );
+    await observer.query("SET statement_timeout = '8s'");
+    const { rows } = await observer.query<{ pid: number }>(
+      'SELECT pg_backend_pid() AS pid',
+    );
+    const pid = rows[0]?.pid;
+    if (!pid) throw new Error('Missing journal backend PID');
+    queued = observer
+      .query<{ id: string }>(append, [workspace, work, 'concurrent'])
+      .then(({ rows }) => rows[0])
+      .catch((error: unknown) => error);
+    const deadline = performance.now() + 4000;
+    for (;;) {
+      const locks = await db.query<{ blocked: boolean }>(
+        'SELECT cardinality(pg_blocking_pids($1)) > 0 AS blocked',
+        [pid],
+      );
+      if (locks.rows[0]?.blocked) break;
+      if (performance.now() > deadline)
+        throw new Error('Concurrent event never waited on the work row');
+      await Bun.sleep(20);
+    }
+    const first = await writer.query<{ id: string }>(append, [
+      workspace,
+      work,
+      'with-work-lock',
+    ]);
+    await writer.query('COMMIT');
+    const second = await queued;
+    const journal = await db.query<{ kind: string }>(
+      'SELECT kind FROM "WorkEvent" WHERE "workspaceId"=$1 AND "workId"=$2 ORDER BY id',
+      [workspace, work],
+    );
+    if (second instanceof Error) throw second;
+    expect(second).toBeDefined();
+    expect(first.rows).toHaveLength(1);
+    expect(journal.rows.map(({ kind }) => kind)).toEqual([
+      'with-work-lock',
+      'concurrent',
+    ]);
+  } finally {
+    await writer.query('ROLLBACK');
+    await queued;
+    writer.release();
+    observer.release(true);
+    await db.query('DELETE FROM "Work" WHERE id=$1', [work]);
+    await db.query('DELETE FROM "AnykoWorkspace" WHERE id=$1', [workspace]);
+    await db.end();
+  }
+}, 15000);

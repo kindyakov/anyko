@@ -14,12 +14,14 @@ import {
   createIdempotencyKey,
   withIdempotencyKey,
 } from '@/lib/api/idempotency';
+import { liveQuery } from '@/lib/api/live-query';
 
 const chatKey = (workspaceId: string, workId: string) =>
   ['work-chat', workspaceId, workId] as const;
 
 export function chatMessagesQuery(workspaceId: string, workId: string) {
   return infiniteQueryOptions({
+    meta: liveQuery(workspaceId, 'chat', workId),
     queryKey: chatKey(workspaceId, workId),
     initialPageParam: 1,
     queryFn: ({ signal, pageParam }) =>

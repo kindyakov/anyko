@@ -22,27 +22,36 @@ export function createChatProgressWriter(options: {
     text: '',
     reasoning: '',
   };
-  let retry: ChatProgress | undefined;
-  let pending: Promise<void> | undefined;
+  const outgoing: ChatProgress[] = [];
+  let publishing: Promise<void> | undefined;
   let checkpointPending: Promise<void> | undefined;
-  const flush = async () => {
+  let closed = false;
+  const flush = () => {
     if (options.signal.aborted) return;
-    if (!retry && (batch.text || batch.reasoning)) {
+    if (batch.text || batch.reasoning) {
       const chunk = batch;
       batch = { text: '', reasoning: '' };
       draft.sequence++;
       draft.text += chunk.text;
       draft.reasoning += chunk.reasoning;
-      retry = { ...draft, ...chunk };
+      outgoing.push({ ...draft, ...chunk });
     }
-    if (retry) {
-      // Keep the payload stable if Redis received the write but its reply was lost.
-      const published = await options.feed.append(options.scope, retry).then(
-        () => true,
-        () => false,
-      );
-      if (published) retry = undefined;
-    }
+    if (!publishing && outgoing.length)
+      publishing = (async () => {
+        for (
+          let delta = outgoing[0];
+          delta && !closed && !options.signal.aborted;
+          delta = outgoing[0]
+        ) {
+          // A lost acknowledgement must retry the same sequence and payload.
+          await options.feed.append(options.scope, delta);
+          outgoing.shift();
+        }
+      })()
+        .catch(() => {})
+        .finally(() => {
+          publishing = undefined;
+        });
     if (!checkpointPending && ticks >= 10 && saved !== draft.sequence) {
       const snapshot = { ...draft };
       ticks = 0;
@@ -62,12 +71,7 @@ export function createChatProgressWriter(options: {
   };
   const timer = setInterval(() => {
     ticks++;
-    if (!pending)
-      pending = flush()
-        .catch(() => {})
-        .finally(() => {
-          pending = undefined;
-        });
+    flush();
   }, 250);
   timer.unref();
   return {
@@ -83,11 +87,10 @@ export function createChatProgressWriter(options: {
     },
     async close() {
       clearInterval(timer);
-      await pending;
-      await flush().catch(() => {});
+      flush();
+      if (publishing) await Promise.race([publishing, Bun.sleep(2000)]);
+      closed = true;
       await checkpointPending;
-      if (!retry && (batch.text || batch.reasoning))
-        await flush().catch(() => {});
     },
   };
 }

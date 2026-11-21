@@ -128,27 +128,27 @@ test('connection revisions preserve reasoning choices only for unchanged routes'
   await store.save(scope, {
     ...routes,
     apiKey,
-    visionDisableReasoning: true,
+    visionDisableReasoning: false,
     extractionEnableReasoning: true,
   });
   await store.save(scope, routes);
   expect((await store.current(scope)).settings).toMatchObject({
     revision: 2,
-    visionDisableReasoning: true,
+    visionDisableReasoning: false,
     extractionEnableReasoning: true,
   });
 
   await store.save(scope, { ...routes, visionModel: 'new-vision' });
   expect((await store.current(scope)).settings).toMatchObject({
     revision: 3,
-    visionDisableReasoning: false,
+    visionDisableReasoning: true,
     extractionEnableReasoning: true,
   });
 
   await store.save(scope, { ...routes, extractionEnableReasoning: false });
   expect((await store.current(scope)).settings).toMatchObject({
     revision: 4,
-    visionDisableReasoning: false,
+    visionDisableReasoning: true,
     extractionEnableReasoning: false,
   });
 });

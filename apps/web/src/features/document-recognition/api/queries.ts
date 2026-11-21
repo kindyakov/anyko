@@ -14,6 +14,7 @@ import {
 
 import { callApi, callFileApi } from '@/lib/api/call';
 import { ApiError } from '@/lib/api/errors';
+import { liveQuery } from '@/lib/api/live-query';
 
 import { documentKeys } from './keys';
 
@@ -35,6 +36,7 @@ export function documentsQueryOptions(
     after,
   };
   return queryOptions({
+    meta: liveQuery(workspaceId, 'recognition-list'),
     queryKey: [...documentKeys.list(workspaceId), query],
     queryFn: ({ signal }) =>
       callApi(listDocuments, {
@@ -51,6 +53,7 @@ export function recognitionStatusQueryOptions(
   revision: number,
 ) {
   return queryOptions({
+    meta: liveQuery(workspaceId, 'recognition-status', documentId),
     queryKey: [
       ...documentKeys.all(workspaceId),
       'status',

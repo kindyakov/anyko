@@ -3965,6 +3965,14 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
     hostname: '127.0.0.1',
     port: 0,
     async fetch(request) {
+      if (
+        request.method === 'GET' &&
+        new URL(request.url).pathname === '/v1/models/fixture'
+      )
+        return Response.json({
+          context_length: 32768,
+          max_completion_tokens: 8192,
+        });
       providerCalls++;
       const value: unknown = await request.json();
       const body = requestSchema.parse(value);

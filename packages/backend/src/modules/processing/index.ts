@@ -31,6 +31,7 @@ export interface ProcessingCommands {
 }
 // Внутренние запросы: право проверяет вызывающий сценарий.
 export interface ProcessingQueries {
+  activeChatId(scope: WorkspaceScope, workId: WorkId): Promise<string | null>;
   isActive(
     scope: WorkspaceScope,
     workId: WorkId,

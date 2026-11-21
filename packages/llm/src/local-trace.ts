@@ -6,6 +6,7 @@ import { readProviderRequest } from './provider-calls';
 import {
   captureProviderStream,
   isProviderStream,
+  providerStreamData,
   ProviderStreamIdleError,
 } from './provider-stream';
 
@@ -17,13 +18,7 @@ export interface ModelTraceContext {
 }
 
 function responseMetadata(body: string, streaming: boolean) {
-  const chunks = streaming
-    ? body
-        .split(/\r?\n/u)
-        .flatMap((line) =>
-          line.startsWith('data:') ? [line.slice(5).trim()] : [],
-        )
-    : [body];
+  const chunks = streaming ? providerStreamData(body) : [body];
   const reasoning: string[] = [];
   let usage: Record<string, unknown> | null = null;
   let finishReason: string | null = null;
@@ -178,11 +173,11 @@ export function createLocalModelTrace(
             return captureProviderStream(response, (raw, error) =>
               recordResponse(response, raw, error),
             );
-          const raw = await response
-            .clone()
-            .text()
-            .catch(() => null);
-          await recordResponse(response, raw);
+          try {
+            await recordResponse(response, await response.clone().text());
+          } catch (error) {
+            await recordResponse(response, null, error);
+          }
           return response;
         },
         { preconnect: transport.preconnect },

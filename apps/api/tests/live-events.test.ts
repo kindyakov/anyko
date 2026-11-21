@@ -2,7 +2,7 @@ import { expect, mock, test } from 'bun:test';
 
 import { brandWorkId } from '@anyko/backend/ids';
 import type { WorkspaceScope } from '@anyko/backend/scope';
-import type { SubscribeDatabaseEvents } from '@anyko/backend/works';
+import { type SubscribeDatabaseEvents, WorkError } from '@anyko/backend/works';
 
 import { workEventStream } from '../src/http/routes/works/events';
 import { workspaceEventStream } from '../src/http/routes/works/workspace-events';
@@ -58,7 +58,7 @@ test('work SSE leaves the journal and Redis idle, then delivers a change and cat
   const events = mock((_scope: WorkspaceScope, _id: string, after: string) =>
     Promise.resolve(journal.filter(({ id }) => BigInt(id) > BigInt(after))),
   );
-  const active = mock(() => Promise.resolve(false));
+  const active = mock(() => Promise.resolve(null));
   const progress = mock(() => Promise.resolve());
   const response = workEventStream({
     request: new Request('http://localhost/events'),
@@ -71,7 +71,7 @@ test('work SSE leaves the journal and Redis idle, then delivers a change and cat
       queries: { ...workHttp.works.queries, events },
     },
     access: workHttp.access,
-    chat: { ...workHttp.chat, progress, progressActive: active },
+    chat: { ...workHttp.chat, progress, progressRun: active },
     subscribeEvents: bus.subscribe,
   });
   const reader = streamReader(response);
@@ -164,3 +164,208 @@ test('revoking work access closes an idle SSE within 15 seconds', async () => {
     await reader.cancel();
   }
 }, 17000);
+
+test('work SSE reconnects Redis independently and sends deltas only from the active run', async () => {
+  const { workHttp } = stubHttpOptions();
+  const bus = signals();
+  const workId = brandWorkId(crypto.randomUUID());
+  const runId = crypto.randomUUID();
+  const ended = Promise.withResolvers<undefined>();
+  const progress: NonNullable<typeof workHttp.chat.progress> = (
+    _scope,
+    _id,
+    _after,
+    signal,
+    receive,
+  ) => {
+    if (++attempts === 1) return Promise.reject(new Error('Redis unavailable'));
+    signal.addEventListener(
+      'abort',
+      () => {
+        ended.resolve(undefined);
+      },
+      { once: true },
+    );
+    receive([]);
+    receive([
+      {
+        id: '1-0',
+        delta: {
+          runId: crypto.randomUUID(),
+          sequence: 1,
+          attempt: 1,
+          text: 'old-erased-text',
+          reasoning: 'old-erased-reasoning',
+        },
+      },
+      {
+        id: '2-0',
+        delta: {
+          runId,
+          sequence: 1,
+          attempt: 1,
+          text: 'current-delta',
+          reasoning: '',
+        },
+      },
+    ]);
+    return ended.promise;
+  };
+  let attempts = 0;
+  const response = workEventStream({
+    request: new Request('http://localhost/events'),
+    scope: scope(['works.read']),
+    workId,
+    after: '0',
+    chatAfter: '0-0',
+    works: {
+      ...workHttp.works,
+      queries: { ...workHttp.works.queries, events: () => Promise.resolve([]) },
+    },
+    access: workHttp.access,
+    chat: {
+      ...workHttp.chat,
+      progress,
+      progressRun: () => Promise.resolve(runId),
+    },
+    subscribeEvents: bus.subscribe,
+  });
+  const reader = streamReader(response);
+  try {
+    bus.emit(null);
+    const transcript = await waitForFrame(reader, 'current-delta');
+    expect(transcript).toContain('event: degraded');
+    expect(transcript).toContain('event: ready');
+    expect(transcript).not.toContain('old-erased');
+    expect(transcript).toContain('id: 0|2-0');
+    expect(attempts).toBe(2);
+  } finally {
+    await reader.cancel();
+  }
+});
+
+test('deleting an active work closes its SSE and prevents Redis from replaying old deltas on retry', async () => {
+  const { workHttp } = stubHttpOptions();
+  const bus = signals();
+  const workId = brandWorkId(crypto.randomUUID());
+  let deleted = false;
+  const firstRead = Promise.withResolvers<null>();
+  const progress = mock(() => {
+    firstRead.resolve(null);
+    return Promise.reject(new Error('Redis unavailable'));
+  });
+  const response = workEventStream({
+    request: new Request('http://localhost/events'),
+    scope: scope(['works.read']),
+    workId,
+    after: '0',
+    chatAfter: '0-0',
+    works: {
+      ...workHttp.works,
+      queries: {
+        ...workHttp.works.queries,
+        events: () =>
+          deleted
+            ? Promise.reject(new WorkError('NOT_FOUND'))
+            : Promise.resolve([]),
+      },
+    },
+    access: workHttp.access,
+    chat: {
+      ...workHttp.chat,
+      progress,
+      progressRun: () => Promise.resolve(deleted ? null : 'active-run'),
+    },
+    subscribeEvents: bus.subscribe,
+  });
+  const reader = streamReader(response);
+  try {
+    await firstRead.promise;
+    deleted = true;
+    bus.emit({ workspaceId: 'live', workId, kind: 'work' });
+    expect(await waitForFrame(reader, 'work.deleting')).not.toContain(
+      'chat-progress',
+    );
+    expect((await reader.read()).done).toBe(true);
+    await Bun.sleep(550);
+    expect(progress).toHaveBeenCalledTimes(1);
+  } finally {
+    await reader.cancel();
+  }
+});
+
+test('a source-removal notification stops buffered Redis deltas before reading the journal', async () => {
+  const { workHttp } = stubHttpOptions();
+  const bus = signals();
+  const workId = brandWorkId(crypto.randomUUID());
+  const runId = crypto.randomUUID();
+  type Receive = Parameters<NonNullable<typeof workHttp.chat.progress>>[4];
+  const started = Promise.withResolvers<Receive>();
+  const release = Promise.withResolvers<null>();
+  let removing = false;
+  const response = workEventStream({
+    request: new Request('http://localhost/events'),
+    scope: scope(['works.read']),
+    workId,
+    after: '0',
+    chatAfter: '0-0',
+    works: {
+      ...workHttp.works,
+      queries: {
+        ...workHttp.works.queries,
+        events: async () => {
+          if (!removing) return [];
+          await release.promise;
+          return [{ id: '1', kind: 'sources.deleting' }];
+        },
+      },
+    },
+    access: workHttp.access,
+    chat: {
+      ...workHttp.chat,
+      progressRun: () => Promise.resolve(removing ? null : runId),
+      progress: (_scope, _work, _after, signal, receive) => {
+        started.resolve(receive);
+        return new Promise((resolve) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      },
+    },
+    subscribeEvents: bus.subscribe,
+  });
+  const reader = streamReader(response);
+  try {
+    const receive = await started.promise;
+    removing = true;
+    bus.emit({
+      workspaceId: 'live',
+      workId,
+      kind: 'work',
+      eventKind: 'sources.deleting',
+    });
+    receive([
+      {
+        id: '1-0',
+        delta: {
+          runId,
+          attempt: 1,
+          sequence: 1,
+          text: 'stale-buffered-delta',
+          reasoning: '',
+        },
+      },
+    ]);
+    release.resolve(null);
+    const transcript = await waitForFrame(reader, 'sources.deleting');
+    expect(transcript).not.toContain('stale-buffered-delta');
+    expect(transcript).toContain('id: 1');
+  } finally {
+    await reader.cancel();
+  }
+});

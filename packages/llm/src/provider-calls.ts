@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   captureProviderStream,
   isProviderStream,
+  providerStreamData,
   ProviderStreamIdleError,
 } from './provider-stream';
 
@@ -104,19 +105,13 @@ export type ProviderCallObserver = (
 ) => Promise<(result: ProviderResult) => Promise<void>>;
 
 function readStreamResponse(raw: string) {
-  return raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(
-      (line) => line.startsWith('data:') && line.slice(5).trim() !== '[DONE]',
-    )
-    .flatMap((line) => {
-      try {
-        return [parseResponse(JSON.parse(line.slice(5)))];
-      } catch {
-        return [];
-      }
-    });
+  return providerStreamData(raw).flatMap((data) => {
+    try {
+      return [parseResponse(JSON.parse(data))];
+    } catch {
+      return [];
+    }
+  });
 }
 
 export async function readProviderRequest(
@@ -203,12 +198,18 @@ export function observeProviderFetch(
         return captureProviderStream(response, (raw, error) =>
           report(response, readStreamResponse(raw), error),
         );
-      const payloads = await response
-        .clone()
-        .json()
-        .then((raw: unknown) => [parseResponse(raw)])
-        .catch(() => []);
-      await report(response, payloads);
+      try {
+        const raw = await response.clone().text();
+        let payloads: ReturnType<typeof parseResponse>[] = [];
+        try {
+          payloads = [parseResponse(JSON.parse(raw))];
+        } catch {
+          // Malformed JSON is an unreadable response, not a transport failure.
+        }
+        await report(response, payloads);
+      } catch (error) {
+        await report(response, [], error);
+      }
       return response;
     },
     { preconnect: transport.preconnect },

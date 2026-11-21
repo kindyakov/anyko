@@ -196,6 +196,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
                   assertCurrent,
                   connection: stepConnection.connection,
                   modelId: stepConnection.visionModel,
+                  disableReasoning: stepConnection.visionDisableReasoning,
                   resource: `${run.workspaceId}:${run.workId}`,
                   threadId: callId,
                   bytes: image.bytes,

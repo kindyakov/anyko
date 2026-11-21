@@ -11,8 +11,7 @@ import {
 
 import { endpointUrl } from '@/lib/api/call';
 import { connectLiveEvents, parseLiveEvent } from '@/lib/api/live-events';
-
-import { workKeys } from './keys';
+import { invalidateLiveQueries, resetLiveQueries } from '@/lib/api/live-query';
 
 export type WorkLive = 'connecting' | 'live' | 'reconnecting';
 
@@ -43,30 +42,8 @@ export function useWorkEvents(
   useEffect(() => {
     const after = latestCursor.current;
     if (after === undefined) return;
-    const detail = () => {
-      void client.invalidateQueries({
-        queryKey: workKeys.detail(workspaceId, workId),
-      });
-    };
-    const chat = () => {
-      const queryKey = ['work-chat', workspaceId, workId];
-      // An initial GET may already be in flight when the checkpoint commits.
-      const initialFetch =
-        client.getQueryState(queryKey)?.data === undefined &&
-        client.getQueryState(queryKey)?.fetchStatus === 'fetching';
-      const refresh = client.invalidateQueries({ queryKey });
-      if (initialFetch)
-        void refresh.then(() => client.invalidateQueries({ queryKey }));
-    };
-    const history = () => {
-      void client.invalidateQueries({
-        queryKey: ['work-agent-history', workspaceId, workId],
-      });
-    };
-    const runs = () => {
-      void client.invalidateQueries({
-        queryKey: ['work-analysis-runs', workspaceId, workId],
-      });
+    const refresh = (topics: Parameters<typeof invalidateLiveQueries>[2]) => {
+      void invalidateLiveQueries(client, workspaceId, topics, workId);
     };
     const connection = connectLiveEvents(
       endpointUrl(streamWorkEvents, {
@@ -74,32 +51,40 @@ export function useWorkEvents(
         query: { after },
       }),
       () => {
-        detail();
-        chat();
-        history();
-        runs();
+        refresh(['work-detail', 'chat', 'history', 'runs']);
       },
       (online) => {
         setLive(online ? 'live' : 'reconnecting');
       },
     );
+    const progressKey = chatProgressKey(workspaceId, workId);
     connection.on('changed', (event) => {
       const change = parseLiveEvent(event);
-      if (change?.kind === 'chat.checkpoint') chat();
-      else if (change?.kind === 'agent.history') history();
+      if (
+        change?.kind === 'sources.deleting' ||
+        change?.kind === 'sources.erased' ||
+        change?.kind === 'work.deleting'
+      ) {
+        client.setQueryData<ChatProgress[]>(progressKey, []);
+        void resetLiveQueries(
+          client,
+          workspaceId,
+          change.kind === 'work.deleting'
+            ? ['work-detail', 'chat', 'history', 'runs']
+            : ['chat', 'history', 'runs'],
+          workId,
+        );
+        if (change.kind !== 'work.deleting') refresh(['work-detail']);
+        return;
+      }
+      if (change?.kind === 'chat.checkpoint') refresh(['chat']);
+      else if (change?.kind === 'agent.history') refresh(['history']);
       else if (change) {
-        detail();
-        if (
-          change.kind.startsWith('processing.') ||
-          change.kind === 'sources.erased'
-        ) {
-          chat();
-          history();
-          runs();
-        }
+        if (change.kind.startsWith('processing.'))
+          refresh(['work-detail', 'chat', 'history', 'runs']);
+        else refresh(['work-detail']);
       }
     });
-    const progressKey = chatProgressKey(workspaceId, workId);
     connection.on('chat-progress', (event) => {
       if (!(event instanceof MessageEvent) || typeof event.data !== 'string')
         return;

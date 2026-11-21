@@ -105,7 +105,7 @@ function ConnectionReadOnly({ current }: { current: LlmSettings | null }) {
         value={
           current.extractionEnableReasoning
             ? 'Высокий уровень'
-            : 'Режим провайдера'
+            : 'Средний уровень'
         }
       />
     </div>

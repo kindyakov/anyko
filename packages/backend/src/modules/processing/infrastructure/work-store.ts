@@ -143,6 +143,18 @@ export function createWorkProcessingStore(
         })) > 0
       );
     },
+    async activeChatId(workspaceId, workId) {
+      const run = await db.run.findFirst({
+        where: {
+          workspaceId,
+          workId,
+          kind: 'work.chat',
+          status: { in: ['queued', 'running'] },
+        },
+        select: { id: true },
+      });
+      return run?.id ?? null;
+    },
     fence: (run) => fence(db, run),
     async valid({ snapshot: run, attemptToken }) {
       return (

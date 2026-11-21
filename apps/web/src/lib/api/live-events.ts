@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { streamWorkspaceEvents } from '@anyko/contracts/works';
 
 import { endpointUrl } from './call';
+import { invalidateLiveQueries } from './live-query';
 
 const eventSchema = z.object({
   kind: z.string(),
@@ -96,28 +97,16 @@ export function useWorkspaceEvents(workspaceId: string) {
     let shared = streams.get(workspaceId);
     if (!shared) {
       const works = () => {
-        void client.invalidateQueries({
-          queryKey: ['works', workspaceId, 'list'],
-        });
-        void client.invalidateQueries({
-          queryKey: ['works', workspaceId, 'deletion'],
-        });
-        void client.invalidateQueries({
-          queryKey: ['documents', workspaceId, 'deletion-impact'],
-        });
+        void invalidateLiveQueries(client, workspaceId, ['work-list']);
       };
       const documents = (documentId?: string) => {
-        void client.invalidateQueries({
-          queryKey: ['documents', workspaceId, 'list'],
-        });
-        void client.invalidateQueries({
-          queryKey: ['upload-matches', workspaceId],
-        });
-        void client.invalidateQueries({
-          queryKey: documentId
-            ? ['documents', workspaceId, 'status', documentId]
-            : ['documents', workspaceId, 'status'],
-        });
+        void invalidateLiveQueries(client, workspaceId, ['recognition-list']);
+        void invalidateLiveQueries(
+          client,
+          workspaceId,
+          ['recognition-status'],
+          documentId,
+        );
       };
       const connection = connectLiveEvents(
         endpointUrl(streamWorkspaceEvents, { params: { workspaceId } }),

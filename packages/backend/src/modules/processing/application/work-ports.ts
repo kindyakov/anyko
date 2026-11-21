@@ -129,6 +129,7 @@ export interface WorkProcessingStore {
     leaseUntil: Date,
   ) => Promise<ClaimedWorkRun | null>;
   active(workspaceId: string, workId: string, kind?: 'chat'): Promise<boolean>;
+  activeChatId(workspaceId: string, workId: string): Promise<string | null>;
   valid(run: ClaimedWorkRun): Promise<boolean>;
   fence(run: ClaimedWorkRun): Promise<void>;
   finish(run: ClaimedWorkRun, outcome: WorkRunOutcome): Promise<boolean>;

@@ -274,7 +274,7 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
       { preconnect: fetch.preconnect },
     ),
   });
-  const extract = (selectedModel = modelId) => {
+  const extract = (selectedModel = modelId, enableReasoning = true) => {
     const threadId = crypto.randomUUID();
     threads.push(threadId);
     return agents.extract({
@@ -284,6 +284,7 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
         apiKey: crypto.randomUUID(),
       },
       modelId: selectedModel,
+      enableReasoning,
       resource: crypto.randomUUID(),
       threadId,
       fields: requirePackage('bfl-bankruptcy-v3').fields,
@@ -310,7 +311,7 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
       64000, 131072, 48000,
     ]);
     responses = [malformed, valid];
-    const recovered = await extract(smallerModelId);
+    const recovered = await extract(smallerModelId, false);
     expect(recovered.candidates).toEqual(result.candidates);
     expect(recovered.usage).toEqual({ inputTokens: 2400, outputTokens: 14090 });
     responses = [malformed, malformed];
@@ -325,8 +326,8 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
       'high',
       'high',
       'high',
-      'high',
-      'high',
+      'medium',
+      'medium',
       'high',
       'high',
     ]);
@@ -1426,7 +1427,7 @@ test('official creditor details stay a proposal until selecting them for the lin
     fetch: Object.assign(
       (url: Parameters<typeof fetch>[0], init?: RequestInit) =>
         Promise.resolve(
-          new Request(url, init).url.endsWith('/endpoints')
+          new Request(url, init).method === 'GET'
             ? Response.json({
                 data: {
                   endpoints: [

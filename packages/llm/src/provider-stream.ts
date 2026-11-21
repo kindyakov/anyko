@@ -12,7 +12,17 @@ const streamEvent = z.object({
           content: z.string().nullish(),
           reasoning: z.string().nullish(),
           reasoning_content: z.string().nullish(),
-          tool_calls: z.array(z.unknown()).nullish(),
+          tool_calls: z
+            .array(
+              z.object({
+                function: z
+                  .object({
+                    arguments: z.string().optional(),
+                  })
+                  .optional(),
+              }),
+            )
+            .nullish(),
         })
         .nullish(),
     }),
@@ -29,7 +39,7 @@ function countsAsProgress(payload: string) {
           delta?.content ||
           delta?.reasoning ||
           delta?.reasoning_content ||
-          delta?.tool_calls?.length,
+          delta?.tool_calls?.some((call) => call.function?.arguments),
         ),
       );
   } catch {
@@ -43,27 +53,44 @@ export function isProviderStream(response: Response) {
   );
 }
 
-function sseProgress(onProgress: () => void) {
-  const decoder = new TextDecoder();
+function parseSseData(onData: (data: string) => void) {
   let pending = '';
+  let skipLf = false;
   let data: string[] = [];
-  return (bytes: Uint8Array) => {
-    pending += decoder.decode(bytes, { stream: true });
+  return (text: string) => {
+    if (!text) return;
+    pending += skipLf && text.startsWith('\n') ? text.slice(1) : text;
+    skipLf = text.endsWith('\r');
     let start = 0;
-    for (
-      let end = pending.indexOf('\n');
-      end >= 0;
-      end = pending.indexOf('\n', start)
-    ) {
-      const line = pending.slice(start, end).replace(/\r$/u, '');
-      start = end + 1;
-      if (line.startsWith('data:')) data.push(line.slice(5));
+    for (const match of pending.matchAll(/\r\n|\r|\n/gu)) {
+      const line = pending.slice(start, match.index);
+      start = match.index + match[0].length;
+      if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /u, ''));
       if (!line && data.length) {
-        if (countsAsProgress(data.join('\n'))) onProgress();
+        onData(data.join('\n'));
         data = [];
       }
     }
     pending = pending.slice(start);
+  };
+}
+
+export function providerStreamData(raw: string) {
+  const events: string[] = [];
+  const parse = parseSseData((data) => {
+    if (data.trim() !== '[DONE]') events.push(data);
+  });
+  parse(raw);
+  return events;
+}
+
+function sseProgress(onProgress: () => void) {
+  const decoder = new TextDecoder();
+  const parse = parseSseData((data) => {
+    if (countsAsProgress(data)) onProgress();
+  });
+  return (bytes: Uint8Array) => {
+    parse(decoder.decode(bytes, { stream: true }));
   };
 }
 
@@ -175,8 +202,15 @@ export function watchProviderStream(
         const requestOptions = { ...init, signal, timeout: false as const };
         const response = await transport(request, requestOptions);
         signal.throwIfAborted();
-        if (response.ok && response.body && isProviderStream(response))
-          return passThrough(response, sseProgress(refresh), stop, signal);
+        if (response.body)
+          return passThrough(
+            response,
+            response.ok && isProviderStream(response)
+              ? sseProgress(refresh)
+              : () => {},
+            stop,
+            signal,
+          );
         stop();
         return response;
       } catch (error) {

@@ -80,6 +80,10 @@ test('RouterAI context lookup uses the selected model and the smallest published
       url: 'https://routerai.ru/api/v1/models/~example/large/endpoints',
       authorization: null,
     },
+    {
+      url: 'https://fixture.invalid/v1/models/example%2Fsmall',
+      authorization: `Bearer ${connection.apiKey}`,
+    },
   ]);
 });
 
@@ -371,4 +375,27 @@ test('a failed history completion preserves the provider response and transport 
   expect(failure).toBe(transportError);
   expect(requests).toBe(2);
   expect(completionWrites).toBe(2);
+});
+
+test('compatible model metadata can publish a completion limit independently of context', async () => {
+  const gateway = createModelGateway({
+    fetch: Object.assign(
+      () =>
+        Promise.resolve(
+          Response.json({ id: 'reasoner', max_output_tokens: 48000 }),
+        ),
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const connection = {
+    id: 'compatible',
+    baseURL: 'https://fixture.invalid/v1',
+    apiKey: 'fixture',
+  };
+  const limits = await gateway.contextLimits(
+    connection,
+    'reasoner',
+    new AbortController().signal,
+  );
+  expect(limits?.completion).toBe(48000);
 });

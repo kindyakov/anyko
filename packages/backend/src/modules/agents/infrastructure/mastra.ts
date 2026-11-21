@@ -152,9 +152,10 @@ export function createDocumentAgents(options: {
       const trace = gateway.trace(input.trace, input.modelId, input.connection);
       const transcription = input.purpose === 'transcription';
       const schema = transcription ? transcriptionSchema : descriptionSchema;
-      const providerOptions = input.disableReasoning
-        ? gateway.reasoningOptions(input.connection, 'none')
-        : undefined;
+      const providerOptions =
+        input.disableReasoning !== false
+          ? gateway.reasoningOptions(input.connection, 'none')
+          : undefined;
       const agent = new Agent({
         id: 'describe-visual',
         mastra,
@@ -275,10 +276,10 @@ export function createDocumentAgents(options: {
           input.modelId,
           signal,
         );
-        const providerOptions =
-          input.enableReasoning !== false
-            ? gateway.reasoningOptions(input.connection, 'high')
-            : undefined;
+        const providerOptions = gateway.reasoningOptions(
+          input.connection,
+          input.enableReasoning === false ? 'medium' : 'high',
+        );
         const maxOutputTokens =
           limits?.completion ?? fallbackExtractionOutputTokens;
         const generate = async () => {
@@ -292,7 +293,7 @@ export function createDocumentAgents(options: {
               },
               maxSteps: 1,
               modelSettings: { maxOutputTokens, maxRetries: 1 },
-              ...(providerOptions && { providerOptions }),
+              providerOptions,
               structuredOutput: {
                 schema: extractionSchema,
                 errorStrategy: 'warn',

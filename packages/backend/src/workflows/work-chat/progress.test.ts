@@ -58,3 +58,40 @@ test('a failed Redis append retries the same fragment before publishing later te
     await writer.close();
   }
 });
+
+test('a stalled Redis append does not block the PostgreSQL chat snapshot', async () => {
+  const writing = Promise.withResolvers<undefined>();
+  const checkpoint = Promise.withResolvers<ChatProgress>();
+  const held = Promise.withResolvers<undefined>();
+  const writer = createChatProgressWriter({
+    scope: { workspaceId: 'workspace', workId: 'work' },
+    feed: {
+      append: () => {
+        writing.resolve(undefined);
+        return held.promise;
+      },
+      subscribe: () => Promise.resolve(),
+      erase: () => Promise.resolve(),
+    },
+    runId: 'run',
+    attempt: 1,
+    signal: new AbortController().signal,
+    checkpoint: (draft) => {
+      checkpoint.resolve(draft);
+      return Promise.resolve();
+    },
+  });
+  try {
+    writer.push({ text: 'A', reasoning: '' });
+    await writing.promise;
+    writer.push({ text: 'B', reasoning: 'trace' });
+    expect(await checkpoint.promise).toMatchObject({
+      sequence: 2,
+      text: 'AB',
+      reasoning: 'trace',
+    });
+  } finally {
+    held.resolve(undefined);
+    await writer.close();
+  }
+}, 7000);

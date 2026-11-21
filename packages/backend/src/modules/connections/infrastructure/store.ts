@@ -116,7 +116,7 @@ export function createConnectionsStore(
             input.visionDisableReasoning ??
             (sameEndpoint && previous.visionModel === input.visionModel
               ? previous.visionDisableReasoning
-              : false),
+              : true),
           extractionEnableReasoning:
             input.extractionEnableReasoning ??
             (sameEndpoint && previous.extractionModel === input.extractionModel
