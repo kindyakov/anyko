@@ -6,9 +6,10 @@ import type { DocumentSummary } from '@anyko/contracts/documents';
 import { Button, FileIcon, Modal, Notice, StatusPill } from '@anyko/ui';
 import { HorizonLoader } from '@anyko/ui/brand';
 
+import { useWorkspaceEvents } from '@/lib/api/live-events';
+
 import { findUploadMatches } from '../../api/upload-matches';
 import { describeDocumentError } from '../../model/error-texts';
-import { recognitionPollMs } from '../../model/poll';
 
 const dateTime = new Intl.DateTimeFormat('ru-RU', {
   dateStyle: 'short',
@@ -40,6 +41,7 @@ export function UploadMatchDialog({
   onSeparate: () => void;
   onClose: () => void;
 }) {
+  useWorkspaceEvents(workspaceId);
   const [cursors, setCursors] = useState<string[]>([]);
   const after = cursors.at(-1);
   const page = useQuery({
@@ -47,15 +49,6 @@ export function UploadMatchDialog({
     queryFn: ({ signal }) =>
       findUploadMatches(workspaceId, checksum, signal, after),
     initialData: after ? undefined : first,
-    refetchInterval: ({ state }) =>
-      attached &&
-      state.data?.items.some(
-        ({ status, readyRevision }) =>
-          readyRevision == null &&
-          (status === 'queued' || status === 'running'),
-      )
-        ? recognitionPollMs
-        : false,
     gcTime: 0,
   });
   const current = page.data;

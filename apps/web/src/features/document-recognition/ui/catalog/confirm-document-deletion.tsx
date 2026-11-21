@@ -58,10 +58,6 @@ export function ConfirmDocumentDeletion({
       }
       return items;
     },
-    refetchInterval: ({ state }) =>
-      state.data?.some(({ works }) => works.some(({ busy }) => busy))
-        ? 1500
-        : false,
   });
   const affected = impacts.data?.filter(({ works }) => works.length > 0) ?? [];
   const works = new Set(

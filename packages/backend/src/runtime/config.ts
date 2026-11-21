@@ -13,7 +13,9 @@ const encryptionKey = z.string().regex(/^[a-f\d]{64}$/i);
  */
 const backendConfigSchema = z
   .object({
-    database: z.object({ url: postgresUrl }).strict(),
+    database: z
+      .object({ url: postgresUrl, listenUrl: postgresUrl.optional() })
+      .strict(),
     storage: z
       .object({
         endpoint: z.url(),

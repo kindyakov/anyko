@@ -24,6 +24,7 @@ export function createChatProgressWriter(options: {
   };
   let retry: ChatProgress | undefined;
   let pending: Promise<void> | undefined;
+  let checkpointPending: Promise<void> | undefined;
   const flush = async () => {
     if (options.signal.aborted) return;
     if (!retry && (batch.text || batch.reasoning)) {
@@ -42,10 +43,21 @@ export function createChatProgressWriter(options: {
       );
       if (published) retry = undefined;
     }
-    if (ticks >= 10 && saved !== draft.sequence) {
-      await options.checkpoint({ ...draft });
-      saved = draft.sequence;
+    if (!checkpointPending && ticks >= 10 && saved !== draft.sequence) {
+      const snapshot = { ...draft };
       ticks = 0;
+      // A PostgreSQL lock may delay the snapshot. Redis deltas continue independently.
+      checkpointPending = Promise.resolve()
+        .then(() => options.checkpoint(snapshot))
+        .then(
+          () => {
+            saved = snapshot.sequence;
+          },
+          () => {},
+        )
+        .finally(() => {
+          checkpointPending = undefined;
+        });
     }
   };
   const timer = setInterval(() => {
@@ -73,8 +85,7 @@ export function createChatProgressWriter(options: {
       clearInterval(timer);
       await pending;
       await flush().catch(() => {});
-      if (!retry && (batch.text || batch.reasoning))
-        await flush().catch(() => {});
+      await checkpointPending;
       if (!retry && (batch.text || batch.reasoning))
         await flush().catch(() => {});
     },

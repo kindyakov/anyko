@@ -37,6 +37,11 @@ export const WorkErrors = defineErrors({
 });
 export class WorkError extends WorkErrors.Failure {}
 
+export type {
+  DatabaseEventSignal,
+  SubscribeDatabaseEvents,
+} from './live-events';
+
 export type WorkEventKind =
   | 'processing.queued'
   | 'facts.changed'

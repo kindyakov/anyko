@@ -1,4 +1,5 @@
 'use client';
+
 import { useQuery } from '@tanstack/react-query';
 import { Plus, RotateCw, Search } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -23,6 +24,7 @@ import { WorkCard } from '@/features/works/ui/list/work-card';
 import { WorkDeletionDialog } from '@/features/works/ui/list/work-deletion-dialog';
 import { WorkListControls } from '@/features/works/ui/list/work-list-controls';
 import { WorkPagination } from '@/features/works/ui/list/work-pagination';
+import { useWorkspaceEvents } from '@/lib/api/live-events';
 import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 
 export function WorkList() {
@@ -32,6 +34,7 @@ export function WorkList() {
   const searchParams = useSearchParams();
   const { page, pageSize, q, status, view } = readWorkListParams(searchParams);
   const workspaceId = useWorkspaceId();
+  useWorkspaceEvents(workspaceId);
   // Право только для отображения: без него создание не предлагается, а отказ даёт API.
   const canCreate = useCan('works.create');
   const canDelete = useCan('works.delete');

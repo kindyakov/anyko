@@ -1,4 +1,5 @@
 'use client';
+
 import { useQuery } from '@tanstack/react-query';
 import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { type ComponentProps, useCallback, useState } from 'react';
@@ -9,6 +10,7 @@ import { DropZone } from '@anyko/ui/brand';
 
 import { callApi, newIdempotencyKey } from '@/lib/api/call';
 import { isUnauthorized } from '@/lib/api/errors';
+import { useWorkspaceEvents } from '@/lib/api/live-events';
 import { useWorkspaceId } from '@/lib/api/workspace';
 
 import { useUploadDocument } from '../api/commands';
@@ -48,6 +50,7 @@ function WorkspaceDocuments({
   AddToWork,
   onDeletionAccepted,
 }: WorkAction & { workspaceId: string }) {
+  useWorkspaceEvents(workspaceId);
   const [filters, setFilters] = useState<DocumentFilters>({
     q: '',
     formats: [],

@@ -2,7 +2,7 @@ import '../../../../../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import type { WorkView } from '@anyko/contracts/works';
@@ -391,6 +391,15 @@ test('a matching queued source becomes reusable in the work after its OCR comple
   const use = match.getByRole('button', { name: 'Использовать существующий' });
   expect(use.hasAttribute('disabled')).toBe(true);
   ready = true;
+  const catalogEvents = installEventSource().find(
+    ({ url }) => url === `/api/v1/workspaces/${workspaceId}/events`,
+  );
+  act(() => {
+    catalogEvents?.emit('changed', {
+      kind: 'recognition',
+      documentId: source.id,
+    });
+  });
   await waitFor(
     () => {
       expect(use.hasAttribute('disabled')).toBe(false);

@@ -142,6 +142,7 @@ export function stubHttpOptions(): {
       ...documentHttp,
       works,
       views,
+      subscribeEvents: () => () => {},
       chat: {
         list: unused,
         send: unused,

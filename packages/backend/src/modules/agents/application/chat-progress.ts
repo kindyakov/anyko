@@ -10,14 +10,17 @@ export const chatProgressSchema = z.object({
 
 export type ChatProgress = z.infer<typeof chatProgressSchema>;
 export type ChatDelta = Pick<ChatProgress, 'text' | 'reasoning'>;
+type ProgressRow = { id: string; delta: ChatProgress };
 export interface ChatProgressFeed {
   append(
     scope: { workspaceId: string; workId: string },
     progress: ChatProgress,
   ): Promise<void>;
-  read(
+  subscribe(
     scope: { workspaceId: string; workId: string },
     after: string,
-  ): Promise<{ id: string; delta: ChatProgress }[]>;
+    signal: AbortSignal,
+    receive: (rows: ProgressRow[]) => void,
+  ): Promise<void>;
   erase(scope: { workspaceId: string; workId: string }): Promise<void>;
 }

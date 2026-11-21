@@ -53,12 +53,7 @@ function ChatTimeline({ workspaceId, view }: Props) {
   const query = useInfiniteQuery(chatMessagesQuery(workspaceId, workId));
   const progress = useChatProgress(workspaceId, workId);
   const { isFetching, refetch } = query;
-  const lastCursor = useRef(view.cursor);
-  useEffect(() => {
-    if (isFetching || lastCursor.current === view.cursor) return;
-    lastCursor.current = view.cursor;
-    void refetch({ cancelRefetch: false });
-  }, [isFetching, refetch, view.cursor]);
+
   const firstPage = query.data?.pages[0];
   // New entries can move the page boundary between two requests.
   const entries = [

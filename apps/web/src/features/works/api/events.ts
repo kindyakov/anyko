@@ -10,6 +10,7 @@ import {
 } from '@anyko/contracts/works';
 
 import { endpointUrl } from '@/lib/api/call';
+import { connectLiveEvents, parseLiveEvent } from '@/lib/api/live-events';
 
 import { workKeys } from './keys';
 
@@ -26,8 +27,7 @@ export function useChatProgress(workspaceId: string, workId: string) {
   }).data;
 }
 
-// Поток событий только сообщает, что работа изменилась: событие, открытие и обрыв инвалидируют ключ работы,
-// данные приходят из API. Подписка открывается, когда первый вид работы загружен, и читает курсор этого вида.
+// A single stream carries work invalidations and chat deltas from the initial work cursor.
 export function useWorkEvents(
   workspaceId: string,
   workId: string,
@@ -43,20 +43,64 @@ export function useWorkEvents(
   useEffect(() => {
     const after = latestCursor.current;
     if (after === undefined) return;
-    const source = new EventSource(
-      endpointUrl(streamWorkEvents, {
-        params: { workspaceId, workId },
-        query: { after },
-      }),
-    );
-    const refresh = () => {
+    const detail = () => {
       void client.invalidateQueries({
         queryKey: workKeys.detail(workspaceId, workId),
       });
     };
-    source.addEventListener('changed', refresh);
+    const chat = () => {
+      const queryKey = ['work-chat', workspaceId, workId];
+      // An initial GET may already be in flight when the checkpoint commits.
+      const initialFetch =
+        client.getQueryState(queryKey)?.data === undefined &&
+        client.getQueryState(queryKey)?.fetchStatus === 'fetching';
+      const refresh = client.invalidateQueries({ queryKey });
+      if (initialFetch)
+        void refresh.then(() => client.invalidateQueries({ queryKey }));
+    };
+    const history = () => {
+      void client.invalidateQueries({
+        queryKey: ['work-agent-history', workspaceId, workId],
+      });
+    };
+    const runs = () => {
+      void client.invalidateQueries({
+        queryKey: ['work-analysis-runs', workspaceId, workId],
+      });
+    };
+    const connection = connectLiveEvents(
+      endpointUrl(streamWorkEvents, {
+        params: { workspaceId, workId },
+        query: { after },
+      }),
+      () => {
+        detail();
+        chat();
+        history();
+        runs();
+      },
+      (online) => {
+        setLive(online ? 'live' : 'reconnecting');
+      },
+    );
+    connection.on('changed', (event) => {
+      const change = parseLiveEvent(event);
+      if (change?.kind === 'chat.checkpoint') chat();
+      else if (change?.kind === 'agent.history') history();
+      else if (change) {
+        detail();
+        if (
+          change.kind.startsWith('processing.') ||
+          change.kind === 'sources.erased'
+        ) {
+          chat();
+          history();
+          runs();
+        }
+      }
+    });
     const progressKey = chatProgressKey(workspaceId, workId);
-    source.addEventListener('chat-progress', (event) => {
+    connection.on('chat-progress', (event) => {
       if (!(event instanceof MessageEvent) || typeof event.data !== 'string')
         return;
       let value: unknown;
@@ -72,16 +116,8 @@ export function useWorkEvents(
         delta,
       ]);
     });
-    source.onopen = () => {
-      setLive('live');
-      refresh();
-    };
-    source.onerror = () => {
-      setLive('reconnecting');
-      refresh();
-    };
     return () => {
-      source.close();
+      connection.close();
       client.removeQueries({ queryKey: progressKey, exact: true });
     };
   }, [client, workspaceId, workId, opened]);

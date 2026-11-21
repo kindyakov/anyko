@@ -21,6 +21,7 @@ export function createChatProgressFeed(
     connectionTimeout: 2000,
     enableOfflineQueue: false,
   });
+  const readers = new Set<RedisClient>();
   let connecting: Promise<void> | undefined;
   const connect = () => {
     if (redis.connected) return Promise.resolve();
@@ -46,26 +47,55 @@ export function createChatProgressFeed(
         JSON.stringify(delta),
       ]);
     },
-    async read(scope, after) {
-      await connect();
-      const raw: unknown = await redis.send('XRANGE', [
-        key(scope),
-        `(${after}`,
-        '+',
-        'COUNT',
-        '64',
-      ]);
-      const rows = streamRows.parse(raw);
-      return rows.map(([id, [, payload]]) => ({
-        id,
-        delta: chatProgressSchema.parse(JSON.parse(payload)),
-      }));
+    async subscribe(scope, after, signal, receive) {
+      const stream = key(scope);
+      const streams = z.record(z.string(), streamRows);
+      const reader = new RedisClient(url, {
+        connectionTimeout: 2000,
+        autoReconnect: false,
+        enableOfflineQueue: false,
+      });
+      readers.add(reader);
+      const abort = () => {
+        reader.close();
+      };
+      signal.addEventListener('abort', abort, { once: true });
+      try {
+        signal.throwIfAborted();
+        await reader.connect();
+        let cursor = after;
+        while (!signal.aborted) {
+          const result: unknown = await reader.send('XREAD', [
+            'COUNT',
+            '64',
+            'BLOCK',
+            '0',
+            'STREAMS',
+            stream,
+            cursor,
+          ]);
+          const rows = streams.parse(result)[stream] ?? [];
+          const decoded = rows.map(([id, [, payload]]) => ({
+            id,
+            delta: chatProgressSchema.parse(JSON.parse(payload)),
+          }));
+          cursor = decoded.at(-1)?.id ?? cursor;
+          receive(decoded);
+        }
+      } catch (error) {
+        if (!signal.aborted) throw error;
+      } finally {
+        signal.removeEventListener('abort', abort);
+        readers.delete(reader);
+        reader.close();
+      }
     },
     async erase(scope) {
       await connect();
       await redis.del(key(scope));
     },
     close() {
+      for (const reader of readers) reader.close();
       redis.close();
     },
   };

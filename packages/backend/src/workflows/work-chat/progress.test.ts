@@ -25,7 +25,7 @@ test('a failed Redis append retries the same fragment before publishing later te
     scope: { workspaceId: 'workspace', workId: 'work' },
     feed: {
       append,
-      read: () => Promise.resolve([]),
+      subscribe: () => Promise.resolve(),
       erase: () => Promise.resolve(),
     },
     runId: 'run',

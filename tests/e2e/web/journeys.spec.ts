@@ -200,9 +200,8 @@ test('work goes from list through upload, automatic status and editable facts', 
   await expect(page).toHaveURL(new RegExp(`/w/e2e-north/works/${workId}$`));
 });
 
-test('chat shows incremental Markdown and resumes after a reload and a network drop', async ({
+test('chat shows incremental Markdown and resumes after a reload and a stream disconnect', async ({
   page,
-  context,
 }) => {
   test.setTimeout(65_000);
   await page.goto('/sign-in');
@@ -245,21 +244,16 @@ test('chat shows incremental Markdown and resumes after a reload and a network d
   await expect(first).toBeVisible();
   await expect(final).toHaveCount(0);
   await expect(second).toBeVisible();
-  const interrupted = page.waitForEvent('requestfailed', {
-    predicate: (request) => new URL(request.url()).pathname.endsWith('/events'),
-    timeout: 40_000,
-  });
-  await context.setOffline(true);
-  try {
-    await interrupted;
-  } finally {
-    await context.setOffline(false);
-  }
-  await page.waitForRequest(
+  const resumed = page.waitForRequest(
     async (request) =>
       new URL(request.url()).pathname.endsWith('/events') &&
       Boolean((await request.headerValue('last-event-id'))?.includes('|')),
   );
+  const interrupted = await page.request.post(
+    `http://127.0.0.1:3031/__e2e/events/disconnect/e2e-north/${workId ?? ''}`,
+  );
+  expect(interrupted.ok()).toBe(true);
+  await resumed;
   await expect(final).toBeVisible();
   await expect(first).toHaveCount(1);
   await expect(second).toHaveCount(1);

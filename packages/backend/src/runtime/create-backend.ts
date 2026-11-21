@@ -105,6 +105,7 @@ import {
   BackendConfigError,
   validateBackendConfig,
 } from './config';
+import { createDatabaseEvents } from './database-events';
 import {
   createDocumentUnitOfWork,
   finishDocumentDeletion,
@@ -148,6 +149,7 @@ export interface ApiBackend {
     idempotency: IdempotencyApi;
   };
   readonly workHttp: {
+    subscribeEvents: import('../modules/works').SubscribeDatabaseEvents;
     // Фасад модуля works: список работ и события (запросы без сценария).
     works: WorksModule;
     views: WorkViews;
@@ -194,6 +196,17 @@ export function createBackend(
     throw new BackendConfigError('BACKEND_CONFIG_MISSING', 'auth');
   if (role === 'worker' && !worker)
     throw new BackendConfigError('BACKEND_CONFIG_MISSING', 'worker');
+  const listenUrl = validated.database.listenUrl;
+  if (
+    auth &&
+    new URL(listenUrl ?? validated.database.url).searchParams.get(
+      'pgbouncer',
+    ) === 'true'
+  )
+    throw new BackendConfigError(
+      'BACKEND_CONFIG_INVALID',
+      'database.listenUrl must be direct',
+    );
 
   // Two pools per process, both for the same database: queries (Prisma, agent store) and
   // session locks. A lock holder keeps its connection through external I/O, so it must not
@@ -206,6 +219,11 @@ export function createBackend(
   );
   const db = (dependencies.createDatabase ?? createDatabase)(pool);
   const locks = createResourceLocks(lockPool);
+  const listenPool =
+    auth && listenUrl ? createDatabasePool(listenUrl) : undefined;
+  const databaseEvents = auth
+    ? createDatabaseEvents(listenPool ?? pool)
+    : undefined;
   const storage = dependencies.storage ?? createS3Storage(validated.storage);
   const io = createProcessingIo(db, uuidV7);
   const documents = createDocumentsModule({
@@ -320,6 +338,8 @@ export function createBackend(
       for (const handle of [...started].reverse())
         await attempt(() => handle.stop());
       if (chatProgress) chatProgress.close();
+      if (databaseEvents) await attempt(() => databaseEvents.stop());
+      if (listenPool) await attempt(() => listenPool.end());
       await attempt(() => lockPool.end());
       await attempt(() => work.agents.model.stop());
       await attempt(() => db.$disconnect());
@@ -327,7 +347,7 @@ export function createBackend(
       if (failures.length > 0) throw new Error('BACKEND_STOP_FAILED');
     })());
 
-  if (auth) {
+  if (auth && databaseEvents) {
     const access = createAccess({
       db,
       secret: auth.secret,
@@ -364,6 +384,7 @@ export function createBackend(
         idempotency,
       },
       workHttp: {
+        subscribeEvents: databaseEvents.subscribe,
         works,
         views: createWorkView(workflows),
         chat: createWorkChat(work),

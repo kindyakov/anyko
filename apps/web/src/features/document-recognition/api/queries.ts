@@ -15,12 +15,6 @@ import {
 import { callApi, callFileApi } from '@/lib/api/call';
 import { ApiError } from '@/lib/api/errors';
 
-import {
-  isRecognizing,
-  recognitionPollInterval,
-  recognitionPollMs,
-} from '../model/poll';
-
 import { documentKeys } from './keys';
 
 export type DocumentFilters = {
@@ -48,8 +42,6 @@ export function documentsQueryOptions(
         query,
         signal,
       }),
-    refetchInterval: (query) =>
-      query.state.data ? recognitionPollInterval(query.state.data) : false,
   });
 }
 
@@ -77,19 +69,6 @@ export function recognitionStatusQueryOptions(
         if (error instanceof ApiError && error.status === 404) return null;
         throw error;
       }
-    },
-    refetchInterval: ({ state: { data, error } }) => {
-      if (
-        error instanceof ApiError &&
-        (error.status === 401 || error.status === 403)
-      )
-        return false;
-      return data === null ||
-        (data &&
-          (data.processingRevision ?? 0) >= revision &&
-          !isRecognizing(data))
-        ? false
-        : recognitionPollMs;
     },
   });
 }

@@ -67,7 +67,7 @@ export interface AgentChatStore {
     userText: string;
     userId: string;
   } | null>;
-  checkpoint(ref: ChatRef, draft: ChatProgress): Promise<void>;
+  checkpoint(ref: ChatRef, draft: ChatProgress): Promise<boolean>;
   answer(
     ref: ChatRef,
     result: { answer: string; reasoning?: string },

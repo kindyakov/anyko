@@ -117,10 +117,15 @@ export function createWorkChatRun(
         attempt: run.attempts,
         signal,
         checkpoint: (draft) =>
-          attempt.write(
-            (tx) => deps.agents.in(tx).internal.chat.checkpoint(ref, draft),
-            signal,
-          ),
+          attempt.write(async (tx) => {
+            const changed = await deps.agents
+              .in(tx)
+              .internal.chat.checkpoint(ref, draft);
+            if (changed)
+              await deps.works
+                .in(tx)
+                .internal.event(workspaceId, workId, 'chat.checkpoint');
+          }, signal),
       });
     const result = await callModel({
       logger: deps.logger,

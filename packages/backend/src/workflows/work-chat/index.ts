@@ -18,6 +18,7 @@ export function createWorkChat(
     | 'works'
   >,
 ) {
+  const feed = deps.chatProgress;
   return {
     progressActive:
       deps.chatProgress &&
@@ -26,14 +27,20 @@ export function createWorkChat(
         return deps.processing.queries.isActive(scope, workId, 'chat');
       }),
     progress:
-      deps.chatProgress &&
-      ((scope: WorkspaceScope, workId: WorkId, after: string) => {
+      feed &&
+      ((
+        scope: WorkspaceScope,
+        workId: WorkId,
+        after: string,
+        signal: AbortSignal,
+        receive: Parameters<typeof feed.subscribe>[3],
+      ) => {
         scope.require('works.read');
-        return (
-          deps.chatProgress?.read(
-            { workspaceId: scope.workspaceId, workId },
-            after,
-          ) ?? Promise.resolve([])
+        return feed.subscribe(
+          { workspaceId: scope.workspaceId, workId },
+          after,
+          signal,
+          receive,
         );
       }),
     async list(

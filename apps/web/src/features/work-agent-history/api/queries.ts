@@ -36,7 +36,6 @@ export function analysisRunsQuery(
         signal,
       }),
     gcTime: 0,
-    refetchInterval: active ? 2500 : false,
   });
 }
 export function agentHistoryQuery(
@@ -55,6 +54,5 @@ export function agentHistoryQuery(
         signal,
       }),
     gcTime: 0,
-    refetchInterval: active ? 2500 : false,
   });
 }

@@ -193,6 +193,8 @@ export async function proxyApiRequest(
       if (value !== null) outgoing.set(name, value);
     }
     upstreamRequestId = outgoing.get('x-request-id') ?? undefined;
+    if (outgoing.get('content-type')?.startsWith('text/event-stream'))
+      clearTimeout(timer);
     for (const cookie of response.headers.getSetCookie())
       outgoing.append('set-cookie', cookie);
     if (response.status >= 500)

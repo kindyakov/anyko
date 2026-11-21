@@ -73,7 +73,7 @@ test('a changed event refetches the work, so the screen shows what the server no
   });
   server.respond(json(200, titled('Новое название')));
   act(() => {
-    sources[0]?.emit('changed');
+    sources[0]?.emit('changed', { kind: 'facts.changed' });
   });
   await waitFor(() => {
     expect(result.current.view?.work.title).toBe('Новое название');
@@ -109,9 +109,7 @@ test('the live state follows the stream: open refetches and reports live, an err
   await waitFor(() => {
     expect(result.current.live).toBe('reconnecting');
   });
-  await waitFor(() => {
-    expect(server.exchanges).toHaveLength(3);
-  });
+  expect(server.exchanges).toHaveLength(2);
   expect(sources).toHaveLength(1);
 });
 

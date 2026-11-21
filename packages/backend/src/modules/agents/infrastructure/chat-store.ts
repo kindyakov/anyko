@@ -24,7 +24,7 @@ export function createAgentChatStore(
       return { ...chat, userId: run.initiatedBy };
     },
     async checkpoint(where, draft) {
-      await db.workChatTurn.updateMany({
+      const changed = await db.workChatTurn.updateMany({
         where: {
           ...where,
           answer: null,
@@ -32,6 +32,7 @@ export function createAgentChatStore(
         },
         data: { draft },
       });
+      return changed.count === 1;
     },
     async answer(where, { answer, reasoning }) {
       const changed = await db.workChatTurn.updateMany({

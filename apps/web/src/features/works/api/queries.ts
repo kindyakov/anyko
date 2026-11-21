@@ -50,8 +50,6 @@ export function worksQueryOptions(
         },
         signal,
       }),
-    refetchInterval: (entry) =>
-      entry.state.data?.deletions.length ? 1500 : false,
   });
 }
 
@@ -66,8 +64,6 @@ export function workDeletionQueryOptions(
       ? ({ signal }) =>
           callApi(getWorkDeletion, { params: { workspaceId, workId }, signal })
       : skipToken,
-    refetchInterval: (entry) =>
-      entry.state.data?.status === 'deleted' ? false : 1500,
   });
 }
 

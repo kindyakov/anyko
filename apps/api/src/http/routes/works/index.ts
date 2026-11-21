@@ -14,7 +14,10 @@ import type {
   WorkReview,
   WorkViews,
 } from '@anyko/backend/workflows';
-import type { WorksModule } from '@anyko/backend/works';
+import type {
+  SubscribeDatabaseEvents,
+  WorksModule,
+} from '@anyko/backend/works';
 import {
   analyzeWork,
   attachWorkDocuments,
@@ -38,6 +41,7 @@ import {
   listWorks,
   removeWorkDocument,
   streamWorkEvents,
+  streamWorkspaceEvents,
   uploadWorkDocument,
   workChatTimeline,
   workRunSchema,
@@ -55,11 +59,13 @@ import {
 import { presentDocumentResult } from '../documents/result';
 
 import { workEventStream } from './events';
+import { workspaceEventStream } from './workspace-events';
 
 export interface WorkHttpOptions
   extends DocumentHttpOptions, ConnectionHttpOptions {
   // Фасад модуля works (запросы списка и событий) и процессы работы из runtime.
   works: WorksModule;
+  subscribeEvents: SubscribeDatabaseEvents;
   views: WorkViews;
   chat: WorkChat;
   intake: WorkIntake;
@@ -87,6 +93,14 @@ export function worksRoutes(
 ) {
   const { works, views, chat, intake, review, generation, access, deletion } =
     options;
+  route(app, streamWorkspaceEvents, ({ request, scope }) =>
+    workspaceEventStream({
+      request,
+      scope,
+      access,
+      subscribeEvents: options.subscribeEvents,
+    }),
+  );
   route(app, listWorks, async ({ scope, query }) => {
     const page = await works.queries.list(scope, {
       page: query.page,
@@ -184,8 +198,8 @@ export function worksRoutes(
         chatAfter,
         works,
         access,
-        progress: chat.progress,
-        progressActive: chat.progressActive,
+        chat,
+        subscribeEvents: options.subscribeEvents,
       });
     },
   );

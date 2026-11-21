@@ -51,6 +51,11 @@ const boundedDirectories = new Map([
 
 const declaredOverlaps = [
   {
+    pair: ['streamWorkEvents', 'streamWorkspaceEvents'],
+    reason:
+      'Поток работы дочитывает журнал по курсору и передаёт дельты чата, а поток области обновляет списки без выбранной работы',
+  },
+  {
     pair: ['getDocumentResult', 'getWorkDocumentResult'],
     reason:
       'У распознавания работы отдельная проверка принадлежности и ссылки на её изображения',

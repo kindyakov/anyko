@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const schema = z.object({
   DATABASE_URL: z.url(),
+  DATABASE_LISTEN_URL: z.url().optional(),
   S3_ENDPOINT: z.url(),
   S3_BUCKET: z.string().min(1),
   S3_ACCESS_KEY: z.string().min(1),
@@ -25,7 +26,12 @@ export function parseBackendEnv(env: unknown) {
     );
   const value = parsed.data;
   return {
-    database: { url: value.DATABASE_URL },
+    database: {
+      url: value.DATABASE_URL,
+      ...(value.DATABASE_LISTEN_URL && {
+        listenUrl: value.DATABASE_LISTEN_URL,
+      }),
+    },
     storage: {
       endpoint: value.S3_ENDPOINT,
       bucket: value.S3_BUCKET,

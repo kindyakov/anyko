@@ -140,6 +140,17 @@ export const streamWorkEvents = endpoint({
   invalid: 'INVALID_WORK_INPUT',
 });
 
+export const streamWorkspaceEvents = endpoint({
+  summary: 'Передаёт уведомления списков работ и распознаваний рабочей области',
+  method: 'GET',
+  path: '/workspaces/:workspaceId/events',
+  params: workspaceParams,
+  response: eventStream(),
+  status: 200,
+  errors: ['FORBIDDEN', 'INVALID_WORK_INPUT', 'STREAM_LIMIT'],
+  invalid: 'INVALID_WORK_INPUT',
+});
+
 export const listWorkAnalysisRuns = endpoint({
   summary: 'Возвращает страницу запусков автоматического анализа работы',
   method: 'GET',

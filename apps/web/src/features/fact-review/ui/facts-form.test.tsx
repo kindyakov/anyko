@@ -149,7 +149,7 @@ function serveWork(initial: WorkJson) {
     announceChange() {
       const [source] = sources;
       act(() => {
-        source?.emit('changed');
+        source?.emit('changed', { kind: 'facts.changed' });
       });
     },
   };
