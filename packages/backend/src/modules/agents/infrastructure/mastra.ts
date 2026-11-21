@@ -125,8 +125,7 @@ export function createDocumentAgents(options: {
   });
   // SDK errors may contain request bodies; application logging records safe metadata separately.
   const mastra = new Mastra({ logger: false, storage });
-  const signalFor = (signal: AbortSignal) =>
-    AbortSignal.any([signal, AbortSignal.timeout(options.timeoutMs ?? 120000)]);
+  const streamIdleTimeoutMs = options.timeoutMs ?? 120000;
   const lookupCourt: typeof findArbitrationCourt = (territory, signal) =>
     findArbitrationCourt(territory, signal, options.fetchCourtPage);
   const lookupCreditor: typeof findCreditor = (query, signal) =>
@@ -146,10 +145,10 @@ export function createDocumentAgents(options: {
       gateway,
       lookupCourt,
       lookupCreditor,
-      timeoutMs: options.timeoutMs ?? 120000,
+      streamIdleTimeoutMs,
     }),
     async describe(input) {
-      const signal = signalFor(input.signal);
+      const { signal } = input;
       const trace = gateway.trace(input.trace, input.modelId, input.connection);
       const transcription = input.purpose === 'transcription';
       const schema = transcription ? transcriptionSchema : descriptionSchema;
@@ -167,6 +166,7 @@ export function createDocumentAgents(options: {
             images: true,
             tools: true,
             structuredOutput: true,
+            streamIdleTimeoutMs,
           },
           input.observe,
           trace,
@@ -180,7 +180,7 @@ export function createDocumentAgents(options: {
         let responseAttempts = 0;
         return await retryVisionResponse(signal, async () => {
           responseAttempts++;
-          const result = await agent.generate(
+          const stream = await agent.stream(
             [
               {
                 role: 'user',
@@ -210,6 +210,8 @@ export function createDocumentAgents(options: {
               structuredOutput: { schema },
             },
           );
+          const result = await stream.getFullOutput();
+          if (result.error) throw result.error;
           const parsed = schema.safeParse(result.object);
           if (!parsed.success) {
             if (trace)
@@ -240,7 +242,7 @@ export function createDocumentAgents(options: {
     },
     async extract(input) {
       const trace = gateway.trace(input.trace, input.modelId, input.connection);
-      let signal = input.signal;
+      const { signal } = input;
       const text = input.document.text;
       const fields =
         input.fields ??
@@ -260,7 +262,7 @@ export function createDocumentAgents(options: {
             images: true,
             tools: false,
             structuredOutput: true,
-            timeoutFromAbortSignal: true,
+            streamIdleTimeoutMs,
           },
           input.observe,
           trace,
@@ -279,15 +281,8 @@ export function createDocumentAgents(options: {
             : undefined;
         const maxOutputTokens =
           limits?.completion ?? fallbackExtractionOutputTokens;
-        // Observed roughly 190 tokens/s on long responses. Budget for 120/s plus startup.
-        const timeoutMs =
-          options.timeoutMs ?? 30000 + Math.ceil(maxOutputTokens / 120) * 1000;
         const generate = async () => {
-          signal = AbortSignal.any([
-            input.signal,
-            AbortSignal.timeout(timeoutMs),
-          ]);
-          const result = await agent.generate(
+          const stream = await agent.stream(
             `Разрешённый документ ${input.document.id}. Полный текст фрагмента:\n<source>\n${text}\n</source>\nВизуальные описания: ${JSON.stringify(input.document.visuals)}. Извлеки кандидаты.`,
             {
               memory: { thread: input.threadId, resource: input.resource },
@@ -304,6 +299,7 @@ export function createDocumentAgents(options: {
               },
             },
           );
+          const result = await stream.getFullOutput();
           if (result.error) throw result.error;
           const step = result.steps.at(-1);
           const data = parseExtractionResponse(step);

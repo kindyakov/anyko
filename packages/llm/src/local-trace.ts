@@ -3,6 +3,11 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { readProviderRequest } from './provider-calls';
+import {
+  captureProviderStream,
+  isProviderStream,
+  ProviderStreamIdleError,
+} from './provider-stream';
 
 export interface ModelTraceContext {
   correlationId: string | null;
@@ -117,15 +122,11 @@ export function createLocalModelTrace(
           const prompt = await readProviderRequest(request, init, true).catch(
             () => null,
           );
-          let response: Response | undefined;
-          try {
-            response = await transport(...args);
-            return response;
-          } finally {
-            const raw =
-              (await Promise.resolve()
-                .then(() => response?.clone().text())
-                .catch(() => null)) ?? null;
+          const recordResponse = async (
+            response: Response | undefined,
+            raw: string | null,
+            error?: unknown,
+          ) => {
             const metadata =
               raw === null
                 ? { reasoning: null, finishReason: null, usage: null }
@@ -148,18 +149,41 @@ export function createLocalModelTrace(
               responseStatus: response?.status ?? null,
               rawResponse: raw,
               ...metadata,
-              parse: !response?.ok
-                ? {
-                    status: 'rejected',
-                    reason: response ? 'http_error' : 'transport_error',
-                  }
-                : metadata.finishReason === 'tool_calls'
-                  ? { status: 'tool_calls' }
-                  : null,
+              parse:
+                error instanceof ProviderStreamIdleError
+                  ? { status: 'rejected', reason: 'stream_idle' }
+                  : !response?.ok || error !== undefined
+                    ? {
+                        status: 'rejected',
+                        reason:
+                          response && !response.ok
+                            ? 'http_error'
+                            : 'transport_error',
+                      }
+                    : metadata.finishReason === 'tool_calls'
+                      ? { status: 'tool_calls' }
+                      : null,
             };
             last = { path, record };
             await save(path, record);
+          };
+          let response: Response;
+          try {
+            response = await transport(...args);
+          } catch (error) {
+            await recordResponse(undefined, null, error);
+            throw error;
           }
+          if (response.body && isProviderStream(response))
+            return captureProviderStream(response, (raw, error) =>
+              recordResponse(response, raw, error),
+            );
+          const raw = await response
+            .clone()
+            .text()
+            .catch(() => null);
+          await recordResponse(response, raw);
+          return response;
         },
         { preconnect: transport.preconnect },
       );

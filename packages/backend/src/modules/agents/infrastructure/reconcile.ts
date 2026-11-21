@@ -64,15 +64,12 @@ export function createReconciliationAgent(options: {
   memory: Memory;
   mastra: Mastra;
   gateway: ReturnType<typeof createModelGateway>;
-  timeoutMs: number;
+  streamIdleTimeoutMs: number;
   lookupCourt: typeof findArbitrationCourt;
   lookupCreditor: typeof findCreditor;
 }): DocumentAgents['reconcile'] {
   return async (input) => {
-    const signal = AbortSignal.any([
-      input.signal,
-      AbortSignal.timeout(options.timeoutMs),
-    ]);
+    const { signal } = input;
     const limits = await options.gateway
       .contextLimits(input.connection, input.modelId, signal)
       .catch((error: unknown) => {
@@ -153,6 +150,7 @@ export function createReconciliationAgent(options: {
           images: false,
           tools: true,
           structuredOutput: true,
+          streamIdleTimeoutMs: options.streamIdleTimeoutMs,
         },
         input.observe,
         trace,
@@ -166,7 +164,7 @@ export function createReconciliationAgent(options: {
 ${modelFieldValueInstructions} В evidence каждого предложения указывай documentId, imagePath и точную quote из исходника. Для origin="document" цитата содержит само значение. Для origin="inference" цитата подтверждает исходный факт, а explanation описывает, как из него получено значение. Поля пакета: ${JSON.stringify(fieldLabels)}. ${obligationInstructions(input.fields)} ${employmentInstructions(input.fields)} ${attachmentInstructions(input.fields)} Если нужны тип, ограничения или колонки поля, уточни их через readField. В summary пиши простым языком без внутренних ID, названий API и технических полей.${checklistInstructions}`,
     });
     try {
-      const result = await agent.generate(
+      const stream = await agent.stream(
         JSON.stringify({
           event: 'documents.analyzed',
           ...(withChecklist && {
@@ -217,6 +215,7 @@ ${modelFieldValueInstructions} В evidence каждого предложения
           },
         },
       );
+      const result = await stream.getFullOutput();
       budget.assertFits();
       if (result.error) throw result.error;
       const finalStep = result.steps.at(-1);

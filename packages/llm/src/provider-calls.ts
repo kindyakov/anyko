@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+import {
+  captureProviderStream,
+  isProviderStream,
+  ProviderStreamIdleError,
+} from './provider-stream';
+
 const tokens = z.number().int().min(0).max(2_147_483_647);
 const usageSchema = z.object({
   prompt_tokens: tokens.nullish(),
@@ -97,13 +103,8 @@ export type ProviderCallObserver = (
   input: string | null,
 ) => Promise<(result: ProviderResult) => Promise<void>>;
 
-async function readResponse(response: Response) {
-  const copy = response.clone();
-  if (!copy.headers.get('content-type')?.includes('text/event-stream')) {
-    return [parseResponse(await copy.json())];
-  }
-  // generate() also works with compatible providers that reply as an event stream.
-  return (await copy.text())
+function readStreamResponse(raw: string) {
+  return raw
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(
@@ -150,30 +151,33 @@ export function observeProviderFetch(
         .catch(() => null);
       const finish = await observe(input);
       const started = performance.now();
-      let response: Response | undefined;
-      try {
-        response = await transport(...args);
-        return response;
-      } finally {
-        const payloads = response
-          ? await readResponse(response).catch(() => [])
-          : [];
+      const report = async (
+        response: Response | undefined,
+        payloads: ReturnType<typeof parseResponse>[],
+        error?: unknown,
+      ) => {
         const usage = payloads
           .flatMap((payload) => (payload.usage ? [payload.usage] : []))
           .at(-1);
         const choices = payloads.flatMap((payload) => payload.choices);
         const result: ProviderResult = {
-          status: response?.ok && choices.length ? 'responded' : 'failed',
+          status:
+            response?.ok && choices.length && error === undefined
+              ? 'responded'
+              : 'failed',
           // Error bodies and provider reasoning are outside the history contract.
           output:
             response?.ok && choices.length ? JSON.stringify(choices) : null,
-          errorCode: !response
-            ? 'TRANSPORT_ERROR'
-            : !response.ok
-              ? `HTTP_${String(response.status)}`
-              : !choices.length
-                ? 'RESPONSE_UNREADABLE'
-                : null,
+          errorCode:
+            error instanceof ProviderStreamIdleError
+              ? 'LLM_STREAM_IDLE'
+              : !response || error !== undefined
+                ? 'TRANSPORT_ERROR'
+                : !response.ok
+                  ? `HTTP_${String(response.status)}`
+                  : !choices.length
+                    ? 'RESPONSE_UNREADABLE'
+                    : null,
           durationMs: Math.round(performance.now() - started),
           inputTokens: usage?.prompt_tokens ?? null,
           outputTokens: usage?.completion_tokens ?? null,
@@ -187,7 +191,25 @@ export function observeProviderFetch(
         } catch {
           // A failed history write must not replace the outcome of a dispatched call.
         }
+      };
+      let response: Response;
+      try {
+        response = await transport(...args);
+      } catch (error) {
+        await report(undefined, [], error);
+        throw error;
       }
+      if (response.body && isProviderStream(response))
+        return captureProviderStream(response, (raw, error) =>
+          report(response, readStreamResponse(raw), error),
+        );
+      const payloads = await response
+        .clone()
+        .json()
+        .then((raw: unknown) => [parseResponse(raw)])
+        .catch(() => []);
+      await report(response, payloads);
+      return response;
     },
     { preconnect: transport.preconnect },
   );

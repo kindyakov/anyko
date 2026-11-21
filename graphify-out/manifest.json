@@ -1050,9 +1050,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/infrastructure/mastra.ts": {
-    "mtime": 1795282743.703265,
-    "seen": 1795282788.3651445,
-    "ast_hash": "8476bc65c050d13177dc25b3c04a073e",
+    "mtime": 1795283155.6917477,
+    "seen": 1795283462.0127451,
+    "ast_hash": "ace89266a7fbd7d33c2790e5461457e3",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/facts.test.ts": {
@@ -1152,9 +1152,9 @@
     "semantic_hash": ""
   },
   "packages/llm/src/index.ts": {
-    "mtime": 1795280968.8881915,
-    "seen": 1795281044.9389288,
-    "ast_hash": "c5bcba7a76e944bea402b688d3238af2",
+    "mtime": 1795283203.419331,
+    "seen": 1795283462.013414,
+    "ast_hash": "61d9aef847972aaefdc525cc3e354ca8",
     "semantic_hash": ""
   },
   "packages/llm/tsconfig.json": {
@@ -1176,9 +1176,9 @@
     "semantic_hash": ""
   },
   "docs/engineering/work-pipeline.md": {
-    "mtime": 1795282743.4404058,
-    "seen": 1795282788.3659248,
-    "ast_hash": "f41406611d5e1fde7bf944dc49a41cf3",
+    "mtime": 1795283421.81831,
+    "seen": 1795283462.0138063,
+    "ast_hash": "8b830cdd40329f9218d2bc1bcba975ab",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/assets/package.json": {
@@ -1248,15 +1248,15 @@
     "semantic_hash": ""
   },
   "packages/backend/tests/integration/vision-retry.test.ts": {
-    "mtime": 1795279239.2087078,
-    "seen": 1795279524.092334,
-    "ast_hash": "c23aa871e891b495452f88d5789f872a",
+    "mtime": 1795283372.5847638,
+    "seen": 1795283462.0132546,
+    "ast_hash": "c6d8d0d36a36397dceb2e06d31f5eb04",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/infrastructure/reconcile.ts": {
-    "mtime": 1795280437.458258,
-    "seen": 1795280831.5425844,
-    "ast_hash": "5617ebedaea7c6552113ac9852b9e33c",
+    "mtime": 1795283158.1245096,
+    "seen": 1795283462.0127542,
+    "ast_hash": "97b6cb5c4ddb8348eec2778925e4973f",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/infrastructure/session-store.ts": {
@@ -1266,9 +1266,9 @@
     "semantic_hash": ""
   },
   "packages/backend/tests/integration/session-agent.test.ts": {
-    "mtime": 1795282740.0172768,
-    "seen": 1795282788.3654778,
-    "ast_hash": "da6c17ca23d31f0bc323b911d37cee77",
+    "mtime": 1795283573.8448215,
+    "seen": 1795283693.8662293,
+    "ast_hash": "b612f26e641c59ec043d747e66cfd584",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611060012_work_agent_sessions/migration.sql": {
@@ -2286,9 +2286,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/features/works/model/journey.ts": {
-    "mtime": 1795280437.4851198,
-    "seen": 1795280831.5423467,
-    "ast_hash": "3f1e3f9ff231e67453e06b1ce18e8980",
+    "mtime": 1795283203.4183316,
+    "seen": 1795283462.0124567,
+    "ast_hash": "89a3e65f23e5d8daa7a8d6cc38e8c52c",
     "semantic_hash": ""
   },
   "apps/web/src/features/works/ui/work-list.tsx": {
@@ -2946,9 +2946,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/document-ocr/index.ts": {
-    "mtime": 1795280437.4444726,
-    "seen": 1795280831.5428317,
-    "ast_hash": "51f5652bd713a8de3f41deed1f9a716a",
+    "mtime": 1795283160.5157228,
+    "seen": 1795283462.013106,
+    "ast_hash": "53b52346add9a342cd4117dd2a13abcc",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/continue-session.ts": {
@@ -4044,9 +4044,9 @@
     "semantic_hash": ""
   },
   "packages/contracts/src/documents/processing.ts": {
-    "mtime": 1795051296.7281587,
-    "seen": 1795244937.3210518,
-    "ast_hash": "4b75a7b38c6619a5a4f6f62aff27dbba",
+    "mtime": 1795283196.8471107,
+    "seen": 1795283462.0132957,
+    "ast_hash": "a8f0a5e0c2b9cc83cda73d20a0e7f6a4",
     "semantic_hash": ""
   },
   "infra/mineru/docx_media.py": {
@@ -5058,9 +5058,9 @@
     "semantic_hash": ""
   },
   "packages/llm/src/provider-calls.ts": {
-    "mtime": 1795280775.1627114,
-    "seen": 1795280831.5432234,
-    "ast_hash": "748b4ae45344e94388a92eb0bff2e1d2",
+    "mtime": 1795283203.4183316,
+    "seen": 1795283462.0134163,
+    "ast_hash": "b257eb4daab6843de349d6875f0f8ba2",
     "semantic_hash": ""
   },
   "docs/adr/0011-work-agent-proposals-and-template-format.md": {
@@ -5712,9 +5712,27 @@
     "semantic_hash": ""
   },
   "packages/llm/src/local-trace.ts": {
-    "mtime": 1795280775.1627114,
-    "seen": 1795280831.543221,
-    "ast_hash": "ace399d83b5d7f7e378fe6dc6bf39c30",
+    "mtime": 1795283203.419331,
+    "seen": 1795283462.0134149,
+    "ast_hash": "77e5f7c6b908d72b2044cf496d7b9e10",
+    "semantic_hash": ""
+  },
+  "packages/backend/tests/support/completion-stream.ts": {
+    "mtime": 1795283323.4604383,
+    "seen": 1795283462.013262,
+    "ast_hash": "8cc4851e9d4b14b60f0b12d439c59c0e",
+    "semantic_hash": ""
+  },
+  "packages/llm/src/provider-stream.test.ts": {
+    "mtime": 1795283576.6302612,
+    "seen": 1795283693.8663628,
+    "ast_hash": "8410549e93f0f7ff4c798dbbbd5cc157",
+    "semantic_hash": ""
+  },
+  "packages/llm/src/provider-stream.ts": {
+    "mtime": 1795283732.8909724,
+    "seen": 1795283775.1215599,
+    "ast_hash": "4b2290b1d0a5ae92713745fbd6db135d",
     "semantic_hash": ""
   }
 }

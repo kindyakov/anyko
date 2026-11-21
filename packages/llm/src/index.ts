@@ -6,6 +6,10 @@ import {
   observeProviderFetch,
   type ProviderCallObserver,
 } from './provider-calls';
+import {
+  ProviderStreamIdleError,
+  watchProviderStream,
+} from './provider-stream';
 import { createRouterContextLimits } from './router-context';
 
 export type { ProviderCallObserver } from './provider-calls';
@@ -38,7 +42,7 @@ const modelSchema = z.object({
   images: z.boolean(),
   tools: z.boolean(),
   structuredOutput: z.boolean(),
-  timeoutFromAbortSignal: z.boolean().optional(),
+  streamIdleTimeoutMs: z.number().int().positive().optional(),
 });
 
 export type ModelConnection = z.infer<typeof connectionSchema>;
@@ -48,6 +52,7 @@ export type LlmErrorCode =
   | 'LLM_RATE_LIMITED'
   | 'LLM_UNAVAILABLE'
   | 'LLM_TIMEOUT'
+  | 'LLM_STREAM_IDLE'
   | 'LLM_CANCELLED'
   | 'LLM_INVALID_RESPONSE'
   | 'LLM_COMPLETION_LIMIT'
@@ -68,6 +73,7 @@ const llmErrorMessages = {
   LLM_RATE_LIMITED: 'Провайдер модели ограничил частоту запросов.',
   LLM_UNAVAILABLE: 'Провайдер модели недоступен.',
   LLM_TIMEOUT: 'Провайдер модели не ответил за отведённое время.',
+  LLM_STREAM_IDLE: 'Модель перестала передавать данные ответа.',
   LLM_CANCELLED: 'Запрос к модели отменён.',
   LLM_INVALID_RESPONSE: 'Ответ модели не соответствует ожидаемому формату.',
   LLM_COMPLETION_LIMIT: 'Ответ модели оборвался на предельном числе токенов.',
@@ -77,6 +83,12 @@ const llmErrorMessages = {
 /** No provider body, prompt or credential crosses the application error seam. */
 export function llmError(error: unknown, signal?: AbortSignal): LlmError {
   if (error instanceof LlmError) return error;
+  let cause = error;
+  for (let depth = 0; cause instanceof Error && depth < 6; depth++) {
+    if (cause instanceof ProviderStreamIdleError)
+      return new LlmError('LLM_STREAM_IDLE');
+    cause = cause.cause;
+  }
   if (signal?.aborted)
     return new LlmError(
       signal.reason instanceof DOMException &&
@@ -128,14 +140,9 @@ export function createModelGateway(
         throw new LlmError('LLM_REQUEST_REJECTED');
       const config = parsedConnection.data;
       const baseFetch = options.fetch ?? fetch;
-      const transport = parsedModel.data.timeoutFromAbortSignal
-        ? Object.assign(
-            (...[request, init]: Parameters<typeof fetch>) => {
-              const requestOptions = { ...init, timeout: false as const };
-              return baseFetch(request, requestOptions);
-            },
-            { preconnect: baseFetch.preconnect },
-          )
+      const idleTimeoutMs = parsedModel.data.streamIdleTimeoutMs;
+      const transport = idleTimeoutMs
+        ? watchProviderStream(baseFetch, idleTimeoutMs)
         : options.fetch;
       const observed = observe
         ? observeProviderFetch(transport ?? baseFetch, observe)
@@ -146,6 +153,7 @@ export function createModelGateway(
         baseURL: config.baseURL,
         apiKey: config.apiKey,
         supportsStructuredOutputs: parsedModel.data.structuredOutput,
+        ...(idleTimeoutMs && { includeUsage: true }),
         ...(traced ? { fetch: traced } : {}),
       }).chatModel(parsedModel.data.id);
     },

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { createDatabasePool } from '@anyko/database';
 
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
+import { completionStream } from '../support/completion-stream';
 
 test('RouterAI DeepSeek transcription sends the image bytes and preserves the response budget', async () => {
   const pool = createDatabasePool(
@@ -23,6 +24,8 @@ test('RouterAI DeepSeek transcription sends the image bytes and preserves the re
         calls++;
         const body = z
           .object({
+            stream: z.literal(true),
+            stream_options: z.object({ include_usage: z.literal(true) }),
             reasoning: z.object({ effort: z.string() }).optional(),
             messages: z.array(
               z.object({
@@ -48,7 +51,7 @@ test('RouterAI DeepSeek transcription sends the image bytes and preserves the re
           }
         }
         const reasoningDisabled = body.reasoning?.effort === 'none';
-        return Response.json({
+        return completionStream({
           id: 'fixture',
           object: 'chat.completion',
           created: 1,
@@ -100,6 +103,65 @@ test('RouterAI DeepSeek transcription sends the image bytes and preserves the re
   }
 }, 20000);
 
+test('real Mastra OCR reports the stream idle error without retrying processing comments', async () => {
+  const pool = createDatabasePool(
+    z.string().min(1).parse(process.env.TEST_DATABASE_URL),
+  );
+  let calls = 0;
+  let comments: ReturnType<typeof setInterval> | undefined;
+  const encoder = new TextEncoder();
+  const agents = createDocumentAgents({
+    pool,
+    timeoutMs: 75,
+    fetch: Object.assign(
+      () => {
+        calls++;
+        return Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                comments = setInterval(() => {
+                  controller.enqueue(encoder.encode(': PROCESSING\n\n'));
+                }, 5);
+              },
+              cancel() {
+                clearInterval(comments);
+              },
+            }),
+            { headers: { 'content-type': 'text/event-stream' } },
+          ),
+        );
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  try {
+    await agents.ready();
+    const error = await agents
+      .describe({
+        connection: {
+          id: 'fixture',
+          baseURL: 'https://fixture.invalid/v1',
+          apiKey: crypto.randomUUID(),
+        },
+        modelId: 'fixture',
+        resource: crypto.randomUUID(),
+        threadId: crypto.randomUUID(),
+        bytes: new Uint8Array([1]),
+        mediaType: 'image/jpeg',
+        purpose: 'transcription',
+        signal: AbortSignal.timeout(3000),
+      })
+      .catch((error: unknown) => error);
+    expect(error).toMatchObject({ code: 'LLM_STREAM_IDLE' });
+    expect(calls).toBe(1);
+  } finally {
+    clearInterval(comments);
+    await agents.stop();
+    await pool.end();
+  }
+});
+
 test('real Mastra adapter retries a malformed OpenAI-compatible response', async () => {
   let calls = 0;
   const pool = createDatabasePool(
@@ -111,7 +173,7 @@ test('real Mastra adapter retries a malformed OpenAI-compatible response', async
       () => {
         calls++;
         return Promise.resolve(
-          Response.json({
+          completionStream({
             id: 'fixture',
             object: 'chat.completion',
             created: 1,

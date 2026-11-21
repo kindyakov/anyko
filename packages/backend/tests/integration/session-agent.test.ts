@@ -20,6 +20,7 @@ import {
   templateData,
 } from '../../src/modules/templates';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
+import { completionStream } from '../support/completion-stream';
 
 test('real extraction preserves candidates with valid citations when other fields or citations are invalid', async () => {
   const databaseUrl = z
@@ -67,7 +68,7 @@ test('real extraction preserves candidates with valid citations when other field
     fetch: Object.assign(
       () =>
         Promise.resolve(
-          Response.json({
+          completionStream({
             id: 'fixture',
             object: 'chat.completion',
             created: 1,
@@ -246,7 +247,7 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
         requests.push(body);
         const response = responses.shift();
         if (!response) throw new Error('UNEXPECTED_PROVIDER_CALL');
-        return Response.json({
+        return completionStream({
           id: 'fixture',
           object: 'chat.completion',
           created: 1,
@@ -388,7 +389,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
           .object({ max_tokens: z.number() })
           .parse(await request.json());
         firstOutputLimit ??= max_tokens;
-        return Response.json({
+        return completionStream({
           id: 'fixture',
           object: 'chat.completion',
           created: 1,
@@ -759,7 +760,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
                       }),
                     ]
                   : [];
-        return Response.json({
+        return completionStream({
           id: 'fixture',
           object: 'chat.completion',
           created: 1,
@@ -988,7 +989,7 @@ test('reconciliation finalizes with cited candidates after a parallel batch exha
     evidence: [{ documentId, imagePath: null, quote }],
   };
   const response = (message: object, finishReason: string) =>
-    Response.json({
+    completionStream({
       id: 'fixture',
       object: 'chat.completion',
       created: 1,
@@ -1169,7 +1170,7 @@ test('court lookup uses only the territory and sends verified address alternativ
           );
         generation++;
         return Promise.resolve(
-          Response.json({
+          completionStream({
             id: 'fixture',
             object: 'chat.completion',
             created: 1,
@@ -1433,7 +1434,7 @@ test('official creditor details stay a proposal until selecting them for the lin
                   ],
                 },
               })
-            : Response.json({
+            : (chatMode ? Response.json.bind(Response) : completionStream)({
                 id: 'fixture',
                 object: 'chat.completion',
                 created: 1,
