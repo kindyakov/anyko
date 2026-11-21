@@ -2,14 +2,19 @@ import { submittedAttachmentsField } from '@anyko/document-values/attachments';
 
 import type { WorkFacts } from '../../modules/facts';
 
+import { supportingAttachmentCandidates } from './attachment-candidates';
+import type { ChecklistAnalysisSource } from './checklist-suggestions';
+
 type Candidates = WorkFacts['candidates'];
 
 export function attachmentAnalysis(
   found: Candidates,
   extracted: Candidates = [],
+  sources: ChecklistAnalysisSource[] = [],
 ) {
+  const suggestions = supportingAttachmentCandidates(found, sources);
   const egrnIds = new Set(
-    [...extracted, ...found]
+    [...extracted, ...found, ...suggestions]
       .filter(
         ({ field, value, origin }) =>
           field === 'attachments' &&
@@ -19,10 +24,13 @@ export function attachmentAnalysis(
       )
       .flatMap(({ evidence }) => evidence.map(({ documentId }) => documentId)),
   );
-  return found.filter(
-    ({ field, evidence }) =>
-      field !== submittedAttachmentsField &&
-      (!['propertyDetails', 'observations'].includes(field) ||
-        !evidence.some(({ documentId }) => egrnIds.has(documentId))),
-  );
+  return [
+    ...suggestions,
+    ...found.filter(
+      ({ field, evidence }) =>
+        field !== submittedAttachmentsField &&
+        (!['propertyDetails', 'observations'].includes(field) ||
+          !evidence.some(({ documentId }) => egrnIds.has(documentId))),
+    ),
+  ];
 }

@@ -1,5 +1,7 @@
 import { incline } from 'lvovich';
 
+import { normalizedPersonName } from './bankruptcy-format';
+
 export const datedBankruptcyPackage = 'bfl-bankruptcy-v8';
 export const approvedStatementTemplate = 'bfl-statement-v8';
 
@@ -35,11 +37,7 @@ export function statementRequestValues(values: {
   middleName?: unknown;
 }): Record<string, string> {
   const { last, first, middle, gender } = incline(
-    {
-      last: filled(values.lastName),
-      first: filled(values.firstName),
-      middle: filled(values.middleName),
-    },
+    statementNameParts(values),
     'accusative',
   );
   return {
@@ -58,4 +56,35 @@ export function statementRequestValues(values: {
           ? 'несостоятельным (банкротом)'
           : 'банкротом',
   };
+}
+
+export function statementNameParts(values: {
+  lastName?: unknown;
+  firstName?: unknown;
+  middleName?: unknown;
+}) {
+  const part = (input: unknown) => {
+    const value = filled(input);
+    return value === null ? null : normalizedPersonName(value);
+  };
+  return {
+    last: part(values.lastName),
+    first: part(values.firstName),
+    middle: part(values.middleName),
+  };
+}
+
+export function statementDebtorGender(
+  values: Parameters<typeof statementNameParts>[0],
+) {
+  return incline(statementNameParts(values), 'accusative').gender;
+}
+
+export function bankruptcyStatement(version: string | undefined) {
+  return [
+    'bfl-statement-v8',
+    'bfl-statement-v9',
+    'bfl-statement-v10',
+    'bfl-statement-v11',
+  ].some((supported) => version === supported);
 }

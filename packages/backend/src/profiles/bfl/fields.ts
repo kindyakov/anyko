@@ -60,6 +60,7 @@ const scalarLabels = {
   criminalCasesDetails: 'Уголовные дела и судимость',
   insolvencyDetails: 'Обстоятельства неплатёжеспособности',
   propertyDetails: 'Обстоятельства имущественного положения',
+  cashOnHand: 'Наличные денежные средства, руб.',
   sroName: 'Наименование СРО',
   sroAddress: 'Юридический адрес СРО',
   sroPostalAddress: 'Почтовый адрес СРО',
@@ -158,6 +159,8 @@ const collectionLabels = {
     label: 'Недвижимость',
     columns: columns({
       description: 'Вид и наименование',
+      category:
+        'Подраздел: земельный участок, жилой дом, квартира, гараж или иное',
       ownership: 'Вид собственности',
       address: 'Адрес',
       area: 'Площадь, кв. м',
@@ -170,6 +173,8 @@ const collectionLabels = {
     label: 'Транспорт',
     columns: columns({
       description: 'Вид, марка, модель, год',
+      category:
+        'Вид транспорта: легковой автомобиль, грузовой автомобиль, мототранспорт, сельхозтехника, водный, воздушный или иной',
       identifier: 'Идентификационный номер',
       ownership: 'Вид собственности',
       address: 'Место хранения',
@@ -214,6 +219,8 @@ const collectionLabels = {
     label: 'Наличные и ценное имущество',
     columns: columns({
       description: 'Вид и наименование',
+      category:
+        'Подраздел: драгоценности, предметы искусства, имущество для профессиональных занятий или иное',
       amount: 'Стоимость и валюта',
       address: 'Место хранения',
       pledge: 'Залог и залогодержатель',
@@ -300,6 +307,7 @@ export const fieldKeySchema = z.enum([
   'equity',
   'securities',
   'valuables',
+  'cashOnHand',
   'attachments',
   'submittedAttachments',
 ]);
@@ -320,7 +328,8 @@ const dateFields = new Set([
   'debtAsOfDate',
 ]);
 export const isCalendarDateField = (field: string) => dateFields.has(field);
-export const isRublesField = (field: string) => field === 'debtTotal';
+export const isRublesField = (field: string) =>
+  field === 'debtTotal' || field === 'cashOnHand';
 export const isRublesColumn = (field: string, column: string) =>
   field !== 'valuables' &&
   ['amount', 'arrears', 'penalties', 'interest'].includes(column);

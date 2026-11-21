@@ -76,6 +76,166 @@ function runFacts(initial = emptyFacts()) {
   };
 }
 
+test('uses passport spelling and keeps all sources for equivalent text', async () => {
+  const facts = runFacts();
+  const result = await facts.accept({
+    fields: ['lastName', 'firstName', 'middleName', 'birthPlace'],
+    confirmed: false,
+    passportIds: new Set([documentId]),
+    candidates: [
+      textCandidate('lastName', 'Иванов', otherDocumentId),
+      textCandidate('firstName', 'Иван', otherDocumentId),
+      textCandidate('middleName', 'Иванвич', otherDocumentId),
+      textCandidate('birthPlace', 'гор.  Киров', otherDocumentId),
+      textCandidate('lastName', 'ИВАНОВ'),
+      textCandidate('firstName', 'ИВАН'),
+      textCandidate('middleName', 'ИВАНОВИЧ'),
+      textCandidate('birthPlace', 'ГОР. КИРОВ'),
+    ],
+  });
+
+  const saved = await facts.saved();
+  expect(saved.values).toMatchObject({
+    lastName: 'ИВАНОВ',
+    firstName: 'ИВАН',
+    birthPlace: 'ГОР. КИРОВ',
+    middleName: null,
+  });
+  expect(result.discrepancyFields).toEqual(['middleName']);
+  expect(
+    markSelectedCandidates(saved)
+      .filter(({ field, selected }) => field === 'lastName' && selected)
+      .map(({ evidence }) => evidence[0]?.documentId),
+  ).toEqual([otherDocumentId, documentId]);
+});
+
+test('a later passport updates equivalent automatic spelling while preserving lawyer choices', async () => {
+  const initial = emptyFacts();
+  initial.values.lastName = 'Иванов';
+  initial.values.firstName = 'Иван';
+  initial.values.middleName = 'Иванович';
+  initial.manual = ['firstName'];
+  initial.confirmed = ['middleName'];
+  const facts = runFacts(initial);
+  const result = await facts.accept({
+    fields: ['lastName', 'firstName', 'middleName'],
+    confirmed: false,
+    preserveExisting: true,
+    passportIds: new Set([documentId]),
+    candidates: [
+      textCandidate('lastName', 'ИВАНОВ'),
+      textCandidate('firstName', 'ИВАН'),
+      textCandidate('middleName', 'ИВАНОВИЧ'),
+    ],
+  });
+  expect((await facts.saved()).values).toMatchObject({
+    lastName: 'ИВАНОВ',
+    firstName: 'Иван',
+    middleName: 'Иванович',
+  });
+  expect(result.discrepancyFields).toEqual([]);
+});
+
+test('citizenship requires a passport citation and keeps other proposals for review', async () => {
+  const inferred: Candidate = {
+    ...textCandidate('citizenship', 'Российская Федерация'),
+    origin: 'inference',
+    explanation: 'Место рождения в России',
+  };
+  const excerpt = {
+    documentId,
+    imagePath: null,
+    quote: 'Паспорт гражданина Российской Федерации',
+  };
+  const passport: Candidate = {
+    field: 'citizenship',
+    value: 'Российская Федерация',
+    evidence: [excerpt],
+    origin: 'document',
+  };
+  const incidental: Candidate = {
+    ...passport,
+    evidence: [{ ...excerpt, quote: 'Гражданство: Российская Федерация' }],
+  };
+  const accept = async (candidate: Candidate) => {
+    const facts = runFacts();
+    await facts.accept({
+      fields: ['citizenship'],
+      confirmed: false,
+      candidates: [candidate],
+    });
+    return facts.saved();
+  };
+  for (const candidate of [incidental, inferred]) {
+    const saved = await accept(candidate);
+    expect(saved.values.citizenship).toBeNull();
+    expect(saved.candidates).toEqual([candidate]);
+  }
+  const saved = await accept(passport);
+  expect(saved.values.citizenship).toBe('Российская Федерация');
+  expect(markSelectedCandidates(saved)).toEqual([
+    { ...passport, selected: true },
+  ]);
+});
+
+test('bank debt keeps its amount and takes only the supported contract type', async () => {
+  const base = {
+    name: 'ООО МКК «Синтетический Кредит»',
+    contractNumber: 'A-42',
+    contractDate: '2025-01-03',
+    amount: '720.50',
+    amountDate: '2026-11-09',
+    debtStatus: 'Действует',
+    type: 'Полная задолженность по договору',
+  };
+  for (const [title, expected, adjacent = ''] of [
+    ['Кредитный договор', 'Кредит'],
+    ['Договор по кредитной карте', 'Кредитная карта'],
+    ['Договор займа', 'Заём'],
+    ['Договор', 'Кредитная карта', '\nВид договора: кредитная карта'],
+    ['Договор', undefined],
+    [
+      'Договор',
+      undefined,
+      '\nДоговор по кредитной карте № B-73 от 03.01.2025\nОбщая задолженность: 150,00 руб.',
+    ],
+    ['Договор', undefined, '; Договор по кредитной карте № B-73 от 03.01.2025'],
+    [
+      'Договор',
+      undefined,
+      ' Договор № B-73 от 03.01.2025\nВид договора: кредитная карта',
+    ],
+  ] as const) {
+    const facts = runFacts();
+    const result = await facts.accept({
+      fields: ['debts'],
+      confirmed: false,
+      candidates: [
+        {
+          field: 'debts',
+          value: [base],
+          evidence: [
+            {
+              documentId,
+              imagePath: null,
+              quote: `${base.name}
+${title} № A-42 от 03.01.2025${adjacent}
+По состоянию на 09.11.2026
+Общая задолженность: 720,50 руб.`,
+            },
+          ],
+        },
+      ],
+    });
+    const debt = (await facts.saved()).values.debts;
+    expect(debt).toBeArrayOfSize(1);
+    if (!Array.isArray(debt)) throw new Error('Expected a saved obligation');
+    expect(debt[0]?.amount).toBe('720.50');
+    expect(debt[0]?.type).toBe(expected);
+    expect(result.discrepancyFields).toEqual(expected ? [] : ['debts']);
+  }
+});
+
 test('accepts context additions without overriding or duplicating contradictory document candidates', async () => {
   const facts = runFacts();
   const first = textCandidate('personName', 'Анна');
@@ -650,6 +810,93 @@ test('accepts a later documented closure while keeping conflicting active balanc
       beforeClosure.values.debts,
     );
   }
+});
+
+test('keeps the latest documented amount of a new debt when reconciliation has no output', async () => {
+  const debt = (
+    contractNumber: string,
+    amount: string,
+    date: string,
+    source: string,
+  ): Candidate => ({
+    field: 'debts',
+    value: [
+      {
+        name: 'АО Синтетический Банк',
+        contractNumber,
+        contractDate: '03.01.2025',
+        amount,
+        amountDate: date,
+        debtStatus: 'Действует',
+      },
+    ],
+    evidence: [
+      {
+        documentId: source,
+        imagePath: null,
+        quote: `АО Синтетический Банк\nДоговор № ${contractNumber} от 03.01.2025\nПо состоянию на ${date}\nПолная задолженность ${amount.replace('.', ',')} руб.`,
+      },
+    ],
+  });
+  const earlier = debt('A-51', '151000.00', '28.10.2026', documentId);
+  const earlierProof = earlier.evidence[0];
+  if (!earlierProof) throw new Error('Expected a dated certificate');
+  earlierProof.quote = earlierProof.quote.replace(
+    'Договор №',
+    'Кредитный договор №',
+  );
+  const latest = debt('A-51', '145006.47', '18.11.2026', otherDocumentId);
+  const second = debt('A-52', '11500.25', '18.11.2026', otherDocumentId);
+  const third = debt('A-62', '15993.53', '20.11.2026', documentId);
+  const candidates = [earlier, latest, second, third];
+  const facts = runFacts();
+  const result = await facts.accept({
+    fields: ['debts'],
+    confirmed: false,
+    preserveExisting: true,
+    candidates,
+  });
+  const saved = await facts.saved();
+  expect(result.contextAccepted).toBe(false);
+  for (const candidate of candidates)
+    expect(saved.candidates).toContainEqual(candidate);
+  expect(obligationAmounts(saved.values.debts, null).debts).toMatchObject([
+    { contractNumber: 'A-51', amount: '145006,47', type: 'Кредит' },
+    { contractNumber: 'A-52', amount: '11500,25' },
+    { contractNumber: 'A-62', amount: '15993,53' },
+  ]);
+
+  const ambiguous = runFacts();
+  const conflict = await ambiguous.accept({
+    fields: ['debts'],
+    confirmed: false,
+    candidates: [
+      earlier,
+      latest,
+      debt('A-51', '160000.00', '18.11.2026', documentId),
+    ],
+  });
+  expect(conflict.discrepancyFields).toContain('debts');
+  expect((await ambiguous.saved()).values.debts).toBeNull();
+
+  const crossed = debt('A-51', '151000.00', '22.11.2026', documentId);
+  crossed.evidence = [
+    {
+      documentId,
+      imagePath: null,
+      quote:
+        earlierProof.quote +
+        '\nДоговор № B-73 от 03.01.2025\nПо состоянию на 22.11.2026\nПолная задолженность 500,00 руб.',
+    },
+  ];
+  const crossedFacts = runFacts();
+  const crossedResult = await crossedFacts.accept({
+    fields: ['debts'],
+    confirmed: false,
+    candidates: [crossed, latest],
+  });
+  expect(crossedResult.discrepancyFields).toContain('debts');
+  expect((await crossedFacts.saved()).values.debts).toBeNull();
 });
 
 test('accepts a credit certificate with adjacent contract number and date fields from one evidence block', async () => {

@@ -20,6 +20,10 @@ import {
   type ChecklistAnalysisSource,
   validateChecklistSuggestions,
 } from './checklist-suggestions';
+import {
+  passportCitizenshipCandidates,
+  passportSourceIds,
+} from './identity-sources';
 import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
 
@@ -76,13 +80,23 @@ export function createWorkContinuation(deps: WorkDependencies) {
         input.signal,
       );
       const found = candidatesForContext(
-        input.candidates,
+        input.fields.some(({ key }) => key === 'citizenship')
+          ? [
+              ...input.candidates,
+              ...locateEvidence(
+                passportCitizenshipCandidates(input.sources),
+                input.sources,
+              ),
+            ]
+          : input.candidates,
         snapshot.facts.candidates,
         run.documentIds,
         input.sources.map(({ id }) => id),
       );
       const submitted = hasSubmittedAttachments(input.fields);
-      const candidates = submitted ? attachmentAnalysis(found) : found;
+      const candidates = submitted
+        ? attachmentAnalysis(found, [], input.sources)
+        : found;
       let output:
         Awaited<ReturnType<typeof deps.agents.model.reconcile>> | undefined;
       const historyRef = {
@@ -229,6 +243,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
               confirmed: work.confirmedRevision === work.revision,
               preserveExisting: run.automaticUpload === true,
               candidates,
+              passportIds: passportSourceIds(input.sources),
               ...(validOutput && { contextCandidates: validOutput.candidates }),
             });
             if (!acceptedFacts.contextAccepted) validOutput = undefined;
@@ -311,7 +326,8 @@ export function createWorkContinuation(deps: WorkDependencies) {
                 ? {
                     errorCode: contextChanged
                       ? 'CONTEXT_REVISION_CHANGED'
-                      : 'CONTEXT_RECONCILIATION_FAILED',
+                      : (reconciliationError ??
+                        'CONTEXT_RECONCILIATION_FAILED'),
                   }
                 : { usage: validOutput.usage }),
             });

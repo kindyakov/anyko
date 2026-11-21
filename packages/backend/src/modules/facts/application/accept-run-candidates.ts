@@ -21,6 +21,7 @@ export const acceptRunCandidates =
     excludedFields,
     confirmed,
     preserveExisting,
+    passportIds,
   }: AcceptRunCandidatesInput): Promise<AcceptedRunCandidates> => {
     const existing = await store.get(workspaceId, workId);
     if (excludedFields?.size) {
@@ -51,6 +52,7 @@ export const acceptRunCandidates =
       confirmed,
       preserveExisting,
       excludedFields,
+      passportIds,
     );
     if (!contextAccepted) {
       // Необязательная стадия не стирает известные значения без новых кандидатов.

@@ -34,6 +34,7 @@ export interface AcceptRunCandidatesInput extends AnalysisFactsRef {
   preserveExisting?: boolean;
   candidates: WorkFacts['candidates'];
   contextCandidates?: WorkFacts['candidates'];
+  passportIds?: ReadonlySet<string>;
 }
 
 export interface AcceptedRunCandidates {

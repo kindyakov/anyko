@@ -1,3 +1,5 @@
+import type { z } from 'zod';
+
 import {
   canonicalCalendarDate,
   formatCalendarDate,
@@ -10,7 +12,10 @@ import {
   sameObligation,
 } from '@anyko/document-values/obligations';
 
+import { automaticValue, hasUnambiguousBalanceDate } from './automatic-value';
+import type { candidateSchema } from './candidate';
 import type { FieldRow, FieldValue } from './fields';
+import { isKnownObligationType } from './obligation-type';
 
 export function usesBankObligations(field: string, values: FieldValue[]) {
   return (
@@ -27,6 +32,26 @@ function sameBalance(a: FieldRow, b: FieldRow) {
   );
 }
 
+export function fillsObligationType(next: FieldRow, previous: FieldRow) {
+  return (
+    sameBalance(next, previous) &&
+    !isKnownObligationType(previous.type) &&
+    isKnownObligationType(next.type)
+  );
+}
+
+export function hasUnknownObligationType(value: FieldValue) {
+  return (
+    Array.isArray(value) &&
+    value.some(
+      (row) =>
+        isBankObligation(row) &&
+        row.debtStatus === obligationStatuses.active &&
+        !isKnownObligationType(row.type),
+    )
+  );
+}
+
 function isClosure(row: FieldRow) {
   return (
     row.debtStatus === obligationStatuses.closed ||
@@ -34,16 +59,37 @@ function isClosure(row: FieldRow) {
   );
 }
 
+function balanceDate(row: FieldRow) {
+  const date = canonicalCalendarDate(row.amountDate ?? '');
+  return date ? formatCalendarDate(date, 'YYYY-MM-DD') : '';
+}
+
 export function supersedesObligation(closure: FieldRow, older: FieldRow) {
-  if (!isClosure(closure)) return false;
-  const closureDate = canonicalCalendarDate(closure.amountDate ?? '');
-  const olderDate = canonicalCalendarDate(older.amountDate ?? '');
-  return (
-    !!closureDate &&
-    !!olderDate &&
-    formatCalendarDate(closureDate, 'YYYY-MM-DD') >
-      formatCalendarDate(olderDate, 'YYYY-MM-DD')
+  const olderDate = balanceDate(older);
+  return isClosure(closure) && !!olderDate && balanceDate(closure) > olderDate;
+}
+
+type Candidate = z.infer<typeof candidateSchema>;
+
+function latestActiveBalances(
+  group: FieldRow[],
+  sources: ReadonlyMap<FieldRow, Candidate['evidence']>,
+) {
+  const dated = group.map((row) => ({ row, date: balanceDate(row) }));
+  if (
+    dated.some(
+      ({ row, date }) =>
+        row.debtStatus !== obligationStatuses.active ||
+        !date ||
+        !hasUnambiguousBalanceDate(sources.get(row) ?? [], row),
+    )
+  )
+    return group;
+  const latest = dated.reduce(
+    (date, next) => (next.date > date ? next.date : date),
+    '',
   );
+  return dated.filter(({ date }) => date === latest).map(({ row }) => row);
 }
 
 function compatibleBreakdown(a: FieldRow, b: FieldRow) {
@@ -64,6 +110,7 @@ export function containsObligations(saved: FieldValue, proposed: FieldValue) {
         (previous) =>
           sameObligation(previous, row) &&
           sameBalance(previous, row) &&
+          (!isKnownObligationType(row.type) || row.type === previous.type) &&
           compatibleBreakdown(previous, row),
       ),
     )
@@ -72,13 +119,18 @@ export function containsObligations(saved: FieldValue, proposed: FieldValue) {
 
 export function reconcileObligations(
   saved: FieldValue,
-  proposals: FieldValue[],
+  candidates: Candidate[],
 ): FieldValue {
   const previous = Array.isArray(saved) ? saved : [];
   const groups: FieldRow[][] = [];
-  for (const proposal of proposals) {
+  const sources = new Map<FieldRow, Candidate['evidence']>();
+  let observedAbsence = false;
+  for (const candidate of candidates) {
+    const proposal = automaticValue(candidate);
     if (!Array.isArray(proposal)) continue;
+    if (!proposal.length) observedAbsence = true;
     for (const row of proposal) {
+      sources.set(row, candidate.evidence);
       const group = groups.find(
         ([first]) => first && sameObligation(first, row),
       );
@@ -109,19 +161,31 @@ export function reconcileObligations(
       accepted.push(closure);
       continue;
     }
+    // When the contract has no saved balance, use only its newest documented date.
+    const balances =
+      !old && group.some((row) => !sameBalance(first, row))
+        ? latestActiveBalances(group, sources)
+        : group;
+    const balance = balances[0];
+    if (!balance) continue;
     if (
-      group.some((row) => !sameBalance(first, row)) ||
-      (old && isClosure(first) && !sameBalance(old, first))
+      balances.some((row) => !sameBalance(balance, row)) ||
+      (old && isClosure(balance) && !sameBalance(old, balance))
     ) {
       if (old) accepted.push(old);
       continue;
     }
-    accepted.push(old && sameBalance(old, first) ? old : first);
+    const same = old && sameBalance(old, balance) ? old : balance;
+    const types = new Set(group.flatMap(({ type }) => (type ? [type] : [])));
+    const [type] = types;
+    accepted.push(
+      types.size === 1 && type && !isKnownObligationType(same.type)
+        ? { ...same, type }
+        : types.size > 1 && !old
+          ? { ...same, type: null }
+          : same,
+    );
   }
 
-  return accepted.length
-    ? accepted
-    : proposals.some((value) => Array.isArray(value) && !value.length)
-      ? []
-      : null;
+  return accepted.length ? accepted : observedAbsence ? [] : null;
 }

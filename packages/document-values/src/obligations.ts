@@ -35,7 +35,11 @@ const registryKeys = [
 export const obligationTemplate = (version: string | undefined) =>
   version === 'bfl-statement-v7' ||
   version === 'bfl-statement-v8' ||
-  version === 'bfl-creditors-v2';
+  version === 'bfl-statement-v9' ||
+  version === 'bfl-statement-v10' ||
+  version === 'bfl-statement-v11' ||
+  version === 'bfl-creditors-v2' ||
+  version === 'bfl-creditors-v3';
 
 export function isBankObligation(row: DebtRow) {
   return Object.keys(obligationColumns).some((column) => row[column]?.trim());
@@ -51,12 +55,43 @@ const creditorName = (value: string | null | undefined) =>
     .replace(/\s+/g, ' ');
 
 function sameCreditor(a: DebtRow, b: DebtRow) {
+  if (creditorIdentifiersConflict(a, b)) return false;
   if (a.inn && b.inn)
     return a.inn.replace(/\s/g, '') === b.inn.replace(/\s/g, '');
   if (a.ogrn && b.ogrn)
     return a.ogrn.replace(/\s/g, '') === b.ogrn.replace(/\s/g, '');
-  const name = creditorName(a.name);
-  return !!name && name === creditorName(b.name);
+  const names = (row: DebtRow) =>
+    [row.name, row.creditorShortName, row.creditorLegalName]
+      .map(creditorName)
+      .filter(Boolean);
+  const otherNames = names(b);
+  return names(a).some((name) => otherNames.includes(name));
+}
+
+function creditorIdentifiersConflict(a: DebtRow, b: DebtRow): boolean {
+  return ['inn', 'ogrn'].some((key) => {
+    const left = a[key]?.replace(/\s/gu, '');
+    const right = b[key]?.replace(/\s/gu, '');
+    return !!left && !!right && left !== right;
+  });
+}
+
+export function groupCreditorObligations(
+  rows: readonly DebtRow[],
+): DebtRow[][] {
+  const groups: DebtRow[][] = [];
+  for (const row of rows) {
+    const group = groups.find(
+      (entries) =>
+        entries.some((existing) => sameCreditor(existing, row)) &&
+        entries.every(
+          (existing) => !creditorIdentifiersConflict(existing, row),
+        ),
+    );
+    if (group) group.push(row);
+    else groups.push([row]);
+  }
+  return groups;
 }
 
 const contractNumber = (row: DebtRow) =>
@@ -152,12 +187,20 @@ export function applyObligationCandidate(
   return rows;
 }
 
-export function obligationAmounts(debts: DebtValue, businessDebts: DebtValue) {
+export function obligationAmounts(
+  debts: DebtValue,
+  businessDebts: DebtValue,
+  omitBlankRows = false,
+) {
   const registered: DebtRow[] = [];
   const headers: DebtRow[] = [];
   const activeRows = (input: DebtValue) => {
     if (!Array.isArray(input)) return null;
-    return input.flatMap((row) => {
+    const rows = omitBlankRows
+      ? input.filter((row) => Object.values(row).some((cell) => cell?.trim()))
+      : input;
+    if (omitBlankRows && input.length && !rows.length) return null;
+    return rows.flatMap((row) => {
       const status = normalized(row.debtStatus);
       if (status && status !== normalized(obligationStatuses.active)) return [];
       const amount = canonicalMoneyAmount(row.amount ?? '');

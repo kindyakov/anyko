@@ -24,6 +24,7 @@ const dateInGenitiveWords = 'D_GENITIVE_WORDS MMMM YYYY_WORDS года';
 
 export const calendarDatePlaceholders = [
   'DD.MM.YYYY',
+  'DD.MM.YYYY г.',
   'DD/MM/YYYY',
   'DD:MM:YYYY',
   'YYYY-MM-DD',

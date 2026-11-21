@@ -6,6 +6,7 @@ import {
   isBankObligation,
   sameObligation,
 } from '@anyko/document-values/obligations';
+import { comparableText } from '@anyko/document-values/text-value';
 
 import {
   automaticValue,
@@ -23,8 +24,11 @@ import {
   isRublesField,
   readFieldValues,
 } from '../../../profiles/bfl/fields';
+import { isKnownObligationType } from '../../../profiles/bfl/obligation-type';
 import {
   containsObligations,
+  fillsObligationType,
+  hasUnknownObligationType,
   reconcileObligations,
   supersedesObligation,
   usesBankObligations,
@@ -47,6 +51,7 @@ export function mergeCandidates(
   confirmed: boolean,
   preserveExisting = false,
   excludedFields?: ReadonlySet<Candidate['field']>,
+  passportIds?: ReadonlySet<string>,
 ): WorkFacts {
   const values = { ...current.values };
   const confirmedFields = new Set(current.confirmed);
@@ -64,14 +69,16 @@ export function mergeCandidates(
     const found = proposals.filter(({ origin }) => origin !== 'inference');
     if (!found.length && proposals.length) continue;
     if (usesBankObligations(key, [saved, ...found.map(({ value }) => value)])) {
-      const proposed = reconcileObligations(saved, found.map(automaticValue));
+      const proposed = reconcileObligations(saved, found);
       if (preserveExisting && Array.isArray(saved)) {
         values[key] = [
           ...saved.map((old) =>
             Array.isArray(proposed)
               ? (proposed.find(
                   (row) =>
-                    sameObligation(old, row) && supersedesObligation(row, old),
+                    sameObligation(old, row) &&
+                    (supersedesObligation(row, old) ||
+                      fillsObligationType(row, old)),
                 ) ?? old)
               : old,
           ),
@@ -86,20 +93,24 @@ export function mergeCandidates(
       }
       continue;
     }
-    const proposed = employmentFields.some((field) => field === key)
-      ? reconcile(
-          key,
-          found.map(automaticValue).filter((value) => value !== null),
-        )
-      : reconcileCandidates(key, found) === null
-        ? null
-        : reconcileCandidates(key, found, automaticValue);
+    const proposed =
+      key === 'citizenship' || employmentFields.some((field) => field === key)
+        ? reconcile(
+            key,
+            found.map(automaticValue).filter((value) => value !== null),
+          )
+        : reconcileCandidates(key, found) === null
+          ? null
+          : reconcileCandidates(key, found, automaticValue);
+    const passport = preferredPassportValue(key, proposed, found, passportIds);
     if (preserveExisting && saved !== null) {
       if (Array.isArray(saved) && Array.isArray(proposed))
         values[key] = reconcile(key, [saved, proposed]) ?? saved;
+      if (passport !== undefined && includesFactValue(key, saved, passport))
+        values[key] = passport;
       continue;
     }
-    values[key] = proposed;
+    values[key] = passport ?? proposed;
     if (preserveExisting && proposed !== null) confirmedFields.delete(key);
   }
   return factsSchema.parse({
@@ -108,6 +119,32 @@ export function mergeCandidates(
     candidates,
     confirmed: [...confirmedFields],
   });
+}
+
+function preferredPassportValue(
+  key: string,
+  proposed: FieldValue,
+  candidates: WorkFacts['candidates'],
+  passportIds: ReadonlySet<string> | undefined,
+) {
+  if (
+    !passportIds?.size ||
+    typeof proposed !== 'string' ||
+    isCalendarDateField(key) ||
+    isRublesField(key)
+  )
+    return undefined;
+  for (const candidate of candidates) {
+    if (
+      candidate.origin === 'context' ||
+      !candidate.evidence.some(({ documentId }) => passportIds.has(documentId))
+    )
+      continue;
+    const value = automaticValue(candidate);
+    if (typeof value === 'string' && includesFactValue(key, proposed, value))
+      return value;
+  }
+  return undefined;
 }
 
 /** Расхождения определяются по сохранённым сведениям и сведённым кандидатам. */
@@ -137,14 +174,15 @@ export function findFactDiscrepancies(current: WorkFacts) {
           saved,
           ...candidates.map(({ value }) => value),
         ])
-      )
+      ) {
+        if (!current.confirmed.includes(key) && hasUnknownObligationType(saved))
+          return true;
         return documentCandidates.some(
-          (candidate) =>
-            !containsObligations(saved, candidate.value) &&
-            !containsObligations(saved, automaticValue(candidate)),
+          (candidate) => !matchesObligationCandidate(saved, candidate),
         );
+      }
       const original = reconcileCandidates(key, documentCandidates);
-      if (original === null) return true;
+      if (original === null && key !== 'citizenship') return true;
 
       const manual = current.manual.includes(key);
       if (manual && saved === null) return true;
@@ -183,15 +221,29 @@ export function markSelectedCandidates({
       (candidate.creditorSource
         ? containsCreditorRegistryCandidate(saved, value)
         : usesBankObligations(field, [saved, value])
-          ? containsObligations(saved, value) ||
-            containsObligations(saved, automaticValue(candidate))
+          ? matchesObligationCandidate(saved, candidate)
           : includesFactValue(field, saved, value) ||
             // Автозаполнение может опустить ячейку. Оно не скрывает сохранённое противоречие.
             (candidate.origin !== 'inference' &&
-              reconcile(field, [saved, value]) !== null &&
+              (field === 'citizenship' ||
+                reconcile(field, [saved, value]) !== null) &&
               includesFactValue(field, saved, automaticValue(candidate))));
     return { ...candidate, selected };
   });
+}
+
+function matchesObligationCandidate(saved: FieldValue, candidate: Candidate) {
+  const supported = automaticValue(candidate);
+  // A less precise model label cannot hide a conflict with the quoted type.
+  if (
+    Array.isArray(supported) &&
+    supported.some(({ type }) => isKnownObligationType(type))
+  )
+    return containsObligations(saved, supported);
+  return (
+    containsObligations(saved, candidate.value) ||
+    containsObligations(saved, supported)
+  );
 }
 
 function includesFactValue(
@@ -200,7 +252,10 @@ function includesFactValue(
   proposed: FieldValue,
 ) {
   if (!Array.isArray(saved) || !Array.isArray(proposed))
-    return saved === reconcile(key, [proposed]);
+    return (
+      comparableFactValue(saved) ===
+      comparableFactValue(reconcile(key, [proposed]))
+    );
   return (
     comparableFactValue(reconcile(key, [saved, proposed])) ===
     comparableFactValue(saved)
@@ -218,6 +273,7 @@ function reconcileCandidates(
 }
 
 function comparableFactValue(value: FieldValue): string {
+  if (typeof value === 'string') return stable(comparableText(value));
   return Array.isArray(value)
     ? JSON.stringify(value.map((row) => stable([row])).sort())
     : stable(value);
@@ -401,20 +457,21 @@ function reconcile(key: string, found: FieldValue[]): FieldValue {
   const isRows = (value: FieldValue): value is FieldRow[] =>
     Array.isArray(value);
   if (!found.every(isRows)) {
-    const distinct = [
-      ...new Set(
-        found.flatMap((value) => {
-          if (typeof value !== 'string') return [];
-          const comparable = isCalendarDateField(key)
-            ? canonicalCalendarDate(value)
-            : isRublesField(key)
-              ? canonicalMoneyAmount(value)
-              : value;
-          return comparable === undefined ? [] : [comparable];
-        }),
-      ),
-    ];
-    return distinct.length === 1 ? (distinct[0] ?? null) : null;
+    const distinct = new Map<string, string>();
+    for (const value of found) {
+      if (typeof value !== 'string') continue;
+      const canonical = isCalendarDateField(key)
+        ? canonicalCalendarDate(value)
+        : isRublesField(key)
+          ? canonicalMoneyAmount(value)
+          : value;
+      if (canonical === undefined) continue;
+      const comparable = comparableText(canonical);
+      if (!distinct.has(comparable)) distinct.set(comparable, canonical);
+    }
+    return distinct.size === 1
+      ? (distinct.values().next().value ?? null)
+      : null;
   }
   const rows = new Map<string, FieldRow>();
   if (

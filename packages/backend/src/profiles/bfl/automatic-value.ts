@@ -29,6 +29,8 @@ import {
   isRublesColumn,
   isRublesField,
 } from './fields';
+import { evidencedObligationType } from './obligation-type';
+import { hasRussianPassportCitizenship } from './passport-evidence';
 
 type Candidate = z.infer<typeof candidateSchema>;
 
@@ -124,6 +126,13 @@ function supportedValue(
 ): FieldValue {
   const { field, value } = candidate;
   if (typeof value === 'string') {
+    if (field === 'citizenship')
+      return candidate.evidence.some(
+        ({ imagePath, quote }) =>
+          imagePath === null && hasRussianPassportCitizenship(value, quote),
+      )
+        ? 'Российская Федерация'
+        : null;
     if (field === 'inn' || field === 'snils') {
       const identifier = digits(value);
       const valid =
@@ -319,40 +328,125 @@ export function evidencedContract(
 ) {
   if (!name || !contractNumber || !contractDate) return;
   const lines = proofLines(evidence, true);
+  if (!lines.some((line) => mentions(line, name))) return;
   const number = contractNumber
     .trim()
     .replace(/^№\s*/, '')
     .normalize('NFKC')
     .toLowerCase();
-  if (
-    lines.some((line) => mentions(line, name)) &&
-    (lines.some(
-      (line) =>
-        line
-          .normalize('NFKC')
-          .toLowerCase()
-          .match(/[\p{L}\p{N}]+(?:[-/._][\p{L}\p{N}]+)*/gu)
-          ?.includes(number) && attestedDate(contractDate, line),
-    ) ||
-      evidence.some((entry) =>
-        proofLines([entry], true).some((line, index, block) => {
-          const labelledNumber =
-            /^\s*номер\s+договора\s*:\s*№?\s*(\S+)\s*$/u.exec(
-              line.normalize('NFKC').toLowerCase(),
-            )?.[1];
-          if (labelledNumber !== number) return false;
-          const labelledDate =
-            /^\s*дата\s+(?:заключения\s+)?договора\s*:\s*(.+)$/iu.exec(
-              block[index + 1] ?? '',
-            )?.[1];
-          const date = canonicalCalendarDate(labelledDate ?? '');
-          return (
-            date !== undefined && date === canonicalCalendarDate(contractDate)
-          );
-        }),
-      ))
-  )
-    return { lines, identity: { name, contractNumber, contractDate } };
+  const matches = evidence.flatMap((entry) =>
+    contractTypeCitations(proofLines([entry], true), number, contractDate),
+  );
+  if (matches.length)
+    return {
+      lines,
+      typeCitations: matches,
+      identity: { name, contractNumber, contractDate },
+    };
+}
+
+function contractTypeCitations(
+  quote: string[],
+  number: string,
+  contractDate: string,
+) {
+  const clauses = quote.flatMap((line) => line.split(';'));
+  return clauses.flatMap((line, index) => {
+    const numberToken = [
+      ...line.matchAll(/[\p{L}\p{N}]+(?:[-/._][\p{L}\p{N}]+)*/gu),
+    ].find(([token]) => token.normalize('NFKC').toLowerCase() === number);
+    if (!numberToken) return [];
+    const directlyDated = attestedDate(contractDate, line);
+    const nextDate = /^\s*дата\s+(?:заключения\s+)?договора\s*:\s*(.+)$/iu.exec(
+      clauses[index + 1] ?? '',
+    )?.[1];
+    const labelledDate = canonicalCalendarDate(nextDate ?? '');
+    const hasLabeledDate =
+      /^\s*номер\s+договора\s*:\s*№?\s*\S+\s*$/iu.test(line) &&
+      labelledDate !== undefined &&
+      labelledDate === canonicalCalendarDate(contractDate);
+    if (!directlyDated && !hasLabeledDate) return [];
+    const prefix = line.slice(0, numberToken.index);
+    // Ignore clauses before this number when they already refer to another document.
+    const title = prefix.replace(/№\s*$/u, '');
+    const boundTitle =
+      /№/u.test(title) || datesInText(title).length ? '' : title;
+    const detail = clauses[index + (hasLabeledDate ? 2 : 1)] ?? '';
+    const type =
+      /^\s*(?:вид|тип|продукт)(?:\s+(?:договора|обязательства|кредита|продукта))?\s*:\s*([^№]+)$/iu.exec(
+        detail,
+      )?.[1];
+    return type &&
+      !line.slice(numberToken.index + numberToken[0].length).includes('№')
+      ? [boundTitle, type]
+      : [boundTitle];
+  });
+}
+
+function fullDebtAmount(line: string) {
+  const total =
+    /(?:общая|полная|итоговая)\s+(?:сумма\s+)?задолженность|(?:сумма|размер)\s+(?:общей\s+|полной\s+)?задолженности|задолженность\s*\(?всего\)?|^\s*задолженность\s*:/i.exec(
+      line,
+    );
+  if (!total) return undefined;
+  const tail =
+    line
+      .slice(total.index + total[0].length)
+      .replace(/^\s*\|\s*/, '')
+      .split(/[;|]/, 1)[0] ?? '';
+  const withoutDates = datesInText(tail).reduce(
+    (result, date) => result.replace(date, ' '),
+    tail,
+  );
+  return moneyAmountsInText(withoutDates)[0];
+}
+
+/** A balance can outrank another only if its date and amount are unambiguous in the cited material. */
+export function hasUnambiguousBalanceDate(
+  evidence: Candidate['evidence'],
+  row: FieldRow,
+) {
+  return [...new Set(evidence.map(({ documentId }) => documentId))].some(
+    (id) => {
+      const contract = evidencedContract(
+        evidence.filter(({ documentId }) => documentId === id),
+        row,
+      );
+      if (!contract) return false;
+      const dates = new Set(
+        contract.lines.flatMap((line) =>
+          line
+            .split(
+              /(?:по состоянию на|на дату расч[её]та|дата расч[её]та)\s*[:—-]?\s*/iu,
+            )
+            .slice(1)
+            .flatMap((section) => {
+              const [date] = datesInText(section);
+              return date ? [canonicalCalendarDate(date)] : [];
+            }),
+        ),
+      );
+      const amounts = new Set(
+        contract.lines.map(fullDebtAmount).filter(Boolean),
+      );
+      const numbers = new Set(
+        contract.lines.flatMap((line) =>
+          [
+            ...line.matchAll(
+              /договор[а-яё]*\s+№\s*([\p{L}\p{N}]+(?:[-/._][\p{L}\p{N}]+)*)/giu,
+            ),
+          ].map(([, number]) => number?.normalize('NFKC').toLowerCase()),
+        ),
+      );
+      return (
+        numbers.size <= 1 &&
+        dates.size === 1 &&
+        dates.has(row.amountDate ?? '') &&
+        amounts.size === 1 &&
+        amounts.has(row.amount ?? '')
+      );
+    },
+  );
 }
 
 function evidencedObligation(
@@ -378,32 +472,16 @@ function evidencedObligation(
       row,
     );
     return contract?.lines.some((line) => attestedDate(amountDate, line))
-      ? [contract.lines]
+      ? [contract]
       : [];
   });
   const amount = canonicalMoneyAmount(row.amount ?? '');
-  const credible = sameContract.find((lines) =>
+  const credible = sameContract.find(({ lines }) =>
     active
       ? amount !== undefined &&
         amount !== '0.00' &&
         !amount.startsWith('-') &&
-        lines.some((line) => {
-          const total =
-            /(?:общая|полная|итоговая)\s+(?:сумма\s+)?задолженность|(?:сумма|размер)\s+(?:общей\s+|полной\s+)?задолженности|задолженность\s*\(?всего\)?|^\s*задолженность\s*:/i.exec(
-              line,
-            );
-          if (!total) return false;
-          const tail =
-            line
-              .slice(total.index + total[0].length)
-              .replace(/^\s*\|\s*/, '')
-              .split(/[;|]/, 1)[0] ?? '';
-          const withoutDates = datesInText(tail).reduce(
-            (result, date) => result.replace(date, ' '),
-            tail,
-          );
-          return moneyAmountsInText(withoutDates)[0] === amount;
-        })
+        lines.some((line) => fullDebtAmount(line) === amount)
       : statusPattern !== null &&
         lines.some((line) => statusPattern.test(line)),
   );
@@ -412,6 +490,7 @@ function evidencedObligation(
     Object.fromEntries(
       Object.entries({
         ...row,
+        type: evidencedObligationType(credible.typeCitations),
         contractDate: canonicalCalendarDate(contractDate),
         amountDate: canonicalCalendarDate(amountDate),
         amount: active ? amount : null,
@@ -421,6 +500,7 @@ function evidencedObligation(
         if (
           [
             'name',
+            'type',
             'contractNumber',
             'contractDate',
             'amountDate',
@@ -430,17 +510,18 @@ function evidencedObligation(
         )
           return [[column, cell]];
         if (['arrears', 'penalties', 'interest'].includes(column))
-          return credible.some((line) => attestedAmount(cell, line))
+          return credible.lines.some((line) => attestedAmount(cell, line))
             ? [[column, canonicalMoneyAmount(cell) ?? cell]]
             : [];
         if (column === 'inn') {
           const identifier = digits(cell);
           return validInn(identifier, false) &&
-            credible.some((line) => attestedIdentifier(identifier, line))
+            credible.lines.some((line) => attestedIdentifier(identifier, line))
             ? [[column, identifier]]
             : [];
         }
-        return !requireText || credible.some((line) => mentions(line, cell))
+        return !requireText ||
+          credible.lines.some((line) => mentions(line, cell))
           ? [[column, cell]]
           : [];
       }),

@@ -127,6 +127,8 @@ const errors: Record<string, string> = {
   MODEL_CALL_FAILED: 'Модель не ответила. Проверьте подключение в настройках.',
   STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED:
     'Модель вернула ответ в неверном формате.',
+  LLM_INVALID_RESPONSE: 'Модель вернула ответ в неверном формате.',
+  LLM_UNAVAILABLE: 'Провайдер модели недоступен.',
   CONTEXT_RECONCILIATION_FAILED:
     'Не удалось сопоставить сведения между документами. Извлечённые из файлов сведения сохранены.',
   ATTEMPTS_EXHAUSTED: 'Все попытки исчерпаны.',
