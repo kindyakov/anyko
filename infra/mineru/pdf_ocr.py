@@ -11,6 +11,9 @@ import unicodedata
 MODEL_NAME = 'eslav_PP-OCRv5_rec_mobile.onnx'
 MODEL_SHA256 = '08705d6721849b1347d26187f15a5e362c431963a2a62bfff4feac578c489aab'
 MIN_SCORE = 0.82
+RECOVERY_SCORE = 0.88
+# A dot followed by a space can terminate a sentence after a number.
+NUMBER = re.compile(r'(?:[+\-−]\s*)?(?:(?<!\d)[.,]\s*)?\d+(?:(?:\.|\s+\.\s*|\s*[,:/\-−]\s*)\d+)*')
 
 
 def model_path(home):
@@ -33,14 +36,19 @@ def comparable_text(text):
 
 
 def number_notation(text):
-    return re.findall(r'[+\-−]?\d+(?:[.,:/\-−]\d+)*', text)
+    return NUMBER.findall(text)
+
+
+def numeric_fragment(text):
+    # A detached sign or separator is still meaningful and may not disappear.
+    return not NUMBER.sub('', text).strip(' .\t\n')
 
 
 def needs_recovery(markdown, lines):
     plain = normalized(re.sub(r'!\[[^\]]*\]\([^)]+\)|<[^>]+>', '', markdown))
     # Count characters from complete, confident lines. A handful of OCR
     # differences on a good native page should not replace its layout.
-    tokens = [normalized(line['text']) for line in lines if line['confidence'] >= 0.88]
+    tokens = [normalized(line['text']) for line in lines if line['confidence'] >= RECOVERY_SCORE]
     tokens = [token for token in tokens if len(token) >= 4]
     missing = sum(len(token) for token in tokens if token not in plain)
     return bool(tokens) and (not plain or missing >= max(16, 0.25 * sum(map(len, tokens))))
@@ -80,14 +88,36 @@ def reader(path):
     return detector, session, alphabet
 
 
-def read_lines(page, path):
+def numeric_lookalikes(text):
+    return re.sub(r'(?<!\w)(?=[0-9оОoO-]*[0-9])[0-9оОoO-]+(?!\w)',
+                  lambda token: token[0].translate(str.maketrans('оОoO', '0000')), text)
+
+
+def read_lines(page, path, scanned=False):
     import numpy as np
+    from PIL import ImageEnhance
+
+    def recognize(image):
+        return read_image_lines(np.ascontiguousarray(np.asarray(image)[:, :, ::-1]), path)
 
     width, height = page.get_size()
     scale = min(200 / 72, 2600 / max(width, height))
     with closing(page.render(scale=scale)) as bitmap:
-        image = np.ascontiguousarray(np.asarray(bitmap.to_pil().convert('RGB'))[:, :, ::-1])
-    return read_image_lines(image, path)
+        image = bitmap.to_pil().convert('RGB')
+    lines = recognize(image)
+    if scanned and any(numeric_lookalikes(line['text']) != line['text'] for line in lines):
+        sharper = recognize(ImageEnhance.Sharpness(image).enhance(3))
+        for index, line in enumerate(lines):
+            target = numeric_lookalikes(line['text'])
+            if target == line['text']:
+                continue
+            # The alternate image must actually yield the numeric reading, with
+            # the same surrounding text at the same position on the page.
+            readings = [item for item in sharper if item['text'] == target
+                        and item['confidence'] >= RECOVERY_SCORE and same_region(line, item['bbox'])]
+            if len(readings) == 1:
+                lines[index] = readings[0]
+    return lines
 
 
 def read_image_lines(image, path):
@@ -156,7 +186,7 @@ def recover_page(page, lines):
 
 
 def markdown_row(row):
-    return '　'.join(re.sub(r'([\\`*_{}\[\]()#+.!|<>~$-])', r'\\\1', line['text']) for line in row)
+    return '　'.join(re.sub(r'([\\`*_{}\[\]()#+.!|<>~$]|(?<!\w)-|-(?!\w))', r'\\\1', line['text']) for line in row)
 
 
 def recover_image_markdown(original, frames):
@@ -188,7 +218,31 @@ def overlaps_block(line, bbox):
     return width > (right - left) / 2 and height > (bottom - top) / 2
 
 
-def recover_page_with_layout(page, lines, layout):
+def same_region(line, bbox):
+    return overlaps_block(line, bbox) and overlaps_block({'bbox': bbox}, line['bbox'])
+
+
+def restores_scan_fragment(original, replacement):
+    # Basic may return isolated symbols for Cyrillic or drop leading zeros.
+    # Accept additions only in a confident, co-located Cyrillic line.
+    if not re.search(r'[а-яё]{3,}', replacement) or re.search(r'[^\W\d_]{3,}|[а-яё]', original):
+        return False
+    previous = number_notation(original)
+    current = number_notation(replacement)
+    if not previous:
+        return not current and len(normalized(original)) * 2 < len(normalized(replacement))
+    if not numeric_fragment(original) or len(previous) != len(current):
+        return False
+    for old, new in zip(previous, current):
+        # Preserve the significant digits and separators, including decimal
+        # places. Only leading zeros in each hyphen-delimited group may grow.
+        pattern = re.sub(r'(^|(?<=-))0+', lambda run: f'0{{{len(run[0])},}}', re.escape(old))
+        if not re.fullmatch(pattern, new):
+            return False
+    return True
+
+
+def recover_page_with_layout(page, lines, layout, scanned=False):
     prose = [line for row in recover_page(page, lines) for line in row]
     matched = []
     blocks = []
@@ -199,13 +253,20 @@ def recover_page_with_layout(page, lines, layout):
         # Replace a text block only when accepted OCR covers all of it and adds
         # content. Keep the punctuation and word boundaries, including in numbers.
         if plain_text and replacement:
-            covers_text = len(replacement) > len(original) and f' {original} ' in f' {replacement} '
-            restores_words = (
-                not any(char.isalpha() for char in original)
-                and any(char.isalpha() for char in replacement)
-                and number_notation(original) == number_notation(replacement)
+            numeric_only = numeric_fragment(original)
+            same_numbers = number_notation(original) == number_notation(replacement)
+            covers_text = (
+                len(replacement) > len(original) and f' {original} ' in f' {replacement} '
+                and (not numeric_only or same_numbers)
             )
-            if covers_text or restores_words:
+            restores_words = (
+                numeric_only and same_numbers and any(char.isalpha() for char in replacement)
+            )
+            restores_fragment = (
+                scanned and len(nearby) == 1 and nearby[0]['confidence'] >= RECOVERY_SCORE
+                and same_region(nearby[0], bbox) and restores_scan_fragment(original, replacement)
+            )
+            if covers_text or restores_words or restores_fragment:
                 continue
         blocks.append((top, markdown))
         for line in nearby:
@@ -235,7 +296,9 @@ def save_pdf(path, middle_json, writer, model):
             single_page = middle.model_copy(update={'pages': [parsed_page]})
             markdown = render_markdown(single_page)
             with closing(pdf[number - 1]) as page:
-                lines = read_lines(page, model)
+                with closing(page.get_textpage()) as native:
+                    scanned = native.count_chars() == 0
+                lines = read_lines(page, model, scanned)
                 if needs_recovery(markdown, lines):
                     layout = []
                     top = 0
@@ -250,7 +313,7 @@ def save_pdf(path, middle_json, writer, model):
                         block_markdown = render_markdown(single_page.model_copy(update={'pages': [block_page]}))
                         if block_markdown:
                             layout.append((block.bbox, top, block_markdown, plain_text))
-                    rows, markdown = recover_page_with_layout(page, lines, layout)
+                    rows, markdown = recover_page_with_layout(page, lines, layout, scanned)
                     recovered.append({
                         'page': number, 'omittedLines': len(lines) - sum(map(len, rows)),
                         'lines': [line for row in rows for line in row],

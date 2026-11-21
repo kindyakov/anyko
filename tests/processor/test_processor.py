@@ -29,6 +29,70 @@ import processor as module
 
 
 class PdfRecoveryReview(unittest.TestCase):
+    def test_scanned_card_exports_cyrillic_and_the_full_printed_number(self):
+        import json
+        import pypdfium2
+        from docvortex.schema import MiddleJson
+
+        title = 'Форма АДИ-РЕГ'
+        label = 'Страховой номер индивидуального лицевого счёта'
+        title_box = [0.061, 0.083, 0.3, 0.14]
+        number_box = [0.061, 0.321, 0.778, 0.371]
+        amount_box = [0.061, 0.5, 0.778, 0.55]
+        signed_box = [0.061, 0.61, 0.778, 0.66]
+        decimal_box = [0.061, 0.72, 0.778, 0.77]
+        unsigned_box = [0.061, 0.82, 0.778, 0.87]
+        blocks = [
+            ('paragraph_title', title_box, 'Φ -'),
+            ('text', number_box, '0-0-001 00'),
+            ('text', amount_box, 'Сумма 1 234,50 руб.'),
+            ('text', signed_box, '− 01,50'),
+            ('text', decimal_box, '.01'),
+            ('text', unsigned_box, '01,60'),
+        ]
+        middle = MiddleJson.model_validate({
+            'metadata': {'file_suffix': 'pdf', 'producer': {'name': 'fixture', 'version': '1'}},
+            'is_full_document': True,
+            'pages': [{'page_idx': 0, 'blocks': [
+                {'type': kind, 'index': index, 'bbox': bbox,
+                 **({'level': 2} if kind == 'paragraph_title' else {}),
+                 'content': [{'type': 'text', 'content': text}]}
+                for index, (kind, bbox, text) in enumerate(blocks)
+            ]}],
+        })
+        source = io.BytesIO()
+        with closing(pypdfium2.PdfDocument.new()) as document:
+            document.new_page(1500, 960).close()
+            document.save(source)
+
+        primary = [
+            {'text': title, 'confidence': 0.9529, 'bbox': title_box},
+            {'text': label + ' 000-о00-о01 о0', 'confidence': 0.9747, 'bbox': number_box},
+            {'text': 'Сумма 123450 руб. Дополнительный текст.', 'confidence': 0.99, 'bbox': amount_box},
+            {'text': 'Сумма 001,50 руб.', 'confidence': 0.99, 'bbox': signed_box},
+            {'text': 'Сумма 001 руб.', 'confidence': 0.99, 'bbox': decimal_box},
+            {'text': 'Стоимость − 01,60 руб.', 'confidence': 0.99, 'bbox': unsigned_box},
+        ]
+        sharpened = [{**primary[1], 'text': label + ' 000-000-001 00', 'confidence': 0.9649}]
+        writer = module.ZipWriter()
+        with patch.object(pdf_ocr, 'read_image_lines', side_effect=[primary, sharpened]):
+            pdf_ocr.save_pdf(source.getvalue(), middle, writer, Path('unused-model.onnx'))
+
+        markdown = writer.files['markdown.md'].decode('utf-8')
+        self.assertIn(title, markdown)
+        self.assertIn(label + ' 000-000-001 00', markdown)
+        self.assertNotIn('Φ', markdown)
+        self.assertIn('Сумма 1 234,50 руб.', markdown)
+        self.assertNotIn('123450', markdown)
+        self.assertIn('− 01,50', markdown)
+        self.assertNotIn('Сумма 001,50', markdown)
+        self.assertIn('.01', markdown)
+        self.assertNotIn('Сумма 001 руб.', markdown)
+        self.assertIn('01,60', markdown)
+        self.assertNotIn('− 01,60', markdown)
+        page, = json.loads(writer.files['pdf-ocr.json'])['pages']
+        self.assertIn({'text': label + ' 000-000-001 00', 'bbox': number_box, 'confidence': 0.9649}, page['lines'])
+
     def test_recovery_does_not_change_the_decimal_place_of_an_amount(self):
         amount = 'Сумма 1 234,50 руб.'
         wrong = 'Сумма 123450 руб. Дополнительный текст.'
