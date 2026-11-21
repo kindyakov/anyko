@@ -45,7 +45,7 @@ const extractionSchema = z
 const extractionEnvelopeSchema = z.strictObject({
   candidates: z.array(z.unknown()).max(100),
 });
-const maxExtractionOutputTokens = 64000;
+const fallbackExtractionOutputTokens = 64000;
 
 function parseExtractionResponse(step?: {
   finishReason?: string;
@@ -277,10 +277,8 @@ export function createDocumentAgents(options: {
           input.enableReasoning !== false
             ? gateway.reasoningOptions(input.connection, 'high')
             : undefined;
-        const maxOutputTokens = Math.min(
-          limits?.completion ?? maxExtractionOutputTokens,
-          maxExtractionOutputTokens,
-        );
+        const maxOutputTokens =
+          limits?.completion ?? fallbackExtractionOutputTokens;
         // Observed roughly 190 tokens/s on long responses. Budget for 120/s plus startup.
         const timeoutMs =
           options.timeoutMs ?? 30000 + Math.ceil(maxOutputTokens / 120) * 1000;

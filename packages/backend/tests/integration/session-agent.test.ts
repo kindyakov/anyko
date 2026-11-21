@@ -187,7 +187,7 @@ test('real extraction preserves candidates with valid citations when other field
   }
 });
 
-test('extraction caps the published maximum, repairs wrapped JSON and never retries the completion limit', async () => {
+test('extraction uses the published maximum, repairs wrapped JSON and never retries the completion limit', async () => {
   const databaseUrl = z
     .url()
     .refine((url) =>
@@ -297,7 +297,7 @@ test('extraction caps the published maximum, repairs wrapped JSON and never retr
     const result = await extract();
     expect(result.candidates).toEqual([{ ...candidate, origin: 'document' }]);
     expect(requests.map(({ max_tokens }) => max_tokens)).toEqual([
-      64000, 64000,
+      64000, 131072,
     ]);
     expect(result.usage).toEqual({ inputTokens: 1200, outputTokens: 7045 });
     responses = [{ ...malformed, finish: 'length' }];
@@ -306,7 +306,7 @@ test('extraction caps the published maximum, repairs wrapped JSON and never retr
     );
     expect(limited).toMatchObject({ code: 'LLM_COMPLETION_LIMIT' });
     expect(requests.map(({ max_tokens }) => max_tokens)).toEqual([
-      64000, 64000, 48000,
+      64000, 131072, 48000,
     ]);
     responses = [malformed, valid];
     const recovered = await extract(smallerModelId);
@@ -318,7 +318,7 @@ test('extraction caps the published maximum, repairs wrapped JSON and never retr
     );
     expect(exhausted).toMatchObject({ code: 'LLM_INVALID_RESPONSE' });
     expect(requests.map(({ max_tokens }) => max_tokens)).toEqual([
-      64000, 64000, 48000, 48000, 48000, 48000, 48000,
+      64000, 131072, 48000, 48000, 48000, 48000, 48000,
     ]);
     expect(requests.map(({ reasoning }) => reasoning?.effort)).toEqual([
       'high',

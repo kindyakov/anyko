@@ -1050,9 +1050,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/infrastructure/mastra.ts": {
-    "mtime": 1795282125.2639527,
-    "seen": 1795282169.3666186,
-    "ast_hash": "02a0f75cc1e185486c913bdd4acc62bb",
+    "mtime": 1795282743.703265,
+    "seen": 1795282788.3651445,
+    "ast_hash": "8476bc65c050d13177dc25b3c04a073e",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/facts.test.ts": {
@@ -1176,9 +1176,9 @@
     "semantic_hash": ""
   },
   "docs/engineering/work-pipeline.md": {
-    "mtime": 1795282133.5957553,
-    "seen": 1795282169.3675253,
-    "ast_hash": "a240fc7c931641bdce19515b8291a225",
+    "mtime": 1795282743.4404058,
+    "seen": 1795282788.3659248,
+    "ast_hash": "f41406611d5e1fde7bf944dc49a41cf3",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/assets/package.json": {
@@ -1266,9 +1266,9 @@
     "semantic_hash": ""
   },
   "packages/backend/tests/integration/session-agent.test.ts": {
-    "mtime": 1795282133.758536,
-    "seen": 1795282169.3671026,
-    "ast_hash": "58e5dd8f4154aee7db529ad11d4ff2a1",
+    "mtime": 1795282740.0172768,
+    "seen": 1795282788.3654778,
+    "ast_hash": "da6c17ca23d31f0bc323b911d37cee77",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611060012_work_agent_sessions/migration.sql": {
