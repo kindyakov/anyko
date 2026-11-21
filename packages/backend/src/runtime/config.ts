@@ -34,6 +34,7 @@ const backendConfigSchema = z
     worker: z
       .object({
         redisUrl,
+        llmTraceDirectory: z.string().min(1).optional(),
         mineru: z
           .object({
             baseUrl: httpUrl,

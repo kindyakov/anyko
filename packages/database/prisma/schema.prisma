@@ -317,6 +317,8 @@ model LlmSettings {
  baseURL String
  visionModel String
  extractionModel String
+ visionDisableReasoning Boolean @default(false)
+ extractionEnableReasoning Boolean @default(true)
  encryptedKey String
  createdAt DateTime @default(now())
  @@id([workspaceId,revision])

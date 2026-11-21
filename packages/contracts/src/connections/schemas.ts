@@ -5,6 +5,8 @@ export const llmSettingsInputSchema = z
     baseURL: z.url().max(500),
     visionModel: z.string().min(1).max(200),
     extractionModel: z.string().min(1).max(200),
+    visionDisableReasoning: z.boolean().optional(),
+    extractionEnableReasoning: z.boolean().optional(),
     apiKey: z.string().min(1).max(8192).optional(),
   })
   .strict();
@@ -15,6 +17,8 @@ export const llmSettingsResponseSchema = z.object({
       baseURL: z.string(),
       visionModel: z.string(),
       extractionModel: z.string(),
+      visionDisableReasoning: z.boolean().default(false),
+      extractionEnableReasoning: z.boolean().default(false),
       configured: z.boolean(),
     })
     .nullable(),

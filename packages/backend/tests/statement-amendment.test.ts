@@ -11,10 +11,54 @@ import {
 } from '../src/modules/templates';
 import { emptyFieldValues } from '../src/profiles/bfl/fields';
 
+test('the cadastral field is enabled only for new-package facts and inventory', () => {
+  const archived = requirePackage('bfl-bankruptcy-v12');
+  const current = availablePackages()[0];
+  expect(current?.version).toBe('bfl-bankruptcy-v13');
+  if (!current) throw new Error('Missing current package');
+  expect(current.documents).toEqual(archived.documents);
+  const cadastralField = (pack: typeof archived) =>
+    pack.fields
+      .find(({ key }) => key === 'realEstate')
+      ?.columns.find(({ key }) => key === 'identifier');
+  expect(cadastralField(archived)).toBeUndefined();
+  expect(cadastralField(current)?.label).toBe('Кадастровый номер');
+
+  const values = {
+    ...emptyFieldValues(),
+    realEstate: [
+      {
+        description: 'Квартира',
+        address: 'г. Тестовый, ул. Новая, д. 1',
+        identifier: '48:08:0000000:9000001',
+      },
+    ],
+  };
+  const inventoryXml = (pack: typeof archived) => {
+    const inventory = pack.documents.find(({ id }) => id === 'inventory');
+    if (!inventory) throw new Error('Missing inventory');
+    const data = templateData(
+      values,
+      inventory.version,
+      inventory.placeholders,
+      {
+        fields: pack.fields,
+        referenceDate: '2026-11-21',
+      },
+    );
+    return new PizZip(generateDocument(templateBytes(inventory.version), data))
+      .file('word/document.xml')
+      ?.asText();
+  };
+  expect(inventoryXml(archived)).not.toContain('48:08:0000000:9000001');
+  expect(inventoryXml(current)).toContain(
+    'Квартира, кадастровый номер 48:08:0000000:9000001',
+  );
+});
+
 test('the revised statement uses lowercase passport label and terminates each attachment entry', () => {
-  const pack = availablePackages()[0];
-  expect(pack?.version).toBe('bfl-bankruptcy-v12');
-  const statement = pack?.documents.find(({ id }) => id === 'statement');
+  const pack = requirePackage('bfl-bankruptcy-v12');
+  const statement = pack.documents.find(({ id }) => id === 'statement');
   if (!statement) throw new Error('Missing statement');
   expect(statement.version).toBe('bfl-statement-v11');
   const archived = requirePackage('bfl-bankruptcy-v11');

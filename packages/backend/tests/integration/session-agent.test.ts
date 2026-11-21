@@ -1,4 +1,7 @@
 import { expect, spyOn, test } from 'bun:test';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { inspect } from 'node:util';
 
 import { strFromU8, unzipSync } from 'fflate';
@@ -18,7 +21,7 @@ import {
 } from '../../src/modules/templates';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 
-test('real extraction preserves supported candidates when the model also returns a field outside the package', async () => {
+test('real extraction preserves candidates with valid citations when other fields or citations are invalid', async () => {
   const databaseUrl = z
     .url()
     .refine((url) =>
@@ -27,6 +30,11 @@ test('real extraction preserves supported candidates when the model also returns
     .parse(process.env.TEST_DATABASE_URL);
   const pool = createDatabasePool(databaseUrl);
   const documentId = crypto.randomUUID();
+  const traceDirectory = await mkdtemp(
+    join(tmpdir(), 'anyko-extraction-trace-'),
+  );
+  let correlationId = crypto.randomUUID();
+  const apiKey = crypto.randomUUID();
   const candidate = {
     field: 'city' as const,
     value: 'Тула',
@@ -37,9 +45,25 @@ test('real extraction preserves supported candidates when the model also returns
     value: 'г. Тула, ул. Мира',
     evidence: [{ documentId, imagePath: null, quote: 'г. Тула, ул. Мира' }],
   };
-  let returnedCandidates = [extra, candidate];
+  const forged = {
+    ...candidate,
+    value: 'Москва',
+    evidence: [
+      ...candidate.evidence,
+      { documentId, imagePath: null, quote: 'г. Москва' },
+    ],
+  };
+  let returnedCandidates: unknown[] = [
+    extra,
+    forged,
+    forged,
+    { [apiKey]: apiKey },
+    candidate,
+  ];
+  const rejections: { field: string; count: number }[] = [];
   const agents = createDocumentAgents({
     pool,
+    traceDirectory,
     fetch: Object.assign(
       () =>
         Promise.resolve(
@@ -54,10 +78,16 @@ test('real extraction preserves supported candidates when the model also returns
                 message: {
                   role: 'assistant',
                   content: JSON.stringify({ candidates: returnedCandidates }),
+                  reasoning_content: 'Синтетическая проверка цитаты.',
                 },
                 finish_reason: 'stop',
               },
             ],
+            usage: {
+              prompt_tokens: 10,
+              completion_tokens: 5,
+              completion_tokens_details: { reasoning_tokens: 3 },
+            },
           }),
         ),
       { preconnect: fetch.preconnect },
@@ -72,12 +102,21 @@ test('real extraction preserves supported candidates when the model also returns
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
-        apiKey: crypto.randomUUID(),
+        apiKey,
       },
       modelId: 'fixture',
       resource: crypto.randomUUID(),
       threadId,
+      trace: {
+        correlationId,
+        jobId: threadId,
+        stage: 'extraction',
+        documentId,
+      },
       fields,
+      onRejectedEvidence: (rejected) => {
+        rejections.push(...rejected);
+      },
       document: { id: documentId, text, visuals: [] },
       signal: AbortSignal.timeout(10000),
     });
@@ -95,12 +134,201 @@ test('real extraction preserves supported candidates when the model also returns
     await agents.ready();
     const result = await extract('Регистрация: г. Тула, ул. Мира');
     expect(result.candidates).toEqual([{ ...candidate, origin: 'document' }]);
+    expect(rejections).toEqual([{ field: 'city', count: 2 }]);
+    const traces = join(traceDirectory, correlationId);
+    const [file, ...others] = await readdir(traces);
+    expect(others).toEqual([]);
+    if (!file) throw new Error('MISSING_EXTRACTION_TRACE');
+    expect(file).toContain(`extraction-${documentId}-1-`);
+    const trace = await readFile(join(traces, file), 'utf8');
+    expect(trace).not.toContain(apiKey);
+    expect(trace).toContain('Регистрация: г. Тула, ул. Мира');
+    const record: unknown = JSON.parse(trace);
+    expect(record).toMatchObject({
+      finishReason: 'stop',
+      reasoning: 'Синтетическая проверка цитаты.',
+      usage: { reasoningTokens: 3 },
+      parse: {
+        status: 'accepted',
+        accepted: [{ ...candidate, origin: 'document' }],
+        discarded: [
+          { candidate: extra, reason: 'field_not_allowed' },
+          { candidate: forged, reason: 'quote_not_found' },
+          { candidate: forged, reason: 'quote_not_found' },
+          { candidate: { '[redacted]': '[redacted]' }, reason: 'schema' },
+        ],
+      },
+    });
     await expectInvalid('Регистрация: г. Калуга');
+    returnedCandidates = [{ ...forged, evidence: [] }, candidate];
+    const recovered = await extract('Регистрация: г. Тула, ул. Мира');
+    expect(recovered.candidates).toEqual([
+      { ...candidate, origin: 'document' },
+    ]);
+    returnedCandidates = [forged];
+    await expectInvalid('Регистрация: г. Тула, ул. Мира');
     returnedCandidates = [extra];
     await expectInvalid('Регистрация: г. Тула, ул. Мира');
     returnedCandidates = [];
     const empty = await extract('Сведения отсутствуют.');
     expect(empty.candidates).toEqual([]);
+    correlationId = crypto.randomUUID();
+    const blockedDirectory = join(traceDirectory, correlationId);
+    await writeFile(blockedDirectory, 'occupied');
+    returnedCandidates = [candidate];
+    const withFailedTrace = await extract('Регистрация: г. Тула');
+    expect(withFailedTrace.candidates).toEqual(result.candidates);
+    expect(await readFile(blockedDirectory, 'utf8')).toBe('occupied');
+  } finally {
+    for (const threadId of threads) await agents.eraseThread(threadId);
+    await agents.stop();
+    await pool.end();
+    await rm(traceDirectory, { recursive: true, force: true });
+  }
+});
+
+test('extraction caps the published maximum, repairs wrapped JSON and never retries the completion limit', async () => {
+  const databaseUrl = z
+    .url()
+    .refine((url) =>
+      /^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(url).pathname),
+    )
+    .parse(process.env.TEST_DATABASE_URL);
+  const pool = createDatabasePool(databaseUrl);
+  const documentId = crypto.randomUUID();
+  const candidate = {
+    field: 'city' as const,
+    value: 'Тула',
+    evidence: [{ documentId, imagePath: null, quote: 'г. Тула' }],
+  };
+  const modelId = '~deepseek/deepseek-v4-flash-latest';
+  const smallerModelId = `${modelId}-smaller`;
+  const unknownModelId = `${modelId}-unknown`;
+  const requests: {
+    max_tokens: number;
+    reasoning?: { effort: string } | undefined;
+  }[] = [];
+  const threads: string[] = [];
+  let responses: { content: string; finish: 'stop' | 'length' }[] = [];
+  const valid = {
+    content: `Результат {\n\`\`\`json\n${JSON.stringify({ candidates: [candidate] })}\n\`\`\`\nКонец ответа {примечание}`,
+    finish: 'stop' as const,
+  };
+  const malformed = { content: '{"candidates":[', finish: 'stop' as const };
+  const agents = createDocumentAgents({
+    pool,
+    fetch: Object.assign(
+      async (request: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const url = new Request(request, init).url;
+        if (url.endsWith('/endpoints')) {
+          if (url.endsWith(`/${unknownModelId}/endpoints`))
+            return new Response(null, { status: 503 });
+          const cap = url.endsWith(`/${smallerModelId}/endpoints`)
+            ? 48000
+            : 131072;
+          return Response.json({
+            data: {
+              endpoints: [
+                { context_length: 262144, max_completion_tokens: cap },
+              ],
+            },
+          });
+        }
+        expect(
+          (init as (RequestInit & { timeout?: boolean }) | undefined)?.timeout,
+        ).toBe(false);
+        const body = z
+          .object({
+            max_tokens: z.number(),
+            reasoning: z.object({ effort: z.string() }).optional(),
+          })
+          .parse(await new Response(init?.body).json());
+        requests.push(body);
+        const response = responses.shift();
+        if (!response) throw new Error('UNEXPECTED_PROVIDER_CALL');
+        return Response.json({
+          id: 'fixture',
+          object: 'chat.completion',
+          created: 1,
+          model: modelId,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: response.content,
+              },
+              finish_reason: response.finish,
+            },
+          ],
+          usage: {
+            prompt_tokens: 1200,
+            completion_tokens: 7045,
+            completion_tokens_details: {
+              reasoning_tokens: 7000,
+            },
+          },
+        });
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const extract = (selectedModel = modelId) => {
+    const threadId = crypto.randomUUID();
+    threads.push(threadId);
+    return agents.extract({
+      connection: {
+        id: 'routerai',
+        baseURL: 'https://routerai.ru/api/v1',
+        apiKey: crypto.randomUUID(),
+      },
+      modelId: selectedModel,
+      resource: crypto.randomUUID(),
+      threadId,
+      fields: requirePackage('bfl-bankruptcy-v3').fields,
+      document: { id: documentId, text: 'Регистрация: г. Тула', visuals: [] },
+      signal: AbortSignal.timeout(10000),
+    });
+  };
+  try {
+    await agents.ready();
+    responses = [valid, valid];
+    await extract(unknownModelId);
+    const result = await extract();
+    expect(result.candidates).toEqual([{ ...candidate, origin: 'document' }]);
+    expect(requests.map(({ max_tokens }) => max_tokens)).toEqual([
+      64000, 64000,
+    ]);
+    expect(result.usage).toEqual({ inputTokens: 1200, outputTokens: 7045 });
+    responses = [{ ...malformed, finish: 'length' }];
+    const limited = await extract(smallerModelId).catch(
+      (error: unknown) => error,
+    );
+    expect(limited).toMatchObject({ code: 'LLM_COMPLETION_LIMIT' });
+    expect(requests.map(({ max_tokens }) => max_tokens)).toEqual([
+      64000, 64000, 48000,
+    ]);
+    responses = [malformed, valid];
+    const recovered = await extract(smallerModelId);
+    expect(recovered.candidates).toEqual(result.candidates);
+    expect(recovered.usage).toEqual({ inputTokens: 2400, outputTokens: 14090 });
+    responses = [malformed, malformed];
+    const exhausted = await extract(smallerModelId).catch(
+      (error: unknown) => error,
+    );
+    expect(exhausted).toMatchObject({ code: 'LLM_INVALID_RESPONSE' });
+    expect(requests.map(({ max_tokens }) => max_tokens)).toEqual([
+      64000, 64000, 48000, 48000, 48000, 48000, 48000,
+    ]);
+    expect(requests.map(({ reasoning }) => reasoning?.effort)).toEqual([
+      'high',
+      'high',
+      'high',
+      'high',
+      'high',
+      'high',
+      'high',
+    ]);
   } finally {
     for (const threadId of threads) await agents.eraseThread(threadId);
     await agents.stop();
@@ -737,6 +965,136 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     await agents.eraseThread(tinyThreadId);
     for (const { threadId } of mixedAttempts)
       await agents.eraseThread(threadId);
+    await agents.stop();
+    await pool.end();
+  }
+});
+
+test('reconciliation finalizes with cited candidates after a parallel batch exhausts its read allowance', async () => {
+  const databaseUrl = z
+    .url()
+    .refine((url) =>
+      /^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(url).pathname),
+    )
+    .parse(process.env.TEST_DATABASE_URL);
+  const pool = createDatabasePool(databaseUrl);
+  const threadId = crypto.randomUUID();
+  const documentId = crypto.randomUUID();
+  const quote = 'Место рождения: город Тула';
+  const candidate = {
+    field: 'birthPlace' as const,
+    origin: 'document' as const,
+    value: 'город Тула',
+    evidence: [{ documentId, imagePath: null, quote }],
+  };
+  const response = (message: object, finishReason: string) =>
+    Response.json({
+      id: 'fixture',
+      object: 'chat.completion',
+      created: 1,
+      model: 'fixture',
+      choices: [{ index: 0, message, finish_reason: finishReason }],
+    });
+  let requests = 0;
+  const failedTools: (string | undefined)[] = [];
+  const readSource = spyOn({ read: () => Promise.resolve(quote) }, 'read');
+  const agents = createDocumentAgents({
+    pool,
+    fetch: Object.assign(
+      async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const request = new Request(url, init);
+        if (request.url.endsWith('/endpoints'))
+          return Response.json({
+            data: {
+              endpoints: [
+                { context_length: 32768, max_completion_tokens: 8192 },
+              ],
+            },
+          });
+        const body = z
+          .object({
+            tools: z.array(z.unknown()).optional(),
+            tool_choice: z.string().optional(),
+          })
+          .parse(await request.json());
+        const turn = ++requests;
+        if (body.tool_choice === 'none' || !body.tools?.length)
+          return response(
+            {
+              role: 'assistant',
+              content: JSON.stringify({
+                summary: 'Место рождения подтверждено.',
+                candidates: [candidate],
+              }),
+            },
+            'stop',
+          );
+        if (turn >= 10)
+          return response(
+            { role: 'assistant', content: 'Продолжаю чтение.' },
+            'stop',
+          );
+        return response(
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: Array.from(
+              { length: turn < 8 ? 3 : 2 },
+              (_, index) => ({
+                id: `read-${String(turn)}-${String(index)}`,
+                type: 'function',
+                function: {
+                  name: 'readSource',
+                  arguments: JSON.stringify({ documentId }),
+                },
+              }),
+            ),
+          },
+          'tool_calls',
+        );
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  try {
+    await agents.ready();
+    const result = await agents.reconcile({
+      connection: {
+        id: 'fixture',
+        baseURL: 'https://fixture.invalid/v1',
+        apiKey: crypto.randomUUID(),
+      },
+      modelId: 'fixture',
+      resource: crypto.randomUUID(),
+      sessionId: crypto.randomUUID(),
+      threadId,
+      workRevision: 1,
+      previousContext: null,
+      facts: emptyFacts(),
+      fields: requirePackage('bfl-bankruptcy-v6').fields,
+      candidates: [],
+      documents: [
+        {
+          id: documentId,
+          filename: 'birth.pdf',
+          digest: 'fixture',
+          images: [],
+        },
+      ],
+      signal: AbortSignal.timeout(15000),
+      assertCurrent: () => Promise.resolve(),
+      readSource,
+      traceTool: ({ status, errorCode }) => {
+        if (status === 'failed') failedTools.push(errorCode);
+        return Promise.resolve();
+      },
+    });
+    expect(result.candidates).toEqual([candidate]);
+    expect(failedTools).toEqual(['CONTEXT_TOOL_LIMIT']);
+    expect(requests).toBe(10);
+    expect(readSource).toHaveBeenCalledTimes(25);
+  } finally {
+    await agents.eraseThread(threadId);
     await agents.stop();
     await pool.end();
   }

@@ -1,8 +1,12 @@
-import type { FieldDefinition } from '../../profiles/bfl/fields';
+import type { FieldDefinition, FieldKey } from '../../profiles/bfl/fields';
 
 import type { AgentSessionContext, WorkFacts } from './schemas';
 export type { FieldDefinition, AgentSessionContext, WorkFacts };
-import type { ModelConnection, ProviderCallObserver } from '@anyko/llm';
+import type {
+  ModelConnection,
+  ModelTraceContext,
+  ProviderCallObserver,
+} from '@anyko/llm';
 
 import type { Tx } from '../../platform/transactions';
 
@@ -44,8 +48,10 @@ export interface DocumentAgents {
   ready(): Promise<void>;
   describe(input: {
     observe?: ProviderCallObserver;
+    trace?: ModelTraceContext;
     connection: ModelConnection;
     modelId: string;
+    disableReasoning?: boolean;
     resource: string;
     threadId: string;
     assertCurrent?(): Promise<void>;
@@ -56,9 +62,14 @@ export interface DocumentAgents {
   }): Promise<{ description: string; usage: AgentUsage }>;
   extract(input: {
     observe?: ProviderCallObserver;
+    trace?: ModelTraceContext;
+    onRejectedEvidence?(
+      rejections: readonly { field: FieldKey; count: number }[],
+    ): void;
     fields?: FieldDefinition[];
     connection: ModelConnection;
     modelId: string;
+    enableReasoning?: boolean;
     resource: string;
     threadId: string;
     assertCurrent?(): Promise<void>;
@@ -67,9 +78,11 @@ export interface DocumentAgents {
   }): Promise<{ candidates: WorkFacts['candidates']; usage: AgentUsage }>;
   reconcile(input: {
     observe?: ProviderCallObserver;
+    trace?: ModelTraceContext;
     traceTool?(event: AgentToolEvent): Promise<void>;
     connection: ModelConnection;
     modelId: string;
+    enableReasoning?: boolean;
     resource: string;
     threadId: string;
     sessionId: string;
@@ -102,8 +115,10 @@ export interface DocumentAgents {
   chat(
     input: Omit<WorkReadContext, 'candidates'> & {
       observe?: ProviderCallObserver;
+      trace?: ModelTraceContext;
       connection: ModelConnection;
       modelId: string;
+      enableReasoning?: boolean;
       previousContext: AgentSessionContext | null;
       documents: { id: string; filename: string }[];
       listSourceImages(documentId: string): Promise<string[]>;

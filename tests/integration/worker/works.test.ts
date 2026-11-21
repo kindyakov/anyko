@@ -1,5 +1,8 @@
 import { afterAll, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { PostgresStore } from '@mastra/pg';
 import { strFromU8, unzipSync } from 'fflate';
@@ -136,8 +139,9 @@ const agents: DocumentAgents = {
     extractionModel = input.modelId;
     threads.add(input.threadId);
     await waitForExtraction?.(input);
-    if (failExtraction || failDocument === input.document.id)
-      throw new LlmError('LLM_RATE_LIMITED');
+    if (failDocument === input.document.id)
+      throw new LlmError('LLM_INVALID_RESPONSE');
+    if (failExtraction) throw new LlmError('LLM_RATE_LIMITED');
     return {
       candidates: [
         {
@@ -787,6 +791,7 @@ test('chat shares the work session, waits for the current turn and retains read-
   const firstAnswer = 'В поле указано имя Анна. На изображении белый шкаф.';
   const followUpQuestion = 'Откуда взялось это имя?';
   const followUpAnswer = 'Из предыдущего ответа.';
+  const traceDirectory = await mkdtemp(join(tmpdir(), 'anyko-chat-trace-'));
   const toolCall = (id: string, name: string, args: object) => ({
     id,
     type: 'function',
@@ -794,6 +799,7 @@ test('chat shares the work session, waits for the current turn and retains read-
   });
   const chatModel = createDocumentAgents({
     pool: actualPool,
+    traceDirectory,
     fetch: Object.assign(
       async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
         const request = new Request(url, init);
@@ -957,6 +963,27 @@ test('chat shares the work session, waits for the current turn and retains read-
       inputTokens: 21,
       outputTokens: 9,
     });
+    const chatRun = await db.run.findUniqueOrThrow({
+      where: { id: accepted.runId },
+    });
+    const traceFolder = join(traceDirectory, chatRun.correlationId);
+    const traceFiles = await readdir(traceFolder);
+    expect(traceFiles).toHaveLength(3);
+    const records: unknown[] = await Promise.all(
+      traceFiles
+        .sort()
+        .map(
+          async (file) =>
+            JSON.parse(
+              await readFile(join(traceFolder, file), 'utf8'),
+            ) as unknown,
+        ),
+    );
+    expect(records.at(-1)).toMatchObject({
+      stage: 'chat',
+      finishReason: 'stop',
+      parse: { status: 'accepted', answer: firstAnswer },
+    });
     expect(describeCount).toBe(priorVisionCalls);
     await until(input, (view) => terminal(view) && view.runs.length === 2);
     const followUp = await send(followUpQuestion);
@@ -986,6 +1013,7 @@ test('chat shares the work session, waits for the current turn and retains read-
     waiting.resolve(undefined);
     chatHook = undefined;
     await chatModel.stop();
+    await rm(traceDirectory, { recursive: true, force: true });
     await db.user.delete({ where: { id: userId } });
   }
 });
@@ -2899,6 +2927,11 @@ test('a failed file does not stop another file; retry reuses the successful extr
     ocr.release();
     const state = await until(input, terminal);
     expect(state.runs[0]?.status).toBe('partial');
+    expect(
+      state.runs[0]?.steps.find(
+        (step) => step.documentId === first.id && step.stage === 'extraction',
+      ),
+    ).toMatchObject({ status: 'failed', errorCode: 'LLM_INVALID_RESPONSE' });
     expect(state.facts.values.personName).toBe('Анна');
   } finally {
     ocr.release();
@@ -3901,11 +3934,12 @@ test('deletion during the first visual prevents a second provider request', asyn
   }
 });
 
-test('Mastra sends the extraction text directly, keeps reconciliation tools, and erases persisted messages on cleanup', async () => {
+test('Mastra sends the extraction text directly, keeps reconciliation tools, and erases messages on work deletion', async () => {
   const input = await create();
   const lastLine = 'ФИО заявителя: Анна';
   const signing = 'Подписано за день до регистрации от 22.08.2026';
   const debt = 'Два платежа: 100 рублей и 200 рублей';
+  const reasoning = 'Синтетическое рассуждение перед извлечением.';
   const markdown = `${'Строка исходника.\n'.repeat(3000)}\n${lastLine}\n${signing}\n${debt}`;
   const encodedMarkdown = JSON.stringify(markdown).slice(1, -1);
   let documentId = '';
@@ -4023,6 +4057,8 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
               message: {
                 role: 'assistant',
                 content: toolName ? null : text,
+                ...(!coordinator &&
+                  !visual && { reasoning_content: reasoning }),
                 ...(calls ? { tool_calls: calls } : {}),
               },
               finish_reason: finish,
@@ -4041,7 +4077,11 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
                 role: 'assistant',
                 ...(calls
                   ? { tool_calls: calls.map((call) => ({ index: 0, ...call })) }
-                  : { content: text }),
+                  : {
+                      content: text,
+                      ...(!coordinator &&
+                        !visual && { reasoning_content: reasoning }),
+                    }),
               },
               finish_reason: null,
             },
@@ -4221,21 +4261,21 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
     threadIds = await workProcessing.threads(input.workspaceId, input.workId);
     const memory = await inspection.getStore('memory');
     if (!memory || !threadIds[0]) throw new Error('MISSING_MEMORY_FIXTURE');
-    expect(
-      (await memory.listMessages({ threadId: threadIds[0] })).messages.length,
-    ).toBeGreaterThan(0);
-    await apiBackend.workHttp.intake.removeDocument(
-      memberScope(input.workspaceId),
-      {
-        workId: brandWorkId(input.workId),
-        documentId: brandDocumentId(doc.id),
-      },
+    const stored = await Promise.all(
+      threadIds.map(
+        async (threadId) => (await memory.listMessages({ threadId })).messages,
+      ),
     );
-    const cleaned = await until(
-      input,
-      (view) => !view.cleanupPending && !view.documents.length,
-    );
-    expect(cleaned.facts.candidates).toEqual([]);
+    expect(JSON.stringify(stored)).toContain(reasoning);
+    const deletion = apiBackend.workHttp.deletion;
+    await deletion.request(scope, workId, crypto.randomUUID());
+    const deadline = Date.now() + 15000;
+    while ((await deletion.status(scope, workId)).status !== 'deleted') {
+      if (Date.now() > deadline)
+        throw new Error('Work deletion did not finish');
+      await Bun.sleep(30);
+    }
+    expect(await db.work.findUnique({ where: { id: workId } })).toBeNull();
     expect(await db.workAgentEvent.count({ where: { workId } })).toBe(0);
     for (const threadId of threadIds) {
       expect(await memory.getThreadById({ threadId })).toBeNull();
@@ -5322,6 +5362,116 @@ test('employment records and income certificates reach review and the downloaded
     extractFixture = undefined;
   }
 });
+
+test('each EGRN cadastral number follows its property into the facts and the inventory', async () => {
+  const input = await create('bfl-bankruptcy-v13');
+  const scope = memberScope(input.workspaceId);
+  const workId = brandWorkId(input.workId);
+  const properties = [
+    {
+      row: {
+        description: 'Квартира',
+        address: 'г. Тестовый, ул. Новая, д. 1, кв. 2',
+      },
+      number: '48:08:0000000:9000001',
+    },
+    {
+      row: {
+        description: 'Гараж',
+        address: 'г. Тестовый, ул. Садовая, д. 5',
+      },
+      number: '48:08:0000000:9000002',
+    },
+  ];
+  const unnumbered = {
+    description: 'Жилой дом',
+    address: 'г. Тестовый, ул. Центральная, д. 8',
+  };
+  const unsupported = '48:08:0000000:9000003';
+  parseFixture = () =>
+    Promise.resolve({
+      markdown: [
+        'Выписка из Единого государственного реестра недвижимости',
+        ...properties.flatMap(({ row, number }) => [
+          `Вид объекта недвижимости: ${row.description}.`,
+          `Кадастровый номер: ${number}.`,
+          `Адрес: ${row.address}.`,
+        ]),
+        `Вид объекта недвижимости: ${unnumbered.description}.`,
+        `Адрес: ${unnumbered.address}.`,
+      ].join('\n'),
+      processorVersion: 'fixture',
+    });
+  extractFixture = ({ document }) =>
+    Promise.resolve({
+      candidates: [
+        ...properties.map(({ row }) => row),
+        { ...unnumbered, identifier: unsupported },
+      ].map((row) => ({
+        field: 'realEstate',
+        value: [row],
+        evidence: [
+          {
+            documentId: document.id,
+            imagePath: null,
+            quote: `Адрес: ${row.address}.`,
+          },
+        ],
+      })),
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+  try {
+    const source = await upload(input, 'egrn-number-fixture');
+    const initial = await until(input, terminal);
+    expect(initial.facts.values.realEstate).toEqual([
+      ...properties.map(({ row, number }) => ({ ...row, identifier: number })),
+      unnumbered,
+    ]);
+    for (const { number } of properties) {
+      const evidence = initial.facts.candidates
+        .filter(({ field, selected }) => field === 'realEstate' && selected)
+        .flatMap(({ evidence }) => evidence);
+      expect(evidence).toContainEqual({
+        documentId: source.id,
+        imagePath: null,
+        quote: `Кадастровый номер: ${number}`,
+      });
+    }
+
+    await apiBackend.workHttp.generation.startGeneration(scope, {
+      workId,
+      revision: initial.work.revision,
+      correlationId: crypto.randomUUID(),
+    });
+    const result = await until(input, (view) =>
+      view.generations.some(({ status }) => status === 'succeeded'),
+    );
+    const generation = result.generations.find(
+      ({ status }) => status === 'succeeded',
+    );
+    const inventory = generation?.files.find(
+      ({ templateVersion }) => templateVersion === 'bfl-inventory-v2',
+    );
+    if (!generation || !inventory) throw new Error('INVENTORY_MISSING');
+    const { bytes } = await apiBackend.workHttp.generation.downloadResult(
+      scope,
+      {
+        workId,
+        generationId: brandGenerationId(generation.id),
+        fileId: brandFileId(inventory.id),
+      },
+    );
+    const xml = strFromU8(
+      unzipSync(bytes)['word/document.xml'] ?? new Uint8Array(),
+    );
+    for (const { row, number } of properties)
+      expect(xml).toContain(`${row.description}, кадастровый номер ${number}`);
+    expect(xml).not.toContain(unsupported);
+  } finally {
+    parseFixture = undefined;
+    extractFixture = undefined;
+  }
+}, 60000);
 
 test('an EGRN source fills inventory and only confirmed supported files enter the statement', async () => {
   const { workspaceId } = await create();

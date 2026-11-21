@@ -46,7 +46,10 @@ export function templateData(
   input: FieldValues,
   templateVersion?: string,
   placeholders: readonly TemplatePlaceholder[] = [],
-  context?: { fields: readonly { key: string }[]; referenceDate: string },
+  context?: {
+    fields: readonly { key: string; columns?: readonly { key: string }[] }[];
+    referenceDate: string;
+  },
 ): FieldValues & {
   signerName: string;
   creditorHeaders?: FieldValues['debts'];
@@ -186,7 +189,7 @@ export function templateData(
     ...(statement && statementRequestValues(values)),
     ...statementLayout(templateVersion, input),
     ...(narratives && { statementDebts: narratives }),
-    ...inventorySections(templateVersion, input),
+    ...inventorySections(templateVersion, input, context?.fields),
     ...(obligations && {
       creditorHeaders: obligations.creditorHeaders.map((row) =>
         Object.fromEntries(

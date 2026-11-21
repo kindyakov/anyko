@@ -4,6 +4,7 @@ import { parseWorkerQueues } from '@anyko/backend/jobs';
 import { DiagnosticError } from '@anyko/logger';
 
 const schema = z.object({
+  ANYKO_LLM_TRACE_DIR: z.string().optional(),
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),

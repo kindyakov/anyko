@@ -15,6 +15,7 @@ export interface LogEvent {
   requestId?: string | undefined;
   correlationId?: string | undefined;
   jobId?: string | undefined;
+  documentId?: string | undefined;
   jobType?: string | undefined;
   attempt?: number | undefined;
   method?: string;
@@ -30,6 +31,8 @@ export interface LogEvent {
   model?: string;
   inputTokens?: number;
   outputTokens?: number;
+  field?: string;
+  rejectedCount?: number;
 }
 export interface Logger {
   debug: (fields: LogEvent) => void;
@@ -43,6 +46,7 @@ const fields = [
   'requestId',
   'correlationId',
   'jobId',
+  'documentId',
   'jobType',
   'attempt',
   'method',
@@ -57,6 +61,8 @@ const fields = [
   'model',
   'inputTokens',
   'outputTokens',
+  'field',
+  'rejectedCount',
 ] as const;
 /** Never serialize arbitrary request objects or Error messages. */
 export function createLogger(

@@ -39,6 +39,11 @@ export function createChatAgent(options: {
       input.signal,
       AbortSignal.timeout(options.timeoutMs),
     ]);
+    const trace = options.gateway.trace(
+      input.trace,
+      input.modelId,
+      input.connection,
+    );
     try {
       await input.assertCurrent();
       const limits = await options.gateway.contextLimits(
@@ -103,6 +108,7 @@ export function createChatAgent(options: {
             structuredOutput: false,
           },
           input.observe,
+          trace,
         ),
         tools: {
           ...createWorkReadTools({
@@ -111,7 +117,7 @@ export function createChatAgent(options: {
             signal,
             pageCharacters: budget.pageCharacters,
             listSourceMetadata: input.documents.length > 0,
-          }),
+          }).tools,
           ...court.tools,
           ...creditor.tools,
           setWorkField,
@@ -161,14 +167,17 @@ export function createChatAgent(options: {
           },
         },
       );
+      const answer = z.string().trim().min(1).max(32_000).parse(result.text);
+      if (trace) await trace.parsed({ status: 'accepted', answer });
       return {
-        answer: z.string().trim().min(1).max(32_000).parse(result.text),
+        answer,
         usage: {
           inputTokens: result.usage.inputTokens ?? null,
           outputTokens: result.usage.outputTokens ?? null,
         },
       };
     } catch (error) {
+      if (trace) await trace.failed();
       if (isAppError(error)) throw error;
       throw llmError(error, signal);
     }

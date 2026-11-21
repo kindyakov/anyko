@@ -1,6 +1,7 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 
+import { createLocalModelTrace, type ModelTraceContext } from './local-trace';
 import {
   observeProviderFetch,
   type ProviderCallObserver,
@@ -8,6 +9,7 @@ import {
 import { createRouterContextLimits } from './router-context';
 
 export type { ProviderCallObserver } from './provider-calls';
+export type { ModelTraceContext } from './local-trace';
 export type { ModelContextLimits } from './router-context';
 
 const connectionSchema = z.object({
@@ -36,6 +38,7 @@ const modelSchema = z.object({
   images: z.boolean(),
   tools: z.boolean(),
   structuredOutput: z.boolean(),
+  timeoutFromAbortSignal: z.boolean().optional(),
 });
 
 export type ModelConnection = z.infer<typeof connectionSchema>;
@@ -47,6 +50,7 @@ export type LlmErrorCode =
   | 'LLM_TIMEOUT'
   | 'LLM_CANCELLED'
   | 'LLM_INVALID_RESPONSE'
+  | 'LLM_COMPLETION_LIMIT'
   | 'LLM_REQUEST_REJECTED';
 
 export class LlmError extends Error {
@@ -66,6 +70,7 @@ const llmErrorMessages = {
   LLM_TIMEOUT: 'Провайдер модели не ответил за отведённое время.',
   LLM_CANCELLED: 'Запрос к модели отменён.',
   LLM_INVALID_RESPONSE: 'Ответ модели не соответствует ожидаемому формату.',
+  LLM_COMPLETION_LIMIT: 'Ответ модели оборвался на предельном числе токенов.',
   LLM_REQUEST_REJECTED: 'Провайдер модели отклонил запрос.',
 } satisfies Record<LlmErrorCode, string>;
 
@@ -90,28 +95,58 @@ export function llmError(error: unknown, signal?: AbortSignal): LlmError {
   return new LlmError('LLM_INVALID_RESPONSE');
 }
 
-export function createModelGateway(options: { fetch?: typeof fetch } = {}) {
+export function createModelGateway(
+  options: { fetch?: typeof fetch; traceDirectory?: string } = {},
+) {
   return {
+    trace(
+      context: ModelTraceContext | undefined,
+      model: string,
+      connection: ModelConnection,
+    ) {
+      if (options.traceDirectory && context)
+        return createLocalModelTrace(
+          options.traceDirectory,
+          context,
+          model,
+          connection,
+        );
+    },
     contextLimits: createRouterContextLimits(options.fetch ?? fetch),
+    reasoningOptions(connection: ModelConnection, effort: 'none' | 'high') {
+      return { [connection.id]: { reasoning: { effort } } };
+    },
     model(
       connection: ModelConnection,
       selection: ModelSelection,
       observe?: ProviderCallObserver,
+      trace?: ReturnType<typeof createLocalModelTrace>,
     ) {
       const parsedConnection = connectionSchema.safeParse(connection);
       const parsedModel = modelSchema.safeParse(selection);
       if (!parsedConnection.success || !parsedModel.success)
         throw new LlmError('LLM_REQUEST_REJECTED');
       const config = parsedConnection.data;
-      const transport = observe
-        ? observeProviderFetch(options.fetch ?? fetch, observe)
+      const baseFetch = options.fetch ?? fetch;
+      const transport = parsedModel.data.timeoutFromAbortSignal
+        ? Object.assign(
+            (...[request, init]: Parameters<typeof fetch>) => {
+              const requestOptions = { ...init, timeout: false as const };
+              return baseFetch(request, requestOptions);
+            },
+            { preconnect: baseFetch.preconnect },
+          )
         : options.fetch;
+      const observed = observe
+        ? observeProviderFetch(transport ?? baseFetch, observe)
+        : transport;
+      const traced = trace ? trace.wrap(observed ?? baseFetch) : observed;
       return createOpenAICompatible({
         name: config.id,
         baseURL: config.baseURL,
         apiKey: config.apiKey,
         supportsStructuredOutputs: parsedModel.data.structuredOutput,
-        ...(transport ? { fetch: transport } : {}),
+        ...(traced ? { fetch: traced } : {}),
       }).chatModel(parsedModel.data.id);
     },
   };

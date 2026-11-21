@@ -25,6 +25,7 @@ export const revisedBankruptcyPackages = [
   'bfl-bankruptcy-v10',
   'bfl-bankruptcy-v11',
   'bfl-bankruptcy-v12',
+  'bfl-bankruptcy-v13',
 ] as const;
 const datedPackages = new Set<string>([
   datedBankruptcyPackage,

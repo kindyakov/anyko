@@ -108,6 +108,13 @@ export function createDocumentOcrWorkflow(options: {
               return options.vision.describe({
                 assertCurrent,
                 connection: config.connection,
+                disableReasoning: config.visionDisableReasoning,
+                trace: {
+                  correlationId: run.correlationId,
+                  jobId: run.id,
+                  stage: 'ocr',
+                  documentId: run.documentId,
+                },
                 modelId: config.visionModel,
                 resource: `${run.workspaceId}:${run.documentId}`,
                 threadId: attemptId,

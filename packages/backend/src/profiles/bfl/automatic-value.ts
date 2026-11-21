@@ -20,6 +20,10 @@ import {
   obligationStatuses,
 } from '@anyko/document-values/obligations';
 
+import {
+  cadastralNumbersIn,
+  canonicalCadastralNumber,
+} from './cadastral-number';
 import type { candidateSchema } from './candidate';
 import {
   fieldIdentity,
@@ -188,6 +192,18 @@ function supportedValue(
         .filter(([column]) => !Object.hasOwn(creditorRegistryColumns, column))
         .map(([column, cell]) => {
           if (cell === null) return [column, cell];
+          if (field === 'realEstate' && column === 'identifier') {
+            const number = canonicalCadastralNumber(cell);
+            return [
+              column,
+              number &&
+              proofLines(candidate.evidence, true).some((line) =>
+                cadastralNumbersIn(line).includes(number),
+              )
+                ? number
+                : null,
+            ];
+          }
           const rubles = isRublesColumn(field, column);
           if (rubles || (field === 'valuables' && column === 'amount'))
             return [

@@ -22,7 +22,11 @@ const schema = z.object({
  */
 export function parseBackendEnv(
   env: Record<string, string | undefined>,
-  worker: { redisUrl: string; shutdownTimeoutMs: number },
+  worker: {
+    redisUrl: string;
+    shutdownTimeoutMs: number;
+    llmTraceDirectory?: string | undefined;
+  },
 ) {
   const parsed = schema.safeParse(env);
   if (!parsed.success)
@@ -46,6 +50,7 @@ export function parseBackendEnv(
         timeoutMs: value.MINERU_TIMEOUT_MS,
       },
       shutdownTimeoutMs: worker.shutdownTimeoutMs,
+      llmTraceDirectory: worker.llmTraceDirectory,
     },
   };
 }

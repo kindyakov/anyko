@@ -40,6 +40,10 @@ export async function startWorker() {
         parseBackendEnv(process.env, {
           redisUrl: config.REDIS_URL,
           shutdownTimeoutMs: config.SHUTDOWN_TIMEOUT_MS,
+          llmTraceDirectory:
+            config.NODE_ENV === 'development'
+              ? config.ANYKO_LLM_TRACE_DIR || undefined
+              : undefined,
         }),
         { logger, role: 'worker' },
       );

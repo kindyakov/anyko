@@ -179,6 +179,12 @@ export function createWorkAnalysis(deps: WorkDependencies) {
               model: stepConnection.visionModel,
               execute: () =>
                 deps.agents.model.describe({
+                  trace: {
+                    correlationId: run.correlationId,
+                    jobId: run.id,
+                    stage: 'ocr',
+                    documentId,
+                  },
                   observe: history.observe({
                     interactionId: callId,
                     stage: 'vision',
@@ -258,6 +264,27 @@ export function createWorkAnalysis(deps: WorkDependencies) {
               model: stepConnection.extractionModel,
               execute: () =>
                 deps.agents.model.extract({
+                  trace: {
+                    correlationId: run.correlationId,
+                    jobId: run.id,
+                    stage: 'extraction',
+                    documentId,
+                  },
+                  enableReasoning: stepConnection.extractionEnableReasoning,
+                  onRejectedEvidence: (rejections) => {
+                    for (const { field, count } of rejections)
+                      deps.logger.warn({
+                        event: 'extraction_candidates_rejected',
+                        correlationId: run.correlationId,
+                        jobId: run.id,
+                        jobType: 'extraction',
+                        requestId: threadId,
+                        documentId,
+                        errorCode: 'INVALID_EVIDENCE',
+                        field,
+                        rejectedCount: count,
+                      });
+                  },
                   observe: history.observe({
                     interactionId: threadId,
                     stage: 'extraction',

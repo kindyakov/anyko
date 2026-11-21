@@ -1,13 +1,7 @@
 import type { WorkspaceScope } from '../../../platform/scope/workspace-scope';
 import type { AuditModule } from '../../audit';
 
-import type { LlmSettingsStore } from './ports';
-export interface LlmSettingsInput {
-  baseURL: string;
-  visionModel: string;
-  extractionModel: string;
-  apiKey?: string | undefined;
-}
+import type { LlmSettingsInput, LlmSettingsStore } from './ports';
 export async function persistConnection(
   deps: { store: LlmSettingsStore; audit: Pick<AuditModule, 'commands'> },
   workspaceId: string,

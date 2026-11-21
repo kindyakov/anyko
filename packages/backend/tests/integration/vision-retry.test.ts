@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { Buffer } from 'node:buffer';
 
 import { z } from 'zod';
 
@@ -6,11 +7,14 @@ import { createDatabasePool } from '@anyko/database';
 
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 
-test('RouterAI DeepSeek transcription preserves the response budget for document text', async () => {
+test('RouterAI DeepSeek transcription sends the image bytes and preserves the response budget', async () => {
   const pool = createDatabasePool(
     z.string().min(1).parse(process.env.TEST_DATABASE_URL),
   );
   const transcript = 'Дата выдачи: 14.09.2021\nКод подразделения: 041-508';
+  const jpegBase64 =
+    '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAABv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AaP/Z';
+  const imageUrls: string[] = [];
   let calls = 0;
   const agents = createDocumentAgents({
     pool,
@@ -20,8 +24,29 @@ test('RouterAI DeepSeek transcription preserves the response budget for document
         const body = z
           .object({
             reasoning: z.object({ effort: z.string() }).optional(),
+            messages: z.array(
+              z.object({
+                role: z.string(),
+                content: z.union([
+                  z.string(),
+                  z.array(
+                    z.object({
+                      type: z.string(),
+                      image_url: z.object({ url: z.string() }).optional(),
+                    }),
+                  ),
+                ]),
+              }),
+            ),
           })
           .parse(await new Response(init?.body).json());
+        for (const { role, content } of body.messages) {
+          if (role !== 'user' || typeof content === 'string') continue;
+          for (const part of content) {
+            if (part.type === 'image_url' && part.image_url)
+              imageUrls.push(part.image_url.url);
+          }
+        }
         const reasoningDisabled = body.reasoning?.effort === 'none';
         return Response.json({
           id: 'fixture',
@@ -60,12 +85,14 @@ test('RouterAI DeepSeek transcription preserves the response budget for document
       modelId: '~deepseek/deepseek-v4-flash-latest',
       resource: crypto.randomUUID(),
       threadId: crypto.randomUUID(),
-      bytes: new Uint8Array([1]),
+      bytes: Uint8Array.from(Buffer.from(jpegBase64, 'base64')),
       mediaType: 'image/jpeg',
       purpose: 'transcription',
+      disableReasoning: true,
       signal: AbortSignal.timeout(15000),
     });
     expect(result.description).toBe(transcript);
+    expect(imageUrls).toEqual([`data:image/jpeg;base64,${jpegBase64}`]);
     expect(calls).toBe(1);
   } finally {
     await agents.stop();

@@ -159,6 +159,7 @@ const collectionLabels = {
     label: 'Недвижимость',
     columns: columns({
       description: 'Вид и наименование',
+      identifier: 'Кадастровый номер',
       category:
         'Подраздел: земельный участок, жилой дом, квартира, гараж или иное',
       ownership: 'Вид собственности',

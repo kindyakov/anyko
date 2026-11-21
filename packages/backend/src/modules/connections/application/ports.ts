@@ -1,10 +1,21 @@
 import type { ModelConnection } from '@anyko/llm';
 
+export interface LlmSettingsInput {
+  baseURL: string;
+  visionModel: string;
+  extractionModel: string;
+  visionDisableReasoning?: boolean | undefined;
+  extractionEnableReasoning?: boolean | undefined;
+  apiKey?: string | undefined;
+}
+
 export interface LlmConfiguration {
   revision: number;
   baseURL: string;
   visionModel: string;
   extractionModel: string;
+  visionDisableReasoning: boolean;
+  extractionEnableReasoning: boolean;
 }
 export interface LlmSettingsStore {
   lock(workspaceId: string): Promise<void>;
@@ -20,13 +31,5 @@ export interface LlmSettingsStore {
     workspaceId: string,
     revision: number | null,
   ): Promise<LlmConfiguration & { connection: ModelConnection }>;
-  save(
-    workspaceId: string,
-    input: {
-      baseURL: string;
-      visionModel: string;
-      extractionModel: string;
-      apiKey?: string | undefined;
-    },
-  ): Promise<number>;
+  save(workspaceId: string, input: LlmSettingsInput): Promise<number>;
 }

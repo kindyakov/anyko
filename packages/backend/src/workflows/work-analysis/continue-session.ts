@@ -26,6 +26,7 @@ import {
 } from './identity-sources';
 import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
+import { withEgrnCadastre } from './property-sources';
 
 export interface ContinuationSource extends ChecklistAnalysisSource {
   filename: string;
@@ -79,16 +80,23 @@ export function createWorkContinuation(deps: WorkDependencies) {
         },
         input.signal,
       );
+      const extracted = input.fields.some(
+        ({ key, columns }) =>
+          key === 'realEstate' &&
+          columns.some(({ key }) => key === 'identifier'),
+      )
+        ? withEgrnCadastre(input.candidates, input.sources)
+        : input.candidates;
       const found = candidatesForContext(
         input.fields.some(({ key }) => key === 'citizenship')
           ? [
-              ...input.candidates,
+              ...extracted,
               ...locateEvidence(
                 passportCitizenshipCandidates(input.sources),
                 input.sources,
               ),
             ]
-          : input.candidates,
+          : extracted,
         snapshot.facts.candidates,
         run.documentIds,
         input.sources.map(({ id }) => id),
@@ -143,6 +151,11 @@ export function createWorkContinuation(deps: WorkDependencies) {
           model: config.extractionModel,
           execute: () =>
             deps.agents.model.reconcile({
+              trace: {
+                correlationId: run.correlationId,
+                jobId: run.id,
+                stage: 'reconciliation',
+              },
               traceTool: (event) => history.tool({ ...interaction, ...event }),
               observe: history.observe({
                 ...interaction,

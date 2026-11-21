@@ -117,6 +117,11 @@ export function createWorkChatRun(
       model: config.extractionModel,
       execute: () =>
         deps.agents.model.chat({
+          trace: {
+            correlationId: run.correlationId,
+            jobId: runId,
+            stage: 'chat',
+          },
           observe: async (request) => {
             await assertCurrent();
             return observe(request);

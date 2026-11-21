@@ -89,7 +89,7 @@ export function previewDocumentValues(
       ),
     }),
     ...(narratives && { statementDebts: narratives }),
-    ...inventorySections(version, values),
+    ...inventorySections(version, values, fields),
   };
   const request: Record<string, string> = {
     ...(statement && statementRequestValues(values)),

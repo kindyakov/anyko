@@ -3,7 +3,7 @@ import { z } from 'zod';
 export interface ModelContextLimits {
   context: number;
   prompt: number;
-  completion: number;
+  completion: number | null;
 }
 
 const catalogBase = 'https://routerai.ru/api/v1';
@@ -60,12 +60,15 @@ export function createRouterContextLimits(transport: typeof fetch) {
             current.prompt,
             endpoint.max_prompt_tokens ?? endpoint.context_length,
           ),
-          completion: Math.min(
-            current.completion,
-            endpoint.max_completion_tokens ?? endpoint.context_length,
-          ),
+          completion:
+            endpoint.max_completion_tokens == null
+              ? current.completion
+              : Math.min(
+                  current.completion ?? Infinity,
+                  endpoint.max_completion_tokens,
+                ),
         }),
-        { context: Infinity, prompt: Infinity, completion: Infinity },
+        { context: Infinity, prompt: Infinity, completion: null },
       );
       if (cache.size >= 128) cache.clear();
       cache.set(modelId, { limits, expires: Date.now() + 5 * 60 * 1000 });

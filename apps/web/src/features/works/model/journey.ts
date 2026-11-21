@@ -128,6 +128,9 @@ const errors: Record<string, string> = {
   STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED:
     'Модель вернула ответ в неверном формате.',
   LLM_INVALID_RESPONSE: 'Модель вернула ответ в неверном формате.',
+  LLM_COMPLETION_LIMIT:
+    'Модель не завершила разбор файла. Достигнут лимит ответа.',
+  LLM_TIMEOUT: 'Модель не завершила разбор за отведённое время.',
   LLM_UNAVAILABLE: 'Провайдер модели недоступен.',
   CONTEXT_RECONCILIATION_FAILED:
     'Не удалось сопоставить сведения между документами. Извлечённые из файлов сведения сохранены.',

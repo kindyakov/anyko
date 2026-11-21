@@ -41,7 +41,11 @@ function* smallerToolBatches<T>(calls: T[]) {
 
 export function createWorkContextBudget(limits: ModelContextLimits | null) {
   const { context, prompt, completion } = limits ?? fallback;
-  const maxOutputTokens = Math.min(8192, completion, Math.floor(context / 4));
+  const maxOutputTokens = Math.min(
+    8192,
+    completion ?? context,
+    Math.floor(context / 4),
+  );
   // Tool schemas and structured output are sent outside the message list.
   const promptCapacity = Math.min(prompt, context - maxOutputTokens) - 2048;
   // Mastra estimates message tokens independently of the provider tokenizer.

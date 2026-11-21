@@ -1,7 +1,10 @@
 import type { Tx } from '../../platform/transactions';
 
-import type { LlmConfiguration, LlmSettingsStore } from './application/ports';
-import type { LlmSettingsInput } from './application/save';
+import type {
+  LlmConfiguration,
+  LlmSettingsInput,
+  LlmSettingsStore,
+} from './application/ports';
 export type { LlmConfiguration, LlmSettingsStore, LlmSettingsInput };
 export { ConnectionErrors } from './errors';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';

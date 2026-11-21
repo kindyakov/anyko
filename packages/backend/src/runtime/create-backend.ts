@@ -251,7 +251,11 @@ export function createBackend(
   const templateRequirements = createTemplateRequirements(db);
 
   let agentsDelegate: DocumentAgents | undefined = dependencies.agents;
-  const agents = () => (agentsDelegate ??= createDocumentAgents({ pool }));
+  const agents = () =>
+    (agentsDelegate ??= createDocumentAgents({
+      pool,
+      traceDirectory: validated.worker?.llmTraceDirectory,
+    }));
   // Внешние вызовы модели доступны только вне транзакционного фасада.
   const model: DocumentAgents = {
     chat: (input) => agents().chat(input),

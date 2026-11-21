@@ -73,8 +73,16 @@ function inventoryCell(row: Row, cell: string) {
     : value;
 }
 
-export function inventorySections(version: string | undefined, values: Values) {
+export function inventorySections(
+  version: string | undefined,
+  values: Values,
+  fields: readonly { key: string; columns?: readonly { key: string }[] }[] = [],
+) {
   if (version !== 'bfl-inventory-v2') return undefined;
+  const includeCadastralNumber = fields.some(
+    ({ key, columns }) =>
+      key === 'realEstate' && columns?.some(({ key }) => key === 'identifier'),
+  );
   const sections: Record<string, Row[]> = Object.fromEntries(
     inventorySectionKeys.map((key) => [key, []]),
   );
@@ -91,7 +99,23 @@ export function inventorySections(version: string | undefined, values: Values) {
             Object.hasOwn(patterns, group) &&
             patterns[group as keyof typeof patterns].test(description),
         ) ?? groups.at(-1);
-      if (key) sections[key]?.push(row);
+      if (key)
+        sections[key]?.push(
+          includeCadastralNumber &&
+            field === 'realEstate' &&
+            row.identifier &&
+            !row.description?.includes(row.identifier)
+            ? {
+                ...row,
+                description: [
+                  row.description,
+                  `кадастровый номер ${row.identifier}`,
+                ]
+                  .filter(Boolean)
+                  .join(', '),
+              }
+            : row,
+        );
     }
   }
   sections.bankAccounts = rows(values.accounts);

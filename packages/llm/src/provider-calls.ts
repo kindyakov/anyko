@@ -56,6 +56,11 @@ const requestSchema = z.object({
     )
     .optional(),
 });
+const traceRequestSchema = requestSchema.extend({
+  max_tokens: tokens.optional(),
+  reasoning: z.json().optional(),
+  response_format: z.json().optional(),
+});
 const responseChoices = z.array(
   z.object({
     message: message.nullish(),
@@ -113,6 +118,23 @@ async function readResponse(response: Response) {
     });
 }
 
+export async function readProviderRequest(
+  request: Parameters<typeof fetch>[0],
+  init?: RequestInit,
+  diagnostic = false,
+) {
+  const raw: unknown =
+    typeof init?.body === 'string'
+      ? JSON.parse(init.body)
+      : request instanceof Request
+        ? await request.clone().json()
+        : null;
+  return (
+    (diagnostic ? traceRequestSchema : requestSchema).safeParse(raw).data ??
+    null
+  );
+}
+
 export function observeProviderFetch(
   transport: typeof fetch,
   observe: ProviderCallObserver,
@@ -122,14 +144,8 @@ export function observeProviderFetch(
       const [request, init] = args;
       const input = await Promise.resolve()
         .then(async () => {
-          const raw: unknown =
-            typeof init?.body === 'string'
-              ? JSON.parse(init.body)
-              : request instanceof Request
-                ? await request.clone().json()
-                : null;
-          const parsed = requestSchema.safeParse(raw);
-          return parsed.success ? JSON.stringify(parsed.data) : null;
+          const prompt = await readProviderRequest(request, init);
+          return prompt && JSON.stringify(prompt);
         })
         .catch(() => null);
       const finish = await observe(input);

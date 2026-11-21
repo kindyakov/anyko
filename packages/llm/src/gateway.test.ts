@@ -9,6 +9,21 @@ import {
 
 import { createModelGateway, llmError } from './index';
 
+test('the gateway addresses explicit reasoning options to the selected connection', () => {
+  const gateway = createModelGateway();
+  const connection = {
+    id: 'team-router',
+    baseURL: 'https://routerai.ru/api/v1',
+    apiKey: 'fixture',
+  };
+  expect(gateway.reasoningOptions(connection, 'none')).toEqual({
+    'team-router': { reasoning: { effort: 'none' } },
+  });
+  expect(gateway.reasoningOptions(connection, 'high')).toEqual({
+    'team-router': { reasoning: { effort: 'high' } },
+  });
+});
+
 test('RouterAI context lookup uses the selected model and the smallest published provider limits', async () => {
   const requests: { url: string; authorization: string | null }[] = [];
   const gateway = createModelGateway({

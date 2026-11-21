@@ -28,7 +28,7 @@ test('the selectable package contains three real versioned templates; archived s
   const packages = availablePackages();
   expect(packages).toHaveLength(1);
   expect(packages[0]?.technical).toBe(false);
-  expect(packages[0]?.version).toBe('bfl-bankruptcy-v12');
+  expect(packages[0]?.version).toBe('bfl-bankruptcy-v13');
   expect(requirePackage('bfl-bankruptcy-v6').documents[0]?.version).toBe(
     'bfl-statement-v6',
   );

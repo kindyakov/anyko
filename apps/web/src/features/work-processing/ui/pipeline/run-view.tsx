@@ -165,15 +165,21 @@ export function RunView({
             {errorText(run.errorCode)}
           </Notice>
         )}
-      {failures.map((step) => (
-        <Notice
-          key={step.id}
-          tone="warning"
-          title={`${stageLabels[step.stage]}: ${stepStatusLabels[step.status].toLowerCase()}`}
-        >
-          {errorText(step.errorCode ?? '')}
-        </Notice>
-      ))}
+      {failures.map((step) => {
+        const filename = documents.find(
+          ({ id }) => id === step.documentId,
+        )?.filename;
+        const title = `${stageLabels[step.stage]}: ${stepStatusLabels[step.status].toLowerCase()}`;
+        return (
+          <Notice
+            key={step.id}
+            tone="warning"
+            title={filename ? `${filename} · ${title}` : title}
+          >
+            {errorText(step.errorCode ?? '')}
+          </Notice>
+        );
+      })}
       <Modal
         open={!historical && preview !== null}
         onOpenChange={(open) => {

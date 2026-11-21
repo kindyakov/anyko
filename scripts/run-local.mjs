@@ -82,6 +82,11 @@ async function main(args) {
   }
   const isWeb = config.app === 'web';
   const appDirectory = resolve(root, 'apps', config.app);
+  const env = {
+    ...process.env,
+    ANYKO_LLM_TRACE_DIR:
+      config.mode === 'dev' ? resolve(appDirectory, '.logs', 'llm') : '',
+  };
   const child = spawn(
     'bun',
     [
@@ -102,7 +107,7 @@ async function main(args) {
     ],
     {
       cwd: isWeb ? appDirectory : root,
-      env: process.env,
+      env,
       shell: false,
       stdio: ['inherit', 'pipe', 'pipe'],
     },
