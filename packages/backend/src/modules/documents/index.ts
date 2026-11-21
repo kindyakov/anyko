@@ -31,6 +31,8 @@ export { documentLockKey } from './application/document-lock-key';
 export {
   cloudImageOcrVersion,
   documentResultSchema,
+  hasPdfOcrProcessorVersion,
+  pdfOcrProcessorVersionPattern,
 } from './application/result-schema';
 export type { SourceFormat } from './application/source-format';
 export { sourceFormatFromKey } from './application/source-format';

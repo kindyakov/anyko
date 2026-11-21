@@ -38,8 +38,11 @@ export const pdfOcrSchema = z.object({
 
 export const cloudImageOcrVersion = 'vision-ocr.1';
 
+export const pdfOcrProcessorVersionPattern =
+  /[+](eslav|cyrillic-pdf)[.][0-9]+$/u;
+
 export function hasPdfOcrProcessorVersion(version: string) {
-  return /\+(?:eslav|cyrillic-pdf)\.\d+$/u.test(version);
+  return pdfOcrProcessorVersionPattern.test(version);
 }
 
 export const documentResultSchema = z.object({

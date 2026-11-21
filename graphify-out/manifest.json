@@ -630,15 +630,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/documents/application/result-schema.ts": {
-    "mtime": 1795290546.7111328,
-    "seen": 1795291615.9262524,
-    "ast_hash": "caa732a167adc43848d8e2d18e3ed78f",
+    "mtime": 1795294462.1115913,
+    "seen": 1795294623.1766732,
+    "ast_hash": "508d485f7dc20f84977cc8d176c6be38",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/documents/index.ts": {
-    "mtime": 1795114619.5569396,
-    "seen": 1795244937.3207748,
-    "ast_hash": "37530f8dba31575beb347640b0828711",
+    "mtime": 1795294461.8873067,
+    "seen": 1795294623.1766884,
+    "ast_hash": "2341647f01a20f2d42992ca165baff2a",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/documents/infrastructure/commands.ts": {
@@ -4890,9 +4890,9 @@
     "semantic_hash": ""
   },
   "tests/integration/worker/work-sources-migration.test.ts": {
-    "mtime": 1795034928.9657617,
-    "seen": 1795244937.321455,
-    "ast_hash": "058f4f8d6486b96b4993c553fb755137",
+    "mtime": 1795294749.1515367,
+    "seen": 1795295400.2722993,
+    "ast_hash": "79dbf27ca21fc06af5e7df418c6017c5",
     "semantic_hash": ""
   },
   "docs/adr/0010-shared-source-document-catalog.md": {
@@ -5841,6 +5841,12 @@
     "mtime": 1795292318.4102166,
     "seen": 1795292462.368702,
     "ast_hash": "ab5ad123d84fb706a4c3b46dd25a2fdc",
+    "semantic_hash": ""
+  },
+  "packages/database/prisma/migrations/202611210072_ready_cyrillic_pdf/migration.sql": {
+    "mtime": 1795294461.876283,
+    "seen": 1795294623.1778495,
+    "ast_hash": "1e207f7746bb2216a59843a0d5a82d7f",
     "semantic_hash": ""
   }
 }
