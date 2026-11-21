@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { fieldKeySchema, fieldValueSchema } from '../../../profiles/bfl/fields';
 
+import type { ChatProgress } from './chat-progress';
+
 export const fieldWriteTool = 'set-work-field';
 export const fieldWriteSchema = z.strictObject({
   field: fieldKeySchema,
@@ -54,6 +56,9 @@ interface AgentTimelineEntry {
   kind: 'analysis' | 'chat';
   userText: string | null;
   answer: string | null;
+  reasoning?: string;
+  attempt?: number;
+  draft?: ChatProgress;
 }
 export interface AgentChatStore {
   create(ref: ChatRef & { sessionId: string; userText: string }): Promise<void>;
@@ -62,7 +67,11 @@ export interface AgentChatStore {
     userText: string;
     userId: string;
   } | null>;
-  answer(ref: ChatRef, answer: string): Promise<void>;
+  checkpoint(ref: ChatRef, draft: ChatProgress): Promise<void>;
+  answer(
+    ref: ChatRef,
+    result: { answer: string; reasoning?: string },
+  ): Promise<void>;
   context(ref: ChatSessionRef): Promise<AgentChatMessage[]>;
   timeline(
     scope: Omit<ChatRef, 'runId'>,

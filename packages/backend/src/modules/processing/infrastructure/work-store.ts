@@ -131,10 +131,15 @@ export function createWorkProcessingStore(
         },
       };
     },
-    async active(workspaceId, workId) {
+    async active(workspaceId, workId, kind) {
       return (
         (await db.run.count({
-          where: { workspaceId, workId, status: { in: ['queued', 'running'] } },
+          where: {
+            workspaceId,
+            workId,
+            ...(kind === 'chat' && { kind: 'work.chat' }),
+            status: { in: ['queued', 'running'] },
+          },
         })) > 0
       );
     },

@@ -128,7 +128,7 @@ export interface WorkProcessingStore {
     attemptToken: string,
     leaseUntil: Date,
   ) => Promise<ClaimedWorkRun | null>;
-  active(workspaceId: string, workId: string): Promise<boolean>;
+  active(workspaceId: string, workId: string, kind?: 'chat'): Promise<boolean>;
   valid(run: ClaimedWorkRun): Promise<boolean>;
   fence(run: ClaimedWorkRun): Promise<void>;
   finish(run: ClaimedWorkRun, outcome: WorkRunOutcome): Promise<boolean>;

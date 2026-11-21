@@ -11,6 +11,7 @@ import { logWorkFailure } from '../work-execution/failure';
 import { createRunState } from '../work-execution/run-state';
 import { workLockKey } from '../work-guards';
 
+import { createChatProgressWriter } from './progress';
 import { prepareChatWriter, requireChatActor } from './write-actions';
 
 export function createWorkChatRun(
@@ -107,6 +108,20 @@ export function createWorkChatRun(
       ),
       assertCurrent: assertRunCurrent,
     });
+    const progress =
+      deps.chatProgress &&
+      createChatProgressWriter({
+        scope,
+        feed: deps.chatProgress,
+        runId,
+        attempt: run.attempts,
+        signal,
+        checkpoint: (draft) =>
+          attempt.write(
+            (tx) => deps.agents.in(tx).internal.chat.checkpoint(ref, draft),
+            signal,
+          ),
+      });
     const result = await callModel({
       logger: deps.logger,
       callId: interaction.interactionId,
@@ -137,6 +152,7 @@ export function createWorkChatRun(
           messages,
           userText: chat.userText,
           signal,
+          ...(progress && { onDelta: progress.push }),
           appliedFields: writer.appliedFields,
           writeField: writer.writeField,
           ...(requirements.length > 0 && {
@@ -164,19 +180,26 @@ export function createWorkChatRun(
             return visual.description;
           },
         }),
-    }).then(
-      ({ answer }) => ({ answer }),
-      (error: unknown) => {
-        if (signal.aborted) throw error;
-        const code =
-          error instanceof LlmError || isAppError(error)
-            ? error.code
-            : 'WORK_PROCESSING_FAILED';
-        const failure = writer.failure({ errorCode: code, cause: error });
-        if (!failure) throw error;
-        return { failure };
-      },
-    );
+    })
+      .then(
+        ({ answer, reasoning }) => ({
+          answer,
+          ...(reasoning && { reasoning }),
+        }),
+        (error: unknown) => {
+          if (signal.aborted) throw error;
+          const code =
+            error instanceof LlmError || isAppError(error)
+              ? error.code
+              : 'WORK_PROCESSING_FAILED';
+          const failure = writer.failure({ errorCode: code, cause: error });
+          if (!failure) throw error;
+          return { failure };
+        },
+      )
+      .finally(async () => {
+        await progress?.close();
+      });
     const failure = 'failure' in result ? result.failure : writer.failure();
     await deps.locks.run(
       workLockKey(workspaceId, workId),
@@ -187,7 +210,7 @@ export function createWorkChatRun(
         await attempt.write(
           async (tx, write) => {
             if (!failure && 'answer' in result)
-              await deps.agents.in(tx).internal.chat.answer(ref, result.answer);
+              await deps.agents.in(tx).internal.chat.answer(ref, result);
             await write.finish(failure?.outcome ?? { status: 'succeeded' });
             await deps.works
               .in(tx)

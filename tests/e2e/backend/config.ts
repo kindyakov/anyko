@@ -3,6 +3,7 @@ import { z } from 'zod';
 const schema = z.object({
   E2E_DATABASE_URL: z.url(),
   E2E_REDIS_URL: z.url(),
+  E2E_CHAT_PROGRESS: z.enum(['on', 'off']).default('on'),
   E2E_OWNER_EMAIL: z.email(),
   E2E_OWNER_PASSWORD: z.string().min(12),
   E2E_MEMBER_EMAIL: z.email(),

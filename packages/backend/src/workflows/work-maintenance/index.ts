@@ -22,6 +22,7 @@ export function createWorkCleanup(
     deletingWork: boolean,
   ) {
     await deps.io.assertIdle(workspaceId, workId);
+    await deps.chatProgress?.erase({ workspaceId, workId }).catch(() => {});
     for (const key of await deps.generation.internal.keys(
       workspaceId,
       workId,

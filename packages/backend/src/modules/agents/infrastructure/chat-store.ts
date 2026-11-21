@@ -1,6 +1,7 @@
 import type { Database } from '@anyko/database';
 
 import type { AgentChatStore } from '../application/chat';
+import { chatProgressSchema } from '../application/chat-progress';
 
 export function createAgentChatStore(
   db: Pick<Database, 'run' | 'workChatTurn'>,
@@ -22,10 +23,20 @@ export function createAgentChatStore(
       const { run, ...chat } = turn;
       return { ...chat, userId: run.initiatedBy };
     },
-    async answer(where, answer) {
+    async checkpoint(where, draft) {
+      await db.workChatTurn.updateMany({
+        where: {
+          ...where,
+          answer: null,
+          run: { attempts: draft.attempt, status: 'running' },
+        },
+        data: { draft },
+      });
+    },
+    async answer(where, { answer, reasoning }) {
       const changed = await db.workChatTurn.updateMany({
         where: { ...where, answer: null },
-        data: { answer },
+        data: { answer, answerReasoning: reasoning ?? null, draft: {} },
       });
       if (changed.count !== 1) throw new Error('STALE_CHAT_TURN');
     },
@@ -61,20 +72,37 @@ export function createAgentChatStore(
             status: true,
             errorCode: true,
             createdAt: true,
-            chatTurn: { select: { userText: true, answer: true } },
+            attempts: true,
+            chatTurn: {
+              select: {
+                userText: true,
+                answer: true,
+                answerReasoning: true,
+                draft: true,
+              },
+            },
           },
         }),
         db.run.count({ where }),
       ]);
       return {
-        items: rows.map(({ id, createdAt, chatTurn, ...row }) => ({
-          ...row,
-          runId: id,
-          createdAt: createdAt.toISOString(),
-          kind: chatTurn ? 'chat' : 'analysis',
-          userText: chatTurn?.userText ?? null,
-          answer: chatTurn?.answer ?? null,
-        })),
+        items: rows.map(({ id, createdAt, chatTurn, attempts, ...row }) => {
+          const draft = chatProgressSchema.safeParse(chatTurn?.draft).data;
+          return {
+            ...row,
+            runId: id,
+            createdAt: createdAt.toISOString(),
+            kind: chatTurn ? 'chat' : 'analysis',
+            userText: chatTurn?.userText ?? null,
+            answer: chatTurn?.answer ?? null,
+            ...(chatTurn?.answerReasoning && {
+              reasoning: chatTurn.answerReasoning,
+            }),
+            ...(chatTurn && row.status === 'running' && { attempt: attempts }),
+            ...(row.status === 'running' &&
+              draft?.attempt === attempts && { draft }),
+          };
+        }),
         total,
       };
     },

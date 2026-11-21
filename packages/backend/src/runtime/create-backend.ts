@@ -99,6 +99,7 @@ import {
 import { createWorkReview, type WorkReview } from '../workflows/work-review';
 import { createWorkView, type WorkViews } from '../workflows/work-view';
 
+import { createChatProgressFeed } from './chat-progress';
 import {
   type BackendConfig,
   BackendConfigError,
@@ -274,7 +275,11 @@ export function createBackend(
     model,
   });
   const documentDeletions = createDeletionStore(db);
+  const chatProgress =
+    validated.works.chatRedisUrl &&
+    createChatProgressFeed(validated.works.chatRedisUrl);
   const work: WorkDependencies = {
+    ...(chatProgress && { chatProgress }),
     newId: uuidV7,
     uow,
     works,
@@ -314,6 +319,7 @@ export function createBackend(
       };
       for (const handle of [...started].reverse())
         await attempt(() => handle.stop());
+      if (chatProgress) chatProgress.close();
       await attempt(() => lockPool.end());
       await attempt(() => work.agents.model.stop());
       await attempt(() => db.$disconnect());
@@ -360,7 +366,7 @@ export function createBackend(
       workHttp: {
         works,
         views: createWorkView(workflows),
-        chat: createWorkChat(workflows),
+        chat: createWorkChat(work),
         intake: createWorkIntake({
           ...workflows,
           lockDocumentRevisions,

@@ -169,10 +169,24 @@ export function worksRoutes(
     streamWorkEvents,
     async ({ scope, params, query, headers, request }) => {
       // Курсор: заголовок Last-Event-ID важнее параметра after, как и раньше.
-      const after = headers['last-event-id'] ?? query.after ?? '0';
+      const [after = '0', chatAfter = '0-0'] = (
+        headers['last-event-id'] ??
+        query.after ??
+        '0'
+      ).split('|');
       const workId = brandWorkId(params.workId);
       await works.queries.events(scope, workId, after);
-      return workEventStream({ request, scope, workId, after, works, access });
+      return workEventStream({
+        request,
+        scope,
+        workId,
+        after,
+        chatAfter,
+        works,
+        access,
+        progress: chat.progress,
+        progressActive: chat.progressActive,
+      });
     },
   );
   route(

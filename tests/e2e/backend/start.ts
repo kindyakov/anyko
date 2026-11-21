@@ -99,7 +99,10 @@ const config: BackendConfig = {
     accessKeyId: 'e2e',
     secretAccessKey: 'e2e',
   },
-  works: { encryptionKey: env.LLM_CONFIG_ENCRYPTION_KEY },
+  works: {
+    encryptionKey: env.LLM_CONFIG_ENCRYPTION_KEY,
+    ...(env.E2E_CHAT_PROGRESS === 'on' && { chatRedisUrl: env.E2E_REDIS_URL }),
+  },
   auth: {
     secret: env.AUTH_SECRET,
     baseUrl: env.AUTH_BASE_URL,

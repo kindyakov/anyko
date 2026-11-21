@@ -142,7 +142,12 @@ export function stubHttpOptions(): {
       ...documentHttp,
       works,
       views,
-      chat: { list: unused, send: unused },
+      chat: {
+        list: unused,
+        send: unused,
+        progress: undefined,
+        progressActive: undefined,
+      },
       intake,
       deletion: { request: unused, status: unused, pending: unused },
       review,

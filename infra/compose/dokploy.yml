@@ -33,9 +33,13 @@ services:
       NODE_ENV: production
       API_HOST: 0.0.0.0
       API_PORT: '3021'
+      REDIS_URL: redis://redis:6379
       LOG_LEVEL: info
       RELEASE: ${ANYKO_RELEASE:?Specify release}
     expose: ['3021']
+    depends_on:
+      redis:
+        condition: service_healthy
     logging:
       <<: *logging
       options:

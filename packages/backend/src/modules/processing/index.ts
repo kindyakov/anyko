@@ -31,7 +31,11 @@ export interface ProcessingCommands {
 }
 // Внутренние запросы: право проверяет вызывающий сценарий.
 export interface ProcessingQueries {
-  isActive(scope: WorkspaceScope, workId: WorkId): Promise<boolean>;
+  isActive(
+    scope: WorkspaceScope,
+    workId: WorkId,
+    kind?: 'chat',
+  ): Promise<boolean>;
   runs(scope: WorkspaceScope, workId: WorkId): Promise<WorkRuns>;
 }
 // Управление запусками при удалении работы и учёт зарегистрированных потоков модели.

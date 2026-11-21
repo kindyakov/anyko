@@ -118,12 +118,22 @@ export const getWork = endpoint({
 });
 
 export const streamWorkEvents = endpoint({
-  summary: 'Передаёт поток событий работы',
+  summary: 'Передаёт события работы и потоковые фрагменты чата',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/events',
   params: workParams,
-  query: z.object({ after: z.string().optional() }),
-  headers: z.object({ 'last-event-id': z.string().optional() }),
+  query: z.object({
+    after: z
+      .string()
+      .regex(/^\d{1,20}(?:\|\d{1,20}-\d{1,20})?$/u)
+      .optional(),
+  }),
+  headers: z.object({
+    'last-event-id': z
+      .string()
+      .regex(/^\d{1,20}(?:\|\d{1,20}-\d{1,20})?$/u)
+      .optional(),
+  }),
   response: eventStream(),
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT', 'STREAM_LIMIT'],

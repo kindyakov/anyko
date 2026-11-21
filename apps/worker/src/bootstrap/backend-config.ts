@@ -42,7 +42,10 @@ export function parseBackendEnv(
       accessKeyId: value.S3_ACCESS_KEY,
       secretAccessKey: value.S3_SECRET_KEY,
     },
-    works: { encryptionKey: value.LLM_CONFIG_ENCRYPTION_KEY },
+    works: {
+      encryptionKey: value.LLM_CONFIG_ENCRYPTION_KEY,
+      chatRedisUrl: worker.redisUrl,
+    },
     worker: {
       redisUrl: worker.redisUrl,
       mineru: {

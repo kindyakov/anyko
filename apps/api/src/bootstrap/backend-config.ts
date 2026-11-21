@@ -10,6 +10,10 @@ const schema = z.object({
   AUTH_SECRET: z.string().min(32),
   AUTH_BASE_URL: z.url(),
   APP_ORIGIN: z.url(),
+  REDIS_URL: z
+    .url()
+    .refine((value) => /^rediss?:\/\//.test(value))
+    .optional(),
 });
 
 /** Maps full-mode environment to the `BackendConfig` sections; values are not echoed. */
@@ -28,7 +32,10 @@ export function parseBackendEnv(env: unknown) {
       accessKeyId: value.S3_ACCESS_KEY,
       secretAccessKey: value.S3_SECRET_KEY,
     },
-    works: { encryptionKey: value.LLM_CONFIG_ENCRYPTION_KEY },
+    works: {
+      encryptionKey: value.LLM_CONFIG_ENCRYPTION_KEY,
+      chatRedisUrl: value.REDIS_URL,
+    },
     auth: {
       secret: value.AUTH_SECRET,
       baseUrl: value.AUTH_BASE_URL,

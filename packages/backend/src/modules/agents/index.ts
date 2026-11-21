@@ -18,6 +18,13 @@ import type {
   AgentFieldWrite,
 } from './application/chat';
 export { checklistWriteTool, fieldWriteTool } from './application/chat';
+import type { ChatDelta } from './application/chat-progress';
+export {
+  chatProgressSchema,
+  type ChatDelta,
+  type ChatProgress,
+  type ChatProgressFeed,
+} from './application/chat-progress';
 import type { ChecklistSuggestion } from './application/checklist';
 import type { AgentToolEvent } from './application/history';
 export type { ChecklistSuggestion } from './application/checklist';
@@ -125,6 +132,7 @@ export interface DocumentAgents {
       messages: AgentChatMessage[];
       userText: string;
       signal: AbortSignal;
+      onDelta?: (delta: ChatDelta) => void;
       appliedFields: AgentFieldChange['field'][];
       checklist?: {
         requirements: readonly { key: string; label: string }[];
@@ -142,7 +150,7 @@ export interface DocumentAgents {
         signal: AbortSignal,
       ): Promise<AgentFieldChange | { errorCode: string }>;
     },
-  ): Promise<{ answer: string; usage: AgentUsage }>;
+  ): Promise<{ answer: string; reasoning?: string; usage: AgentUsage }>;
   eraseThread(threadId: string): Promise<void>;
   stop(): Promise<void>;
 }

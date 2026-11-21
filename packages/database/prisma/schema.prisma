@@ -476,6 +476,8 @@ model WorkChatTurn {
  run Run @relation(fields:[workspaceId,runId],references:[workspaceId,id],onDelete:Cascade,map:"WorkChatTurn_run_fkey")
  userText String
  answer String?
+ answerReasoning String?
+ draft Json?
  @@unique([workspaceId,runId])
  @@index([workspaceId,workId,sessionId])
 }

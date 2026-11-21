@@ -22,7 +22,9 @@ const backendConfigSchema = z
         secretAccessKey: z.string().min(1),
       })
       .strict(),
-    works: z.object({ encryptionKey }).strict(),
+    works: z
+      .object({ encryptionKey, chatRedisUrl: redisUrl.optional() })
+      .strict(),
     auth: z
       .object({
         secret: z.string().min(32),

@@ -31,6 +31,8 @@ export function chatMessagesQuery(workspaceId: string, workId: string) {
     getNextPageParam: ({ page, pageSize, total }) =>
       page * pageSize < total ? page + 1 : undefined,
     gcTime: 0,
+    // During gap recovery the first snapshot may predate the missing delta.
+    // Keep this refresh until #95 provides a signal that the checkpoint is ready.
     refetchInterval: ({ state }) => {
       const status = state.data?.pages[0]?.items[0]?.status;
       return status === 'queued' || status === 'running' ? 2500 : false;

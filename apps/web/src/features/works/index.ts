@@ -24,3 +24,4 @@ export {
 } from '@/features/works/api/source-commands';
 export { WorkList } from '@/features/works/ui/work-list';
 export { AddRecognitionsToWork } from './ui/list/add-recognitions-to-work';
+export { useChatProgress } from './api/events';
