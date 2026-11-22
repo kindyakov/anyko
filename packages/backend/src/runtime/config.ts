@@ -42,6 +42,10 @@ const backendConfigSchema = z
         analysisMaxModelCalls: z.number().int().min(1).max(64).optional(),
         analysisMaxReads: z.number().int().min(1).max(256).optional(),
         analysisReviewMaxReads: z.number().int().min(1).max(256).optional(),
+        chatMaxModelCalls: z.number().int().min(1).max(64).optional(),
+        reconcileMaxModelCalls: z.number().int().min(1).max(64).optional(),
+        reconcileMaxReads: z.number().int().min(1).max(256).optional(),
+        visionMaxOutputTokens: z.number().int().min(1).max(16384).optional(),
         llmTraceDirectory: z.string().min(1).optional(),
         mineru: z
           .object({

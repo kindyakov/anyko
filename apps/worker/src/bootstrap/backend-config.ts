@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+export const analysisStepwiseSchema = z
+  .enum(['true', 'false'])
+  .default('false')
+  .transform((value) => value === 'true');
+
 const schema = z.object({
   DATABASE_URL: z.url().refine((value) => /^postgres(ql)?:\/\//.test(value)),
   S3_ENDPOINT: z.url(),
@@ -7,6 +12,21 @@ const schema = z.object({
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
   LLM_CONFIG_ENCRYPTION_KEY: z.string().regex(/^[a-f\d]{64}$/i),
+  ANYKO_ANALYSIS_STEPWISE: analysisStepwiseSchema,
+  ANYKO_CHAT_MAX_MODEL_CALLS: z.coerce.number().int().min(1).max(64).optional(),
+  ANYKO_RECONCILE_MAX_MODEL_CALLS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(64)
+    .optional(),
+  ANYKO_RECONCILE_MAX_READS: z.coerce.number().int().min(1).max(256).optional(),
+  ANYKO_VISION_MAX_OUTPUT_TOKENS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(16384)
+    .optional(),
   ANYKO_ANALYSIS_MAX_READS: z.coerce.number().int().min(1).max(256).optional(),
   ANYKO_ANALYSIS_REVIEW_MAX_READS: z.coerce
     .number()
@@ -67,9 +87,14 @@ export function parseBackendEnv(
       },
       shutdownTimeoutMs: worker.shutdownTimeoutMs,
       llmTraceDirectory: worker.llmTraceDirectory,
+      stepwiseAnalysis: value.ANYKO_ANALYSIS_STEPWISE,
       analysisMaxModelCalls: value.ANYKO_ANALYSIS_MAX_MODEL_CALLS,
       analysisMaxReads: value.ANYKO_ANALYSIS_MAX_READS,
       analysisReviewMaxReads: value.ANYKO_ANALYSIS_REVIEW_MAX_READS,
+      chatMaxModelCalls: value.ANYKO_CHAT_MAX_MODEL_CALLS,
+      reconcileMaxModelCalls: value.ANYKO_RECONCILE_MAX_MODEL_CALLS,
+      reconcileMaxReads: value.ANYKO_RECONCILE_MAX_READS,
+      visionMaxOutputTokens: value.ANYKO_VISION_MAX_OUTPUT_TOKENS,
     },
   };
 }

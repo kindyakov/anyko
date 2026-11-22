@@ -36,8 +36,6 @@ import {
 } from './model-field-value';
 import { createWorkReadTools } from './work-read-tools';
 
-const maxReconciliationSteps = 12;
-
 const checklistSuggestionsSchema = z.array(checklistSuggestionSchema).max(150);
 const observedResponseSchema = reconciliationSchema.extend({
   candidates: z.array(z.unknown()).max(100),
@@ -49,6 +47,8 @@ export function createReconciliationAgent(options: {
   mastra: Mastra;
   gateway: ReturnType<typeof createModelGateway>;
   streamIdleTimeoutMs: number;
+  maxModelCalls: number;
+  maxReads: number | undefined;
   lookupCourt: typeof findArbitrationCourt;
   lookupCreditor: typeof findCreditor;
 }): DocumentAgents['reconcile'] {
@@ -67,6 +67,7 @@ export function createReconciliationAgent(options: {
       encodeValue: encodeModelFieldValue,
       signal,
       pageCharacters: budget.pageCharacters,
+      maxReads: options.maxReads,
       listSourceMetadata: input.documents.length > 0,
     });
     const court = createCourtLookupTool({
@@ -210,10 +211,10 @@ ${modelFieldValueInstructions} В evidence каждого предложения
         {
           memory: { thread: input.threadId, resource: input.resource },
           abortSignal: signal,
-          maxSteps: maxReconciliationSteps,
+          maxSteps: options.maxModelCalls,
           prepareStep: async ({ stepNumber }) => {
             await input.assertCurrent();
-            if (stepNumber === maxReconciliationSteps - 1 || readLimitReached())
+            if (stepNumber === options.maxModelCalls - 1 || readLimitReached())
               return { toolChoice: 'none', activeTools: [] };
           },
           providerOptions: {

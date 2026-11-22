@@ -8,7 +8,17 @@
 
 При работе с доступом, БД, файлами или очередью читайте [данные и задания](docs/engineering/data-and-jobs.md); с CI/тестами и перед отчётом о готовности — [проверку качества](docs/engineering/quality.md); с контейнерами, миграциями или размещением — [эксплуатацию](docs/engineering/operations.md).
 
-Команды каркаса и текущие ограничения описаны в [README](README.md); пройденными считаются только фактически выполненные проверки. Новые локальные AGENTS добавляются вместе с реальными приложениями и содержат только их особенности.
+Перед изменением кода приложения или пакета прочитайте его `ARCHITECTURE.md`: назначение, устройство, куда добавлять новое и ссылки на нужные разделы правил.
+
+| Приложения                            | Пакеты                                                                                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [api](apps/api/ARCHITECTURE.md)       | [backend](packages/backend/ARCHITECTURE.md), [contracts](packages/contracts/ARCHITECTURE.md), [database](packages/database/ARCHITECTURE.md)                                    |
+| [web](apps/web/ARCHITECTURE.md)       | [ui](packages/ui/ARCHITECTURE.md), [document-values](packages/document-values/ARCHITECTURE.md), [llm](packages/llm/ARCHITECTURE.md), [logger](packages/logger/ARCHITECTURE.md) |
+| [worker](apps/worker/ARCHITECTURE.md) | [eslint-config](packages/eslint-config/ARCHITECTURE.md), [typescript-config](packages/typescript-config/ARCHITECTURE.md)                                                       |
+
+Команды каркаса и текущие ограничения описаны в [README](README.md); пройденными считаются только фактически выполненные проверки.
+
+При разборе неверного извлечения и изменении промптов, проверки кандидатов или вызовов модели примените [правило ответов модели](docs/engineering/code-rules.md#ответы-модели): сначала класс A/B/C/D по фактическому запросу и ответу, затем исправление только B, C или D. Платный вызов модели — только после согласия пользователя на этот прогон ([процесс автора](docs/engineering/agent-workflow.md#изменение-правил-и-инструкции)).
 
 При добавлении, изменении или удалении тестов применяйте [правила проверки тестов](docs/engineering/test-review.md). При изменении процесса review проверяйте его на [контрольных примерах](docs/engineering/review-cases/README.md).
 

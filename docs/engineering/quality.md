@@ -56,6 +56,8 @@ Full verify запускается на pull request/кандидате изме
 
 Backend unit и integration исполняются на Bun. Компонентные тесты web тоже исполняются на Bun с эмуляцией DOM happy-dom; условия перехода на Vitest описаны в [web.md](web.md#тестирование). Runner Playwright и другие dev tools могут запускаться на закреплённом поддерживаемом Node; это не меняет production-runtime приложения. В отчёте явно указано, какой runtime проверялся. Корневая команда вызывает scoped suites и не запускает голый `bun test` по всему репозиторию, чтобы не подбирать файлы Vitest/Playwright.
 
+Стенд E2E общий для всех сессий и агентов на машине: база `*_e2e`, порты 3030/3031, Redis `E2E_REDIS_URL`. `test:e2e`, `test:e2e:integration` и `e2e:prepare` сбрасывают его, поэтому одновременно на стенде идёт только один такой запуск. Перед стартом проверьте, что порты свободны и чужой E2E backend не работает. Интеграционные тесты используют отдельный `TEST_REDIS_URL` и `TEST_DATABASE_URL`, а не ресурсы E2E.
+
 Async Server Components проверяются через реально запущенный Next и Playwright, а не имитируются Vitest: [ограничение Next/Vitest](https://nextjs.org/docs/app/guides/testing/vitest). E2E проходит через тот же proxy/API-path и cookie-механизм, что размещённое приложение.
 
 ## Что тестируем

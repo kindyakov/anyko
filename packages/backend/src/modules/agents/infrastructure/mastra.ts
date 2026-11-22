@@ -99,6 +99,10 @@ export function createDocumentAgents(options: {
   analysisMaxModelCalls?: number | undefined;
   analysisMaxReads?: number | undefined;
   analysisReviewMaxReads?: number | undefined;
+  chatMaxModelCalls?: number | undefined;
+  reconcileMaxModelCalls?: number | undefined;
+  reconcileMaxReads?: number | undefined;
+  visionMaxOutputTokens?: number | undefined;
   traceDirectory?: string | undefined;
   fetch?: typeof fetch;
   fetchCourtPage?: Parameters<typeof findArbitrationCourt>[2];
@@ -148,6 +152,7 @@ export function createDocumentAgents(options: {
       lookupCourt,
       lookupCreditor,
       timeoutMs: options.timeoutMs ?? 120000,
+      maxModelCalls: options.chatMaxModelCalls ?? 8,
     }),
     reconcile: createReconciliationAgent({
       memory,
@@ -156,6 +161,8 @@ export function createDocumentAgents(options: {
       lookupCourt,
       lookupCreditor,
       streamIdleTimeoutMs,
+      maxModelCalls: options.reconcileMaxModelCalls ?? 12,
+      maxReads: options.reconcileMaxReads,
     }),
     async describe(input) {
       const { signal } = input;
@@ -213,7 +220,10 @@ export function createDocumentAgents(options: {
               await input.assertCurrent?.();
             },
             maxSteps: 1,
-            modelSettings: { maxOutputTokens: 4800, maxRetries: 1 },
+            modelSettings: {
+              maxOutputTokens: options.visionMaxOutputTokens ?? 4800,
+              maxRetries: 1,
+            },
             ...(providerOptions && { providerOptions }),
             structuredOutput: { schema, errorStrategy: 'warn' },
           },

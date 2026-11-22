@@ -36,7 +36,7 @@ bun run build
 
 `bun run format` форматирует область проверки, `bun run format:check` проверяет её без записи. В `bunfig.toml` включены сортировка импортов, ключей package.json и Tailwind-классов (последняя действует при установленном Tailwind). Исключения файлов заданы там же и в `.gitignore`; для отдельной конструкции доступен комментарий `prettier-ignore`. Локальный pre-commit hook устанавливается командой `bun run hooks:install`: он запускает `bun fmt --staged` для индексированных файлов. При частично индексированном файле Bun откажется менять его, если индексированная версия требует форматирования. Установщик не перезаписывает существующий hook. Hook охватывает индексированные поддерживаемые файлы шире, чем команда проверки каркаса; исключения форматтера действуют и для него.
 
-`verify:fast` включает unit/HTTP-проверки API, logger, env worker и ограниченного чтения журналов. Интеграция с настоящим Redis выполняется отдельно и включена в CI. Она не подтверждает PostgreSQL, S3, MinerU, LLM, браузерный сценарий или production deployment. Полные `verify`, `verify:release` и `eval:documents` из [политики качества](docs/engineering/quality.md) требуют соответствующих компонентов.
+`verify:fast` включает статические проверки, unit- и HTTP-тесты, которым не нужны внешние сервисы; точный состав — в `package.json`. Интеграция с настоящим Redis выполняется отдельно и включена в CI. Она не подтверждает PostgreSQL, S3, MinerU, LLM, браузерный сценарий или production deployment. Полные `verify`, `verify:release` и `eval:documents` из [политики качества](docs/engineering/quality.md) требуют соответствующих компонентов.
 
 ## Запуск и диагностика
 
@@ -112,10 +112,9 @@ production-сборку web на портах 3031 и 3030. Эти порты д
 
 Локальные порты Anyko: сайт3020, API3021, worker3022, MinerU8020, Redis16399, S319020. Общий PostgreSQL остаётся на5432; его данные и настройки не меняются.
 
-Worker workload selection: `WORKER_QUEUES=ocr,llm,render,maintenance` (all by default).
-Unknown or empty names fail startup; selecting `ocr` leaves `llm` and `render` for other processes.
-The separate diagnostic `QUEUE_NAME` is always enabled, including empty mode.
-`bun run test:worker:integration` runs diagnostic and business queue integration tests with
-`TEST_DATABASE_URL` and `TEST_REDIS_URL`; E2E uses its own `anyko-e2e` BullMQ prefix.
-See [queue rollout and scaling](docs/engineering/operations.md#выкат-заданий-и-очередей).
-`platform/realtime` remains deferred to the agent chat work and is not implemented by #21.
+Набор очередей worker задаёт `WORKER_QUEUES=ocr,llm,render,maintenance` (по умолчанию все).
+Неизвестное или пустое имя завершает старт; при выборе `ocr` очереди `llm` и `render` остаются другим процессам.
+Диагностическая очередь `QUEUE_NAME` работает всегда, в том числе в пустом режиме.
+`bun run test:worker:integration` проверяет диагностическую и предметные очереди с
+`TEST_DATABASE_URL` и `TEST_REDIS_URL`; E2E использует собственный префикс BullMQ `anyko-e2e`.
+Выкат и масштабирование: [очереди](docs/engineering/operations.md#выкат-заданий-и-очередей).
