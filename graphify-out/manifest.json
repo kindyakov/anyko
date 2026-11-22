@@ -240,9 +240,9 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1795309846.1698644,
-    "seen": 1795310026.0583808,
-    "ast_hash": "442709d1a0a6f8ada99ac8167a9bb4ad",
+    "mtime": 1795353963.6691096,
+    "seen": 1795354503.2287602,
+    "ast_hash": "d1b4699136f20d02d379b1de451bc177",
     "semantic_hash": ""
   },
   "packages/eslint-config/base.js": {
@@ -5895,6 +5895,54 @@
     "mtime": 1795346091.9495227,
     "seen": 1795346221.953468,
     "ast_hash": "26892de0ae994be13de5e985fe618d19",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/bfl-acceptance/build-inputs.py": {
+    "mtime": 1795353637.9229681,
+    "seen": 1795354503.2300165,
+    "ast_hash": "aa561a07310a6e8f7838f49d2e63e770",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/bfl-acceptance/provider-fixtures.json": {
+    "mtime": 1795354422.2657723,
+    "seen": 1795354503.2300208,
+    "ast_hash": "7c94186c0e7295be40658ce660ca849e",
+    "semantic_hash": ""
+  },
+  "tests/integration/worker/bfl-acceptance.test.ts": {
+    "mtime": 1795354287.602901,
+    "seen": 1795354503.230032,
+    "ast_hash": "bdf6e50792b8c4316ef3705b1a833b14",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/bfl-acceptance/README.md": {
+    "mtime": 1795354341.4258118,
+    "seen": 1795354503.2304237,
+    "ast_hash": "921693902d89aaf232c31da85321d5a4",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/bfl-acceptance/active/03-snils.pdf": {
+    "mtime": 1795353696.0729072,
+    "seen": 1795354503.2304316,
+    "ast_hash": "763f80c4cc95e5c7b4650fdf8817ed35",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/bfl-acceptance/active/13-inn.pdf": {
+    "mtime": 1795353696.1951094,
+    "seen": 1795354503.2304335,
+    "ast_hash": "bdf7b5026e0f94fe486ac0af6a18a51a",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/bfl-acceptance/active/01-passport.png": {
+    "mtime": 1795353696.0111752,
+    "seen": 1795354503.230464,
+    "ast_hash": "7028a9a66bdc92ba99a17c62bc1ba63f",
+    "semantic_hash": ""
+  },
+  "tests/fixtures/bfl-acceptance/dismissed/01-passport.png": {
+    "mtime": 1795353696.2480938,
+    "seen": 1795354503.2304664,
+    "ast_hash": "a92a9474db482e69b0971836f36e7389",
     "semantic_hash": ""
   }
 }
