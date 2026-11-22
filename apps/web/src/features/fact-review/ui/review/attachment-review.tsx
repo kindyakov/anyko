@@ -14,6 +14,8 @@ import {
 } from '@anyko/document-values/attachments';
 import { Button, fieldSurface, Modal, Select } from '@anyko/ui';
 
+import { attachmentSuggestions } from '@/features/fact-review/model/attachment-suggestions';
+
 type Document = WorkView['documents'][number];
 const control = `${fieldSurface} min-h-9 w-full px-2.5 py-1.5 text-sm`;
 const copyKinds = [
@@ -31,14 +33,6 @@ const generatedCopyKinds = [
   { value: 'paperOriginal', label: 'Оригинал' },
 ];
 
-function citationDetail(row: FieldRow, quotes: string) {
-  const dates = row.description?.match(/\d{2}\.\d{2}\.\d{4}/gu) ?? [];
-  return (
-    Number(row.category === 'debtCertificate') * 2 +
-    Number(dates.some((date) => quotes.includes(date)))
-  );
-}
-
 export function AttachmentReview({
   documents,
   candidates,
@@ -55,42 +49,12 @@ export function AttachmentReview({
   onOpen: (document: Document, page?: number) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [chosen, setChosen] = useState<Record<string, string>>({});
   const selected = submittedAttachmentRows(
     value,
     new Set(documents.map(({ id }) => id)),
   );
-  const suggestions = new Map<
-    string,
-    { row: FieldRow; score: number; page?: number }
-  >();
-  for (const candidate of candidates) {
-    if (
-      candidate.field !== 'attachments' ||
-      candidate.origin === 'inference' ||
-      !Array.isArray(candidate.value)
-    )
-      continue;
-    const source = candidate.evidence[0];
-    const row = candidate.value[0];
-    if (
-      source &&
-      row?.description?.trim() &&
-      candidate.evidence.every(
-        ({ documentId }) => documentId === source.documentId,
-      )
-    ) {
-      const score = citationDetail(
-        row,
-        candidate.evidence.map(({ quote }) => quote).join('\n'),
-      );
-      if (score <= (suggestions.get(source.documentId)?.score ?? -1)) continue;
-      suggestions.set(source.documentId, {
-        row,
-        score,
-        ...(source.page !== undefined && { page: source.page }),
-      });
-    }
-  }
+  const suggestions = attachmentSuggestions(candidates);
   const save = (documentId: string, row: FieldRow | null) => {
     const existing = selected.some((item) => item.documentId === documentId);
     if (existing)
@@ -169,7 +133,21 @@ export function AttachmentReview({
           ) : (
             <ul className="divide-y divide-white/10">
               {documents.map((document) => {
-                const suggestion = suggestions.get(document.id);
+                const options = [
+                  ...(suggestions.get(document.id)?.entries() ?? []),
+                ];
+                const choice = chosen[document.id];
+                const suggestion =
+                  choice === 'filename'
+                    ? {
+                        row: {
+                          description: document.filename,
+                          category: 'other',
+                        },
+                        page: undefined,
+                      }
+                    : (options.find(([key]) => key === choice)?.[1] ??
+                      (options.length === 1 ? options[0]?.[1] : undefined));
                 const row = selected.find(
                   ({ documentId }) => documentId === document.id,
                 );
@@ -190,34 +168,72 @@ export function AttachmentReview({
                       >
                         {document.filename}
                       </Button>
-                      {suggestion?.row.description && (
-                        <p className="text-muted px-1 text-xs wrap-anywhere">
-                          {suggestion.row.description}
-                        </p>
+                      {options.map(([key, { row: proposed }]) => (
+                        <Button
+                          key={key}
+                          size="sm"
+                          variant="ghost"
+                          aria-pressed={choice === key}
+                          className="h-auto px-1 text-left wrap-anywhere whitespace-normal"
+                          onClick={() => {
+                            if (row)
+                              save(document.id, {
+                                ...row,
+                                description: proposed.description ?? null,
+                                category: proposed.category ?? null,
+                              });
+                            setChosen((current) => ({
+                              ...current,
+                              [document.id]: key,
+                            }));
+                          }}
+                        >
+                          {proposed.description} ·{' '}
+                          {
+                            attachmentCategories[
+                              attachmentCategory(proposed.category) ?? 'other'
+                            ]
+                          }
+                        </Button>
+                      ))}
+                      {options.length !== 1 && !row && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-pressed={choice === 'filename'}
+                          onClick={() => {
+                            setChosen((current) => ({
+                              ...current,
+                              [document.id]: 'filename',
+                            }));
+                          }}
+                        >
+                          Имя файла · Другое
+                        </Button>
                       )}
                     </div>
                     <div className="grid min-w-0 gap-1 text-xs">
                       <Select
-                        disabled={disabled}
+                        disabled={disabled || (!row && !suggestion)}
                         items={copyKinds}
                         label={`Вид подаваемого экземпляра для ${document.filename}`}
                         value={row?.copyKind ?? ''}
                         onValueChange={(copyKind) => {
                           save(
                             document.id,
-                            copyKind
+                            copyKind && (row || suggestion)
                               ? {
                                   documentId: document.id,
                                   description:
                                     row?.description ??
                                     suggestion?.row.description ??
-                                    document.filename,
+                                    '',
                                   category:
                                     row?.category ??
                                     attachmentCategory(
                                       suggestion?.row.category,
                                     ) ??
-                                    'other',
+                                    null,
                                   copyKind,
                                 }
                               : null,

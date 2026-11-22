@@ -522,6 +522,7 @@ test('the latest statement preview groups creditors and shows only active contra
             amount: '50.10',
           },
         ],
+        businessDebts: [],
         debtTotal: '1000',
       }}
       disabled

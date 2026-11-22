@@ -60,12 +60,8 @@ function sameCreditor(a: DebtRow, b: DebtRow) {
     return a.inn.replace(/\s/g, '') === b.inn.replace(/\s/g, '');
   if (a.ogrn && b.ogrn)
     return a.ogrn.replace(/\s/g, '') === b.ogrn.replace(/\s/g, '');
-  const names = (row: DebtRow) =>
-    [row.name, row.creditorShortName, row.creditorLegalName]
-      .map(creditorName)
-      .filter(Boolean);
-  const otherNames = names(b);
-  return names(a).some((name) => otherNames.includes(name));
+  const name = creditorName(a.name);
+  return !!name && name === creditorName(b.name);
 }
 
 function creditorIdentifiersConflict(a: DebtRow, b: DebtRow): boolean {
@@ -105,10 +101,34 @@ export function sameObligation(a: DebtRow, b: DebtRow) {
     if (first !== second) return false;
     const firstDate = canonicalCalendarDate(a.contractDate ?? '');
     const secondDate = canonicalCalendarDate(b.contractDate ?? '');
-    return !firstDate || !secondDate || firstDate === secondDate;
+    return firstDate !== undefined && firstDate === secondDate;
   }
   const basis = normalized(a.basis);
   return !!basis && basis === normalized(b.basis);
+}
+
+export function hasOverlappingObligations(rows: readonly DebtRow[]): boolean {
+  return rows.some((row, index) =>
+    rows.slice(index + 1).some((other) => {
+      if (sameObligation(row, other)) return true;
+      if (creditorIdentifiersConflict(row, other)) return false;
+      const number = contractNumber(row);
+      const firstDate = canonicalCalendarDate(row.contractDate ?? '');
+      const nextDate = canonicalCalendarDate(other.contractDate ?? '');
+      const names = [row.name, row.creditorLegalName, row.creditorShortName]
+        .map(creditorName)
+        .filter(Boolean);
+      return (
+        !!number &&
+        number === contractNumber(other) &&
+        (!firstDate || !nextDate || firstDate === nextDate) &&
+        (sameCreditor(row, other) ||
+          [other.name, other.creditorLegalName, other.creditorShortName].some(
+            (name) => names.includes(creditorName(name)),
+          ))
+      );
+    }),
+  );
 }
 
 /** Registry choices change only organisation details of a previously linked obligation. */
@@ -170,8 +190,11 @@ export function applyObligationCandidate(
 ) {
   const rows = Array.isArray(saved) ? [...saved] : [];
   for (const row of proposed) {
-    const index = rows.findIndex((current) => sameObligation(current, row));
-    if (index < 0) rows.push(row);
+    const matches = rows.flatMap((current, index) =>
+      sameObligation(current, row) ? [index] : [],
+    );
+    const index = matches.length === 1 ? matches[0] : undefined;
+    if (index === undefined) rows.push(row);
     else {
       const previous = rows[index];
       rows[index] = {
@@ -192,8 +215,13 @@ export function obligationAmounts(
   businessDebts: DebtValue,
   omitBlankRows = false,
 ) {
-  const registered: DebtRow[] = [];
-  const headers: DebtRow[] = [];
+  const isSettled = ({ debtStatus }: DebtRow) =>
+    [obligationStatuses.closed, obligationStatuses.repaid].some(
+      (status) => normalized(status) === normalized(debtStatus),
+    );
+  const settled = [debts, businessDebts].flatMap((value) =>
+    Array.isArray(value) ? value.filter(isSettled) : [],
+  );
   const activeRows = (input: DebtValue) => {
     if (!Array.isArray(input)) return null;
     const rows = omitBlankRows
@@ -202,18 +230,15 @@ export function obligationAmounts(
     if (omitBlankRows && input.length && !rows.length) return null;
     return rows.flatMap((row) => {
       const status = normalized(row.debtStatus);
-      if (status && status !== normalized(obligationStatuses.active)) return [];
-      const amount = canonicalMoneyAmount(row.amount ?? '');
-      if (amount === '0.00' || amount?.startsWith('-')) return [];
-      if (registered.some((previous) => sameObligation(previous, row)))
-        return [];
-      registered.push(row);
-      const creditor = headers.find((previous) => sameCreditor(previous, row));
-      if (creditor) {
-        for (const key of registryKeys) creditor[key] ??= row[key] ?? null;
-      } else {
-        headers.push({ ...row });
-      }
+      if (isSettled(row)) return [];
+      const parsed = canonicalMoneyAmount(row.amount ?? '');
+      const amount =
+        (status && status !== normalized(obligationStatuses.active)) ||
+        parsed?.startsWith('-') ||
+        (parsed === '0.00' && isBankObligation(row)) ||
+        settled.some((other) => hasOverlappingObligations([row, other]))
+          ? undefined
+          : parsed;
       const date = row.contractDate
         ? formatCalendarDate(row.contractDate, 'DD.MM.YYYY')
         : '';
@@ -243,7 +268,9 @@ export function obligationAmounts(
   );
   const total =
     entries.some((entry) => entry.amount === null) ||
-    (personal === null && business === null)
+    hasOverlappingObligations(entries) ||
+    personal === null ||
+    business === null
       ? null
       : String(sum / 100n) + '.' + String(sum % 100n).padStart(2, '0');
   const withOfficialNames = (rows: DebtRow[] | null): DebtRow[] | null =>
@@ -251,6 +278,17 @@ export function obligationAmounts(
       ...row,
       name: row.creditorLegalName || row.name || null,
     })) ?? null;
+  const headers = groupCreditorObligations(entries).map((rows) => {
+    const header = { ...rows[0] };
+    for (const key of registryKeys) {
+      const values = new Set(
+        rows.flatMap((row) => (row[key] ? [row[key]] : [])),
+      );
+      header[key] =
+        values.size === 1 ? (values.values().next().value ?? null) : null;
+    }
+    return header;
+  });
   return {
     debts: withOfficialNames(personal),
     businessDebts: withOfficialNames(business),

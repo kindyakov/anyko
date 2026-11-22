@@ -162,7 +162,7 @@ test('real Mastra OCR reports the stream idle error without retrying processing 
   }
 });
 
-test('real Mastra adapter retries a malformed OpenAI-compatible response', async () => {
+test('real Mastra vision rejects a wrapped response without retrying', async () => {
   let calls = 0;
   const pool = createDatabasePool(
     z.string().min(1).parse(process.env.TEST_DATABASE_URL),
@@ -183,7 +183,7 @@ test('real Mastra adapter retries a malformed OpenAI-compatible response', async
                 index: 0,
                 message: {
                   role: 'assistant',
-                  content: calls === 1 ? 'not json' : '{"description":"Схема"}',
+                  content: '```json\n{"description":"Схема"}\n```',
                 },
                 finish_reason: 'stop',
               },
@@ -197,7 +197,7 @@ test('real Mastra adapter retries a malformed OpenAI-compatible response', async
   });
   try {
     await agents.ready();
-    const result = await agents.describe({
+    const result = agents.describe({
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -210,9 +210,14 @@ test('real Mastra adapter retries a malformed OpenAI-compatible response', async
       mediaType: 'image/jpeg',
       signal: AbortSignal.timeout(10000),
     });
-    expect(result.description).toBe('Схема');
-    expect(calls).toBe(2);
-    expect(result.usage).toEqual({ inputTokens: null, outputTokens: null });
+    const failure = await result.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toMatchObject({
+      code: 'LLM_INVALID_RESPONSE',
+    });
+    expect(calls).toBe(1);
   } finally {
     await agents.stop();
     await pool.end();

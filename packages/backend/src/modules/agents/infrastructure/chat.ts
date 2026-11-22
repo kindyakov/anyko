@@ -4,7 +4,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
 import { hasEmploymentFields } from '@anyko/document-values/employment';
-import { type createModelGateway, llmError } from '@anyko/llm';
+import { type createModelGateway, LlmError, llmError } from '@anyko/llm';
 
 import type { DocumentAgents } from '..';
 import { isAppError } from '../../../platform/errors';
@@ -180,6 +180,8 @@ export function createChatAgent(options: {
           ).getFullOutput()
         : await agent.generate(messages, settings);
       if (result.error) throw result.error;
+      if (result.finishReason === 'length')
+        throw new LlmError('LLM_COMPLETION_LIMIT');
       const answer = z.string().trim().min(1).max(32_000).parse(result.text);
       const reasoning = result.reasoningText?.slice(0, 128000);
       if (trace) await trace.parsed({ status: 'accepted', answer });

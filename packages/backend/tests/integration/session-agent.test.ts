@@ -133,8 +133,14 @@ test('real extraction preserves candidates with valid citations when other field
   };
   try {
     await agents.ready();
-    const result = await extract('Регистрация: г. Тула, ул. Мира');
-    expect(result.candidates).toEqual([{ ...candidate, origin: 'document' }]);
+    const source = 'Регистрация: г.\n\nТула, ул. Мира';
+    const grounded = {
+      ...candidate,
+      evidence: [{ documentId, imagePath: null, quote: 'г.\n\nТула' }],
+      origin: 'document' as const,
+    };
+    const result = await extract(source);
+    expect(result.candidates).toEqual([grounded]);
     expect(rejections).toEqual([{ field: 'city', count: 2 }]);
     const traces = join(traceDirectory, correlationId);
     const [file, ...others] = await readdir(traces);
@@ -143,39 +149,63 @@ test('real extraction preserves candidates with valid citations when other field
     expect(file).toContain(`extraction-${documentId}-1-`);
     const trace = await readFile(join(traces, file), 'utf8');
     expect(trace).not.toContain(apiKey);
-    expect(trace).toContain('Регистрация: г. Тула, ул. Мира');
+    expect(trace).toContain(JSON.stringify(source).slice(1, -1));
     const record: unknown = JSON.parse(trace);
+    const wireSchema = z
+      .object({
+        prompt: z.object({
+          response_format: z.object({
+            json_schema: z.object({
+              strict: z.literal(true),
+              schema: z.object({
+                properties: z.object({
+                  candidates: z.object({
+                    items: z.object({
+                      anyOf: z.array(
+                        z.object({
+                          properties: z
+                            .object({
+                              field: z.object({ enum: z.array(z.string()) }),
+                            })
+                            .loose(),
+                        }),
+                      ),
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          }),
+        }),
+      })
+      .parse(record).prompt.response_format.json_schema.schema;
+    expect(
+      wireSchema.properties.candidates.items.anyOf.find(({ properties }) =>
+        properties.field.enum.includes('city'),
+      )?.properties,
+    ).toMatchObject({
+      value: { type: 'string' },
+      evidence: {
+        items: {
+          anyOf: [
+            { required: ['documentId', 'imagePath', 'quote'] },
+            {
+              required: ['documentId', 'imagePath', 'quote', 'page'],
+              properties: { page: { type: 'integer', minimum: 1 } },
+            },
+          ],
+        },
+      },
+    });
     expect(record).toMatchObject({
       finishReason: 'stop',
       reasoning: 'Синтетическая проверка цитаты.',
       usage: { reasoningTokens: 3 },
-      prompt: {
-        response_format: {
-          json_schema: {
-            schema: {
-              properties: {
-                candidates: {
-                  items: {
-                    properties: {
-                      field: {
-                        enum: fields
-                          .map(({ key }) => key)
-                          .filter((key) => key !== 'submittedAttachments'),
-                      },
-                      value: { anyOf: [{ type: 'string' }, { type: 'array' }] },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
       parse: {
         status: 'accepted',
-        accepted: [{ ...candidate, origin: 'document' }],
+        accepted: [grounded],
         discarded: [
-          { candidate: extra, reason: 'field_not_allowed' },
+          { candidate: extra, reason: 'schema' },
           { candidate: forged, reason: 'quote_not_found' },
           { candidate: forged, reason: 'quote_not_found' },
           { candidate: { '[redacted]': '[redacted]' }, reason: 'schema' },
@@ -192,6 +222,13 @@ test('real extraction preserves candidates with valid citations when other field
     await expectInvalid('Регистрация: г. Тула, ул. Мира');
     returnedCandidates = [extra];
     await expectInvalid('Регистрация: г. Тула, ул. Мира');
+    returnedCandidates = [
+      {
+        ...candidate,
+        evidence: [{ ...candidate.evidence[0], page: 0 }],
+      },
+    ];
+    await expectInvalid('Регистрация: г. Тула, ул. Мира');
     returnedCandidates = [];
     const empty = await extract('Сведения отсутствуют.');
     expect(empty.candidates).toEqual([]);
@@ -200,7 +237,9 @@ test('real extraction preserves candidates with valid citations when other field
     await writeFile(blockedDirectory, 'occupied');
     returnedCandidates = [candidate];
     const withFailedTrace = await extract('Регистрация: г. Тула');
-    expect(withFailedTrace.candidates).toEqual(result.candidates);
+    expect(withFailedTrace.candidates).toEqual([
+      { ...candidate, origin: 'document' },
+    ]);
     expect(await readFile(blockedDirectory, 'utf8')).toBe('occupied');
   } finally {
     for (const threadId of threads) await agents.eraseThread(threadId);
@@ -429,11 +468,13 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
                       origin,
                       field: 'personName',
                       value: 'Анна',
-                      ...(returnMixedCandidates && {
-                        explanation: 'Имя явно указано в документе',
-                      }),
+                      explanation: null,
                       evidence: [
-                        { documentId: referencedId, imagePath: null, quote },
+                        {
+                          documentId: referencedId,
+                          imagePath: null,
+                          quote,
+                        },
                       ],
                     },
                     ...(returnMixedCandidates
@@ -444,7 +485,11 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
                             value: null,
                             explanation: 'Индекс неизвестен',
                             evidence: [
-                              { documentId, imagePath: null, quote: 'Анна' },
+                              {
+                                documentId,
+                                imagePath: null,
+                                quote: 'Анна',
+                              },
                             ],
                           },
                         ]
@@ -515,6 +560,14 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
       fields: fieldDefinitions.filter(
         ({ key }) => key === 'personName' || key === 'birthPlace',
       ),
+      checklistRequirements: [
+        {
+          key: 'passport',
+          label: 'Паспорт',
+          documentKind: 'passport',
+          applicability: 'usual',
+        },
+      ],
       documents: [
         {
           id: documentId,
@@ -545,6 +598,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
   try {
     await agents.ready();
     const result = await invoke();
+    expect(result).not.toHaveProperty('checklistSuggestions');
     expect(firstOutputLimit).toBe(8192);
     const initial = z
       .object({
@@ -574,6 +628,67 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
     expect(await failure(invoke())).toBe('LLM_INVALID_RESPONSE');
   } finally {
     for (const threadId of threads) await agents.eraseThread(threadId);
+    await agents.stop();
+    await pool.end();
+  }
+});
+
+test('chat reports an incomplete model reply even when it contains text', async () => {
+  const pool = createDatabasePool(z.url().parse(process.env.TEST_DATABASE_URL));
+  const agents = createDocumentAgents({
+    pool,
+    fetch: Object.assign(
+      () =>
+        Promise.resolve(
+          completionStream({
+            id: 'fixture',
+            object: 'chat.completion',
+            created: 1,
+            model: 'fixture',
+            choices: [
+              {
+                index: 0,
+                message: { role: 'assistant', content: 'Начало ответа' },
+                finish_reason: 'length',
+              },
+            ],
+            usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+          }),
+        ),
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  try {
+    const streamed: string[] = [];
+    const result = await agents
+      .chat({
+        connection: {
+          id: 'fixture',
+          baseURL: 'https://fixture.invalid/v1',
+          apiKey: 'fixture',
+        },
+        modelId: 'fixture',
+        fields: [],
+        facts: emptyFacts(),
+        documents: [],
+        listSourceImages: () => Promise.resolve([]),
+        readSource: () => Promise.reject(new Error('UNEXPECTED_SOURCE_READ')),
+        assertCurrent: () => Promise.resolve(),
+        previousContext: null,
+        messages: [],
+        userText: 'Проверь сведения',
+        appliedFields: [],
+        writeField: () => Promise.resolve({ errorCode: 'UNEXPECTED_WRITE' }),
+        signal: AbortSignal.timeout(10_000),
+        onDelta: ({ text }) => streamed.push(text),
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(result).toMatchObject({ code: 'LLM_COMPLETION_LIMIT' });
+    expect(streamed.join('')).toBe('Начало ответа');
+  } finally {
     await agents.stop();
     await pool.end();
   }
@@ -685,7 +800,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     'fixture/mixed-full-first',
   ].map((modelId) => ({ modelId, threadId: crypto.randomUUID() }));
   // Fit the mandatory input and a short tool result, but not a full source page.
-  const mixedSummary = 'Q\u0308!/д'.repeat(490);
+  const mixedSummary = 'Q\u0308!/д'.repeat(350);
   const mixedText = '@!?.:,'.repeat(1166) + '!!!!!г. Тула';
   const oldText = 'Строка большого первичного документа. '.repeat(1000);
   const oldSource = {
@@ -798,7 +913,14 @@ test('Mastra compacts a long tool history and continues from the accepted contex
                     content: JSON.stringify({
                       summary: 'Нужно уточнить город',
                       candidates:
-                        body.model === 'fixture/large' ? [candidate] : [],
+                        body.model === 'fixture/large'
+                          ? [
+                              {
+                                ...candidate,
+                                explanation: null,
+                              },
+                            ]
+                          : [],
                     }),
                   },
               finish_reason: toolCalls.length ? 'tool_calls' : 'stop',
@@ -1048,7 +1170,12 @@ test('reconciliation finalizes with cited candidates after a parallel batch exha
               role: 'assistant',
               content: JSON.stringify({
                 summary: 'Место рождения подтверждено.',
-                candidates: [candidate],
+                candidates: [
+                  {
+                    ...candidate,
+                    explanation: null,
+                  },
+                ],
               }),
             },
             'stop',

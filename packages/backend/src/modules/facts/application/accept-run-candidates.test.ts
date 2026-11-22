@@ -109,6 +109,134 @@ test('uses passport spelling and keeps all sources for equivalent text', async (
   ).toEqual([otherDocumentId, documentId]);
 });
 
+test('property cells can use separate citations from one source', async () => {
+  const row = {
+    description: 'квартира',
+    identifier: '48:08:0000000:9000001',
+    address: 'ул. Макетная, д. 02',
+    area: '42,8',
+    ownership: 'общая долевая собственность, доля 1/2',
+  };
+  const evidence = [
+    'Вид объекта недвижимости: квартира. Кадастровый номер: 48:08:0000000:9000001.',
+    'Адрес: ул. Макетная, д. 02.',
+    'Площадь: 42,8 кв. м. Вид права: общая долевая собственность, доля 1/2.',
+  ].map((quote) => ({ documentId, imagePath: null, quote }));
+  const accept = async (candidate: Candidate, sourceText?: string) => {
+    const facts = runFacts();
+    await facts.accept({
+      fields: ['realEstate'],
+      confirmed: false,
+      candidates: [candidate],
+      ...(sourceText && { sourceTexts: [{ documentId, text: sourceText }] }),
+    });
+    return (await facts.saved()).values.realEstate;
+  };
+  const candidate: Candidate = { field: 'realEstate', value: [row], evidence };
+  expect(await accept(candidate)).toEqual([row]);
+  expect(
+    await accept({
+      ...candidate,
+      evidence: evidence.map((entry, index) =>
+        index === 1 ? { ...entry, documentId: otherDocumentId } : entry,
+      ),
+    }),
+  ).toBeNull();
+  for (const invalid of [
+    { area: '42' },
+    { ownership: 'единоличная собственность' },
+    { identifier: '48:08:0000000:9000002' },
+  ]) {
+    expect(
+      await accept({ ...candidate, value: [{ ...row, ...invalid }] }),
+    ).toBeNull();
+  }
+  expect(
+    await accept({
+      ...candidate,
+      value: [{ ...row, area: '62,8' }],
+      evidence: [
+        ...evidence,
+        {
+          documentId,
+          imagePath: null,
+          quote:
+            'Кадастровый номер 48:08:0000000:9000002. Адрес: ул. Тестовая, д. 8. Площадь: 62,8 кв. м.',
+        },
+      ],
+    }),
+  ).toBeNull();
+  expect(
+    await accept(
+      {
+        ...candidate,
+        value: [{ ...row, area: '62,8' }],
+        evidence: [
+          ...evidence,
+          { documentId, imagePath: null, quote: 'Площадь: 62,8 кв. м.' },
+        ],
+      },
+      [
+        ...evidence.map(({ quote }) => quote),
+        'Кадастровый номер 48:08:0000000:9000002. Площадь: 62,8 кв. м.',
+      ].join('\n'),
+    ),
+  ).toBeNull();
+});
+
+test('business liabilities are empty only when the source supports their absence', async () => {
+  const accept = async (quotes: string[], text = quotes.join('\n')) => {
+    const facts = runFacts();
+    await facts.accept({
+      fields: ['businessDebts'],
+      confirmed: false,
+      sourceTexts: [{ documentId, text }],
+      candidates: [
+        {
+          field: 'businessDebts',
+          value: [],
+          evidence: quotes.map((quote) => ({
+            documentId,
+            imagePath: null,
+            quote,
+          })),
+        },
+      ],
+    });
+    return (await facts.saved()).values.businessDebts;
+  };
+  expect(
+    await accept([
+      'Предпринимательской деятельностью не занимался, статуса ИП не имел.',
+    ]),
+  ).toEqual([]);
+  expect(
+    await accept(['Предпринимательские обязательства отсутствуют.']),
+  ).toEqual([]);
+  expect(
+    await accept(['Предпринимательской деятельностью не занималась.']),
+  ).toBeNull();
+  expect(await accept(['Работаю как ИП.'])).toBeNull();
+  expect(
+    await accept(
+      ['Предпринимательских долгов нет'],
+      'Предпринимательских долгов нет, кроме задолженности по торговому кредиту.',
+    ),
+  ).toBeNull();
+  expect(
+    await accept(
+      ['Предпринимательских долгов нет'],
+      'Предпринимательских долгов нет\nкроме задолженности по торговому кредиту.',
+    ),
+  ).toBeNull();
+  expect(
+    await accept(
+      ['Предпринимательской деятельностью не занимался, статуса ИП не имел.'],
+      'В 2026 году предпринимательской деятельностью не занимался, статуса ИП не имел. Долг за 2025 год сохраняется.',
+    ),
+  ).toBeNull();
+});
+
 test('a later passport updates equivalent automatic spelling while preserving lawyer choices', async () => {
   const initial = emptyFacts();
   initial.values.lastName = 'Иванов';
@@ -178,7 +306,7 @@ test('citizenship requires a passport citation and keeps other proposals for rev
   ]);
 });
 
-test('bank debt keeps its amount and takes only the supported contract type', async () => {
+test('bank debt accepts only a proposed contract type supported by its citations', async () => {
   const base = {
     name: 'ООО МКК «Синтетический Кредит»',
     contractNumber: 'A-42',
@@ -186,7 +314,6 @@ test('bank debt keeps its amount and takes only the supported contract type', as
     amount: '720.50',
     amountDate: '2026-11-09',
     debtStatus: 'Действует',
-    type: 'Полная задолженность по договору',
   };
   for (const [title, expected, adjacent = ''] of [
     ['Кредитный договор', 'Кредит'],
@@ -213,15 +340,15 @@ test('bank debt keeps its amount and takes only the supported contract type', as
       candidates: [
         {
           field: 'debts',
-          value: [base],
+          value: [{ ...base, ...(expected && { type: expected }) }],
           evidence: [
             {
               documentId,
               imagePath: null,
               quote: `${base.name}
-${title} № A-42 от 03.01.2025${adjacent}
 По состоянию на 09.11.2026
-Общая задолженность: 720,50 руб.`,
+${title} № A-42 от 03.01.2025${adjacent}
+Общая задолженность по договору № A-42: 720,50 руб.`,
             },
           ],
         },
@@ -649,7 +776,7 @@ test('accepts a later documented closure while keeping conflicting active balanc
         name: 'АО Синтетический Банк',
         contractNumber,
         contractDate: '2025-01-03',
-        amount,
+        ...(debtStatus === 'Действует' && { amount }),
         amountDate,
         debtStatus,
       },
@@ -861,7 +988,7 @@ test('keeps the latest documented amount of a new debt when reconciliation has n
   for (const candidate of candidates)
     expect(saved.candidates).toContainEqual(candidate);
   expect(obligationAmounts(saved.values.debts, null).debts).toMatchObject([
-    { contractNumber: 'A-51', amount: '145006,47', type: 'Кредит' },
+    { contractNumber: 'A-51', amount: '145006,47' },
     { contractNumber: 'A-52', amount: '11500,25' },
     { contractNumber: 'A-62', amount: '15993,53' },
   ]);
@@ -897,6 +1024,180 @@ test('keeps the latest documented amount of a new debt when reconciliation has n
   });
   expect(crossedResult.discrepancyFields).toContain('debts');
   expect((await crossedFacts.saved()).values.debts).toBeNull();
+});
+
+test('a newer certificate blocks an old balance even when its extraction produced no usable row', async () => {
+  const contract = {
+    name: 'АО Синтетический Банк',
+    contractNumber: 'QA-VT-51',
+    contractDate: '23.05.2024',
+    debtStatus: 'Действует',
+  };
+  const amountEvidence = (date: string, amount: string) =>
+    [
+      'Справка о размере задолженности',
+      'АО Синтетический Банк',
+      `Расчёт по состоянию на ${date}.`,
+      'Кредитный договор № QA-VT-51 от 23.05.2024.',
+      `Полная задолженность по договору № QA-VT-51 — ${amount.replace('.', ',')} руб.`,
+    ].join('\n');
+  const earlier: Candidate = {
+    field: 'debts',
+    value: [{ ...contract, amount: '151000.00', amountDate: '28.10.2026' }],
+    evidence: [
+      {
+        documentId,
+        imagePath: null,
+        quote: amountEvidence('28.10.2026', '151000.00'),
+      },
+    ],
+  };
+  const currentText =
+    amountEvidence('18.11.2026', '145006.47') +
+    '\nКредитный договор № QA-VT-52 от 16.06.2024.\nПолная задолженность 11 500,25 руб.';
+  const current: Candidate = {
+    ...earlier,
+    value: [{ ...contract, amount: '145006.47', amountDate: '18.11.2026' }],
+    evidence: [
+      { documentId: otherDocumentId, imagePath: null, quote: currentText },
+    ],
+  };
+  const previousSource = { documentId, text: earlier.evidence[0]?.quote ?? '' };
+  const input = {
+    fields: ['debts'] as const,
+    confirmed: false,
+    preserveExisting: true,
+    sourceTexts: [
+      { documentId: otherDocumentId, text: currentText },
+      previousSource,
+    ],
+  };
+  const facts = runFacts();
+  const held = await facts.accept({ ...input, candidates: [earlier] });
+  expect((await facts.saved()).values.debts).toBeNull();
+  expect(held.missingFields).toContain('debts');
+  expect(held.proposalOutcomes).toMatchObject([
+    { candidate: earlier, status: 'review' },
+  ]);
+
+  const initial = emptyFacts();
+  initial.values.debts = earlier.value;
+  const existing = runFacts(initial);
+  await existing.accept({ ...input, candidates: [] });
+  expect((await existing.saved()).values.debts).toBeNull();
+
+  const rejected = runFacts(initial);
+  await rejected.accept({
+    ...input,
+    candidates: [
+      earlier,
+      {
+        ...current,
+        value: [{ ...contract, amount: '999.99', amountDate: '18.11.2026' }],
+      },
+    ],
+  });
+  expect((await rejected.saved()).values.debts).toBeNull();
+
+  const withLatest = runFacts(initial);
+  await withLatest.accept({ ...input, candidates: [earlier, current] });
+  expect((await withLatest.saved()).values.debts).toEqual(current.value);
+
+  const unrelated = runFacts();
+  await unrelated.accept({
+    ...input,
+    candidates: [earlier],
+    sourceTexts: [
+      {
+        documentId: otherDocumentId,
+        text: currentText.replaceAll('QA-VT-51', 'QA-VT-50'),
+      },
+      previousSource,
+    ],
+  });
+  expect((await unrelated.saved()).values.debts).toEqual(earlier.value);
+
+  const mixedDates = runFacts();
+  await mixedDates.accept({
+    ...input,
+    candidates: [earlier],
+    sourceTexts: [
+      {
+        documentId,
+        text:
+          amountEvidence('28.10.2026', '151000.00') +
+          '\nДоговор № QA-VT-52 от 16.06.2024, по состоянию на 18.11.2026.\nПолная задолженность 11 500,25 руб.',
+      },
+    ],
+  });
+  expect((await mixedDates.saved()).values.debts).toEqual(earlier.value);
+
+  const blocks = [
+    'Справка о размере задолженности',
+    contract.name,
+    'Кредитный договор № QA-VT-51 от 23.05.2024.',
+    'Расчёт по состоянию на 18.11.2026.',
+    'Полная задолженность 145 006,47 руб.',
+    'Кредитный договор № QA-VT-52 от 16.06.2024.',
+    'Расчёт по состоянию на 20.11.2026.',
+    'Полная задолженность 11 500,25 руб.',
+  ];
+  const crossed = runFacts();
+  await crossed.accept({
+    ...input,
+    sourceTexts: [
+      { documentId: otherDocumentId, text: blocks.join('\n') },
+      previousSource,
+    ],
+    candidates: [
+      earlier,
+      {
+        ...current,
+        value: [{ ...contract, amount: '11500.25', amountDate: '18.11.2026' }],
+        evidence: [
+          {
+            documentId: otherDocumentId,
+            imagePath: null,
+            quote: blocks.slice(0, 4).join('\n'),
+          },
+          {
+            documentId: otherDocumentId,
+            imagePath: null,
+            quote: 'Полная задолженность 11 500,25 руб.',
+          },
+        ],
+      },
+    ],
+  });
+  expect((await crossed.saved()).values.debts).toBeNull();
+
+  const noNumberSign = runFacts();
+  const missingFirstAmount = blocks
+    .filter((line) => !line.includes('145 006,47'))
+    .join('\n')
+    .replaceAll('№ ', '');
+  await noNumberSign.accept({
+    ...input,
+    sourceTexts: [
+      { documentId: otherDocumentId, text: missingFirstAmount },
+      previousSource,
+    ],
+    candidates: [
+      earlier,
+      {
+        ...current,
+        value: [{ ...contract, amount: '11500.25', amountDate: '18.11.2026' }],
+        evidence: [
+          {
+            documentId: otherDocumentId,
+            imagePath: null,
+            quote: missingFirstAmount,
+          },
+        ],
+      },
+    ],
+  });
+  expect((await noNumberSign.saved()).values.debts).toBeNull();
 });
 
 test('accepts a credit certificate with adjacent contract number and date fields from one evidence block', async () => {
@@ -940,11 +1241,5 @@ test('accepts a credit certificate with adjacent contract number and date fields
   ).toBeNull();
   expect(
     await accept([[sharedLines, numberLine, dateLine].join('\n')]),
-  ).toEqual([
-    expect.objectContaining({
-      ...row,
-      contractDate: '03.01.2025',
-      amountDate: '09.11.2026',
-    }),
-  ]);
+  ).toEqual([row]);
 });

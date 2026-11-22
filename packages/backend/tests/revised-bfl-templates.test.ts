@@ -7,7 +7,7 @@ import {
   formatCreditorText,
 } from '@anyko/document-values/bankruptcy-format';
 import {
-  familyStatement,
+  familyStatementNeedsReview,
   projectBankruptcyCollections,
 } from '@anyko/document-values/bankruptcy-projection';
 
@@ -37,6 +37,26 @@ test('keeps unknown debt visible while showing a dash for confirmed absence', ()
   ).toMatchObject([{ rowNumber: '-', name: '-', type: '-' }]);
 });
 
+test('does not print exact amounts for the same obligation in two sections', () => {
+  const row = {
+    name: 'Банк',
+    contractNumber: 'A-01',
+    contractDate: '12.11.2026',
+    amount: '100.00',
+  };
+  const data = templateData(
+    {
+      ...emptyFieldValues(),
+      debts: [row],
+      businessDebts: [{ ...row, contractDate: null }],
+    },
+    'bfl-creditors-v3',
+  );
+  expect(data.debtTotal).toBe('[не заполнено]');
+  expect(data.debts).toMatchObject([{ amount: '[не заполнено]' }]);
+  expect(data.businessDebts).toMatchObject([{ amount: '[не заполнено]' }]);
+});
+
 test('formats uppercase segments in mixed-case creditor and issuing office names', () => {
   expect(
     formatBankruptcyScalar(
@@ -52,16 +72,20 @@ test('formats uppercase segments in mixed-case creditor and issuing office names
 test('preserves first-person family text and flags third-person drafts without rewriting them', () => {
   const ready =
     'В зарегистрированном браке не состою. Несовершеннолетних детей нет.';
-  expect(familyStatement(ready)).toBe(ready);
+  expect(familyStatementNeedsReview(ready)).toBe(false);
   for (const draft of [
     'Должник не женат. Детей нет.',
     'Должница замужем, имеет одного ребенка.',
     'Заявитель разведена, на иждивении находится сын.',
     'Иванова сообщила, что в зарегистрированном браке не состоит.',
   ]) {
-    expect(familyStatement(draft)).toBe(
-      '[проверьте формулировку от первого лица] ' + draft,
-    );
+    expect(familyStatementNeedsReview(draft)).toBe(true);
+    expect(
+      templateData(
+        { ...emptyFieldValues(), familyDetails: draft },
+        'bfl-statement-v11',
+      ).familyDetails,
+    ).toBe(draft);
   }
 });
 
@@ -196,8 +220,12 @@ test('inventory v2 keeps category order, repeats apartments and prints cash in s
     ...emptyFieldValues(),
     cashOnHand: '21000.00',
     realEstate: [
-      { description: 'Квартира А', ownership: 'Долевая' },
-      { description: 'Квартира Б', ownership: 'Индивидуальная' },
+      { description: 'Квартира А', category: 'квартира', ownership: 'Долевая' },
+      {
+        description: 'Квартира Б',
+        category: 'квартира',
+        ownership: 'Индивидуальная',
+      },
     ],
   });
   expect(text).toContain('1.1\nЗемельные участки: -');
@@ -223,9 +251,9 @@ test('creditors v3 lists each creditor once per section with every active contra
     previousNames: 'ФИО не менялись.',
     debts: [
       first,
-      { ...first },
       {
         name: 'АО Банк А',
+        inn: '0000000001',
         type: 'Заём',
         contractNumber: 'A-02',
         amount: '600.25',
@@ -266,6 +294,7 @@ test('revised creditor and inventory forms distinguish unchanged, unknown and pr
       'Фамилия не менялась',
       'Не меняла',
       'Фамилия, имя и отчество не изменялись',
+      'Фамилию, имя и отчество не изменял.',
     ])
       expect(
         templateData({ ...values, previousNames: unchanged }, version)

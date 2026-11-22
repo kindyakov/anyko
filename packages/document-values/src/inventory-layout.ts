@@ -5,44 +5,39 @@ import { comparableText } from './text-value';
 type Row = Record<string, string | null>;
 type Values = Partial<Record<string, string | Row[] | null>>;
 
-const inventoryGroups = {
-  realEstate: ['land', 'houses', 'apartments', 'garages', 'otherRealEstate'],
-  vehicles: [
-    'cars',
-    'trucks',
-    'motorcycles',
-    'farmVehicles',
-    'boats',
-    'aircraft',
-    'otherVehicles',
-  ],
-  valuables: ['cash', 'jewellery', 'art', 'professional', 'otherValuables'],
+export const inventoryCategories = {
+  realEstate: {
+    'земельный участок': 'land',
+    'жилой дом': 'houses',
+    квартира: 'apartments',
+    гараж: 'garages',
+    иное: 'otherRealEstate',
+  },
+  vehicles: {
+    'легковой автомобиль': 'cars',
+    'грузовой автомобиль': 'trucks',
+    мототранспорт: 'motorcycles',
+    сельхозтехника: 'farmVehicles',
+    водный: 'boats',
+    воздушный: 'aircraft',
+    иной: 'otherVehicles',
+  },
+  valuables: {
+    драгоценности: 'jewellery',
+    'предметы искусства': 'art',
+    'имущество для профессиональных занятий': 'professional',
+    иное: 'otherValuables',
+  },
 } as const;
 
-const patterns = {
-  land: /земельн[а-яё]* участ/u,
-  houses: /жил[а-яё]* дом|дач/u,
-  apartments: /квартир/u,
-  garages: /гараж/u,
-  cars: /легков[а-яё]* автомобил/u,
-  trucks: /грузов[а-яё]* автомобил|грузовик/u,
-  motorcycles: /мотоцикл|мототранспорт/u,
-  farmVehicles: /сельскохозяйствен|сельхозтехник|трактор|комбайн/u,
-  boats: /водн[а-яё]* транспорт|катер|лодк/u,
-  aircraft: /воздушн[а-яё]* транспорт|самол[её]т|вертол[её]т/u,
-  cash: /наличн[а-яё]* (?:денежн[а-яё]* |ден[еь]г[а-яё]*|средств)/u,
-  jewellery: /драгоценност|ювелирн|предмет[а-яё]* роскоши/u,
-  art: /предмет[а-яё]* искусства|картина/u,
-  professional: /профессиональн[а-яё]* занят/u,
-};
-
 export const inventorySectionKeys = [
-  ...inventoryGroups.realEstate,
-  ...inventoryGroups.vehicles,
+  ...Object.values(inventoryCategories.realEstate),
+  ...Object.values(inventoryCategories.vehicles),
   'bankAccounts',
   'companyEquity',
   'otherSecurities',
-  ...inventoryGroups.valuables,
+  'cash',
+  ...Object.values(inventoryCategories.valuables),
 ] as const;
 const cellKeys = [
   'description',
@@ -90,32 +85,50 @@ export function inventorySections(
     Array.isArray(value)
       ? value.filter((row) => Object.values(row).some(Boolean))
       : [];
-  for (const [field, groups] of Object.entries(inventoryGroups)) {
-    for (const row of rows(values[field])) {
-      const description = comparableText(row.category || row.description || '');
-      const key =
-        groups.find(
-          (group) =>
-            Object.hasOwn(patterns, group) &&
-            patterns[group as keyof typeof patterns].test(description),
-        ) ?? groups.at(-1);
-      if (key)
-        sections[key]?.push(
-          includeCadastralNumber &&
-            field === 'realEstate' &&
-            row.identifier &&
-            !row.description?.includes(row.identifier)
-            ? {
-                ...row,
-                description: [
-                  row.description,
-                  `кадастровый номер ${row.identifier}`,
-                ]
-                  .filter(Boolean)
-                  .join(', '),
-              }
-            : row,
-        );
+  const unknown = new Set<string>();
+  const unclassified = new Map<string, string[]>();
+  for (const [field, categories] of Object.entries(inventoryCategories)) {
+    const choices = new Map<string, string>(Object.entries(categories));
+    const value = values[field];
+    const supplied = rows(value);
+    if (
+      !Array.isArray(value) ||
+      supplied.some(
+        ({ category }) => !choices.has(comparableText(category ?? '')),
+      )
+    )
+      for (const key of choices.values()) unknown.add(key);
+    for (const row of supplied) {
+      const key = choices.get(comparableText(row.category ?? ''));
+      if (!key) {
+        const section = [...choices.values()].at(-1);
+        if (section) {
+          const captions = unclassified.get(section) ?? [];
+          captions.push(
+            [row.description, row.address, row.identifier]
+              .filter(Boolean)
+              .join(', ') || '[не заполнено]',
+          );
+          unclassified.set(section, captions);
+        }
+        continue;
+      }
+      sections[key]?.push(
+        includeCadastralNumber &&
+          field === 'realEstate' &&
+          row.identifier &&
+          !row.description?.includes(row.identifier)
+          ? {
+              ...row,
+              description: [
+                row.description,
+                `кадастровый номер ${row.identifier}`,
+              ]
+                .filter(Boolean)
+                .join(', '),
+            }
+          : row,
+      );
     }
   }
   sections.bankAccounts = rows(values.accounts);
@@ -132,17 +145,43 @@ export function inventorySections(
         amount: formatBankruptcyMoney(cash) + ' руб.',
       },
     ];
+  if (cash === undefined) unknown.add('cash');
+  for (const [field, section] of [
+    ['accounts', 'bankAccounts'],
+    ['equity', 'companyEquity'],
+    ['securities', 'otherSecurities'],
+  ] as const)
+    if (!Array.isArray(values[field])) unknown.add(section);
   return Object.fromEntries(
     inventorySectionKeys.map((key) => {
       const section = sections[key];
       return [
         key,
-        (section?.length ? section : [{}]).map((row, index) => ({
-          ...Object.fromEntries(
-            cellKeys.map((cell) => [cell, inventoryCell(row, cell)]),
-          ),
-          rowNumber: section?.length ? String(index + 1) : '-',
-        })),
+        (section?.length
+          ? section
+          : [
+              {
+                [key === 'bankAccounts' || key === 'companyEquity'
+                  ? 'name'
+                  : key === 'otherSecurities'
+                    ? 'type'
+                    : 'description']: unknown.has(key)
+                  ? '[не заполнено]'
+                  : null,
+              },
+            ]
+        )
+          .concat(
+            (unclassified.get(key) ?? []).map((description) => ({
+              description: '[уточните подраздел описи] ' + description,
+            })),
+          )
+          .map((row, index) => ({
+            ...Object.fromEntries(
+              cellKeys.map((cell) => [cell, inventoryCell(row, cell)]),
+            ),
+            rowNumber: section?.length ? String(index + 1) : '-',
+          })),
       ];
     }),
   );

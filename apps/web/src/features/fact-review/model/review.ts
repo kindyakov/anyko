@@ -5,7 +5,10 @@ import type {
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
-import { statementDefaultValue } from '@anyko/document-values/bankruptcy-projection';
+import {
+  familyStatementNeedsReview,
+  statementDefaultValue,
+} from '@anyko/document-values/bankruptcy-projection';
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
 import {
@@ -101,6 +104,7 @@ export function reviewFields(
     );
     const conflict = conflicts.has(field.key);
     const lost = evidenceLost.has(field.key);
+    const current = values[field.key];
     return {
       field,
       candidates,
@@ -109,6 +113,9 @@ export function reviewFields(
       attention:
         conflict ||
         lost ||
+        (field.key === 'familyDetails' &&
+          typeof current === 'string' &&
+          familyStatementNeedsReview(current)) ||
         (isDatedBankruptcyPackage(view.package.version) &&
           statementDefaultValue(values, field.key) !== undefined) ||
         (view.facts.values[field.key] == null && candidates.length > 0),

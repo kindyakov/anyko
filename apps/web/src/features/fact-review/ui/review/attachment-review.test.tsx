@@ -54,6 +54,9 @@ test('a visible stamp leaves the file unselected until the lawyer chooses the co
     user.click(screen.getByRole('button', { name: /Приложения/u }));
   expect(screen.queryByRole('combobox')).toBeNull();
   await openAttachments();
+  const preferred = /Справка с печатью от 20\.11\.2026/u;
+  expect(screen.getByRole('button', { name: /^Справка ·/u })).toBeTruthy();
+  await user.click(screen.getByRole('button', { name: preferred }));
   fireEvent.click(screen.getByRole('button', { name: 'Справка.pdf' }));
   expect(open).toHaveBeenCalledWith(document, 2);
   await openAttachments();

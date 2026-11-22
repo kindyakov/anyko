@@ -6,7 +6,10 @@ import type {
   FieldValues,
 } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
-import { statementDefaultValue } from '@anyko/document-values/bankruptcy-projection';
+import {
+  familyStatementNeedsReview,
+  statementDefaultValue,
+} from '@anyko/document-values/bankruptcy-projection';
 import {
   canApplyCreditorRegistryCandidate,
   containsCreditorRegistryCandidate,
@@ -94,11 +97,6 @@ export function CandidateList({
             group.included ||= candidate.creditorSource
               ? containsCreditorRegistryCandidate(comparable, value)
               : isSelected({ ...candidate, value });
-            if (
-              typeof comparable === 'string' &&
-              sameReviewValue(comparable, value)
-            )
-              group.value = comparable;
             if (candidate.creditorSource)
               group.creditorSources.set(
                 candidate.creditorSource.url,
@@ -183,6 +181,13 @@ export function CandidateList({
                     onApply({ [field.key]: text });
                   }}
                 >
+                  {field.key === 'familyDetails' &&
+                    typeof current === 'string' &&
+                    familyStatementNeedsReview(current) && (
+                      <p className="mt-2 text-sm text-amber-200" role="status">
+                        Проверьте формулировку от первого лица.
+                      </p>
+                    )}
                   {matching.map((findings, index) => (
                     <div
                       key={index}

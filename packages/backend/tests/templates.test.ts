@@ -417,21 +417,13 @@ test('the current package uses one active contract total in both DOCX files', ()
   const values = {
     ...emptyFieldValues(),
     debtTotal: '99999',
+    businessDebts: [],
     debts: [
       {
         name: 'АО Синтетический Банк',
         contractNumber: 'ACT-001',
         contractDate: '2025-01-03',
         amountDate: '2026-11-08',
-        debtStatus: 'Действует',
-        amount: '1234.05',
-        penalties: '57.12',
-      },
-      {
-        name: 'АО «Синтетический Банк»',
-        contractNumber: 'ACT-001',
-        contractDate: '03.01.2025',
-        amountDate: '2026-11-09',
         debtStatus: 'Действует',
         amount: '1234.05',
       },
@@ -544,6 +536,7 @@ test('the v8 statement formats the original evidence, projects default paragraph
       },
     ],
     realEstate: [],
+    businessDebts: [],
     employmentHistory: [
       { employer: 'ООО Пример', date: '01.03.2026', event: 'Приём' },
     ],

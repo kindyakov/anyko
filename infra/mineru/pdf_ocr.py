@@ -1,13 +1,12 @@
 """Local Russian OCR and coverage checks for PDF pages and raster images."""
 from contextlib import closing
-from functools import lru_cache, wraps
+from functools import lru_cache
 import hashlib
 from importlib import import_module
 from inspect import Parameter, signature
 import json
 from pathlib import Path
 import re
-from string import ascii_letters
 import unicodedata
 
 
@@ -21,9 +20,6 @@ MIN_SCORE = 0.82
 RECOVERY_SCORE = 0.88
 # A dot followed by a space can terminate a sentence after a number.
 NUMBER = re.compile(r'(?:[+\-−]\s*)?(?:(?<!\d)[.,]\s*)?\d+(?:(?:\.|\s+\.\s*|\s*[,:/\-−]\s*)\d+)*')
-LATIN_LOOKALIKES = str.maketrans('АВЕКМНОРСТХаеорсху', 'ABEKMHOPCTXaeopcxy')
-LATIN_ANCHORS = set(ascii_letters) - {chr(char) for char in LATIN_LOOKALIKES.values()}
-OCR_TOKEN = re.compile(r'\w+(?:[-‐‑]\w+)*')
 
 
 def model_path(home):
@@ -80,39 +76,11 @@ def configure_primary_ocr(sdk_version):
     if not valid_model(model) or not matches_sha256(dictionary, DICTIONARY_SHA256):
         raise RuntimeError('Cyrillic OCR weights or dictionary missing or invalid; run MinerU setup')
 
-    engine = import_module('mineru.model.ocr.pp_ocr_v6_onnx')
-    recognizer = getattr(engine, 'TextRecognizerONNX', None)
-    require_signature(recognizer, '_decode', ('self', positional), ('idx', positional), ('prob', positional))
-    if previous[0] == MINERU_REC_PATH:
-        decode = recognizer._decode
-
-        @wraps(decode)
-        def decode_ocr_text(self, idx, prob):
-            text, confidence = decode(self, idx, prob)
-            return normalize_ocr_text(text), confidence
-
-        # Normalize at the raster recognizer, before its text is mixed with
-        # the native text layer or rendered as Markdown/table markup.
-        recognizer._decode = decode_ocr_text
-
     # The same registry entry is used by atom_model_init and by ONNX calibration.
     # Mutate the process-local registry before any SDK model is initialized.
     repo.paths['ocr_rec'] = OCR_MODEL_PATH
     hybrid.PPOCRV6_DICT_PATH = dictionary
     return model
-
-
-def normalize_ocr_text(text):
-    def restore_latin(match):
-        token = match[0]
-        if LATIN_ANCHORS.isdisjoint(token):
-            return token
-        for char in token:
-            if unicodedata.name(char, '').startswith('CYRILLIC') and ord(char) not in LATIN_LOOKALIKES:
-                return token
-        return token.translate(LATIN_LOOKALIKES)
-
-    return OCR_TOKEN.sub(restore_latin, text)
 
 
 def normalized(text):
@@ -190,11 +158,6 @@ def reader(path):
     return session, alphabet
 
 
-def numeric_lookalikes(text):
-    return re.sub(r'(?<!\w)(?=[0-9оОoO-]*[0-9])[0-9оОoO-]+(?!\w)',
-                  lambda token: token[0].translate(str.maketrans('оОoO', '0000')), text)
-
-
 def box_coordinates(box, image):
     import numpy as np
 
@@ -218,18 +181,14 @@ def match_scan_blocks(boxes, pixels, covered_blocks):
     return sorted(matched)
 
 
-def read_lines(page, path, scanned=False, covered_blocks=()):
+def read_lines(page, path, covered_blocks=()):
     import numpy as np
-    from PIL import ImageEnhance
-
-    def bgr(rgb):
-        return np.ascontiguousarray(np.asarray(rgb)[:, :, ::-1])
 
     width, height = page.get_size()
     scale = min(200 / 72, 2600 / max(width, height))
     with closing(page.render(scale=scale)) as bitmap:
         image = bitmap.to_pil().convert('RGB')
-    pixels = bgr(image)
+    pixels = np.ascontiguousarray(np.asarray(image)[:, :, ::-1])
     if covered_blocks:
         boxes = detect_image_boxes(pixels)
         # Scans with complete layout coverage need detection only. If text
@@ -240,18 +199,6 @@ def read_lines(page, path, scanned=False, covered_blocks=()):
         lines = read_image_lines(pixels, path, boxes)
     else:
         lines = read_image_lines(pixels, path)
-    if scanned and any(numeric_lookalikes(line['text']) != line['text'] for line in lines):
-        sharper = read_image_lines(bgr(ImageEnhance.Sharpness(image).enhance(3)), path)
-        for index, line in enumerate(lines):
-            target = numeric_lookalikes(line['text'])
-            if target == line['text']:
-                continue
-            # The alternate image must actually yield the numeric reading, with
-            # the same surrounding text at the same position on the page.
-            readings = [item for item in sharper if item['text'] == target
-                        and item['confidence'] >= RECOVERY_SCORE and same_region(line, item['bbox'])]
-            if len(readings) == 1:
-                lines[index] = readings[0]
     return lines, []
 
 
@@ -274,7 +221,7 @@ def read_image_lines(image, path, boxes=None):
         selected = np.r_[True, ids[1:] != ids[:-1]] & (ids != 0)
         if not selected.any():
             continue
-        value = normalize_ocr_text(''.join(alphabet[index] for index in ids[selected]).strip())
+        value = ''.join(alphabet[index] for index in ids[selected]).strip()
         if not value or len(value) > 2000:
             continue
         bbox = box_coordinates(box, image)
@@ -348,36 +295,12 @@ def overlaps_block(line_bbox, bbox):
     return width > (right - left) / 2 and height > (bottom - top) / 2
 
 
-def same_region(line, bbox):
-    return overlaps_block(line['bbox'], bbox) and overlaps_block(bbox, line['bbox'])
-
-
 def plain_text_block(block):
     return (block.type in ('text', 'ref_text', 'doc_title', 'paragraph_title')
             and all(span.type == 'text' for span in block.content))
 
 
-def restores_scan_fragment(original, replacement):
-    # Basic may return isolated symbols for Cyrillic or drop leading zeros.
-    # Accept additions only in a confident, co-located Cyrillic line.
-    if not re.search(r'[а-яё]{3,}', replacement) or re.search(r'[^\W\d_]{3,}|[а-яё]', original):
-        return False
-    previous = number_notation(original)
-    current = number_notation(replacement)
-    if not previous:
-        return not current and len(normalized(original)) * 2 < len(normalized(replacement))
-    if not numeric_fragment(original) or len(previous) != len(current):
-        return False
-    for old, new in zip(previous, current):
-        # Preserve the significant digits and separators, including decimal
-        # places. Only leading zeros in each hyphen-delimited group may grow.
-        pattern = re.sub(r'(^|(?<=-))0+', lambda run: f'0{{{len(run[0])},}}', re.escape(old))
-        if not re.fullmatch(pattern, new):
-            return False
-    return True
-
-
-def recover_page_with_layout(page, lines, layout, scanned=False):
+def recover_page_with_layout(page, lines, layout):
     prose = [line for row in recover_page(page, lines) for line in row]
     matched = []
     blocks = []
@@ -397,11 +320,7 @@ def recover_page_with_layout(page, lines, layout, scanned=False):
             restores_words = (
                 numeric_only and same_numbers and any(char.isalpha() for char in replacement)
             )
-            restores_fragment = (
-                scanned and len(nearby) == 1 and nearby[0]['confidence'] >= RECOVERY_SCORE
-                and same_region(nearby[0], bbox) and restores_scan_fragment(original, replacement)
-            )
-            if covers_text or restores_words or restores_fragment:
+            if covers_text or restores_words:
                 continue
         blocks.append((top, markdown))
         for line in nearby:
@@ -451,13 +370,13 @@ def save_pdf(path, middle_json, writer, model):
                     scanned = native.count_chars() == 0
                 primary = []
                 plain = markdown_text(markdown)
-                if scanned and re.search(r'[^\W\d_]', plain) and numeric_lookalikes(plain) == plain:
+                if scanned and re.search(r'[^\W\d_]', plain):
                     for block in parsed_page.blocks:
                         if block.bbox and plain_text_block(block):
                             text = ' '.join(span.content for span in block.content).strip()
                             if len(text) <= 2000 and re.search(r'[^\W\d_]{2,}', text):
                                 primary.append((block.bbox, text))
-                lines, matched = read_lines(page, model, scanned, [bbox for bbox, _ in primary])
+                lines, matched = read_lines(page, model, [bbox for bbox, _ in primary])
                 selected = []
                 needs_text = needs_recovery(markdown, lines)
                 if needs_text:
@@ -471,7 +390,7 @@ def save_pdf(path, middle_json, writer, model):
                         block_markdown = render_markdown(single_page.model_copy(update={'pages': [block_page]}))
                         if block_markdown:
                             layout.append((block.bbox, top, block_markdown, plain_text))
-                    rows, markdown = recover_page_with_layout(page, lines, layout, scanned)
+                    rows, markdown = recover_page_with_layout(page, lines, layout)
                     selected = [line for row in rows for line in row]
                 elif matched:
                     selected = [

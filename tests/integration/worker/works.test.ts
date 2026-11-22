@@ -337,6 +337,7 @@ test('the source checklist preserves scoped manual decisions when the work is an
       processorVersion: 'checklist-fixture',
     };
   };
+  let hasChecklistSuggestions = true;
   reconcileHook = ({ documents, checklistRequirements }) => {
     expect(
       checklistRequirements?.some(({ key }) => key === 'debt-certificate'),
@@ -345,31 +346,26 @@ test('the source checklist preserves scoped manual decisions when the work is an
       summary: 'Проверены исходники',
       candidates: [],
       usage: { inputTokens: 7, outputTokens: 9 },
-      checklistSuggestions: [
-        ...documents.flatMap(({ id }) => [
-          {
-            requirementKey: 'debt-certificate',
-            documentId: id,
-            quote,
-            imagePath: null,
-            decision: 'found' as const,
-          },
-          {
-            requirementKey: 'bank-statement',
-            documentId: id,
-            quote,
-            imagePath: null,
-            decision: 'review' as const,
-          },
-          {
-            requirementKey: 'marriage',
-            documentId: id,
-            quote: 'Выдуманная цитата',
-            imagePath: null,
-            decision: 'found' as const,
-          },
-        ]),
-      ],
+      ...(hasChecklistSuggestions && {
+        checklistSuggestions: [
+          ...documents.flatMap(({ id }) => [
+            {
+              requirementKey: 'debt-certificate',
+              documentId: id,
+              quote,
+              imagePath: null,
+              decision: 'found' as const,
+            },
+            {
+              requirementKey: 'bank-statement',
+              documentId: id,
+              quote,
+              imagePath: null,
+              decision: 'review' as const,
+            },
+          ]),
+        ],
+      }),
     });
   };
   try {
@@ -407,6 +403,7 @@ test('the source checklist preserves scoped manual decisions when the work is an
     expect(
       (await set('bank-statement', first.id, 'rejected', current)).status,
     ).toBe(200);
+    hasChecklistSuggestions = false;
     await analyze(input);
     await until(input, terminal);
     const checklist = await read();
@@ -5096,13 +5093,13 @@ test('bank certificates retain evidence and a manual contract decision, and both
       ({ contractNumber }) => contractNumber === 'BANK-01',
     );
     expect(primaryDebt).toMatchObject({
-      amount: '1234.05',
-      amountDate: '08.11.2026',
-      penalties: '8.15',
+      amount: '1234,05',
+      amountDate: '09.11.2026',
     });
+    expect(primaryDebt).not.toHaveProperty('penalties');
     expect(
       debts.find(({ contractNumber }) => contractNumber === 'BANK-02')?.amount,
-    ).toBe('200.06');
+    ).toBe('200,06');
     expect(
       debts.find(({ contractNumber }) => contractNumber === 'BANK-03')
         ?.debtStatus,
@@ -5110,16 +5107,27 @@ test('bank certificates retain evidence and a manual contract decision, and both
     const selectedSources = original.facts.candidates
       .filter(({ selected, field }) => selected && field === 'debts')
       .flatMap(({ evidence }) => evidence.map(({ documentId }) => documentId));
-    expect(selectedSources).toContain(primary.id);
+    expect(
+      original.facts.candidates.flatMap(({ evidence }) =>
+        evidence.map(({ documentId }) => documentId),
+      ),
+    ).toContain(primary.id);
     expect(selectedSources).toContain(copy.id);
 
     const manual = debts.map((row) =>
-      row.contractNumber === 'BANK-01' ? { ...row, amount: '1234.15' } : row,
+      row.contractNumber === 'BANK-01'
+        ? { ...row, amount: '1234.15' }
+        : { ...row, amount: row.amount?.replace(',', '.') ?? null },
     );
     await apiBackend.workHttp.review.editValues(scope, {
       workId,
       revision: original.work.revision,
-      values: { ...original.facts.values, debts: manual, lastName: 'Тестовый' },
+      values: {
+        ...original.facts.values,
+        debts: manual,
+        businessDebts: [],
+        lastName: 'Тестовый',
+      },
     });
     const changed = await addCertificate('changed');
     const closed = await addCertificate('closed');

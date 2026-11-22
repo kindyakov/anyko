@@ -138,6 +138,8 @@ export function createWorkAnalysis(deps: WorkDependencies) {
     const fields = pack.fields.filter(({ key }) => !excludedFields?.has(key));
     const candidates: WorkFacts['candidates'] = [];
     const sources: ContinuationSource[] = [];
+    const sourceTexts: { documentId: string; text: string }[] = [];
+    const analyzed = new Set(run.documentIds);
     let failures = 0,
       completed = 0;
     for (const documentId of run.documentIds) {
@@ -146,6 +148,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         signal.throwIfAborted();
         await current();
         const source = await parse(documentId);
+        sourceTexts.push({ documentId, text: source.text });
         // The extraction cache depends on the visual instructions as well as the OCR result.
         const cacheSourceDigest = source.images.length
           ? `vision-${String(visionPromptRevision)}:${source.sourceDigest}`
@@ -232,6 +235,12 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           });
         }
         stage = 'extraction';
+        sourceTexts.push(
+          ...output.visuals.map(({ description }) => ({
+            documentId,
+            text: description,
+          })),
+        );
         const extractionDigest = `extraction-${String(extractionPromptRevision)}:${cacheSourceDigest}`;
         let extracted = await attempt.cached(
           documentId,
@@ -377,6 +386,22 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         });
       }
     }
+    // Upload runs extract only the new batch. Balance freshness also depends on
+    // the recognized documents already attached to the work.
+    const attached = await deps.works.internal.documents(
+      run.workspaceId,
+      run.workId,
+    );
+    for (const { id, deleted, ocrRevision } of attached) {
+      if (deleted || ocrRevision === null || analyzed.has(id)) continue;
+      signal.throwIfAborted();
+      const { text } = await deps.documents.internal.queries.analysis({
+        workspaceId: run.workspaceId,
+        documentId: id,
+        revision: ocrRevision,
+      });
+      sourceTexts.push({ documentId: id, text });
+    }
     await continueSession({
       attempt,
       settingsRevision: revision,
@@ -385,6 +410,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       excludedFields,
       candidates,
       sources,
+      sourceTexts,
       failures,
       completed,
       signal,

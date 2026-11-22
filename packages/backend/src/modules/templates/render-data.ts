@@ -6,7 +6,6 @@ import {
 import {
   bankruptcyCollectionCell,
   employmentStatement,
-  familyStatement,
   formatPreviousNames,
   projectBankruptcyCollections,
   statementDefaults,
@@ -68,11 +67,7 @@ export function templateData(
   const defaults: Record<string, string> = statement
     ? statementDefaults(values)
     : {};
-  if (statement) {
-    Object.assign(values, statementSroValues(values));
-    if (typeof values.familyDetails === 'string')
-      values.familyDetails = familyStatement(values.familyDetails);
-  }
+  if (statement) Object.assign(values, statementSroValues(values));
   const output = emptyFieldValues();
   if (statement)
     values.attachments = attachmentDescriptions(

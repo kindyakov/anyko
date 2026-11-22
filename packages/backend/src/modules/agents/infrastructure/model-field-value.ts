@@ -1,61 +1,117 @@
 import { z } from 'zod';
 
-import { fieldValueSchema } from '../../../profiles/bfl/fields';
+import { creditorRegistryColumns } from '@anyko/document-values/obligations';
 
-const cell = z.strictObject({
-  column: z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/),
-  value: z.string().max(4000).nullable(),
+import { candidateSchema } from '../../../profiles/bfl/candidate';
+import type { FieldDefinition, FieldValue } from '../../../profiles/bfl/fields';
+
+const evidenceEntry = candidateSchema.shape.evidence.element;
+const unpagedEvidence = evidenceEntry.omit({ page: true }).extend({
+  quote: evidenceEntry.shape.quote.min(1),
 });
-type Cell = z.infer<typeof cell>;
+// In strict mode each branch must declare all its properties as required.
+const evidence = z
+  .array(
+    z.union([
+      unpagedEvidence,
+      unpagedEvidence.extend({ page: evidenceEntry.shape.page.unwrap() }),
+    ]),
+  )
+  .min(1)
+  .max(12);
 
-// Strict provider JSON schemas require named properties. Dynamic row
-// objects lose their columns when the SDK closes their schema.
-export const modelFieldValue = z
-  .union([
-    z.string().max(12000),
-    z.array(z.array(cell).min(1).max(100)).max(100),
-  ])
-  .nullable();
+export function modelFields(fields: readonly FieldDefinition[]) {
+  return fields
+    .filter(({ key }) => key !== 'submittedAttachments')
+    .map((field) => ({
+      ...field,
+      columns: field.columns.filter(
+        ({ key }) => !Object.hasOwn(creditorRegistryColumns, key),
+      ),
+    }));
+}
 
-// During tool use, some models omit the outer brackets for a single row.
-export const modelReconciliationFieldValue = z.union([
-  modelFieldValue,
-  z.array(cell).min(1).max(100),
-]);
+export function modelCandidateSchema(
+  fields: readonly FieldDefinition[],
+  reconciliation: boolean,
+) {
+  const common = { evidence };
+  const origin = reconciliation
+    ? {
+        origin: z.enum(['document', 'inference']),
+        explanation: z.string().min(1).max(2000).nullable(),
+      }
+    : {};
+  const textFields = fields.filter(({ kind }) => kind === 'text');
+  const branches = [
+    ...(textFields.length
+      ? [
+          z.strictObject({
+            ...common,
+            ...origin,
+            field: z.enum(textFields.map(({ key }) => key)),
+            value: z.string().min(1).max(12000),
+          }),
+        ]
+      : []),
+    ...fields
+      .filter(({ kind }) => kind === 'rows')
+      .map(({ key, columns }) => {
+        const row = z
+          .array(
+            z.strictObject({
+              column: z.enum(columns.map(({ key }) => key)),
+              value: z.string().max(4000).nullable(),
+            }),
+          )
+          .min(1)
+          .max(columns.length);
+        const isObligation = columns.some(({ key }) => key === 'debtStatus');
+        const rows = z.array(row);
+        return z.strictObject({
+          ...common,
+          ...origin,
+          field: z.enum([key]),
+          value: isObligation
+            ? key === 'businessDebts'
+              ? rows.max(1)
+              : rows.length(1)
+            : rows.max(100),
+        });
+      }),
+  ];
+  return z.union(branches);
+}
 
 export const modelFieldValueInstructions =
-  'Строковое поле верни строкой. Для табличного поля value — массив строк, каждая строка — массив ячеек {"column":"ключ колонки","value":"значение"}, например [[{"column":"amount","value":"100.00"}]]. Неизвестные колонки пропускай. Каждую колонку указывай один раз в строке.';
+  'Строковое поле верни непустой строкой. Табличное value — массив строк, каждая строка — массив ячеек {"column":"ключ колонки","value":"значение"}, например [[{"column":"amount","value":"100.00"}]]. Сохраняй оба уровня массива даже для одной строки. Используй ключи колонок поля, каждый ключ не более одного раза в строке.';
 
-export function decodeModelFieldValue(
-  value: z.infer<typeof modelReconciliationFieldValue>,
-) {
+export const modelQuoteInstructions =
+  'В quote процитируй источник дословно. Сохрани буквы, цифры и знаки. Любая последовательность пробельных символов, включая переводы строк, считается одним пробелом. Указывай page только при известном физическом номере страницы (целое число от 1).';
+
+type ModelValue = z.infer<ReturnType<typeof modelCandidateSchema>>['value'];
+
+export function decodeModelFieldValue(value: ModelValue) {
   if (!Array.isArray(value)) return value;
-  if (value.length === 0) return [];
-  const rows = value.every((row): row is Cell => !Array.isArray(row))
-    ? [value]
-    : value.filter((row): row is Cell[] => Array.isArray(row));
   if (
-    rows.some(
+    value.some(
       (row) => new Set(row.map(({ column }) => column)).size !== row.length,
     )
   )
     return null;
-  return rows.map((row) =>
+  return value.map((row) =>
     Object.fromEntries(row.map(({ column, value }) => [column, value])),
   );
 }
 
-export function decodeReconciliationFieldValue(value: unknown) {
-  const wire = modelReconciliationFieldValue.safeParse(value);
-  if (wire.success) return decodeModelFieldValue(wire.data);
-
-  // Models can echo the row objects shown by readField and previous context.
-  const echoed = fieldValueSchema.safeParse(value);
-  if (
-    echoed.success &&
-    Array.isArray(echoed.data) &&
-    echoed.data.every((row) => Object.keys(row).length > 0)
-  )
-    return echoed.data;
-  return null;
+export function encodeModelFieldValue(
+  value: FieldValue,
+  field: FieldDefinition,
+) {
+  if (!Array.isArray(value)) return value;
+  return value.map((row) =>
+    field.columns.flatMap(({ key }) =>
+      Object.hasOwn(row, key) ? [{ column: key, value: row[key] ?? null }] : [],
+    ),
+  );
 }

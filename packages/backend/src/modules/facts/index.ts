@@ -1,6 +1,7 @@
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
+import type { FactSourceText } from '../../profiles/bfl/automatic-value';
 import type { FieldKey, FieldValues } from '../../profiles/bfl/fields';
 
 import type { FactEvidence } from './domain/values';
@@ -35,6 +36,7 @@ export interface AcceptRunCandidatesInput extends AnalysisFactsRef {
   candidates: WorkFacts['candidates'];
   contextCandidates?: WorkFacts['candidates'];
   passportIds?: ReadonlySet<string>;
+  sourceTexts?: readonly FactSourceText[];
 }
 
 export interface AcceptedRunCandidates {

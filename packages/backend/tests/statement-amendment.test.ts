@@ -29,6 +29,7 @@ test('the cadastral field is enabled only for new-package facts and inventory', 
     realEstate: [
       {
         description: 'Квартира',
+        category: 'квартира',
         address: 'г. Тестовый, ул. Новая, д. 1',
         identifier: '48:08:0000000:9000001',
       },

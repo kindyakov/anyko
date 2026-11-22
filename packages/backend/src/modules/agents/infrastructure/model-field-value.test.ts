@@ -5,24 +5,65 @@ import { z } from 'zod';
 
 import { createModelGateway } from '@anyko/llm';
 
+import { fieldDefinitions } from '../../../profiles/bfl/fields';
+
 import {
   decodeModelFieldValue,
-  decodeReconciliationFieldValue,
-  modelFieldValue,
-  modelReconciliationFieldValue,
+  modelCandidateSchema,
+  modelFields,
 } from './model-field-value';
 
-test('the strict provider schema allows named cells and preserves distinct contract rows', async () => {
-  const rows = [
-    [
-      { column: 'contractNumber', value: 'A-12' },
-      { column: 'amount', value: '145006.47' },
+test('explicit business absence fits the same strict output used by the parser', () => {
+  const schema = modelCandidateSchema(
+    modelFields(fieldDefinitions.filter(({ key }) => key === 'businessDebts')),
+    false,
+  );
+  const candidate = {
+    field: 'businessDebts',
+    value: [],
+    evidence: [
+      {
+        documentId: '01900000-0000-7000-8000-000000000002',
+        imagePath: null,
+        quote:
+          'Предпринимательской деятельностью не занимался, статуса ИП не имел',
+      },
     ],
-    [
-      { column: 'contractNumber', value: 'B-34' },
-      { column: 'amount', value: '15993.53' },
+  };
+  expect(decodeModelFieldValue(schema.parse(candidate).value)).toEqual([]);
+  expect(z.toJSONSchema(schema)).toMatchObject({
+    anyOf: [{ properties: { value: { type: 'array', maxItems: 1 } } }],
+  });
+  expect(
+    schema.safeParse({
+      ...candidate,
+      evidence: [],
+    }).success,
+  ).toBe(false);
+});
+
+test('the strict provider and candidate parser use one row and document columns for each bank obligation', async () => {
+  const fields = modelFields(
+    fieldDefinitions.filter(({ key }) => key === 'debts'),
+  );
+  const candidate = {
+    field: 'debts' as const,
+    origin: 'document' as const,
+    explanation: null,
+    evidence: [
+      {
+        documentId: '01900000-0000-7000-8000-000000000002',
+        imagePath: null,
+        quote: 'Договор № A-12',
+      },
     ],
-  ];
+    value: [
+      [
+        { column: 'contractNumber', value: 'A-12' },
+        { column: 'amount', value: '145006.47' },
+      ],
+    ],
+  };
   let responseFormat: unknown;
   const transport = Object.assign(
     async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
@@ -39,7 +80,7 @@ test('the strict provider schema allows named cells and preserves distinct contr
             index: 0,
             message: {
               role: 'assistant',
-              content: JSON.stringify({ value: rows }),
+              content: JSON.stringify({ candidates: [candidate] }),
             },
             finish_reason: 'stop',
           },
@@ -49,6 +90,8 @@ test('the strict provider schema allows named cells and preserves distinct contr
     },
     { preconnect: fetch.preconnect },
   );
+  const item = modelCandidateSchema(fields, true);
+  const schema = z.strictObject({ candidates: z.array(item) });
   const agent = new Agent({
     id: 'bfl-test',
     name: 'BFL test',
@@ -65,9 +108,11 @@ test('the strict provider schema allows named cells and preserves distinct contr
         tools: false,
         structuredOutput: true,
       },
+      undefined,
+      undefined,
+      schema,
     ),
   });
-  const schema = z.strictObject({ value: modelFieldValue });
   const result = await agent.generate('Test document', {
     maxSteps: 1,
     structuredOutput: { schema },
@@ -79,52 +124,51 @@ test('the strict provider schema allows named cells and preserves distinct contr
       strict: true,
       schema: {
         properties: {
-          value: {
-            anyOf: [
-              {
-                anyOf: [
-                  { type: 'string' },
-                  {
-                    type: 'array',
-                    items: {
+          candidates: {
+            items: {
+              anyOf: [
+                {
+                  properties: {
+                    field: { enum: ['debts'] },
+                    value: {
                       type: 'array',
+                      minItems: 1,
+                      maxItems: 1,
                       items: {
-                        type: 'object',
-                        properties: { column: { type: 'string' }, value: {} },
-                        required: ['column', 'value'],
+                        type: 'array',
+                        items: {
+                          type: 'object',
+                          properties: {
+                            column: {
+                              enum: fields[0]?.columns.map(({ key }) => key),
+                            },
+                            value: {},
+                          },
+                          required: ['column', 'value'],
+                          additionalProperties: false,
+                        },
                       },
                     },
                   },
-                ],
-              },
-              { type: 'null' },
-            ],
+                },
+              ],
+            },
           },
         },
       },
     },
   });
-  expect(decodeModelFieldValue(schema.parse(result.object).value)).toEqual([
+  expect(schema.parse(result.object).candidates).toEqual([candidate]);
+  expect(decodeModelFieldValue(item.parse(candidate).value)).toEqual([
     { contractNumber: 'A-12', amount: '145006.47' },
-    { contractNumber: 'B-34', amount: '15993.53' },
   ]);
-});
-
-test('a reconciliation response with unambiguous flattened cells yields one row', () => {
-  const amount = { column: 'amount', value: '145006.47' };
-  const contract = { column: 'contractNumber', value: 'A-12' };
-  expect(
-    decodeModelFieldValue(
-      modelReconciliationFieldValue.parse([contract, amount]),
-    ),
-  ).toEqual([{ contractNumber: 'A-12', amount: '145006.47' }]);
-  expect(
-    decodeModelFieldValue(
-      modelReconciliationFieldValue.parse([contract, amount, amount]),
-    ),
-  ).toBeNull();
-  expect(decodeReconciliationFieldValue([{ proof: 'Справка № 5417' }])).toEqual(
-    [{ proof: 'Справка № 5417' }],
-  );
-  expect(decodeReconciliationFieldValue([{}])).toBeNull();
+  for (const column of ['creditorShortName', 'creditorLegalName', 'kpp', 'bic'])
+    expect(JSON.stringify(responseFormat)).not.toContain(`"${column}"`);
+  for (const value of [
+    [{ contractNumber: 'A-12', amount: '145006.47' }],
+    [...candidate.value, ...candidate.value],
+    [[{ column: 'creditorShortName', value: 'ТБанк' }]],
+  ]) {
+    expect(item.safeParse({ ...candidate, value }).success).toBe(false);
+  }
 });

@@ -49,8 +49,8 @@ export interface WorkReadContext {
   traceTool?(event: AgentToolEvent): Promise<void>;
 }
 // Bump when the visual instructions change the context passed to extraction.
-export const visionPromptRevision = 2;
-export const extractionPromptRevision = 2;
+export const visionPromptRevision = 3;
+export const extractionPromptRevision = 5;
 
 export interface DocumentAgents {
   ready(): Promise<void>;

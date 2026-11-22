@@ -19,26 +19,84 @@ const candidate = (value: string): WorkFacts['candidates'][number] => ({
     { documentId: crypto.randomUUID(), imagePath: null, quote: value },
   ],
 });
-test('equivalent declarations of unchanged names yield one automatic dash', () => {
-  const sources: WorkFacts['candidates'] = [
-    'ФИО не менялись',
-    'Не меняла',
-    'Фамилия, имя и отчество не изменялись',
-    'Не изменял',
-  ].map((value) => ({ ...candidate(value), field: 'previousNames' }));
-  const facts = mergeCandidates(emptyFacts(), sources, false);
-  expect(facts.values.previousNames).toBe('-');
+
+test('separates same-code payments only when both have their own cited lines', () => {
+  const first = {
+    employer: 'ООО Пример',
+    month: '2026-01',
+    code: '2000',
+    amount: '100.00',
+  };
+  const second = { ...first, amount: '200.00' };
+  const quote = 'ООО Пример\n2026-01 | 2000 | 100.00\n2026-01 | 2000 | 200.00';
+  const rows = {
+    field: 'employmentIncome' as const,
+    value: [
+      { ...first, sourceLine: '2026-01 | 2000 | 100.00' },
+      { ...second, sourceLine: '2026-01 | 2000 | 200.00' },
+    ],
+    evidence: [{ documentId: crypto.randomUUID(), imagePath: null, quote }],
+  };
+  expect(
+    mergeCandidates(emptyFacts(), [rows], false).values.employmentIncome,
+  ).toEqual(rows.value);
+  const unresolved = { ...rows, value: [first, second] };
+  const result = mergeCandidates(emptyFacts(), [unresolved], false);
+  expect(result.values.employmentIncome).toBeNull();
+  expect(result.candidates).toEqual([unresolved]);
+  const duplicatedInvoice = {
+    ...rows,
+    value: [{ ...first, sourceLine: '2026-01 | 2000 | 100,00' }],
+    evidence: [
+      {
+        documentId: crypto.randomUUID(),
+        imagePath: null,
+        quote: 'ООО Пример\n2026-01 | 2000 | 100,00',
+      },
+    ],
+  };
+  expect(
+    mergeCandidates(emptyFacts(), [rows, duplicatedInvoice], false).values
+      .employmentIncome,
+  ).toBeNull();
+});
+test('compares equivalent declarations of unchanged names while saving the first original wording', () => {
+  const sources = [
+    'Фамилия, имя и отчество не менялись.',
+    'Фамилию, имя и отчество не изменял.',
+  ].map((value) => ({ ...candidate(value), field: 'previousNames' as const }));
+  const passportIds = new Set(
+    sources
+      .slice(1)
+      .flatMap(({ evidence }) => evidence.map(({ documentId }) => documentId)),
+  );
+  const facts = mergeCandidates(
+    emptyFacts(),
+    sources,
+    false,
+    false,
+    undefined,
+    passportIds,
+  );
+  expect(facts.values.previousNames).toBe(
+    'Фамилия, имя и отчество не менялись.',
+  );
   expect(facts.candidates).toEqual(sources);
   expect(findFactDiscrepancies(facts)).toEqual([]);
   expect(markSelectedCandidates(facts).map(({ selected }) => selected)).toEqual(
-    [true, true, true, true],
+    [true, true],
   );
+  const reviewed = editFacts(facts, {
+    previousNames: 'Фамилию, имя и отчество не изменял.',
+  });
+  expect(findFactDiscrepancies(reviewed)).toEqual([]);
+  const contradictory = {
+    ...candidate('Петров'),
+    field: 'previousNames' as const,
+  };
   expect(
-    mergeCandidates(
-      emptyFacts(),
-      [...sources, { ...candidate('Петров'), field: 'previousNames' }],
-      false,
-    ).values.previousNames,
+    mergeCandidates(emptyFacts(), [...sources, contradictory], false).values
+      .previousNames,
   ).toBeNull();
 });
 
@@ -358,7 +416,7 @@ test('does not autofill an unsupported identifier, date or an amount from a diff
   expect(result.values.birthDate).toBeNull();
   expect(result.values.snils).toBe('112-233-445 95');
   expect(result.values.debtTotal).toBe('5200.10');
-  expect(result.values.debts).toEqual([{ name: 'Банк Б', basis: 'Договор Б' }]);
+  expect(result.values.debts).toBeNull();
   expect(result.candidates).toHaveLength(5);
 });
 
@@ -452,7 +510,7 @@ test.each([
   expect(saved.candidates).toHaveLength(1);
 });
 
-test('confirming a suggested table without a supported amount only compares the saved columns', () => {
+test('a table with an unsupported amount stays a complete proposal', () => {
   const saved = mergeCandidates(
     emptyFacts(),
     [
@@ -470,7 +528,10 @@ test('confirming a suggested table without a supported amount only compares the 
     ],
     false,
   );
-  expect(saved.values.debts).toEqual([{ name: 'Банк А', basis: 'Договор А' }]);
+  expect(saved.values.debts).toBeNull();
+  expect(saved.candidates[0]?.value).toEqual([
+    { name: 'Банк А', basis: 'Договор А', amount: '100.00' },
+  ]);
   expect(findFactDiscrepancies(confirmFacts(saved))).toEqual([]);
 });
 
@@ -533,13 +594,10 @@ test('selection follows contributing cells and the same row identity after manua
     ],
     false,
   );
-  expect(extracted.values.debts).toEqual([
-    { ...first, arrears: '50.00' },
-    second,
-  ]);
+  expect(extracted.values.debts).toEqual([{ ...first, arrears: '50.00' }]);
   expect(
     markSelectedCandidates(extracted).map(({ selected }) => selected),
-  ).toEqual([true, true]);
+  ).toEqual([false, true]);
   const manuallyEdited = editFacts(extracted, {
     ...extracted.values,
     debts: [{ ...first, arrears: '25.00' }],
@@ -647,8 +705,8 @@ test('an unsupported table amount is not selected when a different amount was sa
     ],
     false,
   );
-  expect(extracted.values.debts).toEqual([row]);
-  expect(markSelectedCandidates(extracted)[0]?.selected).toBe(true);
+  expect(extracted.values.debts).toBeNull();
+  expect(markSelectedCandidates(extracted)[0]?.selected).toBe(false);
   const revised = editFacts(extracted, {
     ...extracted.values,
     debts: [{ ...row, amount: '150.00' }],

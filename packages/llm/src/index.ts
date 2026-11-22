@@ -146,6 +146,7 @@ export function createModelGateway(
       selection: ModelSelection,
       observe?: ProviderCallObserver,
       trace?: ReturnType<typeof createLocalModelTrace>,
+      outputSchema?: z.ZodType,
     ) {
       const parsedConnection = connectionSchema.safeParse(connection);
       const parsedModel = modelSchema.safeParse(selection);
@@ -161,6 +162,9 @@ export function createModelGateway(
         ? observeProviderFetch(transport ?? baseFetch, observe)
         : transport;
       const traced = trace ? trace.wrap(observed ?? baseFetch) : observed;
+      const schema = outputSchema
+        ? z.toJSONSchema(outputSchema, { target: 'draft-07', io: 'input' })
+        : undefined;
       return createOpenAICompatible({
         name: config.id,
         baseURL: config.baseURL,
@@ -168,6 +172,26 @@ export function createModelGateway(
         supportsStructuredOutputs: parsedModel.data.structuredOutput,
         ...(idleTimeoutMs && { includeUsage: true }),
         ...(traced ? { fetch: traced } : {}),
+        // Keep the native contract identical to the application schema. Agent
+        // SDK compatibility converts bounds such as minimum and minItems to prose.
+        ...(schema && {
+          transformRequestBody: (body) => {
+            if (body.response_format === undefined) return body;
+            const format = z
+              .object({
+                type: z.literal('json_schema'),
+                json_schema: z.object({ name: z.string() }),
+              })
+              .parse(body.response_format);
+            return {
+              ...body,
+              response_format: {
+                type: format.type,
+                json_schema: { ...format.json_schema, strict: true, schema },
+              },
+            };
+          },
+        }),
       }).chatModel(parsedModel.data.id);
     },
   };

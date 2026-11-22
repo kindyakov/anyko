@@ -8,7 +8,6 @@ import type {
 import { attachmentDescriptions } from '@anyko/document-values/attachments';
 import {
   employmentStatement,
-  familyStatement,
   formatPreviousNames,
   projectBankruptcyCollections,
   statementDefaultValue,
@@ -108,7 +107,6 @@ export function previewDocumentValues(
     defaultText: (key: string) =>
       statement ? statementDefaultValue(values, key) : undefined,
     translatedText: (key: string, value: string) => {
-      if (statement && key === 'familyDetails') return familyStatement(value);
       if (
         (version === 'bfl-creditors-v3' || version === 'bfl-inventory-v2') &&
         key === 'previousNames'

@@ -9,6 +9,8 @@ import {
 import type { WorkReadContext } from '..';
 import { fieldKeySchema } from '../../../profiles/bfl/fields';
 
+import type { encodeModelFieldValue } from './model-field-value';
+
 const maxReads = 24;
 const readLimitResponse = { status: 'read_limit_reached' } as const;
 const readLimitSchema = z.object({
@@ -26,6 +28,7 @@ export function createWorkReadTools(
     documents: { id: string; filename?: string; images?: string[] }[];
     listSourceMetadata?: boolean;
     listSourceImages?(documentId: string): Promise<string[]>;
+    encodeValue?: typeof encodeModelFieldValue;
   },
 ) {
   const { signal } = input;
@@ -76,9 +79,23 @@ export function createWorkReadTools(
         const definition = input.fields.find(({ key }) => key === field);
         if (!definition) throw new Error('FIELD_NOT_ALLOWED');
         const facts = (await input.currentFacts?.()) ?? input.facts;
+        const { encodeValue } = input;
+        const candidatesForField = (candidates: typeof input.candidates) =>
+          candidates
+            .filter((candidate) => candidate.field === field)
+            .map((candidate) =>
+              encodeValue
+                ? {
+                    ...candidate,
+                    value: encodeValue(candidate.value, definition),
+                  }
+                : candidate,
+            );
         const text = JSON.stringify({
           definition,
-          value: facts.values[field],
+          value: encodeValue
+            ? encodeValue(facts.values[field], definition)
+            : facts.values[field],
           manual: facts.manual.includes(field),
           confirmed: facts.confirmed.includes(field),
           ...(field === 'employmentIncome' &&
@@ -89,8 +106,8 @@ export function createWorkReadTools(
                 facts.needsReview,
               ),
             }),
-          candidates: input.candidates.filter((c) => c.field === field),
-          savedCandidates: facts.candidates.filter((c) => c.field === field),
+          candidates: candidatesForField(input.candidates),
+          savedCandidates: candidatesForField(facts.candidates),
         });
         const end = Math.min(text.length, offset + input.pageCharacters);
         return {

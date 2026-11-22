@@ -1,5 +1,3 @@
-import { canonicalCalendarDate } from './calendar-date';
-
 export const submittedAttachmentsField = 'submittedAttachments';
 export const attachmentCopyKinds = {
   paperOriginal: 'Бумажный оригинал',
@@ -103,46 +101,4 @@ export function attachmentDescriptions(
       },
     ];
   });
-}
-
-export function debtAttachmentDescription(row: AttachmentRow) {
-  const number = row.contractNumber?.trim().replace(/^№\s*/u, '');
-  const creditor = (row.creditorShortName || row.name)?.trim();
-  const citedDate = row.proof?.match(
-    /(?:выдан[ао]?|дата выдачи)\s*[:–—-]?\s*(?:от\s+)?(\d{2}\.\d{2}\.\d{4})/iu,
-  )?.[1];
-  const genericDate = row.proof?.match(
-    /^(?:(?!договор).)*?\sот\s+(\d{2}\.\d{2}\.\d{4})/iu,
-  )?.[1];
-  const fallbackDate = canonicalCalendarDate(genericDate ?? '');
-  const date =
-    canonicalCalendarDate(citedDate ?? '') ??
-    (fallbackDate === canonicalCalendarDate(row.contractDate ?? '')
-      ? undefined
-      : fallbackDate);
-  if (!number || !creditor) return row.proof?.trim();
-  if (row.proof && !/справк/iu.test(row.proof)) return row.proof.trim();
-  const type = row.type?.toLowerCase() ?? '';
-  const basis = /за[её]м|займ/u.test(type)
-    ? 'по договору займа'
-    : /кредитн[а-яё]* карт/u.test(type)
-      ? 'по договору кредитной карты'
-      : /кредит/u.test(type)
-        ? 'по кредитному договору'
-        : 'по договору';
-  // Decline the leading bank noun; quoted names and legal form abbreviations are preserved.
-  const instrumental = /^банк\s/iu.test(creditor)
-    ? 'с ' + creditor.replace(/^банк/iu, 'Банком')
-    : /^сбербанк(?=\s|$)/iu.test(creditor)
-      ? 'со ' + creditor.replace(/^сбербанк/iu, 'Сбербанком')
-      : /^(?:ПАО|АО|ООО|МКК|МФК)\s/iu.test(creditor)
-        ? 'с ' + creditor
-        : `с кредитором «${creditor}»`;
-  const title = row.proof
-    ? 'Справка о размере задолженности'
-    : 'Документ, подтверждающий задолженность';
-  const certificateNumber = row.proof?.match(
-    /(?:^\s*справка(?:(?!договор|по\s+(?:кредит|займ|за[её]м))[^№\n,;])*№|(?:№|номер)\s*справки\s*[:№]?)\s*([\p{L}\p{N}]+(?:[-–—./][\p{L}\p{N}]+)*)/iu,
-  )?.[1];
-  return `${title}${certificateNumber ? ` № ${certificateNumber}` : ''} ${basis} № ${number} ${instrumental}${date ? ` от ${date}` : ''}`;
 }

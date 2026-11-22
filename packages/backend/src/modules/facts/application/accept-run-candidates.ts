@@ -1,8 +1,12 @@
+import { ZodError } from 'zod';
+
 import type {
   AcceptedRunCandidates,
   AcceptRunCandidatesInput,
   FactsStore,
 } from '..';
+import { debtSourceChecks } from '../../../profiles/bfl/automatic-value';
+import { usesBankObligations } from '../../../profiles/bfl/reconcile-obligations';
 import { candidateIdentity, combineCandidates } from '../domain/candidates';
 import {
   findFactDiscrepancies,
@@ -22,6 +26,7 @@ export const acceptRunCandidates =
     confirmed,
     preserveExisting,
     passportIds,
+    sourceTexts,
   }: AcceptRunCandidatesInput): Promise<AcceptedRunCandidates> => {
     const existing = await store.get(workspaceId, workId);
     if (excludedFields?.size) {
@@ -42,10 +47,21 @@ export const acceptRunCandidates =
         selected = combineCandidates(selected, contextCandidates);
         contextAccepted = true;
       }
-    } catch {
+    } catch (error) {
+      if (
+        !(error instanceof ZodError) ||
+        error.issues.length !== 1 ||
+        error.issues[0]?.code !== 'too_big' ||
+        error.issues[0].origin !== 'array' ||
+        error.issues[0].path.length !== 0
+      )
+        throw error;
       // При выходе за бюджет остаётся последняя принятая группа кандидатов.
     }
 
+    const sourceChecks = sourceTexts?.length
+      ? debtSourceChecks(sourceTexts)
+      : undefined;
     const next = mergeCandidates(
       existing,
       selected,
@@ -53,12 +69,19 @@ export const acceptRunCandidates =
       preserveExisting,
       excludedFields,
       passportIds,
+      sourceChecks,
+      sourceTexts,
     );
     if (!contextAccepted) {
       // Необязательная стадия не стирает известные значения без новых кандидатов.
       for (const field of fields) {
-        if (!selected.some((candidate) => candidate.field === field))
-          next.values[field] = existing.values[field];
+        const saved = existing.values[field];
+        const stale =
+          usesBankObligations(field, [saved]) &&
+          Array.isArray(saved) &&
+          saved.some((row) => sourceChecks?.hasNewerBalance(row));
+        if (!stale && !selected.some((candidate) => candidate.field === field))
+          next.values[field] = saved;
       }
     }
     await store.save(workspaceId, workId, next);

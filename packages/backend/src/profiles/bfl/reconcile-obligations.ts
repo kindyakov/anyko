@@ -12,7 +12,12 @@ import {
   sameObligation,
 } from '@anyko/document-values/obligations';
 
-import { automaticValue, hasUnambiguousBalanceDate } from './automatic-value';
+import {
+  automaticValue,
+  type debtSourceChecks,
+  type FactSourceText,
+  hasUnambiguousBalanceDate,
+} from './automatic-value';
 import type { candidateSchema } from './candidate';
 import type { FieldRow, FieldValue } from './fields';
 import { isKnownObligationType } from './obligation-type';
@@ -120,16 +125,29 @@ export function containsObligations(saved: FieldValue, proposed: FieldValue) {
 export function reconcileObligations(
   saved: FieldValue,
   candidates: Candidate[],
-): FieldValue {
+  sourceChecks?: ReturnType<typeof debtSourceChecks>,
+  sourceTexts?: readonly FactSourceText[],
+): { value: FieldValue; missingCurrentBalance: boolean } {
   const previous = Array.isArray(saved) ? saved : [];
+  const stale = previous.filter((row) => sourceChecks?.hasNewerBalance(row));
   const groups: FieldRow[][] = [];
   const sources = new Map<FieldRow, Candidate['evidence']>();
   let observedAbsence = false;
   for (const candidate of candidates) {
-    const proposal = automaticValue(candidate);
+    const proposal = automaticValue(candidate, sourceTexts);
     if (!Array.isArray(proposal)) continue;
     if (!proposal.length) observedAbsence = true;
     for (const row of proposal) {
+      if (sourceChecks?.hasNewerBalance(row)) {
+        stale.push(row);
+        continue;
+      }
+      if (
+        isBankObligation(row) &&
+        sourceChecks &&
+        !sourceChecks.supportsBalance(row, candidate.evidence)
+      )
+        continue;
       sources.set(row, candidate.evidence);
       const group = groups.find(
         ([first]) => first && sameObligation(first, row),
@@ -143,7 +161,9 @@ export function reconcileObligations(
   for (const group of groups) {
     const first = group[0];
     if (!first) continue;
-    const old = previous.find((row) => sameObligation(row, first));
+    const old = previous.find(
+      (row) => !stale.includes(row) && sameObligation(row, first),
+    );
     const observations = old ? [...group, old] : group;
     const closure = group.find(
       (row) =>
@@ -187,5 +207,14 @@ export function reconcileObligations(
     );
   }
 
-  return accepted.length ? accepted : observedAbsence ? [] : null;
+  if (
+    stale.some(
+      (row) => !accepted.some((current) => sameObligation(row, current)),
+    )
+  )
+    return { value: null, missingCurrentBalance: true };
+  return {
+    value: accepted.length ? accepted : observedAbsence ? [] : null,
+    missingCurrentBalance: false,
+  };
 }

@@ -1,6 +1,5 @@
 import { formatPreviousNames } from '@anyko/document-values/bankruptcy-projection';
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
-import { employmentFields } from '@anyko/document-values/employment';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
 import {
   containsCreditorRegistryCandidate,
@@ -11,6 +10,8 @@ import { comparableText } from '@anyko/document-values/text-value';
 
 import {
   automaticValue,
+  type debtSourceChecks,
+  type FactSourceText,
   valueWithRemainingEvidence,
 } from '../../../profiles/bfl/automatic-value';
 import {
@@ -53,6 +54,8 @@ export function mergeCandidates(
   preserveExisting = false,
   excludedFields?: ReadonlySet<Candidate['field']>,
   passportIds?: ReadonlySet<string>,
+  sourceChecks?: ReturnType<typeof debtSourceChecks>,
+  sourceTexts?: readonly FactSourceText[],
 ): WorkFacts {
   const values = { ...current.values };
   const confirmedFields = new Set(current.confirmed);
@@ -68,17 +71,22 @@ export function mergeCandidates(
       continue;
     const proposals = candidates.filter((candidate) => candidate.field === key);
     const found = proposals.filter(({ origin }) => origin !== 'inference');
-    if (!found.length && proposals.length) continue;
     if (usesBankObligations(key, [saved, ...found.map(({ value }) => value)])) {
-      const proposed = reconcileObligations(saved, found);
-      if (preserveExisting && Array.isArray(saved)) {
+      const { value: proposed, missingCurrentBalance } = reconcileObligations(
+        saved,
+        found,
+        sourceChecks,
+        sourceTexts,
+      );
+      if (preserveExisting && Array.isArray(saved) && !missingCurrentBalance) {
         values[key] = [
           ...saved.map((old) =>
             Array.isArray(proposed)
               ? (proposed.find(
                   (row) =>
                     sameObligation(old, row) &&
-                    (supersedesObligation(row, old) ||
+                    (sourceChecks?.hasNewerBalance(old) ||
+                      supersedesObligation(row, old) ||
                       fillsObligationType(row, old)),
                 ) ?? old)
               : old,
@@ -94,15 +102,20 @@ export function mergeCandidates(
       }
       continue;
     }
+    if (!found.length && proposals.length) continue;
+    const supported = found
+      .map((candidate) => ({
+        value: automaticValue(candidate, sourceTexts),
+        evidence: candidate.evidence,
+      }))
+      .filter(({ value }) => value !== null);
     const proposed =
-      key === 'citizenship' || employmentFields.some((field) => field === key)
-        ? reconcile(
+      key === 'employmentIncome' && ambiguousIncome(supported)
+        ? null
+        : reconcile(
             key,
-            found.map(automaticValue).filter((value) => value !== null),
-          )
-        : reconcileCandidates(key, found) === null
-          ? null
-          : reconcileCandidates(key, found, automaticValue);
+            supported.map(({ value }) => value),
+          );
     const passport = preferredPassportValue(key, proposed, found, passportIds);
     if (preserveExisting && saved !== null) {
       if (Array.isArray(saved) && Array.isArray(proposed))
@@ -131,6 +144,7 @@ function preferredPassportValue(
   if (
     !passportIds?.size ||
     typeof proposed !== 'string' ||
+    key === 'previousNames' ||
     isCalendarDateField(key) ||
     isRublesField(key)
   )
@@ -189,12 +203,13 @@ export function findFactDiscrepancies(current: WorkFacts) {
       if (manual && saved === null) return true;
       if (saved === null) return false;
 
-      const comparableSaved = comparableFactValue(reconcile(key, [saved]));
+      const comparableSaved = comparableFactValue(key, reconcile(key, [saved]));
       if (
-        comparableFactValue(original) === comparableSaved ||
+        comparableFactValue(key, original) === comparableSaved ||
         candidates.some(
           ({ value }) =>
-            comparableFactValue(reconcile(key, [value])) === comparableSaved,
+            comparableFactValue(key, reconcile(key, [value])) ===
+            comparableSaved,
         )
       )
         return false;
@@ -203,7 +218,7 @@ export function findFactDiscrepancies(current: WorkFacts) {
         documentCandidates,
         automaticValue,
       );
-      return comparableFactValue(automatic) !== comparableSaved;
+      return comparableFactValue(key, automatic) !== comparableSaved;
     })
     .map(({ key }) => key);
 }
@@ -224,7 +239,6 @@ export function markSelectedCandidates({
         : usesBankObligations(field, [saved, value])
           ? matchesObligationCandidate(saved, candidate)
           : includesFactValue(field, saved, value) ||
-            // Автозаполнение может опустить ячейку. Оно не скрывает сохранённое противоречие.
             (candidate.origin !== 'inference' &&
               (field === 'citizenship' ||
                 reconcile(field, [saved, value]) !== null) &&
@@ -254,13 +268,12 @@ function includesFactValue(
 ) {
   if (!Array.isArray(saved) || !Array.isArray(proposed))
     return (
-      comparableFactValue(
-        key === 'previousNames' ? reconcile(key, [saved]) : saved,
-      ) === comparableFactValue(reconcile(key, [proposed]))
+      comparableFactValue(key, saved) ===
+      comparableFactValue(key, reconcile(key, [proposed]))
     );
   return (
-    comparableFactValue(reconcile(key, [saved, proposed])) ===
-    comparableFactValue(saved)
+    comparableFactValue(key, reconcile(key, [saved, proposed])) ===
+    comparableFactValue(key, saved)
   );
 }
 
@@ -274,8 +287,14 @@ function reconcileCandidates(
   return reconcile(key, candidates.map(valueOf));
 }
 
-function comparableFactValue(value: FieldValue): string {
-  if (typeof value === 'string') return stable(comparableText(value));
+function comparableScalar(key: string, value: string): string {
+  return comparableText(
+    key === 'previousNames' ? formatPreviousNames(value) : value,
+  );
+}
+
+function comparableFactValue(key: string, value: FieldValue): string {
+  if (typeof value === 'string') return stable(comparableScalar(key, value));
   return Array.isArray(value)
     ? JSON.stringify(value.map((row) => stable([row])).sort())
     : stable(value);
@@ -335,18 +354,7 @@ function supportedParts(
   const proposals = candidates
     .filter((candidate) => candidate.field === field)
     .map((candidate) => {
-      if (reduced?.has(candidate))
-        return valueWithRemainingEvidence(
-          reviewed
-            ? {
-                ...candidate,
-                evidence: candidate.evidence.map((entry) => ({
-                  ...entry,
-                  imagePath: null,
-                })),
-              }
-            : candidate,
-        );
+      if (reduced?.has(candidate)) return valueWithRemainingEvidence(candidate);
       return reviewed ? candidate.value : automaticValue(candidate);
     });
   if (!Array.isArray(saved)) {
@@ -454,6 +462,36 @@ function comparableRow(field: string, row: FieldRow): FieldRow {
     ]),
   );
 }
+function ambiguousIncome(
+  values: { value: FieldValue; evidence: Candidate['evidence'] }[],
+): boolean {
+  const seen = new Map<string, Set<string>>();
+  return values.some(
+    ({ value, evidence }) =>
+      Array.isArray(value) &&
+      value.some((row) => {
+        const payment = JSON.stringify([
+          comparableText(row.employer ?? ''),
+          row.month?.trim(),
+          row.code?.trim() ?? '',
+        ]);
+        const line = row.sourceLine?.trim() ?? '';
+        const documents = line
+          ? evidence
+              .filter(({ quote }) => quote.includes(line))
+              .map(({ documentId }) => documentId)
+          : [];
+        const prior = seen.get(payment);
+        const common = prior
+          ? documents.filter((id) => prior.has(id))
+          : documents;
+        if (prior && !common.length) return true;
+        seen.set(payment, new Set(common));
+        return false;
+      }),
+  );
+}
+
 function reconcile(key: string, found: FieldValue[]): FieldValue {
   if (!found.length) return null;
   const isRows = (value: FieldValue): value is FieldRow[] =>
@@ -466,11 +504,9 @@ function reconcile(key: string, found: FieldValue[]): FieldValue {
         ? canonicalCalendarDate(value)
         : isRublesField(key)
           ? canonicalMoneyAmount(value)
-          : key === 'previousNames'
-            ? formatPreviousNames(value)
-            : value;
+          : value;
       if (canonical === undefined) continue;
-      const comparable = comparableText(canonical);
+      const comparable = comparableScalar(key, canonical);
       if (!distinct.has(comparable)) distinct.set(comparable, canonical);
     }
     return distinct.size === 1
@@ -488,9 +524,16 @@ function reconcile(key: string, found: FieldValue[]): FieldValue {
       const row = comparableRow(key, supplied);
       const identity = fieldIdentity(key);
       const id =
-        identity.length && identity.every((column) => row[column]?.trim())
-          ? JSON.stringify(identity.map((column) => row[column]?.trim()))
-          : stable([row]);
+        key === 'employmentIncome'
+          ? JSON.stringify([
+              row.employer?.trim(),
+              row.month?.trim(),
+              row.code?.trim() ?? '',
+              row.sourceLine?.trim() ?? '',
+            ])
+          : identity.length && identity.every((column) => row[column]?.trim())
+            ? JSON.stringify(identity.map((column) => row[column]?.trim()))
+            : stable([row]);
       const previous = rows.get(id);
       if (
         previous &&

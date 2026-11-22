@@ -9,6 +9,7 @@ import { candidatesForContext, type WorkFacts } from '../../modules/facts';
 import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
+import type { FactSourceText } from '../../profiles/bfl/automatic-value';
 import type { FieldKey } from '../../profiles/bfl/fields';
 import type { WorkDependencies } from '../work-dependencies';
 import { logWorkFailure } from '../work-execution/failure';
@@ -20,13 +21,9 @@ import {
   type ChecklistAnalysisSource,
   validateChecklistSuggestions,
 } from './checklist-suggestions';
-import {
-  passportCitizenshipCandidates,
-  passportSourceIds,
-} from './identity-sources';
+import { passportSourceIds } from './identity-sources';
 import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
-import { withEgrnCadastre } from './property-sources';
 
 export interface ContinuationSource extends ChecklistAnalysisSource {
   filename: string;
@@ -45,6 +42,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
     excludedFields?: ReadonlySet<FieldKey> | undefined;
     candidates: WorkFacts['candidates'];
     sources: ContinuationSource[];
+    sourceTexts: readonly FactSourceText[];
     failures: number;
     completed: number;
     signal: AbortSignal;
@@ -80,31 +78,14 @@ export function createWorkContinuation(deps: WorkDependencies) {
         },
         input.signal,
       );
-      const extracted = input.fields.some(
-        ({ key, columns }) =>
-          key === 'realEstate' &&
-          columns.some(({ key }) => key === 'identifier'),
-      )
-        ? withEgrnCadastre(input.candidates, input.sources)
-        : input.candidates;
       const found = candidatesForContext(
-        input.fields.some(({ key }) => key === 'citizenship')
-          ? [
-              ...extracted,
-              ...locateEvidence(
-                passportCitizenshipCandidates(input.sources),
-                input.sources,
-              ),
-            ]
-          : extracted,
+        input.candidates,
         snapshot.facts.candidates,
         run.documentIds,
         input.sources.map(({ id }) => id),
       );
       const submitted = hasSubmittedAttachments(input.fields);
-      const candidates = submitted
-        ? attachmentAnalysis(found, [], input.sources)
-        : found;
+      const candidates = submitted ? attachmentAnalysis(found) : found;
       let output:
         Awaited<ReturnType<typeof deps.agents.model.reconcile>> | undefined;
       const historyRef = {
@@ -257,6 +238,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
               preserveExisting: run.automaticUpload === true,
               candidates,
               passportIds: passportSourceIds(input.sources),
+              sourceTexts: input.sourceTexts,
               ...(validOutput && { contextCandidates: validOutput.candidates }),
             });
             if (!acceptedFacts.contextAccepted) validOutput = undefined;
@@ -274,16 +256,23 @@ export function createWorkContinuation(deps: WorkDependencies) {
                     row.ocrRevision === source.ocrRevision,
                 ),
               );
-              await works.replaceChecklistSuggestions(
-                run.workspaceId,
-                run.workId,
-                sources.map(({ id }) => id),
+              const { links, rejectedDocumentIds } =
                 validateChecklistSuggestions(
                   snapshot.requirements,
                   sources,
                   suggestions,
-                ),
-              );
+                );
+              if (!suggestions.length || links.length)
+                await works.replaceChecklistSuggestions(
+                  run.workspaceId,
+                  run.workId,
+                  sources
+                    .map(({ id }) => id)
+                    .filter((id) => !rejectedDocumentIds.has(id)),
+                  links.filter(
+                    ({ documentId }) => !rejectedDocumentIds.has(documentId),
+                  ),
+                );
             }
             await sessions.history.outcome(historyRef, {
               ...interaction,

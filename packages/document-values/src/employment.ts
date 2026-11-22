@@ -68,8 +68,10 @@ function incomeByMonth(
   worked: ReadonlyMap<string, WorkedMonth>,
   year: string,
 ) {
-  const income = new Map<string, { code: string; amount: bigint }[]>();
-  const entries = new Map<string, bigint>();
+  const income = new Map<
+    string,
+    { code: string; amount: bigint; sourceLine?: string }[]
+  >();
   let incomplete = false;
   if (!rows || typeof rows === 'string') return { income, incomplete: true };
   for (const row of rows) {
@@ -89,15 +91,21 @@ function incomeByMonth(
     }
     const kopecks = BigInt(amount.replace('.', ''));
     const code = row.code?.trim() ?? '';
-    const entry = JSON.stringify([key, code]);
-    const already = entries.get(entry);
-    if (already !== undefined) {
-      if (already !== kopecks) incomplete = true;
-      continue;
-    }
-    entries.set(entry, kopecks);
     const monthIncome = income.get(key) ?? [];
-    monthIncome.push({ code, amount: kopecks });
+    const sourceLine = row.sourceLine?.trim();
+    if (
+      monthIncome.some(
+        (prior) =>
+          prior.code === code &&
+          (!sourceLine || !prior.sourceLine || prior.sourceLine === sourceLine),
+      )
+    )
+      incomplete = true;
+    monthIncome.push({
+      code,
+      amount: kopecks,
+      ...(sourceLine && { sourceLine }),
+    });
     income.set(key, monthIncome);
   }
   return { income, incomplete };

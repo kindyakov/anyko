@@ -45,6 +45,7 @@ const failureCodes = new Map([
   ['LLM_UNAVAILABLE', 'OCR_PROCESSOR_UNAVAILABLE'],
   ['LLM_RATE_LIMITED', 'OCR_VISION_RATE_LIMITED'],
   ['LLM_INVALID_RESPONSE', 'OCR_INVALID_RESULT'],
+  ['LLM_COMPLETION_LIMIT', 'OCR_INVALID_RESULT'],
   ['OCR_NO_READABLE_TEXT', 'OCR_NO_READABLE_TEXT'],
 ]);
 export function createDocumentOcrWorkflow(options: {

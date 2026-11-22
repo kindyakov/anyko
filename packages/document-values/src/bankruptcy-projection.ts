@@ -9,6 +9,7 @@ import type { assessEmployment } from './employment';
 import { canonicalMoneyAmount, formatMoneyAmount } from './money';
 import {
   groupCreditorObligations,
+  hasOverlappingObligations,
   obligationAmounts,
   obligationTemplate,
 } from './obligations';
@@ -43,7 +44,7 @@ export function projectBankruptcyCollections(
     return { debts, businessDebts, creditorHeaders, total, totalWords };
   const isCreditorList = version.startsWith('bfl-creditors-');
   const grouped = version === 'bfl-creditors-v3';
-  const rows = (entries: Row[] | null): Row[] => {
+  const rows = (entries: Row[] | null, other: Row[] | null): Row[] => {
     if (isCreditorList && !entries?.length)
       return [
         Object.fromEntries(
@@ -65,7 +66,8 @@ export function projectBankruptcyCollections(
           ]),
         ),
       ];
-    const projected = grouped && entries ? groupDebtRows(entries) : entries;
+    const projected =
+      grouped && entries ? groupDebtRows(entries, other ?? []) : entries;
     return (
       projected?.map((row) => ({
         ...formatCreditor(row),
@@ -77,8 +79,8 @@ export function projectBankruptcyCollections(
     );
   };
   return {
-    debts: rows(debts),
-    businessDebts: rows(businessDebts),
+    debts: rows(debts, businessDebts),
+    businessDebts: rows(businessDebts, debts),
     creditorHeaders: creditorHeaders.map<Row>((row) => {
       const name = displayCreditorName(row.name);
       const short = displayCreditorName(row.creditorShortName);
@@ -92,12 +94,24 @@ export function projectBankruptcyCollections(
   };
 }
 
-function groupDebtRows(rows: Row[]): Row[] {
+function groupDebtRows(rows: Row[], other: readonly Row[]): Row[] {
   return groupCreditorObligations(rows).map((group) => {
     const first = group[0];
+    const agreed = (key: string) => {
+      const distinct = new Set(
+        group.flatMap((row) => (row[key]?.trim() ? [row[key]] : [])),
+      );
+      return distinct.size === 1
+        ? (distinct.values().next().value ?? null)
+        : null;
+    };
     const types = new Map<string, string>();
     let cents = 0n;
-    let amountKnown = true;
+    let amountKnown =
+      !hasOverlappingObligations(group) &&
+      !group.some((row) =>
+        other.some((entry) => hasOverlappingObligations([row, entry])),
+      );
     for (const row of group) {
       if (row.type?.trim()) types.set(comparableText(row.type), row.type);
       const amount = canonicalMoneyAmount(row.amount ?? '');
@@ -106,11 +120,8 @@ function groupDebtRows(rows: Row[]): Row[] {
     }
     return {
       ...first,
-      name:
-        group.find((row) => row.creditorLegalName)?.creditorLegalName ??
-        first?.name ??
-        null,
-      address: group.find((row) => row.address)?.address ?? null,
+      name: agreed('creditorLegalName') ?? agreed('name'),
+      address: agreed('address'),
       type: types.size ? [...types.values()].join('; ') : null,
       basis: group.map((row) => contractNarrative(row, 'creditors')).join('; '),
       amount: amountKnown
@@ -122,7 +133,7 @@ function groupDebtRows(rows: Row[]): Row[] {
 
 export function formatPreviousNames(value: string): string {
   const text = comparableText(value);
-  return /^(?:[-–—]|(?:(?:фио|фамилия(?:, имя(?: и|,) отчество)?) )?не (?:из)?менял(?:ся|ась|ось|ись|а)?\.?)$/u.test(
+  return /^(?:[-–—]|(?:(?:фио|фамили[яю](?:, имя(?: и|,) отчество)?) )?не (?:из)?менял(?:ся|ась|ось|ись|а)?\.?)$/u.test(
     text,
   )
     ? '-'
@@ -203,10 +214,8 @@ export function employmentStatement(
   );
 }
 
-export function familyStatement(value: string): string {
+export function familyStatementNeedsReview(value: string): boolean {
   const thirdPerson =
     /(?:^|[.!?]\s+)(?:должник(?:а|у|ом)?|должниц[аеуы]|заявител[ьяю]|заявительниц[аеуы]|(?:его|е[её]) супруг[а]?|у (?:него|не[её]) на иждивении|(?:не )?состоит в браке|в (?:зарегистрированном )?браке (?:не )?состоит|[^.!?,]{1,120}\sсообщил[а]?,\s*что)(?=[\s,.—-]|$)/iu;
-  return thirdPerson.test(value)
-    ? '[проверьте формулировку от первого лица] ' + value
-    : value;
+  return thirdPerson.test(value);
 }

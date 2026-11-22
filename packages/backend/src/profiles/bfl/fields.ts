@@ -112,6 +112,7 @@ const collectionLabels = {
       month: 'Месяц (ГГГГ-ММ)',
       code: 'Код дохода',
       amount: 'Начислено, руб.',
+      sourceLine: 'Дословная строка начисления при совпадении месяца и кода',
     }),
     identity: ['employer', 'month', 'code'],
   },
