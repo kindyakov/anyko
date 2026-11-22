@@ -184,58 +184,71 @@ test('property cells can use separate citations from one source', async () => {
   ).toBeNull();
 });
 
-test('business liabilities are empty only when the source supports their absence', async () => {
-  const accept = async (quotes: string[], text = quotes.join('\n')) => {
-    const facts = runFacts();
-    await facts.accept({
-      fields: ['businessDebts'],
-      confirmed: false,
-      sourceTexts: [{ documentId, text }],
-      candidates: [
-        {
-          field: 'businessDebts',
-          value: [],
-          evidence: quotes.map((quote) => ({
-            documentId,
-            imagePath: null,
-            quote,
-          })),
-        },
-      ],
-    });
-    return (await facts.saved()).values.businessDebts;
-  };
-  expect(
-    await accept([
-      'Предпринимательской деятельностью не занимался, статуса ИП не имел.',
-    ]),
-  ).toEqual([]);
-  expect(
-    await accept(['Предпринимательские обязательства отсутствуют.']),
-  ).toEqual([]);
-  expect(
-    await accept(['Предпринимательской деятельностью не занималась.']),
-  ).toBeNull();
-  expect(await accept(['Работаю как ИП.'])).toBeNull();
-  expect(
-    await accept(
-      ['Предпринимательских долгов нет'],
-      'Предпринимательских долгов нет, кроме задолженности по торговому кредиту.',
-    ),
-  ).toBeNull();
-  expect(
-    await accept(
-      ['Предпринимательских долгов нет'],
-      'Предпринимательских долгов нет\nкроме задолженности по торговому кредиту.',
-    ),
-  ).toBeNull();
-  expect(
-    await accept(
-      ['Предпринимательской деятельностью не занимался, статуса ИП не имел.'],
-      'В 2026 году предпринимательской деятельностью не занимался, статуса ИП не имел. Долг за 2025 год сохраняется.',
-    ),
-  ).toBeNull();
-});
+test.each([
+  ['businessDebts', 'Предпринимательские обязательства отсутствуют.'],
+  ['businessReceivables', 'Предпринимательских должников нет.'],
+  [
+    'businessPayments',
+    'Обязательных платежей по предпринимательской деятельности нет.',
+  ],
+  ['businessRefunds', 'Предпринимательских платежей к возврату нет.'],
+] as const)(
+  '%s is empty only when the source supports its absence',
+  async (field, directAbsence) => {
+    const accept = async (quotes: string[], text = quotes.join('\n')) => {
+      const facts = runFacts();
+      await facts.accept({
+        fields: [field],
+        confirmed: false,
+        sourceTexts: [{ documentId, text }],
+        candidates: [
+          {
+            field,
+            value: [],
+            evidence: quotes.map((quote) => ({
+              documentId,
+              imagePath: null,
+              quote,
+            })),
+          },
+        ],
+      });
+      return (await facts.saved()).values[field];
+    };
+    expect(
+      await accept([
+        'Предпринимательской деятельностью не занимался, статуса ИП не имел.',
+      ]),
+    ).toEqual([]);
+    expect(await accept([directAbsence])).toEqual([]);
+    expect(
+      await accept(['Предпринимательской деятельностью не занималась.']),
+    ).toBeNull();
+    expect(await accept(['Работаю как ИП.'])).toBeNull();
+    expect(
+      await accept(['Должник: Примеров Матвей Лабораториевич.']),
+    ).toBeNull();
+    expect(await accept(['Статуса ИП не имел.'])).toBeNull();
+    expect(
+      await accept(
+        [directAbsence.slice(0, -1)],
+        directAbsence.slice(0, -1) + ', кроме одной записи.',
+      ),
+    ).toBeNull();
+    expect(
+      await accept(
+        [directAbsence.slice(0, -1)],
+        directAbsence.slice(0, -1) + '\nкроме одной записи.',
+      ),
+    ).toBeNull();
+    expect(
+      await accept(
+        ['Предпринимательской деятельностью не занимался, статуса ИП не имел.'],
+        'В 2026 году предпринимательской деятельностью не занимался, статуса ИП не имел. Долг за 2025 год сохраняется.',
+      ),
+    ).toBeNull();
+  },
+);
 
 test('a later passport updates equivalent automatic spelling while preserving lawyer choices', async () => {
   const initial = emptyFacts();

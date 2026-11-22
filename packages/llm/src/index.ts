@@ -56,6 +56,8 @@ export type LlmErrorCode =
   | 'LLM_CANCELLED'
   | 'LLM_INVALID_RESPONSE'
   | 'LLM_COMPLETION_LIMIT'
+  | 'LLM_STEP_LIMIT'
+  | 'LLM_READ_LIMIT'
   | 'LLM_REQUEST_REJECTED';
 
 export class LlmError extends Error {
@@ -77,6 +79,8 @@ const llmErrorMessages = {
   LLM_CANCELLED: 'Запрос к модели отменён.',
   LLM_INVALID_RESPONSE: 'Ответ модели не соответствует ожидаемому формату.',
   LLM_COMPLETION_LIMIT: 'Ответ модели оборвался на предельном числе токенов.',
+  LLM_STEP_LIMIT: 'Достигнут предел обращений к модели на одном шаге анализа.',
+  LLM_READ_LIMIT: 'Достигнут предел чтений при итоговой сверке.',
   LLM_REQUEST_REJECTED: 'Провайдер модели отклонил запрос.',
 } satisfies Record<LlmErrorCode, string>;
 

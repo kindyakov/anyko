@@ -234,6 +234,20 @@ export function createWorkProcessingStore(
       });
       return row?.output ? stepOutputSchema.parse(row.output) : null;
     },
+    async analysisCheckpoint(run) {
+      const row = await db.runStep.findUnique({
+        where: {
+          workspaceId_runId_stage_documentId: {
+            workspaceId: run.workspaceId,
+            runId: run.id,
+            stage: 'reconciliation',
+            documentId: '',
+          },
+        },
+        select: { output: true },
+      });
+      return row?.output ? stepOutputSchema.parse(row.output) : null;
+    },
     async sourceVisuals(workspaceId, workId, documentId, sourceDigest) {
       const row = await db.runStep.findFirst({
         where: {

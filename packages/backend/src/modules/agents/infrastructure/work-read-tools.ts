@@ -11,7 +11,7 @@ import { fieldKeySchema } from '../../../profiles/bfl/fields';
 
 import type { encodeModelFieldValue } from './model-field-value';
 
-const maxReads = 24;
+const defaultMaxReads = 24;
 const readLimitResponse = { status: 'read_limit_reached' } as const;
 const readLimitSchema = z.object({
   status: z.literal(readLimitResponse.status),
@@ -25,6 +25,8 @@ export function createWorkReadTools(
   input: WorkReadContext & {
     signal: AbortSignal;
     pageCharacters: number;
+    maxReads?: number | undefined;
+    reserveRead?(limit: number): Promise<boolean>;
     documents: { id: string; filename?: string; images?: string[] }[];
     listSourceMetadata?: boolean;
     listSourceImages?(documentId: string): Promise<string[]>;
@@ -32,7 +34,9 @@ export function createWorkReadTools(
   },
 ) {
   const { signal } = input;
+  const maxReads = input.maxReads ?? defaultMaxReads;
   let reads = 0;
+  let denied = false;
   const readLimitReached = () => reads >= maxReads;
   const withHistory = async <T>(
     tool: string,
@@ -43,9 +47,12 @@ export function createWorkReadTools(
     let result: T | typeof readLimitResponse;
     try {
       signal.throwIfAborted();
-      const allowed = !readLimitReached();
-      if (allowed) reads++;
       await input.assertCurrent();
+      const allowed = input.reserveRead
+        ? await input.reserveRead(maxReads)
+        : !readLimitReached();
+      if (allowed) reads++;
+      else denied = true;
       result = allowed ? await execute() : readLimitResponse;
     } catch (error) {
       await input.traceTool?.({
@@ -179,6 +186,7 @@ export function createWorkReadTools(
   });
   return {
     readLimitReached,
+    readLimitExceeded: () => denied,
     tools: {
       readField,
       readSource,

@@ -1,7 +1,13 @@
 import { z } from 'zod';
 
 import { documentImageLimit } from '../../../platform/document-output';
+import {
+  analysisDiscrepancySchema,
+  analysisMissingFieldSchema,
+  analysisProposalFeedbackSchema,
+} from '../../../profiles/bfl/analysis-discrepancy';
 import { candidateSchema } from '../../../profiles/bfl/candidate';
+import { fieldKeySchema } from '../../../profiles/bfl/fields';
 
 const workStepSchema = z.object({
   id: z.uuid(),
@@ -53,6 +59,44 @@ export const workRunSchema = z.object({
 });
 export type WorkRuns = z.infer<typeof workRunSchema>[];
 
+const analysisCheckpointSchema = z.strictObject({
+  fingerprint: z.string().min(1),
+  finished: z
+    .array(
+      z.strictObject({
+        key: z.string(),
+        summary: z.string().max(2000),
+        missingFields: z.array(fieldKeySchema),
+      }),
+    )
+    .max(20),
+  receipts: z
+    .array(
+      z.strictObject({
+        id: z.string(),
+        status: z.array(z.string()).max(100),
+        feedback: z.array(analysisProposalFeedbackSchema).max(40).optional(),
+      }),
+    )
+    .max(500),
+  pendingCandidates: z.array(candidateSchema).max(500),
+  discrepancies: z.array(analysisDiscrepancySchema).max(100),
+  reviewReasons: z.array(analysisMissingFieldSchema).max(100).optional(),
+  reviewModelCalls: z.number().int().nonnegative().optional(),
+  reviewReads: z.number().int().nonnegative().optional(),
+  reviewOutcome: z
+    .strictObject({
+      summary: z.string().max(2000),
+      unreportedFields: z.array(fieldKeySchema),
+      errorCode: z.string().optional(),
+      limit: z.enum(['model_calls', 'reads']).optional(),
+    })
+    .optional(),
+  inputTokens: z.number().int().nonnegative().nullable(),
+  outputTokens: z.number().int().nonnegative().nullable(),
+});
+export type AnalysisCheckpoint = z.infer<typeof analysisCheckpointSchema>;
+
 export const stepOutputSchema = z
   .object({
     version: z.literal(1),
@@ -72,6 +116,7 @@ export const stepOutputSchema = z
       )
       .max(documentImageLimit),
     candidates: z.array(candidateSchema).max(500),
+    analysisCheckpoint: analysisCheckpointSchema.optional(),
   })
   .strict();
 export type StepOutput = z.infer<typeof stepOutputSchema>;
@@ -134,6 +179,7 @@ export interface WorkProcessingStore {
   fence(run: ClaimedWorkRun): Promise<void>;
   finish(run: ClaimedWorkRun, outcome: WorkRunOutcome): Promise<boolean>;
   step(run: ClaimedWorkRun, input: WorkStepInput): Promise<void>;
+  analysisCheckpoint(run: WorkRunSnapshot): Promise<StepOutput | null>;
   cached(
     run: WorkRunSnapshot,
     documentId: string,

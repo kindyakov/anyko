@@ -80,6 +80,7 @@ import { systemClock } from '../platform/clock';
 import { uuidV7 } from '../platform/ids';
 import type { JobRuntime } from '../platform/jobs';
 import { openTransaction, transactionHandle } from '../platform/transactions';
+import { bflAnalysisPlan } from '../profiles/bfl/analysis-plan';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
 import { createWorkChat, type WorkChat } from '../workflows/work-chat';
@@ -274,6 +275,9 @@ export function createBackend(
     (agentsDelegate ??= createDocumentAgents({
       pool,
       traceDirectory: validated.worker?.llmTraceDirectory,
+      analysisMaxModelCalls: validated.worker?.analysisMaxModelCalls,
+      analysisMaxReads: validated.worker?.analysisMaxReads,
+      analysisReviewMaxReads: validated.worker?.analysisReviewMaxReads,
     }));
   // Внешние вызовы модели доступны только вне транзакционного фасада.
   const model: DocumentAgents = {
@@ -282,6 +286,11 @@ export function createBackend(
     describe: (input) => agents().describe(input),
     extract: (input) => agents().extract(input),
     reconcile: (input) => agents().reconcile(input),
+    runAnalysisStep: (input) => {
+      const run = agents().runAnalysisStep;
+      if (!run) throw new Error('STEPWISE_AGENT_UNAVAILABLE');
+      return run(input);
+    },
     eraseThread: (id) => agents().eraseThread(id),
     stop: async () => {
       await agentsDelegate?.stop();
@@ -297,6 +306,9 @@ export function createBackend(
     validated.works.chatRedisUrl &&
     createChatProgressFeed(validated.works.chatRedisUrl);
   const work: WorkDependencies = {
+    ...(validated.worker?.stepwiseAnalysis && {
+      analysisPlan: bflAnalysisPlan,
+    }),
     ...(chatProgress && { chatProgress }),
     newId: uuidV7,
     uow,

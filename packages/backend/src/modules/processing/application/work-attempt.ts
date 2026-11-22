@@ -20,6 +20,7 @@ export interface WorkAttempt extends RunAttempt<
   WorkRunOutcome
 > {
   assertCurrent(): Promise<void>;
+  analysisCheckpoint(): Promise<StepOutput | null>;
   cached(
     documentId: string,
     stage: 'vision' | 'extraction',
@@ -62,6 +63,7 @@ export function claimWorkAttempt(deps: {
       },
       cached: (documentId, stage, sourceDigest) =>
         deps.store.cached(claim.snapshot, documentId, stage, sourceDigest),
+      analysisCheckpoint: () => deps.store.analysisCheckpoint(claim.snapshot),
       step: (input) => deps.store.step(claim, input),
       write: (apply, signal) =>
         deps.uow.run(async (tx) => {

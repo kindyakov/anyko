@@ -1,9 +1,9 @@
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
-import type { FactSourceText } from '../../profiles/bfl/automatic-value';
 import type { FieldKey, FieldValues } from '../../profiles/bfl/fields';
 
+import type { RunProposals } from './application/project-run-facts';
 import type { FactEvidence } from './domain/values';
 import type { WorkFacts } from './schemas';
 
@@ -15,6 +15,7 @@ export {
   refreshFactEvidence,
   type FactEvidence,
 } from './domain/values';
+export { projectRunFacts } from './application/project-run-facts';
 export type { WorkFacts } from './schemas';
 
 export interface FactsStore {
@@ -28,16 +29,7 @@ export interface AnalysisFactsRef {
   workId: string;
 }
 
-export interface AcceptRunCandidatesInput extends AnalysisFactsRef {
-  fields: readonly FieldKey[];
-  excludedFields?: ReadonlySet<FieldKey> | undefined;
-  confirmed: boolean;
-  preserveExisting?: boolean;
-  candidates: WorkFacts['candidates'];
-  contextCandidates?: WorkFacts['candidates'];
-  passportIds?: ReadonlySet<string>;
-  sourceTexts?: readonly FactSourceText[];
-}
+export type AcceptRunCandidatesInput = AnalysisFactsRef & RunProposals;
 
 export interface AcceptedRunCandidates {
   contextAccepted: boolean;

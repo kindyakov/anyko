@@ -1,6 +1,10 @@
 import type { Logger } from '@anyko/logger';
 
-import type { AgentsModule, ChatProgressFeed } from '../modules/agents';
+import type {
+  AgentsModule,
+  ChatProgressFeed,
+  FieldDefinition,
+} from '../modules/agents';
 import type { ConnectionsModule } from '../modules/connections';
 import type {
   DocumentsModule,
@@ -16,10 +20,15 @@ import type {
 } from '../modules/templates';
 import type { WorksModule } from '../modules/works';
 import type { UnitOfWork } from '../platform/transactions';
+import type { AnalysisPlan } from '../profiles/analysis-plan';
 
 // Зависимости исполнения работы: собирает runtime. Процессы получают фасады модулей и UnitOfWork,
 // а не наборы хранилищ; внешние вызовы модели (model) выполняются вне UnitOfWork.
 export interface WorkDependencies {
+  analysisPlan?(
+    version: string,
+    fields: readonly FieldDefinition[],
+  ): AnalysisPlan | undefined;
   chatProgress?: ChatProgressFeed;
   newId(): string;
   uow: UnitOfWork;

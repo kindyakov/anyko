@@ -283,7 +283,30 @@ test('lease recovery reopens delivery and leaves the old handle unable to write 
   const { workspaceId, workId, runId } = await fixture();
   const old = await processing.claimAttempt(workspaceId, runId);
   if (!old) throw new Error('CLAIM_MISSING');
-  await old.step({ stage: 'extraction', status: 'running' });
+  const output = {
+    version: 1 as const,
+    sourceDigest: 'profile-1',
+    visuals: [],
+    candidates: [],
+    analysisCheckpoint: {
+      fingerprint: 'fixture-revisions',
+      finished: [
+        { key: 'identity', summary: 'Паспорт прочитан', missingFields: [] },
+      ],
+      receipts: [],
+      pendingCandidates: [],
+      discrepancies: [],
+      inputTokens: 10,
+      outputTokens: 4,
+    },
+  };
+  await old.write((_tx, write) =>
+    write.step({
+      stage: 'reconciliation',
+      status: 'running',
+      output,
+    }),
+  );
   const now = new Date();
   const stale = { message: 'STALE_WORK_ATTEMPT' };
   await db.runOutbox.update({ where: { runId }, data: { deliveredAt: now } });
@@ -304,6 +327,7 @@ test('lease recovery reopens delivery and leaves the old handle unable to write 
     await recoverRuns(tx, [policy], new Date());
   });
   await fresh.assertCurrent();
+  expect(await fresh.analysisCheckpoint()).toEqual(output);
 
   const touch = (tx: Parameters<typeof worksStoreFor>[0]) =>
     worksStoreFor(tx).touch(workspaceId, workId, {});
@@ -311,6 +335,21 @@ test('lease recovery reopens delivery and leaves the old handle unable to write 
   expect(
     await failureOf(old.step({ stage: 'extraction', status: 'succeeded' })),
   ).toMatchObject(stale);
+  expect(
+    await failureOf(
+      old.write((_tx, write) =>
+        write.step({
+          stage: 'reconciliation',
+          status: 'running',
+          output: {
+            ...output,
+            analysisCheckpoint: { ...output.analysisCheckpoint, finished: [] },
+          },
+        }),
+      ),
+    ),
+  ).toMatchObject(stale);
+  expect(await fresh.analysisCheckpoint()).toEqual(output);
   expect(await old.finish({ status: 'succeeded' }, touch)).toBe(false);
   expect(
     await db.work.findUniqueOrThrow({ where: { id: workId } }),
@@ -318,7 +357,7 @@ test('lease recovery reopens delivery and leaves the old handle unable to write 
   expect(
     await db.runStep.findFirstOrThrow({ where: { workspaceId, runId } }),
   ).toMatchObject({
-    stage: 'extraction',
+    stage: 'reconciliation',
     status: 'running',
   });
 

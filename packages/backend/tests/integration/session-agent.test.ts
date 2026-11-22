@@ -266,6 +266,8 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
   const modelId = '~deepseek/deepseek-v4-flash-latest';
   const smallerModelId = `${modelId}-smaller`;
   const unknownModelId = `${modelId}-unknown`;
+  const longSource = 'Регистрация: г. Тула. '.padEnd(64000, 'я');
+  let receivedLongSource = false;
   const requests: {
     max_tokens: number;
     reasoning?: { effort: string } | undefined;
@@ -303,9 +305,18 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
           .object({
             max_tokens: z.number(),
             reasoning: z.object({ effort: z.string() }).optional(),
+            messages: z.array(
+              z.object({ role: z.string(), content: z.unknown() }),
+            ),
           })
           .parse(await new Response(init?.body).json());
         requests.push(body);
+        receivedLongSource ||= body.messages.some(
+          ({ role, content }) =>
+            role === 'user' &&
+            typeof content === 'string' &&
+            content.includes('я'.repeat(63000)),
+        );
         const response = responses.shift();
         if (!response) throw new Error('UNEXPECTED_PROVIDER_CALL');
         return completionStream({
@@ -335,7 +346,11 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
       { preconnect: fetch.preconnect },
     ),
   });
-  const extract = (selectedModel = modelId, enableReasoning = true) => {
+  const extract = (
+    selectedModel = modelId,
+    enableReasoning = true,
+    text = 'Регистрация: г. Тула',
+  ) => {
     const threadId = crypto.randomUUID();
     threads.push(threadId);
     return agents.extract({
@@ -349,14 +364,17 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
       resource: crypto.randomUUID(),
       threadId,
       fields: requirePackage('bfl-bankruptcy-v3').fields,
-      document: { id: documentId, text: 'Регистрация: г. Тула', visuals: [] },
+      document: { id: documentId, text, visuals: [] },
       signal: AbortSignal.timeout(10000),
     });
   };
   try {
     await agents.ready();
     responses = [valid, valid];
-    await extract(unknownModelId);
+    expect(
+      (await extract(unknownModelId, true, longSource)).candidates,
+    ).toEqual([{ ...candidate, origin: 'document' }]);
+    expect(receivedLongSource).toBe(true);
     const result = await extract();
     expect(result.candidates).toEqual([{ ...candidate, origin: 'document' }]);
     expect(requests.map(({ max_tokens }) => max_tokens)).toEqual([
@@ -530,7 +548,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
       candidates: [
         {
           ...extracted,
-          value: 'А'.repeat(12000),
+          value: 'А'.repeat(20000),
           evidence: [...extracted.evidence],
         },
         {
@@ -599,7 +617,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
     await agents.ready();
     const result = await invoke();
     expect(result).not.toHaveProperty('checklistSuggestions');
-    expect(firstOutputLimit).toBe(8192);
+    expect(firstOutputLimit).toBe(131072);
     const initial = z
       .object({
         fields: z.object({ extracted: z.array(z.unknown()) }),
@@ -633,14 +651,27 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
   }
 });
 
-test('chat reports an incomplete model reply even when it contains text', async () => {
-  const pool = createDatabasePool(z.url().parse(process.env.TEST_DATABASE_URL));
-  const agents = createDocumentAgents({
-    pool,
-    fetch: Object.assign(
-      () =>
-        Promise.resolve(
-          completionStream({
+test.each([131072, null])(
+  'chat reports an incomplete model reply for route output %s',
+  async (publishedLimit) => {
+    const pool = createDatabasePool(
+      z.url().parse(process.env.TEST_DATABASE_URL),
+    );
+    const agents = createDocumentAgents({
+      pool,
+      fetch: Object.assign(
+        async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+          const request = new Request(url, init);
+          if (!request.url.endsWith('/chat/completions'))
+            return Response.json({
+              context_length: 262144,
+              max_completion_tokens: publishedLimit,
+            });
+          const body = z
+            .object({ max_tokens: z.number() })
+            .parse(await request.json());
+          expect(body.max_tokens).toBe(publishedLimit ?? 64000);
+          return completionStream({
             id: 'fixture',
             object: 'chat.completion',
             created: 1,
@@ -653,46 +684,47 @@ test('chat reports an incomplete model reply even when it contains text', async 
               },
             ],
             usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
-          }),
-        ),
-      { preconnect: fetch.preconnect },
-    ),
-  });
-  try {
-    const streamed: string[] = [];
-    const result = await agents
-      .chat({
-        connection: {
-          id: 'fixture',
-          baseURL: 'https://fixture.invalid/v1',
-          apiKey: 'fixture',
+          });
         },
-        modelId: 'fixture',
-        fields: [],
-        facts: emptyFacts(),
-        documents: [],
-        listSourceImages: () => Promise.resolve([]),
-        readSource: () => Promise.reject(new Error('UNEXPECTED_SOURCE_READ')),
-        assertCurrent: () => Promise.resolve(),
-        previousContext: null,
-        messages: [],
-        userText: 'Проверь сведения',
-        appliedFields: [],
-        writeField: () => Promise.resolve({ errorCode: 'UNEXPECTED_WRITE' }),
-        signal: AbortSignal.timeout(10_000),
-        onDelta: ({ text }) => streamed.push(text),
-      })
-      .then(
-        () => null,
-        (error: unknown) => error,
-      );
-    expect(result).toMatchObject({ code: 'LLM_COMPLETION_LIMIT' });
-    expect(streamed.join('')).toBe('Начало ответа');
-  } finally {
-    await agents.stop();
-    await pool.end();
-  }
-});
+        { preconnect: fetch.preconnect },
+      ),
+    });
+    try {
+      const streamed: string[] = [];
+      const result = await agents
+        .chat({
+          connection: {
+            id: 'fixture',
+            baseURL: 'https://fixture.invalid/v1',
+            apiKey: 'fixture',
+          },
+          modelId: 'fixture',
+          fields: [],
+          facts: emptyFacts(),
+          documents: [],
+          listSourceImages: () => Promise.resolve([]),
+          readSource: () => Promise.reject(new Error('UNEXPECTED_SOURCE_READ')),
+          assertCurrent: () => Promise.resolve(),
+          previousContext: null,
+          messages: [],
+          userText: 'Проверь сведения',
+          appliedFields: [],
+          writeField: () => Promise.resolve({ errorCode: 'UNEXPECTED_WRITE' }),
+          signal: AbortSignal.timeout(10_000),
+          onDelta: ({ text }) => streamed.push(text),
+        })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      expect(result).toMatchObject({ code: 'LLM_COMPLETION_LIMIT' });
+      expect(streamed.join('')).toBe('Начало ответа');
+    } finally {
+      await agents.stop();
+      await pool.end();
+    }
+  },
+);
 
 test('provider failures do not leak document or provider bodies through SDK console logging', async () => {
   const databaseUrl = z
@@ -845,7 +877,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
             data: {
               endpoints: [
                 {
-                  context_length: tiny ? 4096 : smaller ? 12288 : 8192,
+                  context_length: tiny ? 2048 : smaller ? 12288 : 8192,
                   max_completion_tokens: tiny ? 1024 : smaller ? 1500 : 1800,
                 },
               ],

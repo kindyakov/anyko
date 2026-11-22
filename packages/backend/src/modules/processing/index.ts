@@ -12,7 +12,10 @@ export {
 } from './application/document-attempt';
 export type { DocumentArtifacts } from './application/ports';
 export type { WorkAttempt } from './application/work-attempt';
-export { stepOutputSchema } from './application/work-ports';
+export {
+  type AnalysisCheckpoint,
+  stepOutputSchema,
+} from './application/work-ports';
 
 // Фасад запусков работы. Старт — внутренний шаг сценария, который уже проверил право (works.edit
 // для анализа, works.generate для генерации); поля модели фиксируются в снимке запуска.

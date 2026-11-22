@@ -7,6 +7,19 @@ const schema = z.object({
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
   LLM_CONFIG_ENCRYPTION_KEY: z.string().regex(/^[a-f\d]{64}$/i),
+  ANYKO_ANALYSIS_MAX_READS: z.coerce.number().int().min(1).max(256).optional(),
+  ANYKO_ANALYSIS_REVIEW_MAX_READS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(256)
+    .optional(),
+  ANYKO_ANALYSIS_MAX_MODEL_CALLS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(64)
+    .optional(),
   MINERU_BASE_URL: z.url().refine((value) => /^https?:\/\//.test(value)),
   MINERU_TIMEOUT_MS: z.coerce
     .number()
@@ -54,6 +67,9 @@ export function parseBackendEnv(
       },
       shutdownTimeoutMs: worker.shutdownTimeoutMs,
       llmTraceDirectory: worker.llmTraceDirectory,
+      analysisMaxModelCalls: value.ANYKO_ANALYSIS_MAX_MODEL_CALLS,
+      analysisMaxReads: value.ANYKO_ANALYSIS_MAX_READS,
+      analysisReviewMaxReads: value.ANYKO_ANALYSIS_REVIEW_MAX_READS,
     },
   };
 }

@@ -136,9 +136,11 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         )
       : undefined;
     const fields = pack.fields.filter(({ key }) => !excludedFields?.has(key));
+    const pilotPlan = deps.analysisPlan?.(pack.version, fields);
     const candidates: WorkFacts['candidates'] = [];
     const sources: ContinuationSource[] = [];
     const sourceTexts: { documentId: string; text: string }[] = [];
+    const unreadable = new Map<string, string>();
     const analyzed = new Set(run.documentIds);
     let failures = 0,
       completed = 0;
@@ -241,6 +243,23 @@ export function createWorkAnalysis(deps: WorkDependencies) {
             text: description,
           })),
         );
+        const prepared = {
+          id: documentId,
+          filename:
+            (
+              await deps.works.internal.documents(run.workspaceId, run.workId)
+            ).find((d) => d.id === documentId)?.filename ?? documentId,
+          digest: source.sourceDigest,
+          ocrRevision: source.ocrRevision,
+          text: source.text,
+          ...(source.pdfOcr && { pdfOcr: source.pdfOcr }),
+          visuals: output.visuals,
+        };
+        if (pilotPlan) {
+          sources.push(prepared);
+          completed++;
+          continue;
+        }
         const extractionDigest = `extraction-${String(extractionPromptRevision)}:${cacheSourceDigest}`;
         let extracted = await attempt.cached(
           documentId,
@@ -338,18 +357,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
             usage,
           });
         }
-        sources.push({
-          id: documentId,
-          filename:
-            (
-              await deps.works.internal.documents(run.workspaceId, run.workId)
-            ).find((d) => d.id === documentId)?.filename ?? documentId,
-          digest: source.sourceDigest,
-          ocrRevision: source.ocrRevision,
-          text: source.text,
-          ...(source.pdfOcr && { pdfOcr: source.pdfOcr }),
-          visuals: output.visuals,
-        });
+        sources.push(prepared);
         candidates.push(
           ...locateEvidence(extracted.candidates, [
             { id: documentId, ...source },
@@ -371,6 +379,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           error instanceof LlmError
             ? error.code
             : `${stage.toUpperCase()}_FAILED`;
+        if (pilotPlan) unreadable.set(documentId, errorCode);
         await step({
           stage,
           documentId,
@@ -406,10 +415,18 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       attempt,
       settingsRevision: revision,
       readConnection,
+      ...(pilotPlan && { pilotPlan }),
       fields,
       excludedFields,
       candidates,
       sources,
+      ...(unreadable.size && {
+        unreadableSources: [...unreadable].map(([id, errorCode]) => ({
+          filename:
+            attached.find((document) => document.id === id)?.filename ?? id,
+          errorCode,
+        })),
+      }),
       sourceTexts,
       failures,
       completed,

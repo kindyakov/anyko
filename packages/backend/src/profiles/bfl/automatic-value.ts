@@ -21,6 +21,7 @@ import {
   obligationStatuses,
 } from '@anyko/document-values/obligations';
 
+import { businessAbsenceRule } from './business-absence';
 import {
   cadastralNumbersIn,
   canonicalCadastralNumber,
@@ -212,8 +213,6 @@ function evidencedProperty(
   });
 }
 
-const noBusinessDebts =
-  /^(?:у меня\s+)?предпринимательск\p{L}*\s+(?:обязательств|долг|задолженност)\p{L}*\s*[:—-]?\s*(?:нет|отсутству\p{L}*)$/u;
 const noBusinessActivity =
   /^(?:предпринимательск\p{L}*\s+деятельност\p{L}*\s+(?:никогда\s+)?не\s+(?:занимал|в[её]л|осуществлял)\p{L}*|(?:никогда\s+)?не\s+(?:занимал|в[её]л|осуществлял)\p{L}*\s+предпринимательск\p{L}*\s+деятельност\p{L}*)$/u;
 const noBusinessStatus =
@@ -227,6 +226,7 @@ function businessStatements(text: string) {
 }
 
 function evidencedBusinessAbsence(
+  directAbsence: RegExp,
   evidence: Candidate['evidence'],
   sources: readonly FactSourceText[],
 ) {
@@ -241,8 +241,7 @@ function evidencedBusinessAbsence(
       quotes.some((quote) => citationContainsValue(part, quote));
     if (
       statements.some(
-        (statement) =>
-          noBusinessDebts.test(statement) && hasCitation(statement),
+        (statement) => directAbsence.test(statement) && hasCitation(statement),
       )
     )
       return true;
@@ -252,12 +251,21 @@ function evidencedBusinessAbsence(
         (clause) =>
           noBusinessActivity.test(clause) || noBusinessStatus.test(clause),
       )
-        ? clauses.filter(hasCitation)
+        ? clauses
         : [];
     });
-    return (
-      clauses.some((clause) => noBusinessActivity.test(clause)) &&
-      clauses.some((clause) => noBusinessStatus.test(clause))
+    return quotes.some(
+      (quote) =>
+        clauses.some(
+          (clause) =>
+            noBusinessActivity.test(clause) &&
+            citationContainsValue(clause, quote),
+        ) &&
+        clauses.some(
+          (clause) =>
+            noBusinessStatus.test(clause) &&
+            citationContainsValue(clause, quote),
+        ),
     );
   });
 }
@@ -302,8 +310,11 @@ function supportedValue(
   if (!Array.isArray(value)) return value;
   if (field === 'realEstate')
     return evidencedProperty(value, candidate.evidence, sources) ? value : null;
-  if (field === 'businessDebts' && !value.length)
-    return evidencedBusinessAbsence(candidate.evidence, sources) ? value : null;
+  const directAbsence = businessAbsenceRule(field);
+  if (directAbsence && !value.length)
+    return evidencedBusinessAbsence(directAbsence, candidate.evidence, sources)
+      ? value
+      : null;
   if (field === 'attachments' && value.some(({ category }) => !!category))
     return null;
   if (employmentFields.some((key) => key === field))

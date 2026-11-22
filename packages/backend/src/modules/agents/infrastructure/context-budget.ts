@@ -10,8 +10,11 @@ import { LlmError, type ModelContextLimits } from '@anyko/llm';
 const fallback: ModelContextLimits = {
   context: 16384,
   prompt: 12288,
-  completion: 4096,
+  completion: null,
 };
+const schemaReserveTokens = 2048;
+const minimumEstimatedPromptTokens = 1024;
+const promptEstimateMargin = 0.85;
 
 type Prompt = ProcessLLMRequestArgs['prompt'];
 
@@ -39,18 +42,27 @@ function* smallerToolBatches<T>(calls: T[]) {
   for (const call of calls) yield [call];
 }
 
-export function createWorkContextBudget(limits: ModelContextLimits | null) {
+export function createWorkContextBudget(
+  limits: ModelContextLimits | null,
+  options: { preserveSourceWithoutMetadata?: boolean } = {},
+) {
   const { context, prompt, completion } = limits ?? fallback;
-  const maxOutputTokens = Math.min(
-    8192,
-    completion ?? context,
-    Math.floor(context / 4),
-  );
+  const maxOutputTokens = completion ?? 64000;
   // Tool schemas and structured output are sent outside the message list.
-  const promptCapacity = Math.min(prompt, context - maxOutputTokens) - 2048;
+  // If reserving the full ceiling would leave no usable prompt, the provider
+  // must share its window between input and actual generation.
+  const estimatePromptTokens = (window: number) =>
+    Math.floor(
+      (Math.min(prompt, window) - schemaReserveTokens) * promptEstimateMargin,
+    );
+  const reservedPromptTokens = estimatePromptTokens(context - maxOutputTokens);
+  const promptTokens =
+    reservedPromptTokens >= minimumEstimatedPromptTokens
+      ? reservedPromptTokens
+      : estimatePromptTokens(context);
   // Mastra estimates message tokens independently of the provider tokenizer.
-  const promptTokens = Math.min(32000, Math.floor(promptCapacity * 0.85));
-  if (promptTokens < 1024) throw new LlmError('LLM_REQUEST_REJECTED');
+  if (promptTokens < minimumEstimatedPromptTokens)
+    throw new LlmError('LLM_REQUEST_REJECTED');
   const limiter = new TokenLimiterProcessor(promptTokens);
   let rejected = false;
   const reject = (): never => {
@@ -60,6 +72,8 @@ export function createWorkContextBudget(limits: ModelContextLimits | null) {
   const processor = {
     id: 'work-context-budget',
     async processLLMRequest(args) {
+      // Without route metadata, leave input validation to the provider.
+      if (!limits && options.preserveSourceWithoutMetadata) return;
       const current = [...args.prompt]
         .reverse()
         .find((message) => message.role === 'user');

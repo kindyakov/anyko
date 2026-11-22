@@ -1,3 +1,9 @@
+import type { AnalysisGoal } from '../../profiles/analysis-plan';
+import type {
+  AnalysisDiscrepancy,
+  AnalysisMissingField,
+  AnalysisProposalFeedback,
+} from '../../profiles/bfl/analysis-discrepancy';
 import type { FieldDefinition, FieldKey } from '../../profiles/bfl/fields';
 
 import type { AgentSessionContext, WorkFacts } from './schemas';
@@ -48,11 +54,57 @@ export interface WorkReadContext {
   readSource(documentId: string, imagePath: string | null): Promise<string>;
   traceTool?(event: AgentToolEvent): Promise<void>;
 }
+export type AnalysisStepInput = WorkReadContext & {
+  observe?: ProviderCallObserver;
+  trace?: ModelTraceContext;
+  connection: ModelConnection;
+  modelId: string;
+  enableReasoning?: boolean;
+  step: AnalysisGoal;
+  sessionId: string;
+  previousSummary: string | null;
+  completedSteps: readonly { key: string; summary: string }[];
+  review?: {
+    fields: readonly FieldKey[];
+    reasons: readonly AnalysisMissingField[];
+    fieldInstructions: readonly {
+      fields: readonly string[];
+      instructions: string;
+    }[];
+    remainingFields(): readonly FieldKey[];
+    uncoveredFields(): readonly FieldKey[];
+    modelCallsUsed(): number;
+    startModelCall(): Promise<void>;
+    reserveRead(limit: number): Promise<boolean>;
+    recordReasons(
+      id: string,
+      reasons: AnalysisMissingField[],
+    ): Promise<string[]>;
+  };
+  unreadableSources?: readonly { filename: string; errorCode: string }[];
+  documents: { id: string; filename: string; images: string[] }[];
+  signal: AbortSignal;
+  proposeFacts(
+    id: string,
+    proposals: { candidate: WorkFacts['candidates'][number]; index: number }[],
+    statuses: string[],
+    fields: readonly FieldKey[],
+  ): Promise<{ statuses: string[]; feedback: AnalysisProposalFeedback[] }>;
+  reportDiscrepancy(
+    id: string,
+    discrepancy: AnalysisDiscrepancy,
+  ): Promise<string>;
+};
 // Bump when the visual instructions change the context passed to extraction.
 export const visionPromptRevision = 3;
-export const extractionPromptRevision = 5;
+export const extractionPromptRevision = 6;
 
 export interface DocumentAgents {
+  runAnalysisStep?: (input: AnalysisStepInput) => Promise<{
+    summary: string;
+    usage: AgentUsage;
+    reviewLimit?: 'model_calls' | 'reads';
+  }>;
   ready(): Promise<void>;
   describe(input: {
     observe?: ProviderCallObserver;
