@@ -14,6 +14,7 @@ import {
   obligationTemplate,
 } from './obligations';
 import { contractNarrative, filingMoneyWords } from './statement-layout';
+import { missingTemplateValue } from './template-value';
 import { comparableText } from './text-value';
 
 type Row = Record<string, string | null>;
@@ -62,7 +63,7 @@ export function projectBankruptcyCollections(
             'proof',
           ].map((key) => [
             key,
-            entries === null && key === 'type' ? '[не заполнено]' : '-',
+            entries === null && key === 'type' ? missingTemplateValue : '-',
           ]),
         ),
       ];
@@ -158,11 +159,11 @@ export function bankruptcyCollectionCell(
   collection: Value,
   modern: boolean,
 ): string {
-  if (!modern) return value ?? '[не заполнено]';
+  if (!modern) return value ?? missingTemplateValue;
   if (Array.isArray(collection) && !collection.length) return '-';
   if (value && ['amount', 'value', 'balance', 'nominal'].includes(key))
     return formatBankruptcyMoney(value);
-  return value ?? '[не заполнено]';
+  return value ?? missingTemplateValue;
 }
 
 export function statementDefaults(values: Values) {

@@ -107,7 +107,10 @@ test('the pagination release keeps v13 pinned and renders v14 layout rules', () 
     );
     const ending = (text: string) =>
       paragraphs.find((paragraph) => paragraph.includes(text));
-    expect(ending('____________________')).toContain('<w:keepLines');
+    const signature = paragraphs.find((paragraph) =>
+      /_{20,}\s+\S/u.test(paragraph.replace(/<[^>]+>/gu, '')),
+    );
+    expect(signature).toContain('<w:keepLines');
     if (id === 'creditors') {
       const tables = [...xml.matchAll(/<w:tbl>(.*?)<\/w:tbl>/gs)];
       expect(tables).toHaveLength(9);

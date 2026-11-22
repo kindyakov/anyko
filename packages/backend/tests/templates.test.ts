@@ -347,7 +347,8 @@ test('unknown collections do not become absence, and an empty package never cont
     )
       .file('word/document.xml')
       ?.asText() ?? '';
-  expect(unknown).toContain('[не заполнено]');
+  expect(unknown).toContain('_____');
+  expect(unknown).not.toContain('[не заполнено]');
   expect(unknown).not.toContain('Отсутствует');
   values.realEstate = [];
   const absent =

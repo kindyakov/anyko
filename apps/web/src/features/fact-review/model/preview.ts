@@ -32,6 +32,7 @@ import {
   statementLayout,
   withFilingDateSuffix,
 } from '@anyko/document-values/statement-layout';
+import { missingTemplateValue } from '@anyko/document-values/template-value';
 
 export function previewStatementValues(
   pack: DocumentPackage,
@@ -104,7 +105,7 @@ export function previewDocumentValues(
     emptyNote: (key: string, collection: FieldValue) =>
       key === 'creditorHeaders' || collection !== null
         ? null
-        : '[не заполнено]',
+        : missingTemplateValue,
     value: (key: string) => (isCollection(key) ? rows[key] : values[key]),
     defaultText: (key: string) =>
       statement ? statementDefaultValue(values, key) : undefined,
@@ -118,11 +119,11 @@ export function previewDocumentValues(
     },
     text: (key: string) => {
       if (obligations && key === 'debtTotal')
-        return obligations.total ?? '[не заполнено]';
+        return obligations.total ?? missingTemplateValue;
       if (obligations && key === 'debtTotalWords')
         return revised && obligations.total
           ? filingMoneyWords(obligations.total)
-          : (obligations.totalWords ?? '[не заполнено]');
+          : (obligations.totalWords ?? missingTemplateValue);
       return Object.hasOwn(request, key) ? request[key] : undefined;
     },
   };

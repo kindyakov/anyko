@@ -9,7 +9,10 @@ import {
   formatBankruptcyScalar,
 } from '@anyko/document-values/bankruptcy-format';
 import { hasEmploymentFields } from '@anyko/document-values/employment';
-import { formatTemplateValue } from '@anyko/document-values/template-value';
+import {
+  formatTemplateValue,
+  missingTemplateValue,
+} from '@anyko/document-values/template-value';
 
 import { TextSlot } from '../work-fields';
 
@@ -42,13 +45,18 @@ export function ScalarSlot({
     const text = values[tag];
     return (
       <span>
-        {typeof text === 'string' ? text : '[не заполнено]'}
+        {typeof text === 'string' ? text : missingTemplateValue}
         {suffix}
       </span>
     );
   }
   if (!field || field.columns.length)
-    return <span className="text-zinc-400">[не заполнено]{suffix}</span>;
+    return (
+      <span className="text-zinc-400">
+        {missingTemplateValue}
+        {suffix}
+      </span>
+    );
   const raw = values[field.key];
   const value = typeof raw === 'string' ? raw : (defaultText ?? null);
   const displayValue =

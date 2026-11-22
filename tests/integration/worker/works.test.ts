@@ -4711,12 +4711,12 @@ test('statement and creditor list keep a newer documented balance after reconcil
         expect(text).toContain(`${totalLabel} ${total}`);
         expect(text).toMatch(/QA-VT-51[^;]{0,140}145 006,47/u);
         expect(text).not.toContain('151 000');
-        if (total === '[не заполнено]')
+        if (total === '______________')
           expect(text).not.toContain('172 500,25');
       }
       return output;
     };
-    const incomplete = await verifyDocuments(draft, '[не заполнено]');
+    const incomplete = await verifyDocuments(draft, '______________');
     await apiBackend.workHttp.review.editValues(scope, {
       workId,
       revision: incomplete.work.revision,

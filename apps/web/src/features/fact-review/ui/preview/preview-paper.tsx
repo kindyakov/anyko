@@ -10,6 +10,7 @@ import type {
   PreviewRow,
 } from '@anyko/contracts/catalog';
 import { bankruptcyCollectionCell } from '@anyko/document-values/bankruptcy-projection';
+import { missingTemplateValue } from '@anyko/document-values/template-value';
 
 import {
   previewDocumentValues,
@@ -85,19 +86,18 @@ export function PreviewPaper({
             (row.rowNumber ?? (absent ? '-' : String(rowNumber ?? 1))) + suffix
           );
         if (row && projected?.isCollection(rowField))
-          return (row[key] ?? '[не заполнено]') + suffix;
+          return (row[key] ?? missingTemplateValue) + suffix;
         const text = !row && projected?.text(key);
         if (typeof text === 'string') return text + suffix;
         if (row && absent) return '-' + suffix;
         if (row) {
+          const hint = column?.label ?? '…';
           const slot = (
             <TextSlot
               key={index}
               label={`${document.title}: ${column?.label ?? key}`}
               maxLength={column?.maxLength}
-              placeholder={
-                projected?.modern ? '[не заполнено]' : (column?.label ?? '…')
-              }
+              placeholder={projected?.modern ? missingTemplateValue : hint}
               value={row[key] ?? null}
               displayValue={
                 projected?.modern && row[key]

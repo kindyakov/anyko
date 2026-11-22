@@ -1,5 +1,6 @@
 import { formatBankruptcyMoney } from './bankruptcy-format';
 import { canonicalMoneyAmount } from './money';
+import { missingTemplateValue } from './template-value';
 import { comparableText } from './text-value';
 
 type Row = Record<string, string | null>;
@@ -107,7 +108,7 @@ export function inventorySections(
           captions.push(
             [row.description, row.address, row.identifier]
               .filter(Boolean)
-              .join(', ') || '[не заполнено]',
+              .join(', ') || missingTemplateValue,
           );
           unclassified.set(section, captions);
         }
@@ -166,7 +167,7 @@ export function inventorySections(
                   : key === 'otherSecurities'
                     ? 'type'
                     : 'description']: unknown.has(key)
-                  ? '[не заполнено]'
+                  ? missingTemplateValue
                   : null,
               },
             ]

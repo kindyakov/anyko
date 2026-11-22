@@ -27,6 +27,7 @@ test('structured context excludes arbitrary request and error properties', () =>
     documentId: 'd1',
     errorCode: 'INTERNAL_ERROR',
     field: 'debts',
+    templateVersion: 'bfl-creditors-v4',
     rejectedCount: 2,
     error: new Error('sensitive fixture'),
     authorization: 'sensitive fixture',
@@ -42,6 +43,7 @@ test('structured context excludes arbitrary request and error properties', () =>
     requestId: 'r1',
     documentId: 'd1',
     field: 'debts',
+    templateVersion: 'bfl-creditors-v4',
     rejectedCount: 2,
   });
   expect(line).not.toContain('sensitive fixture');

@@ -30,7 +30,10 @@ import {
   statementLayout,
   withFilingDateSuffix,
 } from '@anyko/document-values/statement-layout';
-import { formatTemplateValue } from '@anyko/document-values/template-value';
+import {
+  formatTemplateValue,
+  missingTemplateValue,
+} from '@anyko/document-values/template-value';
 
 import {
   emptyFieldValues,
@@ -110,7 +113,7 @@ export function templateData(
           ? modern
             ? formatBankruptcyScalar(field.key, value)
             : value
-          : '[не заполнено]';
+          : missingTemplateValue;
       continue;
     }
     const rows =
@@ -122,7 +125,7 @@ export function templateData(
                 key,
                 i === 0
                   ? value === null
-                    ? '[не заполнено]'
+                    ? missingTemplateValue
                     : 'Отсутствует'
                   : emptyCell,
               ]),
@@ -155,15 +158,15 @@ export function templateData(
           ? modern && placeholder === 'RUB_DECIMAL'
             ? formatBankruptcyMoney(value)
             : formatTemplateValue(value, placeholder)
-          : '[не заполнено]',
+          : missingTemplateValue,
     });
   }
   if (obligations) {
-    output.debtTotal = obligations.total ?? '[не заполнено]';
+    output.debtTotal = obligations.total ?? missingTemplateValue;
     output.debtTotalWords =
       revised && obligations.total
         ? filingMoneyWords(obligations.total)
-        : (obligations.totalWords ?? '[не заполнено]');
+        : (obligations.totalWords ?? missingTemplateValue);
   }
   const surname =
     typeof values.lastName === 'string'
@@ -200,13 +203,13 @@ export function templateData(
         Object.fromEntries(
           ['name', 'inn', 'ogrn', 'address'].map((key) => [
             key,
-            row[key] ?? '[не заполнено]',
+            row[key] ?? missingTemplateValue,
           ]),
         ),
       ),
     }),
     signerName: surname
       ? `${surname}${initials ? ` ${initials}` : ''}`
-      : '[не заполнено]',
+      : missingTemplateValue,
   };
 }
