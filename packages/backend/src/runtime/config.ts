@@ -13,7 +13,9 @@ const encryptionKey = z.string().regex(/^[a-f\d]{64}$/i);
  */
 const backendConfigSchema = z
   .object({
-    database: z.object({ url: postgresUrl }).strict(),
+    database: z
+      .object({ url: postgresUrl, listenUrl: postgresUrl.optional() })
+      .strict(),
     storage: z
       .object({
         endpoint: z.url(),
@@ -22,7 +24,9 @@ const backendConfigSchema = z
         secretAccessKey: z.string().min(1),
       })
       .strict(),
-    works: z.object({ encryptionKey }).strict(),
+    works: z
+      .object({ encryptionKey, chatRedisUrl: redisUrl.optional() })
+      .strict(),
     auth: z
       .object({
         secret: z.string().min(32),
@@ -34,6 +38,11 @@ const backendConfigSchema = z
     worker: z
       .object({
         redisUrl,
+        stepwiseAnalysis: z.boolean().optional(),
+        analysisMaxModelCalls: z.number().int().min(1).max(64).optional(),
+        analysisMaxReads: z.number().int().min(1).max(256).optional(),
+        analysisReviewMaxReads: z.number().int().min(1).max(256).optional(),
+        llmTraceDirectory: z.string().min(1).optional(),
         mineru: z
           .object({
             baseUrl: httpUrl,

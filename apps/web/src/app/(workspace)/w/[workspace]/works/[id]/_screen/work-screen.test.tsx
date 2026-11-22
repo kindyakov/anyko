@@ -2,7 +2,7 @@ import '../../../../../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import type { WorkView } from '@anyko/contracts/works';
@@ -58,6 +58,88 @@ function renderWork() {
   );
 }
 
+test('the Files step links a source and separates conditional checklist requirements', async () => {
+  const document = { ...source, processingRevision: 4 };
+  const address = `${workAddress}/checklist-items/passport/documents/${document.id}`;
+  let confirmed = false;
+  const requests = serveApi(({ method, url }) => {
+    if (method === 'PUT' && url === address) {
+      confirmed = true;
+      return json(200, { status: 'updated' });
+    }
+    if (url !== workAddress) throw new Error(`Unexpected request ${url}`);
+    const view: WorkView = {
+      ...workView,
+      documents: [document],
+      canEditChecklist: true,
+      checklist: [
+        {
+          key: 'passport',
+          label: 'Паспорт гражданина',
+          documentKind: 'identity',
+          applicability: 'usual',
+          status: confirmed ? 'confirmed' : 'missing',
+          sources: confirmed
+            ? [
+                {
+                  documentId: document.id,
+                  status: 'confirmed',
+                  quote: null,
+                  page: null,
+                },
+              ]
+            : [],
+        },
+        {
+          key: 'marriage',
+          label: 'Свидетельство о браке',
+          documentKind: 'civil-status',
+          applicability: 'conditional',
+          status: 'clarify',
+          sources: [],
+        },
+      ],
+    };
+    return json(200, view);
+  });
+  renderWork();
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole('tab', { name: /^1\s*Файлы/ }));
+  const checklist = within(
+    screen.getByRole('complementary', { name: 'Чек-лист документов' }),
+  );
+  expect(screen.getAllByRole('list', { name: 'Обычно нужны' })).toHaveLength(1);
+  const usual = within(checklist.getByRole('list', { name: 'Обычно нужны' }));
+  const conditional = within(
+    checklist.getByRole('list', { name: 'По обстоятельствам' }),
+  );
+  expect(
+    usual.getByText('Не найдено', { selector: 'summary span' }),
+  ).toBeTruthy();
+  expect(
+    conditional.getByText('Уточнить', { selector: 'summary span' }),
+  ).toBeTruthy();
+  await user.click(usual.getByText('Паспорт гражданина'));
+  await user.click(
+    usual.getByRole('combobox', { name: 'Файл для «Паспорт гражданина»' }),
+  );
+  await user.click(
+    await screen.findByRole('option', { name: document.filename }),
+  );
+  await user.click(usual.getByRole('button', { name: 'Привязать' }));
+  expect(
+    await usual.findByRole('button', { name: document.filename }),
+  ).toBeTruthy();
+  expect(requests.find(({ method }) => method === 'PUT')).toMatchObject({
+    url: address,
+    body: { decision: 'confirmed', ocrRevision: 4 },
+  });
+  await user.click(screen.getByRole('tab', { name: /^3\s*Проверка/ }));
+  expect(
+    checklist.getByRole('button', { name: document.filename }),
+  ).toBeTruthy();
+});
+
 test('work history can open a retained analysis run outside the recent work view', async () => {
   const run = {
     id: crypto.randomUUID(),
@@ -96,6 +178,7 @@ test('work history can open a retained analysis run outside the recent work view
             input: null,
             output: JSON.stringify({ summary: 'Проверены сведения' }),
             fieldChange: null,
+            checklistChange: null,
             errorCode: null,
             durationMs: null,
             createdAt: run.createdAt,
@@ -308,6 +391,15 @@ test('a matching queued source becomes reusable in the work after its OCR comple
   const use = match.getByRole('button', { name: 'Использовать существующий' });
   expect(use.hasAttribute('disabled')).toBe(true);
   ready = true;
+  const catalogEvents = installEventSource().find(
+    ({ url }) => url === `/api/v1/workspaces/${workspaceId}/events`,
+  );
+  act(() => {
+    catalogEvents?.emit('changed', {
+      kind: 'recognition',
+      documentId: source.id,
+    });
+  });
   await waitFor(
     () => {
       expect(use.hasAttribute('disabled')).toBe(false);

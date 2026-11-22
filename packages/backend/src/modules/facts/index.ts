@@ -3,6 +3,7 @@ import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
 import type { FieldKey, FieldValues } from '../../profiles/bfl/fields';
 
+import type { RunProposals } from './application/project-run-facts';
 import type { FactEvidence } from './domain/values';
 import type { WorkFacts } from './schemas';
 
@@ -14,6 +15,7 @@ export {
   refreshFactEvidence,
   type FactEvidence,
 } from './domain/values';
+export { projectRunFacts } from './application/project-run-facts';
 export type { WorkFacts } from './schemas';
 
 export interface FactsStore {
@@ -27,13 +29,7 @@ export interface AnalysisFactsRef {
   workId: string;
 }
 
-export interface AcceptRunCandidatesInput extends AnalysisFactsRef {
-  fields: readonly FieldKey[];
-  confirmed: boolean;
-  preserveExisting?: boolean;
-  candidates: WorkFacts['candidates'];
-  contextCandidates?: WorkFacts['candidates'];
-}
+export type AcceptRunCandidatesInput = AnalysisFactsRef & RunProposals;
 
 export interface AcceptedRunCandidates {
   contextAccepted: boolean;
@@ -68,6 +64,16 @@ export interface FactsPorts {
   readonly queries: FactsQueries;
   // Внутренний порт обслуживания для удаления производных данных.
   readonly internal: Pick<FactsStore, 'erase'> & {
+    removeSubmittedAttachment(
+      workspaceId: string,
+      workId: string,
+      documentId: string,
+    ): Promise<void>;
+    defaultDocumentDate(
+      workspaceId: string,
+      workId: string,
+      date: string,
+    ): Promise<void>;
     refreshEvidence(
       workspaceId: string,
       workId: string,

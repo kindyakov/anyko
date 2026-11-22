@@ -85,7 +85,10 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       try {
         bytes = generateDocument(
           source,
-          templateData(record.values, template.version, template.placeholders),
+          templateData(record.values, template.version, template.placeholders, {
+            fields: pack.fields,
+            referenceDate: record.createdAt.toISOString().slice(0, 10),
+          }),
         );
       } catch (error) {
         await write(async (tx) => {

@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+import {
+  creditorRegistryColumns,
+  obligationColumns,
+} from '@anyko/document-values/obligations';
+
 const scalar = (key: FieldKey, label: string, multiline = false) => ({
   key,
   label,
@@ -55,6 +60,7 @@ const scalarLabels = {
   criminalCasesDetails: 'Уголовные дела и судимость',
   insolvencyDetails: 'Обстоятельства неплатёжеспособности',
   propertyDetails: 'Обстоятельства имущественного положения',
+  cashOnHand: 'Наличные денежные средства, руб.',
   sroName: 'Наименование СРО',
   sroAddress: 'Юридический адрес СРО',
   sroPostalAddress: 'Почтовый адрес СРО',
@@ -67,7 +73,7 @@ const columns = (labels: Record<string, string>) =>
     label,
     maxLength: 4000,
   }));
-const obligationColumns = columns({
+const obligationColumnsBase = columns({
   type: 'Содержание обязательства',
   name: 'Кредитор / должник',
   address: 'Адрес',
@@ -79,30 +85,55 @@ const obligationColumns = columns({
   penalties: 'Санкции, руб.',
   proof: 'Подтверждающий документ, дата',
 });
+const bankObligationColumns = [
+  ...obligationColumnsBase,
+  ...columns(obligationColumns),
+  ...columns(creditorRegistryColumns),
+];
 const paymentColumns = columns({
   name: 'Наименование платежа',
   amount: 'Недоимка / возврат, руб.',
   penalties: 'Санкции / проценты, руб.',
 });
 const collectionLabels = {
+  employmentHistory: {
+    label: 'Кадровые записи из трудовой книжки',
+    columns: columns({
+      employer: 'Работодатель',
+      date: 'Дата записи',
+      event: 'Приём / увольнение',
+    }),
+    identity: ['employer', 'date', 'event'],
+  },
+  employmentIncome: {
+    label: 'Доход по месяцам и работодателям до вычета налога',
+    columns: columns({
+      employer: 'Работодатель',
+      month: 'Месяц (ГГГГ-ММ)',
+      code: 'Код дохода',
+      amount: 'Начислено, руб.',
+      sourceLine: 'Дословная строка начисления при совпадении месяца и кода',
+    }),
+    identity: ['employer', 'month', 'code'],
+  },
   debts: {
     label: 'Кредиторы: личные обязательства',
-    columns: obligationColumns,
+    columns: bankObligationColumns,
     identity: ['name', 'basis'],
   },
   businessDebts: {
     label: 'Кредиторы: предпринимательские обязательства',
-    columns: obligationColumns,
+    columns: bankObligationColumns,
     identity: ['name', 'basis'],
   },
   receivables: {
     label: 'Должники: личные обязательства',
-    columns: obligationColumns,
+    columns: obligationColumnsBase,
     identity: ['name', 'basis'],
   },
   businessReceivables: {
     label: 'Должники: предпринимательские обязательства',
-    columns: obligationColumns,
+    columns: obligationColumnsBase,
     identity: ['name', 'basis'],
   },
   mandatoryPayments: {
@@ -129,6 +160,9 @@ const collectionLabels = {
     label: 'Недвижимость',
     columns: columns({
       description: 'Вид и наименование',
+      identifier: 'Кадастровый номер',
+      category:
+        'Подраздел: земельный участок, жилой дом, квартира, гараж или иное',
       ownership: 'Вид собственности',
       address: 'Адрес',
       area: 'Площадь, кв. м',
@@ -141,6 +175,8 @@ const collectionLabels = {
     label: 'Транспорт',
     columns: columns({
       description: 'Вид, марка, модель, год',
+      category:
+        'Вид транспорта: легковой автомобиль, грузовой автомобиль, мототранспорт, сельхозтехника, водный, воздушный или иной',
       identifier: 'Идентификационный номер',
       ownership: 'Вид собственности',
       address: 'Место хранения',
@@ -185,6 +221,8 @@ const collectionLabels = {
     label: 'Наличные и ценное имущество',
     columns: columns({
       description: 'Вид и наименование',
+      category:
+        'Подраздел: драгоценности, предметы искусства, имущество для профессиональных занятий или иное',
       amount: 'Стоимость и валюта',
       address: 'Место хранения',
       pledge: 'Залог и залогодержатель',
@@ -195,8 +233,19 @@ const collectionLabels = {
     label: 'Приложения к заявлению',
     columns: columns({
       description: 'Наименование, реквизиты, оригинал / копия',
+      category: 'Назначение документа',
     }),
     identity: ['description'],
+  },
+  submittedAttachments: {
+    label: 'Подаваемые приложения',
+    columns: columns({
+      documentId: 'Файл работы',
+      description: 'Наименование и реквизиты',
+      category: 'Назначение',
+      copyKind: 'Вид подаваемого экземпляра',
+    }),
+    identity: ['documentId'],
   },
 } as const;
 export const fieldKeySchema = z.enum([
@@ -232,6 +281,8 @@ export const fieldKeySchema = z.enum([
   'debtTotal',
   'debtTotalWords',
   'employmentDetails',
+  'employmentHistory',
+  'employmentIncome',
   'familyDetails',
   'companyParticipationDetails',
   'majorTransactionsDetails',
@@ -258,7 +309,9 @@ export const fieldKeySchema = z.enum([
   'equity',
   'securities',
   'valuables',
+  'cashOnHand',
   'attachments',
+  'submittedAttachments',
 ]);
 export type FieldKey = z.infer<typeof fieldKeySchema>;
 export interface FieldDefinition {
@@ -277,9 +330,11 @@ const dateFields = new Set([
   'debtAsOfDate',
 ]);
 export const isCalendarDateField = (field: string) => dateFields.has(field);
-export const isRublesField = (field: string) => field === 'debtTotal';
+export const isRublesField = (field: string) =>
+  field === 'debtTotal' || field === 'cashOnHand';
 export const isRublesColumn = (field: string, column: string) =>
-  field !== 'valuables' && ['amount', 'arrears', 'penalties'].includes(column);
+  field !== 'valuables' &&
+  ['amount', 'arrears', 'penalties', 'interest'].includes(column);
 export const fieldDefinitions: FieldDefinition[] = [
   ...Object.entries(scalarLabels).map(([key, label]) => ({
     ...scalar(

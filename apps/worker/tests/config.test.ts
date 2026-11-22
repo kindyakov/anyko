@@ -41,7 +41,46 @@ test('full-mode backend environment validates every section and names missing fi
   const parsed = parseBackendEnv(backendEnv, worker);
   expect(parsed.worker.mineru.timeoutMs).toBe(240000);
   expect(parsed.worker.redisUrl).toBe('redis://127.0.0.1:16379');
+  expect(parsed.worker.analysisReviewMaxReads).toBeUndefined();
+  expect(
+    parseBackendEnv(
+      { ...backendEnv, ANYKO_ANALYSIS_REVIEW_MAX_READS: '96' },
+      worker,
+    ).worker.analysisReviewMaxReads,
+  ).toBe(96);
+  expect(() =>
+    parseBackendEnv(
+      { ...backendEnv, ANYKO_ANALYSIS_REVIEW_MAX_READS: '0' },
+      worker,
+    ),
+  ).toThrow('ANYKO_ANALYSIS_REVIEW_MAX_READS');
   expect(parsed.works.encryptionKey).toBe('a'.repeat(64));
+});
+
+test('ordinary and review steps accept independent read limits', () => {
+  expect(
+    parseBackendEnv(backendEnv, worker).worker.analysisMaxReads,
+  ).toBeUndefined();
+  const parsed = parseBackendEnv(
+    {
+      ...backendEnv,
+      ANYKO_ANALYSIS_MAX_READS: '48',
+      ANYKO_ANALYSIS_REVIEW_MAX_READS: '96',
+    },
+    worker,
+  );
+  expect(parsed.worker.analysisMaxReads).toBe(48);
+  expect(parsed.worker.analysisReviewMaxReads).toBe(96);
+  for (const value of ['0', '1.5', '257'])
+    expect(() =>
+      parseBackendEnv(
+        {
+          ...backendEnv,
+          ANYKO_ANALYSIS_MAX_READS: value,
+        },
+        worker,
+      ),
+    ).toThrow('ANYKO_ANALYSIS_MAX_READS');
 });
 
 test('worker requires Redis and accepts explicit process configuration', () => {

@@ -26,6 +26,27 @@ export const candidateSchema = z
   .object({
     origin: z.enum(['document', 'context', 'inference']).optional(),
     explanation: z.string().trim().min(1).max(2000).optional(),
+    creditorSource: z
+      .strictObject({
+        registry: z.enum(['cbr', 'fns']),
+        url: z
+          .url()
+          .regex(
+            /^https:\/\/(?:www\.cbr\.ru\/finorg\/foinfo\/\?ogrn=|pb\.nalog\.ru\/search\.html#mode=search-ul&queryUl=)[15]\d{12}$/u,
+          ),
+        checkedAt: z.iso.datetime(),
+      })
+      .optional(),
+    courtSources: z
+      .strictObject({
+        catalogueUrl: z.literal('https://arbitr.ru/'),
+        contactUrl: z
+          .url()
+          .regex(/^https:\/\/[a-z0-9-]+\.arbitr\.ru\/about\/mode$/u),
+        checkedAt: z.iso.datetime(),
+        courtName: z.string().trim().min(1).max(250).optional(),
+      })
+      .optional(),
     field: fieldKeySchema,
     selected: z
       .boolean()
@@ -135,11 +156,45 @@ const workAvailabilitySchema = z.object({
   attach: workCommandAvailabilitySchema,
   updateRecognition: workCommandAvailabilitySchema,
 });
+const checklistSourceStatusSchema = z.enum(['confirmed', 'found', 'review']);
+const checklistItemSchema = z.object({
+  key: z.string(),
+  documentKind: z.string(),
+  label: z.string(),
+  applicability: z.enum(['usual', 'conditional']),
+  contracts: z
+    .array(
+      z.object({
+        creditor: z.string(),
+        contractNumber: z.string(),
+        contractDate: z.string().nullable(),
+        status: z.enum(['confirmed', 'found', 'review', 'missing']),
+        documentIds: z.array(z.uuid()),
+      }),
+    )
+    .optional(),
+  status: z.enum(['confirmed', 'found', 'review', 'missing', 'clarify']),
+  sources: z.array(
+    z.object({
+      documentId: z.uuid(),
+      status: checklistSourceStatusSchema,
+      quote: z.string().nullable(),
+      page: z.number().int().positive().nullable(),
+    }),
+  ),
+});
+export type WorkChecklistItem = z.infer<typeof checklistItemSchema>;
+export const editChecklistLinkSchema = z.strictObject({
+  decision: z.enum(['confirmed', 'rejected']),
+  ocrRevision: z.number().int().positive().max(2147483647).nullable(),
+});
 export const workResponseSchema = z.object({
   work: workSummarySchema,
   session: agentSessionSchema.nullable().optional(),
   package: documentPackageSchema,
   documents: z.array(documentSchema),
+  checklist: z.array(checklistItemSchema).optional(),
+  canEditChecklist: z.boolean().optional(),
   facts: factsSchema,
   runs: z.array(workRunSchema),
   generations: z.array(generationSchema),

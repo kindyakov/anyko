@@ -22,6 +22,7 @@ import {
   createdWorkResponseSchema,
   createWorkSchema,
   defaultWorkPageSize,
+  editChecklistLinkSchema,
   editWorkSchema,
   queuedStatusSchema,
   revisionSchema,
@@ -117,15 +118,36 @@ export const getWork = endpoint({
 });
 
 export const streamWorkEvents = endpoint({
-  summary: 'Передаёт поток событий работы',
+  summary: 'Передаёт события работы и потоковые фрагменты чата',
   method: 'GET',
   path: '/workspaces/:workspaceId/works/:workId/events',
   params: workParams,
-  query: z.object({ after: z.string().optional() }),
-  headers: z.object({ 'last-event-id': z.string().optional() }),
+  query: z.object({
+    after: z
+      .string()
+      .regex(/^\d{1,20}(?:\|\d{1,20}-\d{1,20})?$/u)
+      .optional(),
+  }),
+  headers: z.object({
+    'last-event-id': z
+      .string()
+      .regex(/^\d{1,20}(?:\|\d{1,20}-\d{1,20})?$/u)
+      .optional(),
+  }),
   response: eventStream(),
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT', 'STREAM_LIMIT'],
+  invalid: 'INVALID_WORK_INPUT',
+});
+
+export const streamWorkspaceEvents = endpoint({
+  summary: 'Передаёт уведомления списков работ и распознаваний рабочей области',
+  method: 'GET',
+  path: '/workspaces/:workspaceId/events',
+  params: workspaceParams,
+  response: eventStream(),
+  status: 200,
+  errors: ['FORBIDDEN', 'INVALID_WORK_INPUT', 'STREAM_LIMIT'],
   invalid: 'INVALID_WORK_INPUT',
 });
 
@@ -334,6 +356,28 @@ export const editWorkDocumentRecognition = endpoint({
     'CLEANUP_PENDING',
     'NOT_READY',
     'WORK_BUSY',
+    'INVALID_WORK_INPUT',
+  ],
+  invalid: 'INVALID_WORK_INPUT',
+  idempotency: 'natural',
+});
+
+export const editWorkChecklistLink = endpoint({
+  summary:
+    'Подтверждает или снимает сопоставление пункта чек-листа с файлом работы',
+  method: 'PUT',
+  path: '/workspaces/:workspaceId/works/:workId/checklist-items/:requirementId/documents/:documentId',
+  params: workDocumentParams.extend({
+    requirementId: z.string().regex(/^[a-z][a-z0-9-]{0,79}$/),
+  }),
+  body: json(editChecklistLinkSchema),
+  response: json(z.object({ status: z.literal('updated') })),
+  status: 200,
+  errors: [
+    'FORBIDDEN',
+    'NOT_FOUND',
+    'CLEANUP_PENDING',
+    'REVISION_CONFLICT',
     'INVALID_WORK_INPUT',
   ],
   invalid: 'INVALID_WORK_INPUT',

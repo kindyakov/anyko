@@ -9,10 +9,44 @@ import { requireCleanSources, requireWork, workLockKey } from '../work-guards';
 export function createWorkChat(
   deps: Pick<
     WorkDependencies,
-    'agents' | 'connections' | 'locks' | 'processing' | 'uow' | 'works'
+    | 'agents'
+    | 'chatProgress'
+    | 'connections'
+    | 'locks'
+    | 'processing'
+    | 'uow'
+    | 'works'
   >,
 ) {
+  const feed = deps.chatProgress;
   return {
+    progressRun:
+      deps.chatProgress &&
+      (async (scope: WorkspaceScope, workId: WorkId) => {
+        scope.require('works.read');
+        const runId = await deps.processing.queries.activeChatId(scope, workId);
+        if (!runId) return null;
+        await requireWork(deps.works.queries, scope, workId);
+        const sources = await deps.works.queries.sources(scope, workId);
+        return sources.cleanupPending ? null : runId;
+      }),
+    progress:
+      feed &&
+      ((
+        scope: WorkspaceScope,
+        workId: WorkId,
+        after: string,
+        signal: AbortSignal,
+        receive: Parameters<typeof feed.subscribe>[3],
+      ) => {
+        scope.require('works.read');
+        return feed.subscribe(
+          { workspaceId: scope.workspaceId, workId },
+          after,
+          signal,
+          receive,
+        );
+      }),
     async list(
       scope: WorkspaceScope,
       input: { workId: WorkId; page: number; pageSize: number },

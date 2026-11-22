@@ -1,84 +1,193 @@
 import type { createAccess } from '@anyko/backend/access';
 import type { WorkId } from '@anyko/backend/ids';
 import type { WorkspaceScope } from '@anyko/backend/scope';
-import type { WorksModule } from '@anyko/backend/works';
+import type { WorkChat } from '@anyko/backend/workflows';
+import {
+  type SubscribeDatabaseEvents,
+  WorkError,
+  type WorksModule,
+} from '@anyko/backend/works';
 
-import { transportErrorCodes } from '../../errors';
+import { openEventStream } from './sse';
 
-const connections = new Map<string, number>();
+function clearsChat(kind?: string) {
+  return (
+    kind === 'sources.deleting' ||
+    kind === 'sources.erased' ||
+    kind === 'work.deleting'
+  );
+}
+
 export function workEventStream(input: {
   request: Request;
   scope: WorkspaceScope;
   workId: WorkId;
   after: string;
+  chatAfter: string;
+  chat: WorkChat;
+  subscribeEvents: SubscribeDatabaseEvents;
   works: WorksModule;
   access: ReturnType<typeof createAccess>;
 }) {
-  const key = `${input.scope.workspaceId}:${input.scope.userId}`;
-  if (
-    (connections.get(key) ?? 0) >= 4 ||
-    [...connections.values()].reduce((sum, count) => sum + count, 0) >= 100
-  )
-    return Response.json(
-      { error: { code: transportErrorCodes.STREAM_LIMIT } },
-      { status: 429 },
-    );
-  connections.set(key, (connections.get(key) ?? 0) + 1);
-  const controller = new AbortController();
-  const abort = () => {
-    controller.abort();
-  };
-  input.request.signal.addEventListener('abort', abort, { once: true });
-  if (input.request.signal.aborted) controller.abort();
-  const encoder = new TextEncoder();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(output) {
+  return openEventStream({
+    ...input,
+    allowed: (scope) => scope.has('works.read'),
+    async run(stream) {
       let cursor = input.after;
-      const end = Date.now() + 25000;
-      try {
-        while (!controller.signal.aborted && Date.now() < end) {
-          // Область пересчитывается на каждом круге: отозванное участие или право прерывают поток.
-          const session = await input.access.session(input.request.headers);
-          const scope =
-            session && input.access.scope(session, input.scope.workspaceId);
-          if (!scope || scope.userId !== input.scope.userId) break;
-          const events = await input.works.queries.events(
-            scope,
-            input.workId,
-            cursor,
-          );
-          for (const event of events) {
-            output.enqueue(
-              encoder.encode(
-                `id: ${event.id}\nevent: changed\ndata: ${JSON.stringify({ kind: event.kind })}\n\n`,
-              ),
-            );
-            cursor = event.id;
-          }
-          if (!events.length) output.enqueue(encoder.encode(': heartbeat\n\n'));
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+      let chatCursor = input.chatAfter;
+      const eventId = () =>
+        chatCursor === '0-0' ? cursor : cursor + '|' + chatCursor;
+      const changes = new Set(['work']);
+      const transport = {
+        listenerConnected: false,
+        listenerDown: false,
+        progressUnavailable: false,
+      };
+      const isOpen = () => !stream.signal.aborted;
+      const markProgressReady = () => {
+        if (transport.progressUnavailable && transport.listenerConnected)
+          stream.send('ready', {});
+        transport.progressUnavailable = false;
+      };
+      let pending = Promise.withResolvers<null>();
+      const wake = () => {
+        pending.resolve(null);
+      };
+      stream.signal.addEventListener('abort', wake, { once: true });
+      let reader: { runId: string; abort: AbortController } | undefined;
+      let progressEpoch = 0;
+      const stopProgress = () => {
+        progressEpoch++;
+        reader?.abort.abort();
+        reader = undefined;
+        chatCursor = '0-0';
+      };
+      const unsubscribe = input.subscribeEvents((event) => {
+        if (event === 'unavailable') {
+          transport.listenerConnected = false;
+          transport.listenerDown = true;
+          stopProgress();
+          stream.send('degraded', {});
+          return;
         }
-      } catch {
-        // A reconnect rechecks authentication and resumes from the last persisted cursor.
-        if (!controller.signal.aborted)
-          output.enqueue(encoder.encode('event: reconnect\ndata: {}\n\n'));
-      } finally {
-        input.request.signal.removeEventListener('abort', abort);
-        const count = (connections.get(key) ?? 1) - 1;
-        if (count) connections.set(key, count);
-        else connections.delete(key);
-        if (!controller.signal.aborted) output.close();
+        if (
+          event &&
+          (event.workspaceId !== input.scope.workspaceId ||
+            event.workId !== input.workId)
+        )
+          return;
+        if (!event) {
+          transport.listenerConnected = true;
+          transport.listenerDown = false;
+          if (!transport.progressUnavailable) stream.send('ready', {});
+        }
+        if (event?.kind === 'work' && clearsChat(event.eventKind))
+          stopProgress();
+        if (!event || event.kind === 'work') changes.add('work');
+        if (event?.kind === 'history') changes.add('history');
+        wake();
+      });
+      async function readProgress(
+        progress: NonNullable<WorkChat['progress']>,
+        runId: string,
+        signal: AbortSignal,
+      ) {
+        const reading = () => !signal.aborted;
+        while (reading()) {
+          try {
+            await progress(
+              stream.scope(),
+              input.workId,
+              chatCursor,
+              signal,
+              (rows) => {
+                if (signal.aborted) return;
+                markProgressReady();
+                for (const row of rows) {
+                  chatCursor = row.id;
+                  if (row.delta.runId === runId)
+                    stream.send('chat-progress', row.delta, eventId());
+                }
+              },
+            );
+          } catch {
+            // A Redis outage does not affect the durable work event stream.
+          }
+          if (!reading()) return;
+          if (!transport.progressUnavailable) stream.send('degraded', {});
+          transport.progressUnavailable = true;
+          await Bun.sleep(500);
+          if (!reading()) return;
+          const current = await input.chat
+            .progressRun?.(stream.scope(), input.workId)
+            .catch(() => null);
+          if (!reading()) return;
+          if (current !== runId) {
+            reader = undefined;
+            changes.add('work');
+            wake();
+            return;
+          }
+        }
       }
-    },
-    cancel() {
-      controller.abort();
-    },
-  });
-  return new Response(stream, {
-    headers: {
-      'content-type': 'text/event-stream',
-      'cache-control': 'no-store',
-      'x-accel-buffering': 'no',
+      try {
+        while (isOpen()) {
+          if (!changes.size) {
+            await pending.promise;
+            pending = Promise.withResolvers<null>();
+            continue;
+          }
+          if (changes.delete('history')) {
+            stream.send('changed', { kind: 'agent.history' });
+          }
+          if (!changes.delete('work')) continue;
+          let events;
+          do {
+            events = await input.works.queries.events(
+              stream.scope(),
+              input.workId,
+              cursor,
+            );
+            for (const event of events) {
+              if (clearsChat(event.kind)) stopProgress();
+              cursor = event.id;
+              stream.send('changed', { kind: event.kind }, eventId());
+              if (event.kind === 'work.deleting') return;
+            }
+          } while (events.length === 100 && isOpen());
+          const progress = input.chat.progress;
+          if (!progress || transport.listenerDown) continue;
+          const epoch = progressEpoch;
+          const runId = await input.chat.progressRun?.(
+            stream.scope(),
+            input.workId,
+          );
+          if (epoch !== progressEpoch) continue;
+          if (reader && reader.runId !== runId) {
+            reader.abort.abort();
+            reader = undefined;
+          }
+          if (!runId) markProgressReady();
+          else if (!reader && isOpen()) {
+            const abort = new AbortController();
+            reader = { runId, abort };
+            void readProgress(
+              progress,
+              runId,
+              AbortSignal.any([stream.signal, abort.signal]),
+            );
+          }
+        }
+      } catch (error) {
+        if (!(error instanceof WorkError && error.code === 'NOT_FOUND'))
+          throw error;
+        reader?.abort.abort();
+        stream.send('changed', { kind: 'work.deleting' });
+      } finally {
+        reader?.abort.abort();
+        unsubscribe();
+        stream.signal.removeEventListener('abort', wake);
+      }
     },
   });
 }

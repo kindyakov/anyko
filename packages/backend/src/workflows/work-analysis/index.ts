@@ -1,6 +1,10 @@
+import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
 import { LlmError } from '@anyko/llm';
 
-import { visionPromptRevision } from '../../modules/agents';
+import {
+  extractionPromptRevision,
+  visionPromptRevision,
+} from '../../modules/agents';
 import { DocumentError } from '../../modules/documents';
 import type { WorkFacts } from '../../modules/facts';
 import { stepOutputSchema, type WorkAttempt } from '../../modules/processing';
@@ -108,11 +112,12 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       if (source.status !== 'succeeded' || source.revision === null)
         throw new Error('PARSING_FAILED');
       await step({ stage: 'parsing', documentId, status: 'succeeded' });
-      return deps.documents.internal.queries.analysis({
+      const analysis = await deps.documents.internal.queries.analysis({
         workspaceId,
         documentId,
         revision: source.revision,
       });
+      return { ...analysis, ocrRevision: source.revision };
     };
     const { revision } = await loadConnection(run.settingsRevision);
     const readConnection = () => loadConnection(revision);
@@ -121,8 +126,22 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       await readConnection();
     };
     const pack = requirePackage((await current()).packageVersion);
+    const excludedFields = isDatedBankruptcyPackage(pack.version)
+      ? new Set(
+          pack.fields
+            .filter(
+              ({ key }) => key === 'documentDate' || key.startsWith('sro'),
+            )
+            .map(({ key }) => key),
+        )
+      : undefined;
+    const fields = pack.fields.filter(({ key }) => !excludedFields?.has(key));
+    const pilotPlan = deps.analysisPlan?.(pack.version, fields);
     const candidates: WorkFacts['candidates'] = [];
     const sources: ContinuationSource[] = [];
+    const sourceTexts: { documentId: string; text: string }[] = [];
+    const unreadable = new Map<string, string>();
+    const analyzed = new Set(run.documentIds);
     let failures = 0,
       completed = 0;
     for (const documentId of run.documentIds) {
@@ -131,6 +150,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         signal.throwIfAborted();
         await current();
         const source = await parse(documentId);
+        sourceTexts.push({ documentId, text: source.text });
         // The extraction cache depends on the visual instructions as well as the OCR result.
         const cacheSourceDigest = source.images.length
           ? `vision-${String(visionPromptRevision)}:${source.sourceDigest}`
@@ -167,6 +187,12 @@ export function createWorkAnalysis(deps: WorkDependencies) {
               model: stepConnection.visionModel,
               execute: () =>
                 deps.agents.model.describe({
+                  trace: {
+                    correlationId: run.correlationId,
+                    jobId: run.id,
+                    stage: 'ocr',
+                    documentId,
+                  },
                   observe: history.observe({
                     interactionId: callId,
                     stage: 'vision',
@@ -178,6 +204,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
                   assertCurrent,
                   connection: stepConnection.connection,
                   modelId: stepConnection.visionModel,
+                  disableReasoning: stepConnection.visionDisableReasoning,
                   resource: `${run.workspaceId}:${run.workId}`,
                   threadId: callId,
                   bytes: image.bytes,
@@ -210,10 +237,34 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           });
         }
         stage = 'extraction';
+        sourceTexts.push(
+          ...output.visuals.map(({ description }) => ({
+            documentId,
+            text: description,
+          })),
+        );
+        const prepared = {
+          id: documentId,
+          filename:
+            (
+              await deps.works.internal.documents(run.workspaceId, run.workId)
+            ).find((d) => d.id === documentId)?.filename ?? documentId,
+          digest: source.sourceDigest,
+          ocrRevision: source.ocrRevision,
+          text: source.text,
+          ...(source.pdfOcr && { pdfOcr: source.pdfOcr }),
+          visuals: output.visuals,
+        };
+        if (pilotPlan) {
+          sources.push(prepared);
+          completed++;
+          continue;
+        }
+        const extractionDigest = `extraction-${String(extractionPromptRevision)}:${cacheSourceDigest}`;
         let extracted = await attempt.cached(
           documentId,
           stage,
-          cacheSourceDigest,
+          extractionDigest,
         );
         if (!extracted) {
           await step({ stage, documentId, status: 'running' });
@@ -246,6 +297,27 @@ export function createWorkAnalysis(deps: WorkDependencies) {
               model: stepConnection.extractionModel,
               execute: () =>
                 deps.agents.model.extract({
+                  trace: {
+                    correlationId: run.correlationId,
+                    jobId: run.id,
+                    stage: 'extraction',
+                    documentId,
+                  },
+                  enableReasoning: stepConnection.extractionEnableReasoning,
+                  onRejectedEvidence: (rejections) => {
+                    for (const { field, count } of rejections)
+                      deps.logger.warn({
+                        event: 'extraction_candidates_rejected',
+                        correlationId: run.correlationId,
+                        jobId: run.id,
+                        jobType: 'extraction',
+                        requestId: threadId,
+                        documentId,
+                        errorCode: 'INVALID_EVIDENCE',
+                        field,
+                        rejectedCount: count,
+                      });
+                  },
                   observe: history.observe({
                     interactionId: threadId,
                     stage: 'extraction',
@@ -256,7 +328,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
                   assertCurrent,
                   connection: stepConnection.connection,
                   modelId: stepConnection.extractionModel,
-                  fields: pack.fields,
+                  fields,
                   threadId,
                   resource: `${run.workspaceId}:${run.workId}`,
                   document: {
@@ -273,7 +345,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           }
           extracted = stepOutputSchema.parse({
             version: 1,
-            sourceDigest: cacheSourceDigest,
+            sourceDigest: extractionDigest,
             visuals: output.visuals,
             candidates: found,
           });
@@ -285,17 +357,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
             usage,
           });
         }
-        sources.push({
-          id: documentId,
-          filename:
-            (
-              await deps.works.internal.documents(run.workspaceId, run.workId)
-            ).find((d) => d.id === documentId)?.filename ?? documentId,
-          digest: source.sourceDigest,
-          text: source.text,
-          ...(source.pdfOcr && { pdfOcr: source.pdfOcr }),
-          visuals: output.visuals,
-        });
+        sources.push(prepared);
         candidates.push(
           ...locateEvidence(extracted.candidates, [
             { id: documentId, ...source },
@@ -317,6 +379,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           error instanceof LlmError
             ? error.code
             : `${stage.toUpperCase()}_FAILED`;
+        if (pilotPlan) unreadable.set(documentId, errorCode);
         await step({
           stage,
           documentId,
@@ -332,13 +395,39 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         });
       }
     }
+    // Upload runs extract only the new batch. Balance freshness also depends on
+    // the recognized documents already attached to the work.
+    const attached = await deps.works.internal.documents(
+      run.workspaceId,
+      run.workId,
+    );
+    for (const { id, deleted, ocrRevision } of attached) {
+      if (deleted || ocrRevision === null || analyzed.has(id)) continue;
+      signal.throwIfAborted();
+      const { text } = await deps.documents.internal.queries.analysis({
+        workspaceId: run.workspaceId,
+        documentId: id,
+        revision: ocrRevision,
+      });
+      sourceTexts.push({ documentId: id, text });
+    }
     await continueSession({
       attempt,
       settingsRevision: revision,
       readConnection,
-      fields: pack.fields,
+      ...(pilotPlan && { pilotPlan }),
+      fields,
+      excludedFields,
       candidates,
       sources,
+      ...(unreadable.size && {
+        unreadableSources: [...unreadable].map(([id, errorCode]) => ({
+          filename:
+            attached.find((document) => document.id === id)?.filename ?? id,
+          errorCode,
+        })),
+      }),
+      sourceTexts,
       failures,
       completed,
       signal,

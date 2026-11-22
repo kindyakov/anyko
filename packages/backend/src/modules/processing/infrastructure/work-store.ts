@@ -131,12 +131,29 @@ export function createWorkProcessingStore(
         },
       };
     },
-    async active(workspaceId, workId) {
+    async active(workspaceId, workId, kind) {
       return (
         (await db.run.count({
-          where: { workspaceId, workId, status: { in: ['queued', 'running'] } },
+          where: {
+            workspaceId,
+            workId,
+            ...(kind === 'chat' && { kind: 'work.chat' }),
+            status: { in: ['queued', 'running'] },
+          },
         })) > 0
       );
+    },
+    async activeChatId(workspaceId, workId) {
+      const run = await db.run.findFirst({
+        where: {
+          workspaceId,
+          workId,
+          kind: 'work.chat',
+          status: { in: ['queued', 'running'] },
+        },
+        select: { id: true },
+      });
+      return run?.id ?? null;
     },
     fence: (run) => fence(db, run),
     async valid({ snapshot: run, attemptToken }) {
@@ -214,6 +231,20 @@ export function createWorkProcessingStore(
           },
         },
         orderBy: { updatedAt: 'desc' },
+      });
+      return row?.output ? stepOutputSchema.parse(row.output) : null;
+    },
+    async analysisCheckpoint(run) {
+      const row = await db.runStep.findUnique({
+        where: {
+          workspaceId_runId_stage_documentId: {
+            workspaceId: run.workspaceId,
+            runId: run.id,
+            stage: 'reconciliation',
+            documentId: '',
+          },
+        },
+        select: { output: true },
       });
       return row?.output ? stepOutputSchema.parse(row.output) : null;
     },

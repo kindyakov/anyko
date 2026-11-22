@@ -11,7 +11,8 @@ import { logWorkFailure } from '../work-execution/failure';
 import { createRunState } from '../work-execution/run-state';
 import { workLockKey } from '../work-guards';
 
-import { prepareChatFieldWriter, requireChatActor } from './write-field';
+import { createChatProgressWriter } from './progress';
+import { prepareChatWriter, requireChatActor } from './write-actions';
 
 export function createWorkChatRun(
   deps: WorkDependencies,
@@ -48,8 +49,8 @@ export function createWorkChatRun(
       deps.agents.internal.chat.context({ ...scope, sessionId: session.id }),
       deps.works.internal.documents(workspaceId, workId),
     ]);
-    const documents = links.flatMap(({ id, filename, ocrRevision }) =>
-      run.documentIds.includes(id) && ocrRevision !== null
+    const documents = links.flatMap(({ id, filename, ocrRevision, deleted }) =>
+      !deleted && run.documentIds.includes(id) && ocrRevision !== null
         ? [{ id, filename, revision: ocrRevision }]
         : [],
     );
@@ -93,15 +94,39 @@ export function createWorkChatRun(
       model: config.extractionModel,
     });
     const fields = requirePackage(work.packageVersion).fields;
-    const writer = await prepareChatFieldWriter(deps, {
+    const requirements = await deps.templateRequirements(work.packageVersion);
+    const checklistSources = links.filter(({ deleted }) => !deleted);
+    const writer = await prepareChatWriter(deps, {
       attempt,
       requireActor,
       initialRevision: work.revision,
       sessionId: session.id,
       interactionId: interaction.interactionId,
       fields,
+      checklistSources: new Map(
+        checklistSources.map(({ id, ocrRevision }) => [id, ocrRevision]),
+      ),
       assertCurrent: assertRunCurrent,
     });
+    const progress =
+      deps.chatProgress &&
+      createChatProgressWriter({
+        scope,
+        feed: deps.chatProgress,
+        runId,
+        attempt: run.attempts,
+        signal,
+        checkpoint: (draft) =>
+          attempt.write(async (tx) => {
+            const changed = await deps.agents
+              .in(tx)
+              .internal.chat.checkpoint(ref, draft);
+            if (changed)
+              await deps.works
+                .in(tx)
+                .internal.event(workspaceId, workId, 'chat.checkpoint');
+          }, signal),
+      });
     const result = await callModel({
       logger: deps.logger,
       callId: interaction.interactionId,
@@ -112,6 +137,11 @@ export function createWorkChatRun(
       model: config.extractionModel,
       execute: () =>
         deps.agents.model.chat({
+          trace: {
+            correlationId: run.correlationId,
+            jobId: runId,
+            stage: 'chat',
+          },
           observe: async (request) => {
             await assertCurrent();
             return observe(request);
@@ -127,8 +157,23 @@ export function createWorkChatRun(
           messages,
           userText: chat.userText,
           signal,
+          ...(progress && { onDelta: progress.push }),
           appliedFields: writer.appliedFields,
           writeField: writer.writeField,
+          ...(requirements.length > 0 && {
+            checklist: {
+              requirements: requirements.map(({ key, label }) => ({
+                key,
+                label,
+              })),
+              sources: checklistSources.map(({ id, filename }) => ({
+                id,
+                filename,
+              })),
+              applied: writer.appliedChecklist,
+              write: writer.writeChecklist,
+            },
+          }),
           assertCurrent,
           listSourceImages: async (documentId) =>
             (await sourceFor(documentId)).visuals.map(({ path }) => path),
@@ -140,19 +185,26 @@ export function createWorkChatRun(
             return visual.description;
           },
         }),
-    }).then(
-      ({ answer }) => ({ answer }),
-      (error: unknown) => {
-        if (signal.aborted) throw error;
-        const code =
-          error instanceof LlmError || isAppError(error)
-            ? error.code
-            : 'WORK_PROCESSING_FAILED';
-        const failure = writer.failure({ errorCode: code, cause: error });
-        if (!failure) throw error;
-        return { failure };
-      },
-    );
+    })
+      .then(
+        ({ answer, reasoning }) => ({
+          answer,
+          ...(reasoning && { reasoning }),
+        }),
+        (error: unknown) => {
+          if (signal.aborted) throw error;
+          const code =
+            error instanceof LlmError || isAppError(error)
+              ? error.code
+              : 'WORK_PROCESSING_FAILED';
+          const failure = writer.failure({ errorCode: code, cause: error });
+          if (!failure) throw error;
+          return { failure };
+        },
+      )
+      .finally(async () => {
+        await progress?.close();
+      });
     const failure = 'failure' in result ? result.failure : writer.failure();
     await deps.locks.run(
       workLockKey(workspaceId, workId),
@@ -163,7 +215,7 @@ export function createWorkChatRun(
         await attempt.write(
           async (tx, write) => {
             if (!failure && 'answer' in result)
-              await deps.agents.in(tx).internal.chat.answer(ref, result.answer);
+              await deps.agents.in(tx).internal.chat.answer(ref, result);
             await write.finish(failure?.outcome ?? { status: 'succeeded' });
             await deps.works
               .in(tx)
@@ -181,7 +233,7 @@ export function createWorkChatRun(
     if (failure) {
       logWorkFailure(deps.logger, run, failure.cause, {
         code: failure.outcome.errorCode,
-        message: 'Не удалось завершить изменение поля через чат.',
+        message: 'Не удалось завершить изменение работы через чат.',
         operation: 'work.chat',
         state: failure.outcome.status,
       });

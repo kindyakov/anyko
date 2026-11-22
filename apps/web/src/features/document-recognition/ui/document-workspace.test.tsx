@@ -2,14 +2,14 @@ import '../../../../test/next-navigation';
 import { afterEach, expect, test } from 'bun:test';
 
 import { QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ToastProvider } from '@anyko/ui';
 
 import { createQueryClient } from '@/lib/api/query-client';
 
-import { json, serveApi } from '../../../../test/api';
+import { installEventSource, json, serveApi } from '../../../../test/api';
 import { workspaceId } from '../../../../test/fixtures';
 import { navigation } from '../../../../test/next-navigation';
 
@@ -43,7 +43,6 @@ function renderWorkspace(onDeletionAccepted?: () => Promise<void>) {
   );
 }
 
-// Опрос идёт раз в 2 секунды, поэтому ожидания тестов выше интервала.
 test('a failed attempt displays the server reason and code once; historical failures stay in the list', async () => {
   const history = {
     ...doc('old', 'старый.pdf', 'failed'),
@@ -107,7 +106,8 @@ test('a failed attempt displays the server reason and code once; historical fail
   });
 });
 
-test('the list polls while a document is being recognized and stops once none is left', async () => {
+test('the workspace stream refreshes the recognition list on a status change', async () => {
+  const sources = installEventSource();
   let listed = {
     items: [doc('d1', 'scan.pdf', 'running')],
     nextCursor: null,
@@ -116,33 +116,17 @@ test('the list polls while a document is being recognized and stops once none is
   const exchanges = serveApi(() => json(200, listed));
   renderWorkspace();
   expect(await screen.findByText('Распознаётся: 1')).toBeTruthy();
-
-  await waitFor(
-    () => {
-      expect(exchanges).toHaveLength(2);
-    },
-    { timeout: 4000 },
-  );
-  expect(exchanges.map((item) => item.url)).toEqual([
-    recognitionsAddress,
-    recognitionsAddress,
-  ]);
-
-  listed = {
-    items: [doc('d1', 'scan.pdf', 'succeeded')],
-    nextCursor: null,
-    pendingDeletions: [],
-  };
-  await waitFor(
-    () => {
-      expect(exchanges).toHaveLength(3);
-    },
-    { timeout: 4000 },
-  );
-  await new Promise((resolve) => setTimeout(resolve, 2600));
-  expect(exchanges).toHaveLength(3);
-  expect(screen.queryByText('Распознаётся: 1')).toBeNull();
-}, 15000);
+  expect(sources[0]?.url).toBe(`/api/v1/workspaces/${workspaceId}/events`);
+  expect(exchanges).toHaveLength(1);
+  listed = { ...listed, items: [doc('d1', 'scan.pdf', 'succeeded')] };
+  act(() => {
+    sources[0]?.emit('changed', { kind: 'recognition', documentId: 'd1' });
+  });
+  await waitFor(() => {
+    expect(exchanges).toHaveLength(2);
+    expect(screen.queryByText('Распознаётся: 1')).toBeNull();
+  });
+});
 
 test('each file of a multi-file upload gets its own idempotency key', async () => {
   const exchanges = serveApi((exchange) =>

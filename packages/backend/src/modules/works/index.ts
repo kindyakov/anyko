@@ -5,6 +5,15 @@ import type { DocumentId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
 
+import type { ChecklistLink } from './checklist';
+
+export { projectChecklist } from './checklist';
+export type {
+  ChecklistItem,
+  ChecklistLink,
+  ChecklistRequirement,
+} from './checklist';
+
 export const workSummarySchema = z.object({
   id: z.uuid(),
   title: z.string(),
@@ -28,12 +37,18 @@ export const WorkErrors = defineErrors({
 });
 export class WorkError extends WorkErrors.Failure {}
 
+export type {
+  DatabaseEventSignal,
+  SubscribeDatabaseEvents,
+} from './live-events';
+
 export type WorkEventKind =
   | 'processing.queued'
   | 'facts.changed'
   | 'facts.confirmed'
   | 'generation.queued'
   | 'documents.changed'
+  | 'checklist.changed'
   | 'sources.deleting';
 
 export interface WorkSourceRow {
@@ -115,6 +130,18 @@ export interface WorkStore extends WorkDeletionStore {
     documentId: string,
   ): Promise<boolean>;
   documents(workspaceId: string, workId: string): Promise<WorkSourceRow[]>;
+  checklistLinks(workspaceId: string, workId: string): Promise<ChecklistLink[]>;
+  saveChecklistLink(
+    workspaceId: string,
+    workId: string,
+    link: ChecklistLink,
+  ): Promise<void>;
+  replaceChecklistSuggestions(
+    workspaceId: string,
+    workId: string,
+    documentIds: string[],
+    links: ChecklistLink[],
+  ): Promise<void>;
   activeDocument(
     workspaceId: string,
     workId: string,
@@ -224,6 +251,9 @@ export interface WorksPorts {
     WorkStore,
     | 'get'
     | 'documents'
+    | 'checklistLinks'
+    | 'saveChecklistLink'
+    | 'replaceChecklistSuggestions'
     | 'worksForDocument'
     | 'pinPending'
     | 'updateRecognition'

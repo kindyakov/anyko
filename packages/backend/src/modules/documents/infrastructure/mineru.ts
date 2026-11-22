@@ -3,7 +3,10 @@ import { z } from 'zod';
 
 import { documentImageLimit } from '../../../platform/document-output';
 import type { DocumentResult } from '../application/ports';
-import { pdfOcrSchema } from '../application/result-schema';
+import {
+  hasPdfOcrProcessorVersion,
+  pdfOcrSchema,
+} from '../application/result-schema';
 import {
   matchesSourceFormat,
   sourceContentTypes,
@@ -105,7 +108,10 @@ function decodeArchive(
   );
   return {
     markdown,
-    processorVersion: pdfOcr ? processorVersion + '+eslav.1' : processorVersion,
+    processorVersion:
+      pdfOcr && !hasPdfOcrProcessorVersion(processorVersion)
+        ? processorVersion + '+eslav.1'
+        : processorVersion,
     ...(pdfOcr && { pdfOcr }),
     images,
   };

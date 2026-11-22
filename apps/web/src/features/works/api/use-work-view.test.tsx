@@ -22,6 +22,7 @@ import {
   workView,
 } from '../../../../test/fixtures';
 
+import { useChatProgress, useWorkEvents } from './events';
 import { useWorkView } from './use-work-view';
 
 function wrapperFor(client: QueryClient) {
@@ -73,7 +74,7 @@ test('a changed event refetches the work, so the screen shows what the server no
   });
   server.respond(json(200, titled('Новое название')));
   act(() => {
-    sources[0]?.emit('changed');
+    sources[0]?.emit('changed', { kind: 'facts.changed' });
   });
   await waitFor(() => {
     expect(result.current.view?.work.title).toBe('Новое название');
@@ -109,9 +110,7 @@ test('the live state follows the stream: open refetches and reports live, an err
   await waitFor(() => {
     expect(result.current.live).toBe('reconnecting');
   });
-  await waitFor(() => {
-    expect(server.exchanges).toHaveLength(3);
-  });
+  expect(server.exchanges).toHaveLength(2);
   expect(sources).toHaveLength(1);
 });
 
@@ -212,4 +211,90 @@ test('an unauthorized work request expires the session once and shows no load er
   expect(result.current.loadError).toBe('');
   expect(result.current.view).toBeUndefined();
   expect(sources).toHaveLength(0);
+});
+
+test('erasing sources clears visible chat deltas while keeping the observer subscribed', async () => {
+  const sources = installEventSource();
+  const { result } = renderHook(
+    () => {
+      useWorkEvents(workspaceId, workId, '0');
+      return useChatProgress(workspaceId, workId);
+    },
+    { wrapper: wrapperFor(createQueryClient()) },
+  );
+  await waitFor(() => {
+    expect(sources).toHaveLength(1);
+  });
+  const frame = {
+    runId: crypto.randomUUID(),
+    attempt: 1,
+    sequence: 1,
+    reasoning: '',
+  };
+  act(() => {
+    sources[0]?.emit('chat-progress', { ...frame, text: 'erased draft' });
+  });
+  await waitFor(() => {
+    expect(result.current?.[0]?.text).toBe('erased draft');
+  });
+  act(() => {
+    sources[0]?.emit('changed', { kind: 'sources.erased' });
+  });
+  await waitFor(() => {
+    expect(result.current).toEqual([]);
+  });
+  act(() => {
+    sources[0]?.emit('chat-progress', {
+      ...frame,
+      runId: crypto.randomUUID(),
+      text: 'new draft',
+    });
+  });
+  await waitFor(() => {
+    expect(result.current?.[0]?.text).toBe('new draft');
+  });
+});
+
+test('the work disappears from the screen after a remote deletion returns 404', async () => {
+  const sources = installEventSource();
+  const server = serveWork(json(200, workView));
+  const { result } = renderHook(() => useWorkView({ workspaceId, workId }), {
+    wrapper: wrapperFor(createQueryClient()),
+  });
+  await waitFor(() => {
+    expect(result.current.view?.work.title).toBe('Работа клиента');
+    expect(sources).toHaveLength(1);
+  });
+  server.respond(json(404, { error: { code: 'NOT_FOUND' } }));
+  act(() => {
+    sources[0]?.emit('changed', { kind: 'work.deleting' });
+  });
+  await waitFor(() => {
+    expect(result.current.view).toBeUndefined();
+    expect(result.current.loadError).toBe('Работа не найдена.');
+  });
+});
+
+test('source cleanup preserves the open work view until its next GET completes', async () => {
+  const sources = installEventSource();
+  const pending = Promise.withResolvers<Response>();
+  let count = 0;
+  serveApi(() => (++count === 1 ? json(200, workView) : pending.promise));
+  const { result } = renderHook(() => useWorkView({ workspaceId, workId }), {
+    wrapper: wrapperFor(createQueryClient()),
+  });
+  await waitFor(() => {
+    expect(result.current.view?.work.title).toBe('Работа клиента');
+  });
+  act(() => {
+    sources[0]?.emit('changed', { kind: 'sources.deleting' });
+  });
+  await waitFor(() => {
+    expect(count).toBe(2);
+  });
+  expect(result.current.view?.work.title).toBe('Работа клиента');
+  pending.resolve(json(200, titled('Работа обновлена')));
+  await waitFor(() => {
+    expect(result.current.view?.work.title).toBe('Работа обновлена');
+  });
 });

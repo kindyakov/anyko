@@ -14,7 +14,10 @@ import type {
   WorkReview,
   WorkViews,
 } from '@anyko/backend/workflows';
-import type { WorksModule } from '@anyko/backend/works';
+import type {
+  SubscribeDatabaseEvents,
+  WorksModule,
+} from '@anyko/backend/works';
 import {
   analyzeWork,
   attachWorkDocuments,
@@ -24,6 +27,7 @@ import {
   deleteWork,
   downloadGeneratedFile,
   editWork,
+  editWorkChecklistLink,
   editWorkDocumentRecognition,
   generateWork,
   getWork,
@@ -37,6 +41,7 @@ import {
   listWorks,
   removeWorkDocument,
   streamWorkEvents,
+  streamWorkspaceEvents,
   uploadWorkDocument,
   workChatTimeline,
   workRunSchema,
@@ -54,11 +59,13 @@ import {
 import { presentDocumentResult } from '../documents/result';
 
 import { workEventStream } from './events';
+import { workspaceEventStream } from './workspace-events';
 
 export interface WorkHttpOptions
   extends DocumentHttpOptions, ConnectionHttpOptions {
   // Фасад модуля works (запросы списка и событий) и процессы работы из runtime.
   works: WorksModule;
+  subscribeEvents: SubscribeDatabaseEvents;
   views: WorkViews;
   chat: WorkChat;
   intake: WorkIntake;
@@ -86,6 +93,14 @@ export function worksRoutes(
 ) {
   const { works, views, chat, intake, review, generation, access, deletion } =
     options;
+  route(app, streamWorkspaceEvents, ({ request, scope }) =>
+    workspaceEventStream({
+      request,
+      scope,
+      access,
+      subscribeEvents: options.subscribeEvents,
+    }),
+  );
   route(app, listWorks, async ({ scope, query }) => {
     const page = await works.queries.list(scope, {
       page: query.page,
@@ -168,10 +183,24 @@ export function worksRoutes(
     streamWorkEvents,
     async ({ scope, params, query, headers, request }) => {
       // Курсор: заголовок Last-Event-ID важнее параметра after, как и раньше.
-      const after = headers['last-event-id'] ?? query.after ?? '0';
+      const [after = '0', chatAfter = '0-0'] = (
+        headers['last-event-id'] ??
+        query.after ??
+        '0'
+      ).split('|');
       const workId = brandWorkId(params.workId);
       await works.queries.events(scope, workId, after);
-      return workEventStream({ request, scope, workId, after, works, access });
+      return workEventStream({
+        request,
+        scope,
+        workId,
+        after,
+        chatAfter,
+        works,
+        access,
+        chat,
+        subscribeEvents: options.subscribeEvents,
+      });
     },
   );
   route(
@@ -251,6 +280,15 @@ export function worksRoutes(
       workId: brandWorkId(params.workId),
       documentId: brandDocumentId(params.documentId),
       ocrRevision: body.ocrRevision,
+    });
+    return { status: 'updated' as const };
+  });
+  route(app, editWorkChecklistLink, async ({ scope, params, body }) => {
+    await review.editChecklistLink(scope, {
+      workId: brandWorkId(params.workId),
+      documentId: brandDocumentId(params.documentId),
+      requirementKey: params.requirementId,
+      ...body,
     });
     return { status: 'updated' as const };
   });

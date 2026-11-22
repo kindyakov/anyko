@@ -41,9 +41,11 @@ const failureCodes = new Map([
   ['CONNECTION_REVOKED', 'OCR_VISION_NOT_CONFIGURED'],
   ['LLM_AUTH_FAILED', 'OCR_VISION_NOT_CONFIGURED'],
   ['LLM_TIMEOUT', 'OCR_TIMEOUT'],
+  ['LLM_STREAM_IDLE', 'OCR_STREAM_IDLE'],
   ['LLM_UNAVAILABLE', 'OCR_PROCESSOR_UNAVAILABLE'],
   ['LLM_RATE_LIMITED', 'OCR_VISION_RATE_LIMITED'],
   ['LLM_INVALID_RESPONSE', 'OCR_INVALID_RESULT'],
+  ['LLM_COMPLETION_LIMIT', 'OCR_INVALID_RESULT'],
   ['OCR_NO_READABLE_TEXT', 'OCR_NO_READABLE_TEXT'],
 ]);
 export function createDocumentOcrWorkflow(options: {
@@ -108,6 +110,13 @@ export function createDocumentOcrWorkflow(options: {
               return options.vision.describe({
                 assertCurrent,
                 connection: config.connection,
+                disableReasoning: config.visionDisableReasoning,
+                trace: {
+                  correlationId: run.correlationId,
+                  jobId: run.id,
+                  stage: 'ocr',
+                  documentId: run.documentId,
+                },
                 modelId: config.visionModel,
                 resource: `${run.workspaceId}:${run.documentId}`,
                 threadId: attemptId,

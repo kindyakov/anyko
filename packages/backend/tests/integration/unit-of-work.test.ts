@@ -101,6 +101,7 @@ afterAll(async () => {
   const where = { workspaceId: { in: owned } };
   await db.workGenerationFile.deleteMany({ where });
   await db.workGeneration.deleteMany({ where });
+  await db.workArtifact.deleteMany({ where });
   await db.workEvent.deleteMany({ where });
   await db.run.deleteMany({ where });
   await db.processingIo.deleteMany({ where });

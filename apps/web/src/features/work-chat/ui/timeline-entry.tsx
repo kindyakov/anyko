@@ -82,6 +82,14 @@ export function TimelineEntry({
         </span>
         <MessageContent className="pt-1">
           <p className="text-sm font-semibold">Anyko</p>
+          {entry.reasoning && (
+            <details className="text-muted rounded-lg border border-white/10 px-3 py-2 text-sm">
+              <summary className="cursor-pointer">Размышления</summary>
+              <div className="mt-2 wrap-anywhere whitespace-pre-wrap">
+                {entry.reasoning}
+              </div>
+            </details>
+          )}
           <div aria-live="polite">
             {failed ? (
               <Notice

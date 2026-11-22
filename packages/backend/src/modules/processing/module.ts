@@ -42,6 +42,8 @@ export function createProcessingModule(deps: ProcessingDeps): ProcessingModule {
       },
       commands: { start },
       queries: {
+        activeChatId: (scope, workId) =>
+          store.activeChatId(scope.workspaceId, workId),
         isActive: isActive({ store }),
         runs: listRuns({ store }),
       },

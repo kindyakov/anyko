@@ -6,6 +6,7 @@ import {
 } from '@anyko/contracts/works';
 
 import { callApi } from '@/lib/api/call';
+import { liveQuery } from '@/lib/api/live-query';
 
 export const agentHistoryRunKey = (
   workspaceId: string,
@@ -21,6 +22,7 @@ export function analysisRunsQuery(
   latestRunId: string | null,
 ) {
   return queryOptions({
+    meta: liveQuery(workspaceId, 'runs', workId),
     queryKey: [
       'work-analysis-runs',
       workspaceId,
@@ -36,7 +38,6 @@ export function analysisRunsQuery(
         signal,
       }),
     gcTime: 0,
-    refetchInterval: active ? 2500 : false,
   });
 }
 export function agentHistoryQuery(
@@ -47,6 +48,7 @@ export function agentHistoryQuery(
   active: boolean,
 ) {
   return queryOptions({
+    meta: liveQuery(workspaceId, 'history', workId),
     queryKey: [...agentHistoryRunKey(workspaceId, workId, runId), page, active],
     queryFn: ({ signal }) =>
       callApi(getWorkAgentHistory, {
@@ -55,6 +57,5 @@ export function agentHistoryQuery(
         signal,
       }),
     gcTime: 0,
-    refetchInterval: active ? 2500 : false,
   });
 }

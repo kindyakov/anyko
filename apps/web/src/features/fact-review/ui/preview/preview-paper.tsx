@@ -9,13 +9,18 @@ import type {
   PreviewParagraph,
   PreviewRow,
 } from '@anyko/contracts/catalog';
+import { bankruptcyCollectionCell } from '@anyko/document-values/bankruptcy-projection';
 
-import { previewEntries } from '@/features/fact-review/model/preview';
+import {
+  previewDocumentValues,
+  previewEntries,
+} from '@/features/fact-review/model/preview';
 
 import { FieldEditor, TextSlot } from '../work-fields';
 
 import { CollectionNote } from './collection-note';
 import { paperMargins, paragraphStyle, signerName } from './paper-format';
+import { PreviewTable } from './preview-table';
 import { ScalarSlot } from './scalar-slot';
 import { renderStatementSignature } from './statement-signature';
 
@@ -33,23 +38,21 @@ export function PreviewPaper({
   onChange: (key: FieldKey, value: FieldValue) => void;
 }) {
   const listNumbers = new Map<string, number>();
-  const margins = document.margins;
-  const collectionNote = (key: FieldKey, collection: FieldValue) => {
-    const field = pack.fields.find((item) => item.key === key);
-    return (
+  const { version, margins } = document;
+  const projected = previewDocumentValues(version, values, pack.fields);
+  const collectionValue = projected?.value ?? ((key: FieldKey) => values[key]);
+  const collectionNote = (key: FieldKey, collection: FieldValue) =>
+    projected?.isCollection(key) ? (
+      projected.emptyNote(key, collection)
+    ) : (
       <CollectionNote
-        label={field?.label ?? 'Список'}
+        fieldKey={key}
+        fields={pack.fields}
         collection={collection}
         disabled={disabled}
-        emptyRow={Object.fromEntries(
-          (field?.columns ?? []).map(({ key }) => [key, null]),
-        )}
-        onChange={(value) => {
-          onChange(key, value);
-        }}
+        onChange={onChange}
       />
     );
-  };
   const tokens = (
     p: PreviewParagraph,
     row?: FieldRow,
@@ -66,7 +69,7 @@ export function PreviewPaper({
         if (key === 'signerName' && !row) {
           return (
             <span key={index} aria-label="Фамилия и инициалы подписанта">
-              {signerName(values)}
+              {signerName(values, projected?.modern)}
               {suffix}
             </span>
           );
@@ -74,16 +77,33 @@ export function PreviewPaper({
         const column = pack.fields
           .find((item) => item.key === rowField)
           ?.columns.find((item) => item.key === key);
+        const source = rowField ? collectionValue(rowField) : undefined;
+        const absent =
+          projected?.modern && Array.isArray(source) && !source.length;
         if (key === 'rowNumber' && row && !column)
-          return `${String(rowNumber ?? 1)}${suffix}`;
+          return (
+            (row.rowNumber ?? (absent ? '-' : String(rowNumber ?? 1))) + suffix
+          );
+        if (row && projected?.isCollection(rowField))
+          return (row[key] ?? '[не заполнено]') + suffix;
+        const text = !row && projected?.text(key);
+        if (typeof text === 'string') return text + suffix;
+        if (row && absent) return '-' + suffix;
         if (row) {
           const slot = (
             <TextSlot
               key={index}
               label={`${document.title}: ${column?.label ?? key}`}
               maxLength={column?.maxLength}
-              placeholder={column?.label ?? '…'}
+              placeholder={
+                projected?.modern ? '[не заполнено]' : (column?.label ?? '…')
+              }
               value={row[key] ?? null}
+              displayValue={
+                projected?.modern && row[key]
+                  ? bankruptcyCollectionCell(key, row[key], source, true)
+                  : undefined
+              }
               disabled={disabled}
               multiline
               inline={!!margins}
@@ -104,6 +124,9 @@ export function PreviewPaper({
             fields={pack.fields}
             formats={document.placeholders}
             values={values}
+            modern={projected?.modern ?? false}
+            defaultText={projected?.defaultText(key)}
+            translatedText={projected?.translatedText}
             disabled={disabled}
             suffix={suffix}
             onChange={onChange}
@@ -121,7 +144,7 @@ export function PreviewPaper({
     const loop = /\{#([^{}]+)\}/.exec(p.text)?.[1];
     const repeat = loop || undefined;
     if (repeat && !row) {
-      const collection = values[repeat];
+      const collection = collectionValue(repeat);
       const rows = Array.isArray(collection) ? collection : [];
       return (
         <div key={id} data-field={repeat} className="rounded-[3px]">
@@ -162,7 +185,7 @@ export function PreviewPaper({
     const contents =
       (document.id === 'statement' &&
         !row &&
-        renderStatementSignature(p.text, values)) ||
+        renderStatementSignature(p.text, values, projected?.modern)) ||
       (p.text ? tokens(p, row, changeRow, rowField, rowNumber) : <br />);
     return (
       <div
@@ -186,9 +209,10 @@ export function PreviewPaper({
   };
   const tableRow = (row: PreviewRow, index: number) => {
     const repeat = row.repeat;
-    const collection = repeat ? values[repeat] : undefined;
-    const entries = previewEntries(row, collection);
-    if (repeat && Array.isArray(collection) && !collection.length)
+    const collection = repeat ? collectionValue(repeat) : undefined;
+    const absent = Array.isArray(collection) && !collection.length;
+    if (repeat && absent && projected?.isCollection(repeat)) return null;
+    if (repeat && absent && !projected?.modern)
       return (
         <tr key={index} data-field={repeat}>
           <td
@@ -199,6 +223,10 @@ export function PreviewPaper({
           </td>
         </tr>
       );
+    const entries = previewEntries(
+      row,
+      projected?.modern && absent ? null : collection,
+    );
     return entries.map((entry, number) => (
       <tr
         key={`${String(index)}-${String(number)}`}
@@ -237,7 +265,7 @@ export function PreviewPaper({
   };
   return (
     <article
-      key={document.version}
+      key={version}
       className="animate-rise min-h-[1123px] w-[794px] max-w-none min-w-[794px] bg-white py-[76px] pr-[57px] pl-[113px] font-['Times_New_Roman',serif] text-[12pt] leading-[1.15] text-zinc-900 shadow-[0_2px_4px_#0003,0_24px_70px_-20px_#000] [&_td]:align-top"
       aria-label={document.title}
       style={paperMargins(margins)}
@@ -252,29 +280,12 @@ export function PreviewPaper({
             block.kind === 'paragraph' ? (
               paragraph(block.paragraph, String(index))
             ) : (
-              <table
+              <PreviewTable
                 key={index}
-                className={`w-full table-fixed border-collapse [&_td]:wrap-anywhere ${margins ? '[&_td]:px-[5.4pt]' : 'my-3 [&_td]:p-1'} ${block.bordered ? '[&_td]:border [&_td]:border-zinc-600' : ''}`}
-              >
-                <colgroup>
-                  {block.widths.map((width, col) => (
-                    <col
-                      key={col}
-                      style={{
-                        width: `${String(
-                          (width /
-                            Math.max(
-                              1,
-                              block.widths.reduce((a, b) => a + b, 0),
-                            )) *
-                            100,
-                        )}%`,
-                      }}
-                    />
-                  ))}
-                </colgroup>
-                <tbody>{block.rows.map(tableRow)}</tbody>
-              </table>
+                block={block}
+                hasMargins={!!margins}
+                renderRow={tableRow}
+              />
             ),
           )
         : pack.fields.map((field) => (

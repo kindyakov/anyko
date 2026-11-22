@@ -94,7 +94,7 @@ try {
     ],
     { cwd: temporary, env, stdout: 'ignore', stderr: 'ignore' },
   );
-  let ready = false;
+  let health;
   for (let i = 0; i < 300; i++) {
     if (server.exitCode !== null)
       throw new Error('MinerU exited before readiness');
@@ -103,7 +103,7 @@ try {
         signal: AbortSignal.timeout(500),
       });
       if (response.ok) {
-        ready = true;
+        health = await response.json();
         break;
       }
     } catch {
@@ -111,7 +111,13 @@ try {
     }
     await Bun.sleep(200);
   }
-  if (!ready) throw new Error('MinerU did not become ready');
+  if (!health) throw new Error('MinerU did not become ready');
+  if (
+    health.ocrRecognizer?.model !== 'cyrillic_PP-OCRv5_rec_mobile.onnx' ||
+    health.ocrRecognizer?.sha256 !==
+      '90f761b4bfcce0c8c561c0cb5c887b0971d3ec01c32164bdf7374a35b0982711'
+  )
+    throw new Error('Unexpected OCR recognizer in MinerU health');
   attempted = `${endpoint}/v1/attempts/${randomUUID()}`;
   const result = await fetch(`${attempted}?format=pdf`, {
     method: 'PUT',
@@ -119,20 +125,41 @@ try {
     signal: AbortSignal.timeout(300000),
   });
   if (!result.ok) throw new Error(`OCR failed with status ${result.status}`);
+  if (
+    result.headers.get('content-type') !== 'application/zip' ||
+    result.headers.get('x-mineru-version') !== '4.1.7+cyrillic-pdf.1'
+  )
+    throw new Error('Unexpected MinerU PDF response contract');
   const zip = resolve(temporary, 'result.zip');
   await writeFile(zip, new Uint8Array(await result.arrayBuffer()));
   const inspect = Bun.spawn(
     [
       python,
       '-c',
-      "import json,sys,zipfile; output=zipfile.ZipFile(sys.argv[1]); text=output.read('markdown.md').decode('utf8').casefold(); pages=json.loads(output.read('pdf-ocr.json'))['pages']; sys.exit(0 if 'уведомление' in text and '1150001' in text and pages and pages[0]['page']==1 else 1)",
+      String.raw`
+import json
+import sys
+import zipfile
+
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    entries = archive.namelist()
+    assert entries.count('markdown.md') == 1
+    assert entries.count('pdf-ocr.json') <= 1
+    text = archive.read('markdown.md').decode('utf-8').casefold().replace(r'\.', '.')
+    assert 'уведомление о налоговом режиме' in text
+    assert 'форма 1150001. год 2023' in text
+    if 'pdf-ocr.json' in entries:
+        metadata = json.loads(archive.read('pdf-ocr.json'))
+        assert metadata['version'] == 1 and isinstance(metadata['pages'], list)
+        assert all(page['page'] == 1 for page in metadata['pages'])
+`,
       zip,
     ],
     { cwd: temporary, env, stdout: 'ignore', stderr: 'inherit' },
   );
   if ((await inspect.exited) !== 0) throw new Error('OCR marker missing');
   console.log(
-    'Relocated offline processor recognized the Russian synthetic PDF and located its text',
+    'Relocated offline Cyrillic processor recognized the Russian synthetic PDF',
   );
 } finally {
   let cleanupError;

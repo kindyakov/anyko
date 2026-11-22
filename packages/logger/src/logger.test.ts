@@ -24,7 +24,10 @@ test('structured context excludes arbitrary request and error properties', () =>
   const input = {
     event: 'request_failed',
     requestId: 'r1',
+    documentId: 'd1',
     errorCode: 'INTERNAL_ERROR',
+    field: 'debts',
+    rejectedCount: 2,
     error: new Error('sensitive fixture'),
     authorization: 'sensitive fixture',
   };
@@ -37,6 +40,9 @@ test('structured context excludes arbitrary request and error properties', () =>
     release: 'test-release',
     event: 'request_failed',
     requestId: 'r1',
+    documentId: 'd1',
+    field: 'debts',
+    rejectedCount: 2,
   });
   expect(line).not.toContain('sensitive fixture');
 });

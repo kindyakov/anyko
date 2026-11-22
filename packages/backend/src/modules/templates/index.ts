@@ -1,6 +1,16 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
+import {
+  approvedStatementTemplate,
+  datedBankruptcyPackage,
+} from '@anyko/document-values/bankruptcy-statement';
+import { employmentFields } from '@anyko/document-values/employment';
+import {
+  creditorRegistryColumns,
+  obligationColumns,
+} from '@anyko/document-values/obligations';
+import { revisedBankruptcyPackages } from '@anyko/document-values/statement-layout';
 import { DiagnosticError } from '@anyko/logger';
 
 import { fieldDefinitions } from '../../profiles/bfl/fields';
@@ -12,17 +22,46 @@ export type { DocumentPackage } from './schemas';
 export type ReadTemplatePlaceholders = (
   pack: DocumentPackage,
 ) => Promise<DocumentPackage>;
+export type ReadTemplateRequirements = (packageVersion: string) => Promise<
+  {
+    key: string;
+    documentKind: string;
+    label: string;
+    applicability: 'usual' | 'conditional';
+  }[]
+>;
 export { templateData } from './render-data';
+
+const isCadastralColumn = (field: string, column: string) =>
+  field === 'realEstate' && column === 'identifier';
 
 const historicalPackage: DocumentPackage = documentPackageSchema.parse({
   id: 'bfl-bankruptcy',
   version: 'bfl-bankruptcy-v1',
   title: 'Банкротство гражданина',
   technical: false,
-  fields: fieldDefinitions.filter(
-    ({ key }) =>
-      !['personName', 'registrationAddress', 'observations'].includes(key),
-  ),
+  fields: fieldDefinitions
+    .filter(
+      ({ key }) =>
+        ![
+          'personName',
+          'registrationAddress',
+          'observations',
+          'cashOnHand',
+          ...employmentFields,
+          'submittedAttachments',
+        ].includes(key),
+    )
+    .map((field) => ({
+      ...field,
+      columns: field.columns.filter(
+        ({ key }) =>
+          !Object.hasOwn(obligationColumns, key) &&
+          !Object.hasOwn(creditorRegistryColumns, key) &&
+          key !== 'category' &&
+          !isCadastralColumn(field.key, key),
+      ),
+    })),
   documents: ['bfl-statement-v1', 'bfl-inventory-v1', 'bfl-creditors-v1'].map(
     (version) => manifest.find((doc) => doc.version === version),
   ),
@@ -68,10 +107,104 @@ const amountPackage: DocumentPackage = documentPackageSchema.parse({
       : document,
   ),
 });
+const obligationPackage: DocumentPackage = documentPackageSchema.parse({
+  ...amountPackage,
+  version: 'bfl-bankruptcy-v7',
+  fields: fieldDefinitions
+    .filter(
+      ({ key }) =>
+        !['debtTotal', 'employmentDetails'].includes(key) &&
+        (amountPackage.fields.some((field) => field.key === key) ||
+          employmentFields.some((field) => field === key)),
+    )
+    .map((field) => ({
+      ...field,
+      columns: field.columns.filter(
+        ({ key }) => key !== 'category' && !isCadastralColumn(field.key, key),
+      ),
+    })),
+  documents: ['bfl-statement-v7', 'bfl-inventory-v1', 'bfl-creditors-v2'].map(
+    (version) => manifest.find((doc) => doc.version === version),
+  ),
+});
+const datedPackage: DocumentPackage = documentPackageSchema.parse({
+  ...obligationPackage,
+  version: datedBankruptcyPackage,
+  fields: [
+    ...obligationPackage.fields
+      .filter(
+        ({ key }) =>
+          !['debtAsOfDate', 'requestsDetails', 'attachments'].includes(key),
+      )
+      .map((field) =>
+        field.key === 'documentDate'
+          ? { ...field, label: 'Дата заполнения комплекта' }
+          : field,
+      ),
+    ...fieldDefinitions.filter(
+      ({ key }) => key === 'attachments' || key === 'submittedAttachments',
+    ),
+  ],
+  documents: obligationPackage.documents.map((document) =>
+    document.id === 'statement'
+      ? manifest.find(({ version }) => version === approvedStatementTemplate)
+      : document,
+  ),
+});
+const revisedStatementVersions = [
+  'bfl-statement-v9',
+  'bfl-statement-v10',
+  'bfl-statement-v10',
+  'bfl-statement-v11',
+  'bfl-statement-v11',
+];
+const cadastralPackage = 'bfl-bankruptcy-v13';
+const revisedPackages = revisedBankruptcyPackages.map((version, index) =>
+  documentPackageSchema.parse({
+    ...datedPackage,
+    version,
+    fields:
+      index < 2
+        ? datedPackage.fields
+        : [
+            ...datedPackage.fields.map((field) => {
+              if (!['realEstate', 'vehicles', 'valuables'].includes(field.key))
+                return field;
+              const definition =
+                fieldDefinitions.find(({ key }) => key === field.key) ?? field;
+              return version === cadastralPackage
+                ? definition
+                : {
+                    ...definition,
+                    columns: definition.columns.filter(
+                      ({ key }) => !isCadastralColumn(field.key, key),
+                    ),
+                  };
+            }),
+            ...fieldDefinitions.filter(({ key }) => key === 'cashOnHand'),
+          ],
+    documents: [
+      manifest.find(
+        ({ version }) => version === revisedStatementVersions[index],
+      ),
+      manifest.find(
+        ({ version }) =>
+          version === (index >= 2 ? 'bfl-inventory-v2' : 'bfl-inventory-v1'),
+      ),
+      manifest.find(
+        ({ version }) =>
+          version === (index >= 2 ? 'bfl-creditors-v3' : 'bfl-creditors-v2'),
+      ),
+    ],
+  }),
+);
 export function availablePackages(): DocumentPackage[] {
-  return [amountPackage];
+  return [requirePackage(cadastralPackage)];
 }
 const knownPackages = [
+  ...revisedPackages,
+  datedPackage,
+  obligationPackage,
   amountPackage,
   bankruptcyPackage,
   fourthPackage,

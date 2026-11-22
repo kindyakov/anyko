@@ -149,7 +149,7 @@ function serveWork(initial: WorkJson) {
     announceChange() {
       const [source] = sources;
       act(() => {
-        source?.emit('changed');
+        source?.emit('changed', { kind: 'facts.changed' });
       });
     },
   };
@@ -183,6 +183,232 @@ function FactsEditor({ view }: { view: WorkView }) {
     </>
   );
 }
+
+test('court alternatives expose the official source and replace the court and address together', async () => {
+  const courtName = 'Арбитражный суд Московской области';
+  const courtAddress = '107053, Москва, пр-кт Академика Сахарова, 18';
+  const alternative = '107053, Москва, Садовая-Спасская, 18';
+  const contactUrl = 'https://asmo.arbitr.ru/about/mode';
+  const currentName = 'Арбитражный суд города Москвы';
+  const currentAddress = '115191, Москва, ул. Большая Тульская, 17';
+  const initial = viewWith({
+    courtName: currentName,
+    courtAddress: currentAddress,
+  });
+  const courtPackage = documentPackageSchema.parse({
+    ...pack,
+    fields: [
+      {
+        key: 'courtName',
+        label: 'Арбитражный суд',
+        kind: 'text',
+        multiline: false,
+        limits: {},
+        columns: [],
+      },
+      {
+        key: 'courtAddress',
+        label: 'Адрес суда',
+        kind: 'text',
+        multiline: false,
+        limits: {},
+        columns: [],
+      },
+    ],
+    documents: [
+      {
+        ...pack.documents[0],
+        blocks: [
+          {
+            kind: 'paragraph',
+            paragraph: paragraph('{courtName}: {courtAddress}'),
+          },
+        ],
+      },
+    ],
+  });
+  const candidates: WorkView['facts']['candidates'] = [
+    courtAddress,
+    alternative,
+  ].map((value) => ({
+    field: 'courtAddress',
+    origin: 'inference',
+    selected: false,
+    value,
+    explanation: 'Контактная страница суда указывает два адреса',
+    evidence: [
+      {
+        documentId: crypto.randomUUID(),
+        imagePath: null,
+        quote: 'Московская область',
+      },
+    ],
+    courtSources: {
+      catalogueUrl: 'https://arbitr.ru/',
+      contactUrl,
+      checkedAt: '2026-11-20T00:00:00.000Z',
+      courtName,
+    },
+  }));
+  candidates.push({
+    field: 'courtName',
+    origin: 'inference',
+    selected: false,
+    value: currentName,
+    evidence: [
+      { documentId: crypto.randomUUID(), imagePath: null, quote: 'Москва' },
+    ],
+    courtSources: {
+      catalogueUrl: 'https://arbitr.ru/',
+      checkedAt: '2026-11-20T00:00:00.000Z',
+      courtName: currentName,
+      contactUrl: 'https://msk.arbitr.ru/about/mode',
+    },
+  });
+  installEventSource();
+  serveApi(() =>
+    json(200, {
+      ...initial,
+      package: courtPackage,
+      facts: {
+        ...initial.facts,
+        candidates,
+        manual: ['courtAddress'],
+        discrepancyFields: ['courtAddress'],
+      },
+    }),
+  );
+  renderFacts();
+
+  await userEvent
+    .setup()
+    .click(await screen.findByRole('button', { name: /Все поля/ }));
+  const nameCard = await screen.findByRole('article', {
+    name: /Арбитражный суд/,
+  });
+  expect(
+    within(nameCard).queryAllByRole('button', { name: 'Подставить суд' }),
+  ).toHaveLength(0);
+  expect(screen.getByText(currentAddress)).toBeDefined();
+  const court = await screen.findByRole('article', { name: /Адрес суда/ });
+  const options = within(court).getByRole('region', {
+    name: 'Варианты модели',
+  });
+  expect(within(options).getByText(courtAddress)).toBeDefined();
+  expect(within(options).getByText(alternative)).toBeDefined();
+  const links = within(options).getAllByRole('link', { name: 'Контакты суда' });
+  expect(links.map((link) => link.getAttribute('href'))).toEqual([
+    contactUrl,
+    contactUrl,
+  ]);
+  const [firstOption] = within(options).getAllByRole('button', {
+    name: 'Подставить суд и адрес',
+  });
+  if (!firstOption) throw new Error('EXPECTED_COURT_ADDRESS_CHOICE');
+  await userEvent.setup().click(firstOption);
+  await findField('Адрес суда');
+  expect(screen.getAllByDisplayValue(courtName).length).toBeGreaterThan(0);
+  expect(screen.getAllByDisplayValue(courtAddress).length).toBeGreaterThan(0);
+  expect(screen.queryByDisplayValue(alternative)).toBeNull();
+});
+
+test('chooses one registry entry for an existing obligation and keeps the entered amount', async () => {
+  const row = {
+    name: 'ООО «Меридиан»',
+    basis: 'Договор № 15',
+    amount: '720.50',
+  };
+  const initial = viewWith({ debts: [row] });
+  const creditorPackage = documentPackageSchema.parse({
+    ...pack,
+    fields: [
+      {
+        key: 'debts',
+        label: 'Кредиторы',
+        kind: 'rows',
+        multiline: false,
+        limits: {},
+        columns: [
+          { key: 'name', label: 'Название из договора', maxLength: 100 },
+          { key: 'basis', label: 'Договор', maxLength: 100 },
+          { key: 'amount', label: 'Сумма', maxLength: 100 },
+          {
+            key: 'creditorLegalName',
+            label: 'Полное наименование по реестру',
+            maxLength: 100,
+          },
+          { key: 'inn', label: 'ИНН', maxLength: 10 },
+          { key: 'ogrn', label: 'ОГРН', maxLength: 13 },
+        ],
+      },
+    ],
+  });
+  const first =
+    'https://pb.nalog.ru/search.html#mode=search-ul&queryUl=1027700132195';
+  const candidates: WorkView['facts']['candidates'] = [
+    [
+      '1027700132195',
+      '7707083893',
+      'Общество с ограниченной ответственностью «Меридиан»',
+    ],
+    [
+      '1217700060820',
+      '9703026898',
+      'Общество с ограниченной ответственностью «Меридиан»',
+    ],
+  ].map(([ogrn, inn, creditorLegalName]) => ({
+    field: 'debts',
+    selected: false,
+    origin: 'inference',
+    explanation: 'Есть одноимённые организации. Сверьте ИНН.',
+    evidence: [
+      { documentId: crypto.randomUUID(), imagePath: null, quote: row.name },
+    ],
+    value: [
+      {
+        ...row,
+        amount: '8000.00',
+        creditorLegalName: creditorLegalName ?? null,
+        inn: inn ?? null,
+        ogrn: ogrn ?? null,
+      },
+    ],
+    creditorSource: {
+      registry: 'fns',
+      url:
+        'https://pb.nalog.ru/search.html#mode=search-ul&queryUl=' +
+        (ogrn ?? ''),
+      checkedAt: '2026-11-20T00:00:00.000Z',
+    },
+  }));
+  installEventSource();
+  serveApi(() =>
+    json(200, {
+      ...initial,
+      package: creditorPackage,
+      facts: { ...initial.facts, candidates, discrepancyFields: ['debts'] },
+    }),
+  );
+  renderFacts();
+  const review = await screen.findByRole('article', { name: /Кредиторы/ });
+  const options = within(review).getByRole('region', {
+    name: 'Варианты модели',
+  });
+  const links = within(options).getAllByRole('link', {
+    name: 'ЕГРЮЛ (ФНС России)',
+  });
+  expect(links.map((link) => link.getAttribute('href'))).toEqual([
+    first,
+    'https://pb.nalog.ru/search.html#mode=search-ul&queryUl=1217700060820',
+  ]);
+  const [choice] = within(options).getAllByRole('button', {
+    name: 'Подставить это значение',
+  });
+  if (!choice) throw new Error('EXPECTED_REGISTRY_CHOICE');
+  await userEvent.setup().click(choice);
+  expect(await within(review).findByText(/720\.50.*7707083893/u)).toBeDefined();
+  expect(within(review).queryByText(/720\.50.*9703026898/u)).toBeNull();
+});
 
 test('an internal link asks before discarding edits, and staying preserves the draft', async () => {
   window.location.href = 'http://localhost/w/workspace-1/works/current';
@@ -594,4 +820,82 @@ test('a work that is already being cleaned up opens without edits and with locke
   expect(await findField('ФИО полностью')).toBeTruthy();
   expect(personName().hasAttribute('disabled')).toBe(true);
   expect(strip()).toBeNull();
+});
+
+test('employment review exposes the calculation inputs and the statement uses one employer', async () => {
+  const initial = viewWith({
+    documentDate: '14.03.2026',
+    employmentHistory: [
+      { employer: 'ООО Север', date: '05.04.2025', event: 'Приём' },
+      { employer: 'ООО Север', date: '10.02.2026', event: 'Увольнение' },
+      { employer: 'ООО Юг', date: '23.02.2026', event: 'Приём' },
+    ],
+    employmentIncome: [
+      { employer: 'ООО Север', month: '2026-01', amount: '90000.01' },
+      { employer: 'ООО Север', month: '2026-02', amount: '30000.00' },
+      { employer: 'ООО Юг', month: '2026-02', amount: '10000.00' },
+      {
+        employer: 'ООО Юг',
+        month: '2026-03',
+        amount: '70000.00',
+        code: '2000',
+      },
+      {
+        employer: 'ООО Юг',
+        month: '2026-03',
+        amount: '10000.00',
+        code: '2002',
+      },
+    ],
+  });
+  const employmentPackage = documentPackageSchema.parse({
+    ...pack,
+    fields: ['employmentHistory', 'employmentIncome'].map((key) => ({
+      key,
+      label: key,
+      kind: 'rows',
+      multiline: false,
+      limits: {},
+      columns: [{ key: 'employer', label: 'Работодатель', maxLength: 4000 }],
+    })),
+    documents: [
+      {
+        ...pack.documents[0],
+        id: 'statement',
+        blocks: [
+          { kind: 'paragraph', paragraph: paragraph('{employmentDetails}') },
+        ],
+      },
+    ],
+  });
+  installEventSource();
+  serveApi(() => json(200, { ...initial, package: employmentPackage }));
+  renderFacts();
+
+  const calculation = await screen.findByRole('region', {
+    name: 'Работа и средний доход',
+  });
+  expect(
+    within(calculation).getByText(/Учтено месяцев — 3/).textContent,
+  ).toContain('2026-01, 2026-02, 2026-03');
+  expect(
+    within(calculation).getByText(/2026-01 · ООО Север · 90000,01/),
+  ).toBeDefined();
+  expect(
+    within(calculation).getByText(/2026-02 · ООО Юг · 10000,00/),
+  ).toBeDefined();
+  expect(
+    within(calculation).getByText(/2026-03 · ООО Юг · 10000,00/).textContent,
+  ).toContain('код 2002');
+  expect(within(calculation).getByText('60900,00 руб.')).toBeDefined();
+
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Черновики документов' }),
+  );
+  const statement = await screen.findByRole('article', { name: 'Заявление' });
+  expect(statement.textContent).toContain(
+    'В настоящее время работаю в ООО Юг.',
+  );
+  expect(statement.textContent).toContain('60900,00 руб.');
+  expect(statement.textContent).not.toContain('ООО Север');
 });

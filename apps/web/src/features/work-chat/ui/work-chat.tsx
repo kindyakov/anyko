@@ -9,8 +9,10 @@ import { Button, Modal, Spinner } from '@anyko/ui';
 import { MessageScroller } from '@anyko/ui/chat';
 
 import { HistoryError, RunHistory } from '@/features/work-agent-history';
+import { useChatProgress } from '@/features/works';
 
 import { chatMessagesQuery } from '../api/chat';
+import { withChatProgress } from '../model/chat-progress';
 
 import { ChatComposer } from './chat-composer';
 import { TimelineEntry } from './timeline-entry';
@@ -49,13 +51,9 @@ function ChatTimeline({ workspaceId, view }: Props) {
   const [selection, setSelection] = useState<Entry | null>(null);
   const workId = view.work.id;
   const query = useInfiniteQuery(chatMessagesQuery(workspaceId, workId));
+  const progress = useChatProgress(workspaceId, workId);
   const { isFetching, refetch } = query;
-  const lastCursor = useRef(view.cursor);
-  useEffect(() => {
-    if (isFetching || lastCursor.current === view.cursor) return;
-    lastCursor.current = view.cursor;
-    void refetch({ cancelRefetch: false });
-  }, [isFetching, refetch, view.cursor]);
+
   const firstPage = query.data?.pages[0];
   // New entries can move the page boundary between two requests.
   const entries = [
@@ -66,11 +64,20 @@ function ChatTimeline({ workspaceId, view }: Props) {
           items.toReversed().map((entry) => [entry.runId, entry] as const),
         ),
     ).values(),
-  ];
+  ].map((entry) => withChatProgress(entry, progress ?? []));
+  const gap = entries.find(({ gap }) => gap)?.gap;
+  const requestedGap = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!gap) requestedGap.current = undefined;
+    if (!gap || isFetching || requestedGap.current === gap) return;
+    requestedGap.current = gap;
+    void refetch({ cancelRefetch: false });
+  }, [gap, isFetching, refetch]);
   const latest = firstPage?.items[0];
   const busy = latest?.status === 'queued' || latest?.status === 'running';
   const selected =
-    entries.find(({ runId }) => runId === selection?.runId) ?? selection;
+    entries.find(({ entry }) => entry.runId === selection?.runId)?.entry ??
+    selection;
 
   return (
     <div className="mt-4 flex min-h-0 flex-1 flex-col border-t border-white/8">
@@ -120,7 +127,7 @@ function ChatTimeline({ workspaceId, view }: Props) {
                   </p>
                 </div>
               )}
-              {entries.map((entry) => (
+              {entries.map(({ entry }) => (
                 <MessageScroller.Item
                   key={entry.runId}
                   messageId={entry.runId}

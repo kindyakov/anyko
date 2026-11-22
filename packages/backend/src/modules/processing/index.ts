@@ -12,7 +12,10 @@ export {
 } from './application/document-attempt';
 export type { DocumentArtifacts } from './application/ports';
 export type { WorkAttempt } from './application/work-attempt';
-export { stepOutputSchema } from './application/work-ports';
+export {
+  type AnalysisCheckpoint,
+  stepOutputSchema,
+} from './application/work-ports';
 
 // Фасад запусков работы. Старт — внутренний шаг сценария, который уже проверил право (works.edit
 // для анализа, works.generate для генерации); поля модели фиксируются в снимке запуска.
@@ -31,7 +34,12 @@ export interface ProcessingCommands {
 }
 // Внутренние запросы: право проверяет вызывающий сценарий.
 export interface ProcessingQueries {
-  isActive(scope: WorkspaceScope, workId: WorkId): Promise<boolean>;
+  activeChatId(scope: WorkspaceScope, workId: WorkId): Promise<string | null>;
+  isActive(
+    scope: WorkspaceScope,
+    workId: WorkId,
+    kind?: 'chat',
+  ): Promise<boolean>;
   runs(scope: WorkspaceScope, workId: WorkId): Promise<WorkRuns>;
 }
 // Управление запусками при удалении работы и учёт зарегистрированных потоков модели.

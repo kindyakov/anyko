@@ -99,7 +99,10 @@ const config: BackendConfig = {
     accessKeyId: 'e2e',
     secretAccessKey: 'e2e',
   },
-  works: { encryptionKey: env.LLM_CONFIG_ENCRYPTION_KEY },
+  works: {
+    encryptionKey: env.LLM_CONFIG_ENCRYPTION_KEY,
+    ...(env.E2E_CHAT_PROGRESS === 'on' && { chatRedisUrl: env.E2E_REDIS_URL }),
+  },
   auth: {
     secret: env.AUTH_SECRET,
     baseUrl: env.AUTH_BASE_URL,
@@ -128,6 +131,7 @@ const worker = createBackend(config, {
   dependencies: { storage, agents, parser },
 });
 let app: { stop(): Promise<unknown> } | undefined;
+const interruptedWorkStreams = new Set<string>();
 let stopping = false;
 async function stop() {
   if (stopping) return;
@@ -147,13 +151,37 @@ try {
     logger,
     environment: 'test',
     documentHttp: api.documentHttp,
-    workHttp: api.workHttp,
+    workHttp: {
+      ...api.workHttp,
+      works: {
+        ...api.workHttp.works,
+        queries: {
+          ...api.workHttp.works.queries,
+          events(scope, workId, after) {
+            if (interruptedWorkStreams.delete(workId))
+              throw new Error('E2E_WORK_STREAM_INTERRUPTED');
+            return api.workHttp.works.queries.events(scope, workId, after);
+          },
+        },
+      },
+    },
     ready: () => jobs.state() === 'ready',
   })
     .post('/__e2e/ocr/hold', () => {
       ocrHeld = true;
     })
     .post('/__e2e/ocr/release', releaseOcr)
+    .post(
+      '/__e2e/events/disconnect/:workspaceId/:workId',
+      async ({ params }) => {
+        interruptedWorkStreams.add(params.workId);
+        await fixturePool.query('SELECT pg_notify($1, $2)', [
+          'anyko_runtime_events',
+          JSON.stringify({ ...params, kind: 'work' }),
+        ]);
+        return { accepted: true };
+      },
+    )
     .get('/__e2e/ocr/cursor/:workspaceId/:workId', async ({ params }) => ({
       cursor:
         (

@@ -22,7 +22,8 @@ export function useWorkView({
     ...options,
     queryFn: validId ? (options.queryFn ?? skipToken) : skipToken,
   });
-  const view = validId ? query.data : undefined;
+  const missing = query.error instanceof ApiError && query.error.status === 404;
+  const view = validId && !missing ? query.data : undefined;
   const live = useWorkEvents(workspaceId, workId, view?.cursor);
   return {
     view,

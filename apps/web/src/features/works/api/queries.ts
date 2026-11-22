@@ -15,6 +15,7 @@ import {
 } from '@anyko/contracts/works';
 
 import { callApi } from '@/lib/api/call';
+import { liveQuery } from '@/lib/api/live-query';
 
 import { documentPackageKeys, workKeys } from './keys';
 
@@ -30,6 +31,7 @@ export function worksQueryOptions(
   query: { page: number; pageSize: number; q: string; status: WorkListStatus },
 ) {
   return queryOptions({
+    meta: liveQuery(workspaceId, 'work-list'),
     queryKey: [...workKeys.list(workspaceId), query] as const,
     placeholderData: (data: WorkPage | undefined, previous) =>
       previous?.queryKey[1] === workspaceId &&
@@ -50,8 +52,6 @@ export function worksQueryOptions(
         },
         signal,
       }),
-    refetchInterval: (entry) =>
-      entry.state.data?.deletions.length ? 1500 : false,
   });
 }
 
@@ -60,19 +60,19 @@ export function workDeletionQueryOptions(
   workId: string | undefined,
 ) {
   return queryOptions({
+    meta: liveQuery(workspaceId, 'work-list'),
     queryKey: workKeys.deletion(workspaceId, workId),
     staleTime: 0,
     queryFn: workId
       ? ({ signal }) =>
           callApi(getWorkDeletion, { params: { workspaceId, workId }, signal })
       : skipToken,
-    refetchInterval: (entry) =>
-      entry.state.data?.status === 'deleted' ? false : 1500,
   });
 }
 
 export function workQueryOptions(workspaceId: string, workId: string) {
   return queryOptions({
+    meta: liveQuery(workspaceId, 'work-detail', workId),
     queryKey: workKeys.detail(workspaceId, workId),
     queryFn: ({ signal }) =>
       callApi(getWork, { params: { workspaceId, workId }, signal }),

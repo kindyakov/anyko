@@ -9,9 +9,14 @@ import {
   type FieldValue,
   type FieldValues,
 } from '@anyko/contracts/catalog';
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
+import { omittedStatementAttachments } from '@anyko/document-values/statement-layout';
 import { Button, Disclosure } from '@anyko/ui';
 
-import { mentions } from '@/features/fact-review/model/preview';
+import {
+  mentions,
+  previewStatementValues,
+} from '@/features/fact-review/model/preview';
 
 import { PreviewPaper } from './preview/preview-paper';
 import { FieldEditor } from './work-fields';
@@ -33,6 +38,7 @@ const PAGE_WIDTH = 794;
 interface Props {
   pack: DocumentPackage;
   values: FieldValues;
+  needsReview?: readonly FieldKey[] | undefined;
   disabled: boolean;
   onChange: (key: FieldKey, value: FieldValue) => void;
   onBack?: () => void;
@@ -41,7 +47,8 @@ interface Props {
 }
 
 export function PackagePreview(props: Props) {
-  const { pack, values, disabled, onChange, onBack, focus } = props;
+  const { pack, values, needsReview, disabled, onChange, onBack, focus } =
+    props;
   const [selected, select] = useState(pack.documents[0]?.version);
   const [handledFocus, setHandledFocus] = useState<
     NonNullable<typeof focus> & { version: string | undefined; inForm: boolean }
@@ -125,6 +132,16 @@ export function PackagePreview(props: Props) {
   const zoomIndex = zooms.findIndex((item) => item.value === scale);
   const zoomClass = zooms[zoomIndex]?.className ?? '';
   const focusedField = pack.fields.find(({ key }) => key === focusKey);
+  const paperValues = previewStatementValues(
+    pack,
+    document.id,
+    values,
+    needsReview,
+  );
+  const omittedAttachments = omittedStatementAttachments(
+    document.version,
+    values,
+  );
   return (
     <Tabs.Root
       value={document.version}
@@ -209,6 +226,11 @@ export function PackagePreview(props: Props) {
         </div>
       </div>
       <Tabs.Panel value={document.version}>
+        {omittedAttachments.length > 0 && (
+          <p role="status" className="mb-3 text-xs text-amber-100">
+            {`Абзацы об этих приложениях не войдут в заявление — ${omittedAttachments.join(', ')}.`}
+          </p>
+        )}
         <div className="text-muted mb-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
           <span className="flex items-center gap-2">
             <span className="h-3 w-6 rounded-[2px] border-b border-dotted border-zinc-400 bg-sky-100" />
@@ -228,7 +250,7 @@ export function PackagePreview(props: Props) {
             <PreviewPaper
               pack={pack}
               document={document}
-              values={values}
+              values={paperValues}
               disabled={disabled}
               onChange={onChange}
             />
@@ -257,7 +279,12 @@ export function PackagePreview(props: Props) {
             ref={form}
             className="grid gap-4 sm:grid-cols-2 [&_[data-review-highlight]]:outline-2 [&_[data-review-highlight]]:outline-offset-2 [&_[data-review-highlight]]:outline-rose-500"
           >
-            {[...pack.fields]
+            {pack.fields
+              .filter(
+                ({ key }) =>
+                  !hasSubmittedAttachments(pack.fields) ||
+                  (key !== 'attachments' && key !== 'submittedAttachments'),
+              )
               .sort(
                 (a, b) =>
                   Number(b.columns.length > 0) - Number(a.columns.length > 0),
@@ -266,7 +293,7 @@ export function PackagePreview(props: Props) {
                 <FieldEditor
                   key={field.key}
                   field={field}
-                  value={values[field.key] ?? null}
+                  value={paperValues[field.key] ?? null}
                   disabled={disabled}
                   onChange={(next) => {
                     onChange(field.key, next);

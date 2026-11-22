@@ -7,6 +7,7 @@ import {
 import { Button, Confirm, Notice } from '@anyko/ui';
 
 import { callApi } from '@/lib/api/call';
+import { liveQuery } from '@/lib/api/live-query';
 
 import { documentKeys } from '../../api/keys';
 import { describeDocumentError } from '../../model/error-texts';
@@ -31,6 +32,7 @@ export function ConfirmDocumentDeletion({
   const bulk = deleting.length > 1;
   const acrossPages = deleting.some(({ id }) => !visible.has(id));
   const impacts = useQuery({
+    meta: liveQuery(workspaceId, 'work-list'),
     queryKey: [
       ...documentKeys.deletionImpact(workspaceId),
       deleting.map(({ id }) => id),
@@ -58,10 +60,6 @@ export function ConfirmDocumentDeletion({
       }
       return items;
     },
-    refetchInterval: ({ state }) =>
-      state.data?.some(({ works }) => works.some(({ busy }) => busy))
-        ? 1500
-        : false,
   });
   const affected = impacts.data?.filter(({ works }) => works.length > 0) ?? [];
   const works = new Set(

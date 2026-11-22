@@ -5,11 +5,10 @@ import sys
 import tempfile
 from urllib.request import urlopen
 
-from pdf_ocr import MODEL_NAME, model_path, valid_model
+from pdf_ocr import DICTIONARY_SHA256, MODEL_NAME, matches_sha256, model_path, valid_model
 
 
-def install(home):
-    destination = model_path(home)
+def install_weights(destination):
     if valid_model(destination):
         return
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -26,6 +25,33 @@ def install(home):
     finally:
         if staged is not None:
             staged.unlink(missing_ok=True)
+
+
+def install_dictionary(model):
+    import onnx
+
+    destination = model.with_suffix('.txt')
+    if matches_sha256(destination, DICTIONARY_SHA256):
+        return
+    metadata = onnx.load(model, load_external_data=False).metadata_props
+    characters = next((entry.value for entry in metadata if entry.key == 'character'), '')
+    staged = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as target:
+            staged = Path(target.name)
+            target.write(characters.encode('utf-8'))
+        if not matches_sha256(staged, DICTIONARY_SHA256):
+            raise RuntimeError('Cyrillic OCR dictionary checksum mismatch')
+        os.replace(staged, destination)
+    finally:
+        if staged is not None:
+            staged.unlink(missing_ok=True)
+
+
+def install(home):
+    model = model_path(home)
+    install_weights(model)
+    install_dictionary(model)
 
 
 if __name__ == '__main__':

@@ -1,16 +1,21 @@
 import { expect, test } from 'bun:test';
+import { Buffer } from 'node:buffer';
 
 import { z } from 'zod';
 
 import { createDatabasePool } from '@anyko/database';
 
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
+import { completionStream } from '../support/completion-stream';
 
-test('RouterAI DeepSeek transcription preserves the response budget for document text', async () => {
+test('RouterAI DeepSeek transcription sends the image bytes and preserves the response budget', async () => {
   const pool = createDatabasePool(
     z.string().min(1).parse(process.env.TEST_DATABASE_URL),
   );
   const transcript = 'Дата выдачи: 14.09.2021\nКод подразделения: 041-508';
+  const jpegBase64 =
+    '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAABv/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AaP/Z';
+  const imageUrls: string[] = [];
   let calls = 0;
   const agents = createDocumentAgents({
     pool,
@@ -19,11 +24,34 @@ test('RouterAI DeepSeek transcription preserves the response budget for document
         calls++;
         const body = z
           .object({
+            stream: z.literal(true),
+            stream_options: z.object({ include_usage: z.literal(true) }),
             reasoning: z.object({ effort: z.string() }).optional(),
+            messages: z.array(
+              z.object({
+                role: z.string(),
+                content: z.union([
+                  z.string(),
+                  z.array(
+                    z.object({
+                      type: z.string(),
+                      image_url: z.object({ url: z.string() }).optional(),
+                    }),
+                  ),
+                ]),
+              }),
+            ),
           })
           .parse(await new Response(init?.body).json());
+        for (const { role, content } of body.messages) {
+          if (role !== 'user' || typeof content === 'string') continue;
+          for (const part of content) {
+            if (part.type === 'image_url' && part.image_url)
+              imageUrls.push(part.image_url.url);
+          }
+        }
         const reasoningDisabled = body.reasoning?.effort === 'none';
-        return Response.json({
+        return completionStream({
           id: 'fixture',
           object: 'chat.completion',
           created: 1,
@@ -60,12 +88,14 @@ test('RouterAI DeepSeek transcription preserves the response budget for document
       modelId: '~deepseek/deepseek-v4-flash-latest',
       resource: crypto.randomUUID(),
       threadId: crypto.randomUUID(),
-      bytes: new Uint8Array([1]),
+      bytes: Uint8Array.from(Buffer.from(jpegBase64, 'base64')),
       mediaType: 'image/jpeg',
       purpose: 'transcription',
+      disableReasoning: true,
       signal: AbortSignal.timeout(15000),
     });
     expect(result.description).toBe(transcript);
+    expect(imageUrls).toEqual([`data:image/jpeg;base64,${jpegBase64}`]);
     expect(calls).toBe(1);
   } finally {
     await agents.stop();
@@ -73,7 +103,66 @@ test('RouterAI DeepSeek transcription preserves the response budget for document
   }
 }, 20000);
 
-test('real Mastra adapter retries a malformed OpenAI-compatible response', async () => {
+test('real Mastra OCR reports the stream idle error without retrying processing comments', async () => {
+  const pool = createDatabasePool(
+    z.string().min(1).parse(process.env.TEST_DATABASE_URL),
+  );
+  let calls = 0;
+  let comments: ReturnType<typeof setInterval> | undefined;
+  const encoder = new TextEncoder();
+  const agents = createDocumentAgents({
+    pool,
+    timeoutMs: 75,
+    fetch: Object.assign(
+      () => {
+        calls++;
+        return Promise.resolve(
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                comments = setInterval(() => {
+                  controller.enqueue(encoder.encode(': PROCESSING\n\n'));
+                }, 5);
+              },
+              cancel() {
+                clearInterval(comments);
+              },
+            }),
+            { headers: { 'content-type': 'text/event-stream' } },
+          ),
+        );
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  try {
+    await agents.ready();
+    const error = await agents
+      .describe({
+        connection: {
+          id: 'fixture',
+          baseURL: 'https://fixture.invalid/v1',
+          apiKey: crypto.randomUUID(),
+        },
+        modelId: 'fixture',
+        resource: crypto.randomUUID(),
+        threadId: crypto.randomUUID(),
+        bytes: new Uint8Array([1]),
+        mediaType: 'image/jpeg',
+        purpose: 'transcription',
+        signal: AbortSignal.timeout(3000),
+      })
+      .catch((error: unknown) => error);
+    expect(error).toMatchObject({ code: 'LLM_STREAM_IDLE' });
+    expect(calls).toBe(1);
+  } finally {
+    clearInterval(comments);
+    await agents.stop();
+    await pool.end();
+  }
+});
+
+test('real Mastra vision rejects a wrapped response without retrying', async () => {
   let calls = 0;
   const pool = createDatabasePool(
     z.string().min(1).parse(process.env.TEST_DATABASE_URL),
@@ -84,7 +173,7 @@ test('real Mastra adapter retries a malformed OpenAI-compatible response', async
       () => {
         calls++;
         return Promise.resolve(
-          Response.json({
+          completionStream({
             id: 'fixture',
             object: 'chat.completion',
             created: 1,
@@ -94,7 +183,7 @@ test('real Mastra adapter retries a malformed OpenAI-compatible response', async
                 index: 0,
                 message: {
                   role: 'assistant',
-                  content: calls === 1 ? 'not json' : '{"description":"Схема"}',
+                  content: '```json\n{"description":"Схема"}\n```',
                 },
                 finish_reason: 'stop',
               },
@@ -108,7 +197,7 @@ test('real Mastra adapter retries a malformed OpenAI-compatible response', async
   });
   try {
     await agents.ready();
-    const result = await agents.describe({
+    const result = agents.describe({
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -121,9 +210,14 @@ test('real Mastra adapter retries a malformed OpenAI-compatible response', async
       mediaType: 'image/jpeg',
       signal: AbortSignal.timeout(10000),
     });
-    expect(result.description).toBe('Схема');
-    expect(calls).toBe(2);
-    expect(result.usage).toEqual({ inputTokens: null, outputTokens: null });
+    const failure = await result.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toMatchObject({
+      code: 'LLM_INVALID_RESPONSE',
+    });
+    expect(calls).toBe(1);
   } finally {
     await agents.stop();
     await pool.end();

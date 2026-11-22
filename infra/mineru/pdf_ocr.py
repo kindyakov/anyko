@@ -2,26 +2,85 @@
 from contextlib import closing
 from functools import lru_cache
 import hashlib
+from importlib import import_module
+from inspect import Parameter, signature
 import json
 from pathlib import Path
 import re
 import unicodedata
 
 
-MODEL_NAME = 'eslav_PP-OCRv5_rec_mobile.onnx'
-MODEL_SHA256 = '08705d6721849b1347d26187f15a5e362c431963a2a62bfff4feac578c489aab'
+MODEL_NAME = 'cyrillic_PP-OCRv5_rec_mobile.onnx'
+MODEL_SHA256 = '90f761b4bfcce0c8c561c0cb5c887b0971d3ec01c32164bdf7374a35b0982711'
+DICTIONARY_SHA256 = 'db40aa52ceb112055be80c694afdf655d5d2c4f7873704524cc16a447ca913ba'
+MINERU_MODEL_REPO = 'MinerU-4_models_onnx'
+MINERU_REC_PATH = 'OCR/paddleocr/ch_PP-OCRv6_small_rec_infer.onnx'
+OCR_MODEL_PATH = f'OCR/paddleocr/{MODEL_NAME}'
 MIN_SCORE = 0.82
+RECOVERY_SCORE = 0.88
+# A dot followed by a space can terminate a sentence after a number.
+NUMBER = re.compile(r'(?:[+\-−]\s*)?(?:(?<!\d)[.,]\s*)?\d+(?:(?:\.|\s+\.\s*|\s*[,:/\-−]\s*)\d+)*')
 
 
 def model_path(home):
-    return Path(home) / 'models' / 'anyko' / MODEL_NAME
+    return Path(home) / 'models' / MINERU_MODEL_REPO / OCR_MODEL_PATH
 
 
-def valid_model(path):
+def matches_sha256(path, expected):
     if not path.is_file():
         return False
     with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest() == MODEL_SHA256
+        return hashlib.file_digest(stream, 'sha256').hexdigest() == expected
+
+
+def valid_model(path):
+    return matches_sha256(path, MODEL_SHA256)
+
+
+def require_signature(module, name, *parameters):
+    function = getattr(module, name, None)
+    if not callable(function) or tuple(
+        (parameter.name, parameter.kind) for parameter in signature(function).parameters.values()
+    ) != parameters:
+        raise RuntimeError(f'Incompatible MinerU OCR binding: {name}')
+
+
+def configure_primary_ocr(sdk_version):
+    if sdk_version != '4.1.7':
+        raise RuntimeError(f'Cyrillic OCR requires MinerU 4.1.7, found {sdk_version}')
+    hybrid = import_module('mineru.model.runtime.hybrid')
+    positional = Parameter.POSITIONAL_OR_KEYWORD
+    require_signature(hybrid, 'atom_model_init', ('model_name', positional), ('kwargs', Parameter.VAR_KEYWORD))
+    onnx_device = import_module('mineru.model.runtime.onnx_device')
+    require_signature(onnx_device, '_select', ('requested', positional), ('intra_op_num_threads', positional),
+                      ('inter_op_num_threads', positional), ('allow_download', Parameter.KEYWORD_ONLY))
+    registry = import_module('mineru.model.registry')
+    resources = import_module('mineru.model.ocr.resources')
+    repo = getattr(registry, 'MINERU_4_MODELS_ONNX', None)
+    if (repo is None or getattr(hybrid, 'MINERU_4_MODELS_ONNX', None) is not repo
+            or getattr(repo, 'local_name', None) != MINERU_MODEL_REPO
+            or not isinstance(getattr(repo, 'paths', None), dict)):
+        raise RuntimeError('Incompatible MinerU OCR binding: MINERU_4_MODELS_ONNX')
+    require_signature(repo, 'local_dir')
+    if hybrid.resolve_small_model_backend() != 'onnx':
+        raise RuntimeError('Cyrillic OCR requires the ONNX small-model backend')
+    model = repo.local_dir() / OCR_MODEL_PATH
+    dictionary = model.with_suffix('.txt')
+    stock_dictionary = getattr(resources, 'PPOCRV6_DICT_PATH', None)
+    previous = (repo.paths.get('ocr_rec'), getattr(hybrid, 'PPOCRV6_DICT_PATH', None))
+    if not isinstance(stock_dictionary, Path) or previous not in (
+        (MINERU_REC_PATH, stock_dictionary), (OCR_MODEL_PATH, dictionary),
+    ):
+        raise RuntimeError('Incompatible MinerU OCR binding: ocr_rec / PPOCRV6_DICT_PATH')
+    require_signature(repo.ocr_rec, 'ensure', ('source', Parameter.KEYWORD_ONLY))
+    if not valid_model(model) or not matches_sha256(dictionary, DICTIONARY_SHA256):
+        raise RuntimeError('Cyrillic OCR weights or dictionary missing or invalid; run MinerU setup')
+
+    # The same registry entry is used by atom_model_init and by ONNX calibration.
+    # Mutate the process-local registry before any SDK model is initialized.
+    repo.paths['ocr_rec'] = OCR_MODEL_PATH
+    hybrid.PPOCRV6_DICT_PATH = dictionary
+    return model
 
 
 def normalized(text):
@@ -33,17 +92,26 @@ def comparable_text(text):
 
 
 def number_notation(text):
-    return re.findall(r'[+\-−]?\d+(?:[.,:/\-−]\d+)*', text)
+    return NUMBER.findall(text)
+
+
+def numeric_fragment(text):
+    # A detached sign or separator is still meaningful and may not disappear.
+    return not NUMBER.sub('', text).strip(' .\t\n')
 
 
 def needs_recovery(markdown, lines):
-    plain = normalized(re.sub(r'!\[[^\]]*\]\([^)]+\)|<[^>]+>', '', markdown))
+    plain = normalized(markdown_text(markdown))
     # Count characters from complete, confident lines. A handful of OCR
     # differences on a good native page should not replace its layout.
-    tokens = [normalized(line['text']) for line in lines if line['confidence'] >= 0.88]
+    tokens = [normalized(line['text']) for line in lines if line['confidence'] >= RECOVERY_SCORE]
     tokens = [token for token in tokens if len(token) >= 4]
     missing = sum(len(token) for token in tokens if token not in plain)
     return bool(tokens) and (not plain or missing >= max(16, 0.25 * sum(map(len, tokens))))
+
+
+def markdown_text(markdown):
+    return re.sub(r'!\[[^\]]*\]\([^)]+\)|<[^>]+>', '', markdown)
 
 
 def reading_rows(lines):
@@ -60,10 +128,24 @@ def reading_rows(lines):
 
 
 @lru_cache(maxsize=1)
-def reader(path):
-    import onnxruntime as ort
+def text_detector():
     from mineru.model.ocr.pp_ocr_v6_onnx import TextDetectorONNX
     from mineru.model.registry import small_model_repo
+
+    return TextDetectorONNX(
+        str(small_model_repo('onnx').ocr_det.ensure()),
+        device='cpu', limit_side_len=1800, intra_op_num_threads=3,
+    )
+
+
+def detect_image_boxes(image):
+    boxes, _ = text_detector()(image)
+    return boxes if boxes is not None else ()
+
+
+@lru_cache(maxsize=1)
+def reader(path):
+    import onnxruntime as ort
 
     if not valid_model(path):
         raise ValueError('PDF_OCR_MODEL_MISSING_OR_INVALID')
@@ -73,32 +155,61 @@ def reader(path):
     alphabet = [''] + session.get_modelmeta().custom_metadata_map['character'].splitlines() + [' ']
     if len(alphabet) != session.get_outputs()[0].shape[-1]:
         raise ValueError('PDF_OCR_MODEL_ALPHABET_MISMATCH')
-    detector = TextDetectorONNX(
-        str(small_model_repo('onnx').ocr_det.ensure()),
-        device='cpu', limit_side_len=1800, intra_op_num_threads=3,
-    )
-    return detector, session, alphabet
+    return session, alphabet
 
 
-def read_lines(page, path):
+def box_coordinates(box, image):
+    import numpy as np
+
+    height, width = image.shape[:2]
+    left, top = np.min(box, axis=0)
+    right, bottom = np.max(box, axis=0)
+    return [round(max(0, min(1, float(value))), 5) for value in (
+        left / width, top / height, right / width, bottom / height,
+    )]
+
+
+def match_scan_blocks(boxes, pixels, covered_blocks):
+    matched = set()
+    for box in boxes:
+        bbox = box_coordinates(box, pixels)
+        candidates = [index for index, block in enumerate(covered_blocks) if overlaps_block(bbox, block)]
+        # A coarse block can contain one recognized line and a missing line.
+        if len(candidates) != 1 or candidates[0] in matched:
+            return None
+        matched.add(candidates[0])
+    return sorted(matched)
+
+
+def read_lines(page, path, covered_blocks=()):
     import numpy as np
 
     width, height = page.get_size()
     scale = min(200 / 72, 2600 / max(width, height))
     with closing(page.render(scale=scale)) as bitmap:
-        image = np.ascontiguousarray(np.asarray(bitmap.to_pil().convert('RGB'))[:, :, ::-1])
-    return read_image_lines(image, path)
+        image = bitmap.to_pil().convert('RGB')
+    pixels = np.ascontiguousarray(np.asarray(image)[:, :, ::-1])
+    if covered_blocks:
+        boxes = detect_image_boxes(pixels)
+        # Scans with complete layout coverage need detection only. If text
+        # falls outside the SDK layout, recognize the existing crops once.
+        matched = match_scan_blocks(boxes, pixels, covered_blocks)
+        if matched is not None:
+            return [], matched
+        lines = read_image_lines(pixels, path, boxes)
+    else:
+        lines = read_image_lines(pixels, path)
+    return lines, []
 
 
-def read_image_lines(image, path):
+def read_image_lines(image, path, boxes=None):
     import numpy as np
     from mineru.model.ocr.image import get_rotate_crop_image_for_text_rec, resize_text_recognition_image
 
-    detector, session, alphabet = reader(path)
-    height, width = image.shape[:2]
-    boxes, _ = detector(image)
-    if boxes is None:
+    boxes = detect_image_boxes(image) if boxes is None else boxes
+    if not len(boxes):
         return []
+    session, alphabet = reader(path)
     lines = []
     for box in boxes:
         crop = get_rotate_crop_image_for_text_rec(image, np.asarray(box, dtype=np.float32))
@@ -113,11 +224,7 @@ def read_image_lines(image, path):
         value = ''.join(alphabet[index] for index in ids[selected]).strip()
         if not value or len(value) > 2000:
             continue
-        minimum = np.min(box, axis=0)
-        maximum = np.max(box, axis=0)
-        bbox = [round(max(0, min(1, float(coordinate))), 5) for coordinate in (
-            minimum[0] / width, minimum[1] / height, maximum[0] / width, maximum[1] / height,
-        )]
+        bbox = box_coordinates(box, image)
         if bbox[0] >= bbox[2] or bbox[1] >= bbox[3]:
             continue
         lines.append({
@@ -156,7 +263,7 @@ def recover_page(page, lines):
 
 
 def markdown_row(row):
-    return '　'.join(re.sub(r'([\\`*_{}\[\]()#+.!|<>~$-])', r'\\\1', line['text']) for line in row)
+    return '　'.join(re.sub(r'([\\`*_{}\[\]()#+.!|<>~$]|(?<!\w)-|-(?!\w))', r'\\\1', line['text']) for line in row)
 
 
 def recover_image_markdown(original, frames):
@@ -180,12 +287,17 @@ def recover_image_markdown(original, frames):
     )
 
 
-def overlaps_block(line, bbox):
-    left, top, right, bottom = line['bbox']
+def overlaps_block(line_bbox, bbox):
+    left, top, right, bottom = line_bbox
     block_left, block_top, block_right, block_bottom = bbox
     width = min(right, block_right) - max(left, block_left)
     height = min(bottom, block_bottom) - max(top, block_top)
     return width > (right - left) / 2 and height > (bottom - top) / 2
+
+
+def plain_text_block(block):
+    return (block.type in ('text', 'ref_text', 'doc_title', 'paragraph_title')
+            and all(span.type == 'text' for span in block.content))
 
 
 def recover_page_with_layout(page, lines, layout):
@@ -193,17 +305,20 @@ def recover_page_with_layout(page, lines, layout):
     matched = []
     blocks = []
     for bbox, top, markdown, plain_text in layout:
-        nearby = [line for line in prose if bbox and overlaps_block(line, bbox)]
+        nearby = [line for line in prose if bbox and overlaps_block(line['bbox'], bbox)]
         original = comparable_text(markdown)
         replacement = comparable_text(' '.join(line['text'] for line in nearby))
         # Replace a text block only when accepted OCR covers all of it and adds
         # content. Keep the punctuation and word boundaries, including in numbers.
         if plain_text and replacement:
-            covers_text = len(replacement) > len(original) and f' {original} ' in f' {replacement} '
+            numeric_only = numeric_fragment(original)
+            same_numbers = number_notation(original) == number_notation(replacement)
+            covers_text = (
+                len(replacement) > len(original) and f' {original} ' in f' {replacement} '
+                and (not numeric_only or same_numbers)
+            )
             restores_words = (
-                not any(char.isalpha() for char in original)
-                and any(char.isalpha() for char in replacement)
-                and number_notation(original) == number_notation(replacement)
+                numeric_only and same_numbers and any(char.isalpha() for char in replacement)
             )
             if covers_text or restores_words:
                 continue
@@ -218,6 +333,21 @@ def recover_page_with_layout(page, lines, layout):
     return reading_rows(prose + matched), markdown
 
 
+def export_page_evidence(recovered, confirmed):
+    pages = list(recovered)
+    size = len(json.dumps({'version': 1, 'pages': pages}, ensure_ascii=False).encode('utf-8'))
+    # Preserve recovery evidence first. Optional scan coordinates must fit the
+    # existing adapter limit without making a previously readable PDF fail.
+    for page in confirmed:
+        if len(pages) >= 1000:
+            break
+        page_size = len(json.dumps(page, ensure_ascii=False).encode('utf-8')) + 2
+        if size + page_size <= 2 * 1024 * 1024:
+            pages.append(page)
+            size += page_size
+    return json.dumps({'version': 1, 'pages': sorted(pages, key=lambda page: page['page'])}, ensure_ascii=False)
+
+
 def save_pdf(path, middle_json, writer, model):
     import pypdfium2 as pdfium
     from docvortex.export import materialize_middle, validate_materialized_assets
@@ -226,6 +356,7 @@ def save_pdf(path, middle_json, writer, model):
     middle, assets = materialize_middle(middle_json)
     validate_materialized_assets(middle, assets)
     recovered = []
+    confirmed = []
     sections = []
     readable = False
     with pdfium.PdfDocument(path) as pdf:
@@ -235,28 +366,53 @@ def save_pdf(path, middle_json, writer, model):
             single_page = middle.model_copy(update={'pages': [parsed_page]})
             markdown = render_markdown(single_page)
             with closing(pdf[number - 1]) as page:
-                lines = read_lines(page, model)
-                if needs_recovery(markdown, lines):
+                with closing(page.get_textpage()) as native:
+                    scanned = native.count_chars() == 0
+                primary = []
+                plain = markdown_text(markdown)
+                if scanned and re.search(r'[^\W\d_]', plain):
+                    for block in parsed_page.blocks:
+                        if block.bbox and plain_text_block(block):
+                            text = ' '.join(span.content for span in block.content).strip()
+                            if len(text) <= 2000 and re.search(r'[^\W\d_]{2,}', text):
+                                primary.append((block.bbox, text))
+                lines, matched = read_lines(page, model, [bbox for bbox, _ in primary])
+                selected = []
+                needs_text = needs_recovery(markdown, lines)
+                if needs_text:
                     layout = []
                     top = 0
                     for block in parsed_page.blocks:
                         if block.bbox:
                             top = block.bbox[1]
-                        plain_text = (
-                            block.type in ('text', 'ref_text', 'doc_title', 'paragraph_title')
-                            and all(span.type == 'text' for span in block.content)
-                        )
+                        plain_text = plain_text_block(block)
                         block_page = parsed_page.model_copy(update={'blocks': [block]})
                         block_markdown = render_markdown(single_page.model_copy(update={'pages': [block_page]}))
                         if block_markdown:
                             layout.append((block.bbox, top, block_markdown, plain_text))
                     rows, markdown = recover_page_with_layout(page, lines, layout)
-                    recovered.append({
-                        'page': number, 'omittedLines': len(lines) - sum(map(len, rows)),
-                        'lines': [line for row in rows for line in row],
+                    selected = [line for row in rows for line in row]
+                elif matched:
+                    selected = [
+                        {'text': primary[index][1], 'bbox': primary[index][0], 'source': 'primary-ocr'}
+                        for index in matched
+                    ]
+                elif scanned and lines:
+                    # A repeated read may confirm unchanged Markdown. Retain
+                    # its original OCR geometry and confidence for citations.
+                    text = normalized(plain)
+                    selected = [
+                        line for row in recover_page(page, lines) for line in row
+                        if normalized(line['text']) in text
+                    ]
+                if selected:
+                    limit = len(selected) if needs_text else min(len(selected), 1000)
+                    (recovered if needs_text else confirmed).append({
+                        'page': number, 'omittedLines': max(len(lines), len(selected)) - limit,
+                        'lines': selected[:limit],
                     })
-            readable |= bool(normalized(re.sub(r'!\[[^\]]*\]\([^)]+\)|<[^>]+>', '', markdown)))
-            if len(pdf) > 1 or recovered and recovered[-1]['page'] == number:
+            readable |= bool(normalized(markdown_text(markdown)))
+            if len(pdf) > 1 or selected:
                 markdown = f'## Страница {number}\n\n{markdown}'
             sections.append(markdown)
     if not readable and not assets:
@@ -264,6 +420,6 @@ def save_pdf(path, middle_json, writer, model):
     # The whole-document renderer joins tables marked as continuations. Keep the
     # physical page boundary so similar tables on adjacent pages stay independent.
     writer.write_string('markdown.md', '\n\n'.join(sections))
-    writer.write_string('pdf-ocr.json', json.dumps({'version': 1, 'pages': recovered}, ensure_ascii=False))
+    writer.write_string('pdf-ocr.json', export_page_evidence(recovered, confirmed))
     for name, payload in sorted(assets.items()):
         writer.write(name, payload)

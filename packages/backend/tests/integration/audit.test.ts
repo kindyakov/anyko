@@ -116,6 +116,43 @@ test('saving connection settings records the revision and never the API key', as
   expect(JSON.stringify(events)).not.toContain(apiKey);
 });
 
+test('connection revisions preserve reasoning choices only for unchanged routes', async () => {
+  const ws = await workspace();
+  const store = connectionApi();
+  const scope = memberScope(ws, 'settings-actor');
+  const routes = {
+    baseURL: 'http://127.0.0.1:1/v1',
+    visionModel: 'fixture-vision',
+    extractionModel: 'fixture-extraction',
+  };
+  await store.save(scope, {
+    ...routes,
+    apiKey,
+    visionDisableReasoning: false,
+    extractionEnableReasoning: true,
+  });
+  await store.save(scope, routes);
+  expect((await store.current(scope)).settings).toMatchObject({
+    revision: 2,
+    visionDisableReasoning: false,
+    extractionEnableReasoning: true,
+  });
+
+  await store.save(scope, { ...routes, visionModel: 'new-vision' });
+  expect((await store.current(scope)).settings).toMatchObject({
+    revision: 3,
+    visionDisableReasoning: true,
+    extractionEnableReasoning: true,
+  });
+
+  await store.save(scope, { ...routes, extractionEnableReasoning: false });
+  expect((await store.current(scope)).settings).toMatchObject({
+    revision: 4,
+    visionDisableReasoning: true,
+    extractionEnableReasoning: false,
+  });
+});
+
 test('a failed audit write rolls back the settings change with it', async () => {
   const ws = await workspace();
   const store = connectionApi(failingWrite);

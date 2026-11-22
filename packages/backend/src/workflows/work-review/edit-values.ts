@@ -1,3 +1,11 @@
+import {
+  attachmentCategory,
+  attachmentCopyKind,
+  hasSubmittedAttachments,
+  packageAttachment,
+} from '@anyko/document-values/attachments';
+
+import { requirePackage } from '../../modules/templates';
 import { WorkError } from '../../modules/works';
 import { AppError, fieldErrors } from '../../platform/errors';
 import type { WorkId } from '../../platform/ids';
@@ -7,6 +15,7 @@ import {
   emptyFieldValues,
   type FieldKey,
   type FieldValue,
+  type FieldValues,
   fieldValuesSchema,
 } from '../../profiles/bfl/fields';
 import { changeWork } from '../change-work';
@@ -35,11 +44,51 @@ function parseValues(values: unknown) {
   return parsed.data;
 }
 
+async function validateSubmittedAttachments(
+  deps: EditDeps,
+  tx: Tx,
+  scope: WorkspaceScope,
+  workId: WorkId,
+  values: Partial<FieldValues>,
+  packageVersion: string,
+) {
+  const rows = values.submittedAttachments;
+  if (!Array.isArray(rows) || !rows.length) return;
+  const seen = new Set<string>();
+  if (
+    !hasSubmittedAttachments(requirePackage(packageVersion).fields) ||
+    rows.some(({ documentId, description, category, copyKind }) => {
+      if (!documentId || seen.has(documentId)) return true;
+      seen.add(documentId);
+      const fixed = packageAttachment(documentId);
+      return (
+        !description?.trim() ||
+        !attachmentCategory(category) ||
+        !attachmentCopyKind(copyKind) ||
+        (fixed !== undefined &&
+          (fixed.description !== description ||
+            fixed.category !== category ||
+            (fixed.originalOnly && copyKind !== 'paperOriginal')))
+      );
+    })
+  ) {
+    throw new WorkError('INVALID_WORK_INPUT');
+  }
+  const documents = await deps.works
+    .in(tx)
+    .internal.documents(scope.workspaceId, workId);
+  const active = new Set(
+    documents.filter(({ deleted }) => !deleted).map(({ id }) => id),
+  );
+  if ([...seen].some((id) => !active.has(id) && !packageAttachment(id)))
+    throw new WorkError('NOT_FOUND');
+}
+
 function saveWorkEdit(
   deps: EditDeps,
   scope: WorkspaceScope,
   input: EditRequest,
-  apply: (tx: Tx) => Promise<void>,
+  apply: (tx: Tx, packageVersion: string) => Promise<void>,
 ) {
   return changeWork(
     deps,
@@ -51,7 +100,9 @@ function saveWorkEdit(
       advance: 'draft',
       event: 'facts.changed',
     },
-    () => apply,
+    ({ work }) =>
+      (tx) =>
+        apply(tx, work.packageVersion),
   );
 }
 
@@ -60,7 +111,15 @@ export const editValues =
   async (scope: WorkspaceScope, input: EditRequest & { values: unknown }) => {
     scope.require(workCommandPolicy.edit.right);
     const values = parseValues(input.values);
-    await saveWorkEdit(deps, scope, input, async (tx) => {
+    await saveWorkEdit(deps, scope, input, async (tx, packageVersion) => {
+      await validateSubmittedAttachments(
+        deps,
+        tx,
+        scope,
+        input.workId,
+        values,
+        packageVersion,
+      );
       await deps.facts
         .in(tx)
         .commands.edit(scope, { workId: input.workId, values });
@@ -76,12 +135,21 @@ async function saveFieldEdit(
 ) {
   scope.require(workCommandPolicy.edit.right);
   const result: { change?: FieldChange } = {};
-  await saveWorkEdit(deps, scope, input, async (tx) => {
+  await saveWorkEdit(deps, scope, input, async (tx, packageVersion) => {
     const { field, value } = await resolve(tx);
     const validated = parseValues({ ...emptyFieldValues(), [field]: value });
+    const values = { [field]: validated[field] };
+    await validateSubmittedAttachments(
+      deps,
+      tx,
+      scope,
+      input.workId,
+      values,
+      packageVersion,
+    );
     const { before, after } = await deps.facts.in(tx).commands.edit(scope, {
       workId: input.workId,
-      values: { [field]: validated[field] },
+      values,
     });
     result.change = {
       field,

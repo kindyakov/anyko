@@ -14,12 +14,14 @@ import {
   createIdempotencyKey,
   withIdempotencyKey,
 } from '@/lib/api/idempotency';
+import { liveQuery } from '@/lib/api/live-query';
 
 const chatKey = (workspaceId: string, workId: string) =>
   ['work-chat', workspaceId, workId] as const;
 
 export function chatMessagesQuery(workspaceId: string, workId: string) {
   return infiniteQueryOptions({
+    meta: liveQuery(workspaceId, 'chat', workId),
     queryKey: chatKey(workspaceId, workId),
     initialPageParam: 1,
     queryFn: ({ signal, pageParam }) =>
@@ -31,10 +33,6 @@ export function chatMessagesQuery(workspaceId: string, workId: string) {
     getNextPageParam: ({ page, pageSize, total }) =>
       page * pageSize < total ? page + 1 : undefined,
     gcTime: 0,
-    refetchInterval: ({ state }) => {
-      const status = state.data?.pages[0]?.items[0]?.status;
-      return status === 'queued' || status === 'running' ? 2500 : false;
-    },
   });
 }
 

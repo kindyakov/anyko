@@ -21,6 +21,7 @@ const panel = `${fieldSurface} min-h-9 px-2.5 py-1.5 text-[13px] leading-5`;
  */
 export function TextSlot({
   label,
+  hint,
   placeholder,
   value,
   displayValue,
@@ -34,6 +35,7 @@ export function TextSlot({
   tone = 'paper',
 }: {
   label: string;
+  hint?: string | undefined;
   placeholder?: string;
   value: string | null;
   displayValue?: string | undefined;
@@ -71,7 +73,7 @@ export function TextSlot({
           />
         }
         aria-label={label}
-        title={label}
+        title={hint ?? label}
         disabled={disabled}
         maxLength={maxLength}
         value={shown ?? ''}

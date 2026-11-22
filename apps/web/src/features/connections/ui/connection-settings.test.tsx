@@ -29,21 +29,25 @@ type Settings = {
     baseURL: string;
     visionModel: string;
     extractionModel: string;
+    visionDisableReasoning?: boolean;
+    extractionEnableReasoning?: boolean;
     configured: boolean;
   } | null;
   canManage: boolean;
 };
 
-const configured: Settings = {
+const configured = {
   settings: {
     revision: 3,
     baseURL: 'https://models.example.test/v1',
     visionModel: 'vision-model',
+    visionDisableReasoning: false,
     extractionModel: 'extraction-model',
+    extractionEnableReasoning: true,
     configured: true,
   },
   canManage: true,
-};
+} satisfies Settings;
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -76,6 +80,8 @@ function serveSettings(initial: Settings, saveStatus = 200) {
       baseURL: string;
       visionModel: string;
       extractionModel: string;
+      visionDisableReasoning?: boolean;
+      extractionEnableReasoning?: boolean;
     };
     current = {
       settings: {
@@ -83,6 +89,12 @@ function serveSettings(initial: Settings, saveStatus = 200) {
         baseURL: saved.baseURL,
         visionModel: saved.visionModel,
         extractionModel: saved.extractionModel,
+        ...(saved.visionDisableReasoning === undefined
+          ? {}
+          : { visionDisableReasoning: saved.visionDisableReasoning }),
+        ...(saved.extractionEnableReasoning === undefined
+          ? {}
+          : { extractionEnableReasoning: saved.extractionEnableReasoning }),
         configured: true,
       },
       canManage: true,
@@ -189,6 +201,34 @@ test('reports a rejected save as an alert and does not claim success', async () 
       'Настройки сохранены. Новые запуски используют эту версию.',
     ),
   ).toBeNull();
+});
+
+test('saves reasoning choices independently for the two models', async () => {
+  const requests = serveSettings(configured);
+  renderSettings();
+  const user = userEvent.setup();
+  const vision = await screen.findByRole('switch', {
+    name: 'Отключать рассуждения при распознавании изображений',
+  });
+  const extraction = screen.getByRole('switch', {
+    name: 'Включать высокий уровень рассуждений при извлечении сведений',
+  });
+  expect(vision.getAttribute('aria-checked')).toBe('false');
+  expect(extraction.getAttribute('aria-checked')).toBe('true');
+  await user.click(vision);
+  expect(extraction.getAttribute('aria-checked')).toBe('true');
+  await user.click(extraction);
+  await user.click(
+    screen.getByRole('button', { name: 'Сохранить подключение' }),
+  );
+  await waitFor(() => {
+    expect(
+      requests.find(({ method }) => method === 'PATCH')?.body,
+    ).toMatchObject({
+      visionDisableReasoning: true,
+      extractionEnableReasoning: false,
+    });
+  });
 });
 
 // Ответ на сохранение задаёт тест; чтение отдаёт сохранённые настройки.
@@ -320,7 +360,14 @@ test('without the manage right the connection is read-only: no save or revoke bu
 });
 
 test('reverting an edit to the saved value removes the leave warning', async () => {
-  serveSettings(configured);
+  serveSettings({
+    ...configured,
+    settings: {
+      ...configured.settings,
+      visionDisableReasoning: true,
+      extractionEnableReasoning: false,
+    },
+  });
   renderSettings();
   const user = userEvent.setup();
 
@@ -333,7 +380,7 @@ test('reverting an edit to the saved value removes the leave warning', async () 
 });
 
 test('revocation requires confirmation and refreshes the form from the server', async () => {
-  let settings = configured;
+  let settings: Settings = configured;
   const requests = serveApi(({ method }) => {
     if (method === 'DELETE') {
       settings = { ...settings, settings: null };

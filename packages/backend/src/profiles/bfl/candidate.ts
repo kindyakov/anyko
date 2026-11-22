@@ -17,7 +17,7 @@ const candidateBaseSchema = z
             documentId: z.uuid(),
             imagePath: z.string().max(240).nullable(),
             quote: z.string().max(2000),
-            page: z.number().int().positive().optional(),
+            page: z.number().int().min(1).optional(),
           })
           .strict(),
       )
@@ -39,12 +39,56 @@ export const candidateSchema = candidateBaseSchema
   .safeExtend({
     origin: z.enum(['document', 'context', 'inference']).optional(),
     explanation: z.string().trim().min(1).max(2000).optional(),
+    creditorSource: z
+      .strictObject({
+        registry: z.enum(['cbr', 'fns']),
+        url: z
+          .url()
+          .regex(
+            /^https:\/\/(?:www\.cbr\.ru\/finorg\/foinfo\/\?ogrn=|pb\.nalog\.ru\/search\.html#mode=search-ul&queryUl=)[15]\d{12}$/u,
+          ),
+        checkedAt: z.iso.datetime(),
+      })
+      .optional(),
+    courtSources: z
+      .strictObject({
+        catalogueUrl: z.literal('https://arbitr.ru/'),
+        contactUrl: z
+          .url()
+          .regex(/^https:\/\/[a-z0-9-]+\.arbitr\.ru\/about\/mode$/u),
+        checkedAt: z.iso.datetime(),
+        courtName: z.string().trim().min(1).max(250).optional(),
+      })
+      .optional(),
   })
-  .superRefine(({ origin, explanation }, ctx) => {
-    if ((origin === 'inference') !== (explanation !== undefined))
-      ctx.addIssue({
-        code: 'custom',
-        path: ['explanation'],
-        message: 'Only inferred values require an explanation',
-      });
-  });
+  .superRefine(
+    ({ field, origin, explanation, courtSources, creditorSource }, ctx) => {
+      if (
+        creditorSource &&
+        (origin !== 'inference' ||
+          (field !== 'debts' && field !== 'businessDebts'))
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['creditorSource'],
+          message: 'Registry sources require a creditor inference',
+        });
+      }
+      if ((origin === 'inference') !== (explanation !== undefined))
+        ctx.addIssue({
+          code: 'custom',
+          path: ['explanation'],
+          message: 'Only inferred values require an explanation',
+        });
+      if (
+        courtSources &&
+        (origin !== 'inference' ||
+          (field !== 'courtName' && field !== 'courtAddress'))
+      )
+        ctx.addIssue({
+          code: 'custom',
+          path: ['courtSources'],
+          message: 'Court sources require an inferred court field',
+        });
+    },
+  );

@@ -13,6 +13,8 @@ import { workSourceLimit } from '@anyko/contracts/works';
 import { Button, FileIcon, Notice, StatusPill } from '@anyko/ui';
 import { HorizonLoader } from '@anyko/ui/brand';
 
+import { useWorkspaceEvents } from '@/lib/api/live-events';
+
 import { type DocumentFilters, documentsQueryOptions } from '../../api/queries';
 import {
   describeDocumentError,
@@ -43,6 +45,7 @@ export function CatalogSelection({
   attached?: ReadonlySet<string>;
   disabled?: boolean;
 }) {
+  useWorkspaceEvents(workspaceId);
   const [filters, setFilters] = useState<DocumentFilters>({
     q: '',
     formats: [],

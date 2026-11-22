@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 
 import { sessionCookieNames } from '@anyko/contracts/session';
-import { workResponseSchema } from '@anyko/contracts/works';
+import { workChatTimeline, workResponseSchema } from '@anyko/contracts/works';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -198,6 +198,72 @@ test('work goes from list through upload, automatic status and editable facts', 
   ).toHaveValue('Иванова');
   await page.goto(`/works/${workId}`);
   await expect(page).toHaveURL(new RegExp(`/w/e2e-north/works/${workId}$`));
+});
+
+test('chat shows incremental Markdown and resumes after a reload and a stream disconnect', async ({
+  page,
+}) => {
+  test.setTimeout(65_000);
+  await page.goto('/sign-in');
+  await signIn(page, 'OWNER');
+  await page.getByRole('button', { name: 'Новая работа' }).click();
+  await page.getByLabel('Название работы').fill('Потоковый ответ');
+  await page.getByRole('button', { name: 'Создать и открыть' }).click();
+  await expect(page).toHaveURL(/\/works\/[0-9a-f-]+$/);
+  const openChat = page.getByRole('button', { name: 'Чат с агентом' });
+  const chat = page.getByRole('dialog', { name: 'Чат с агентом' });
+  await openChat.click();
+  const message = chat.getByRole('textbox', { name: 'Сообщение агенту' });
+  await message.fill('Проверьте потоковый ответ.');
+  await expect(
+    chat.getByRole('button', { name: 'Отправить', exact: true }),
+  ).toBeEnabled();
+  await message.press('Enter');
+
+  const first = chat.locator('strong').getByText('Первая часть');
+  const second = chat.getByText('Вторая часть.', { exact: true });
+  const final = chat.getByText('Ответ завершён.', { exact: true });
+  const reasoning = chat.getByText('Размышления', { exact: true });
+  await expect(first).toBeVisible();
+  await expect(final).toHaveCount(0);
+  await expect(reasoning).toBeVisible();
+  await expect(chat.getByText('Проверяю доступные сведения.')).toBeHidden();
+
+  const workId = new URL(page.url()).pathname.split('/').at(-1);
+  await expect
+    .poll(async () => {
+      const response = await page.request.get(
+        `/api/v1/workspaces/e2e-north/works/${workId ?? ''}/messages`,
+      );
+      const timeline = workChatTimeline.parse(await response.json());
+      return timeline.items[0]?.draft?.text;
+    })
+    .toBe('**Первая часть**');
+  await page.reload();
+  await openChat.click();
+  await expect(first).toBeVisible();
+  await expect(final).toHaveCount(0);
+  await expect(second).toBeVisible();
+  const resumed = page.waitForRequest(
+    async (request) =>
+      new URL(request.url()).pathname.endsWith('/events') &&
+      Boolean((await request.headerValue('last-event-id'))?.includes('|')),
+  );
+  const interrupted = await page.request.post(
+    `http://127.0.0.1:3031/__e2e/events/disconnect/e2e-north/${workId ?? ''}`,
+  );
+  expect(interrupted.ok()).toBe(true);
+  await resumed;
+  await expect(final).toBeVisible();
+  await expect(first).toHaveCount(1);
+  await expect(second).toHaveCount(1);
+  await reasoning.click();
+  await expect(chat.getByText('Проверяю доступные сведения.')).toBeVisible();
+  await page.reload();
+  await openChat.click();
+  await expect(final).toBeVisible();
+  await expect(reasoning).toBeVisible();
+  await expect(chat.getByText('Проверяю доступные сведения.')).toBeHidden();
 });
 
 test('chat field history restores the selected field and keeps other values', async ({

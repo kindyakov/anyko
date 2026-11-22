@@ -28,6 +28,8 @@ export function candidateIdentity(candidate: WorkFacts['candidates'][number]) {
     value: candidate.value,
     evidence: candidate.evidence,
     ...(candidate.origin === 'inference' && { origin: candidate.origin }),
+    ...(candidate.courtSources && { court: candidate.courtSources.contactUrl }),
+    ...(candidate.creditorSource && { creditor: candidate.creditorSource.url }),
   });
 }
 

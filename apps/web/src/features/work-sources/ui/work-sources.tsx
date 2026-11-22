@@ -61,7 +61,7 @@ export function WorkSources({
   uploads: Upload[];
   onUpload: (files: File[]) => Promise<number>;
   onDelete: (document: Document) => Promise<void>;
-  onOpen: (document: Document) => void;
+  onOpen: (document: Document, page?: number) => void;
   onRetry: (documentId: string) => void;
   retryingId: string | undefined;
 }) {

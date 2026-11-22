@@ -63,14 +63,14 @@ export class FakeEventSource {
   closed = false;
   onopen: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  readonly #listeners = new Map<string, () => void>();
+  readonly #listeners = new Map<string, (event: MessageEvent) => void>();
 
   constructor(url: string | URL) {
     this.url = String(url);
     FakeEventSource.instances.push(this);
   }
 
-  addEventListener(type: string, listener: () => void) {
+  addEventListener(type: string, listener: (event: MessageEvent) => void) {
     this.#listeners.set(type, listener);
   }
 
@@ -78,8 +78,10 @@ export class FakeEventSource {
     this.closed = true;
   }
 
-  emit(type: string) {
-    this.#listeners.get(type)?.();
+  emit(type: string, data?: object) {
+    this.#listeners.get(type)?.(
+      new MessageEvent(type, { data: JSON.stringify(data) }),
+    );
   }
 }
 

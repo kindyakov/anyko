@@ -15,6 +15,7 @@ const collections = new Map([
   ['workspaces', 'workspace'],
   ['document-packages', 'document-package'],
   ['works', 'work'],
+  ['checklist-items', 'checklist-item'],
   ['runs', 'run'],
   ['messages', 'message'],
   ['connections', 'connection'],
@@ -49,6 +50,11 @@ const boundedDirectories = new Map([
 ]);
 
 const declaredOverlaps = [
+  {
+    pair: ['streamWorkEvents', 'streamWorkspaceEvents'],
+    reason:
+      'Поток работы дочитывает журнал по курсору и передаёт дельты чата, а поток области обновляет списки без выбранной работы',
+  },
   {
     pair: ['getDocumentResult', 'getWorkDocumentResult'],
     reason:

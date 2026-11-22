@@ -1,7 +1,24 @@
-import type { FieldValue, FieldValues } from '@anyko/contracts/catalog';
+import type {
+  FieldKey,
+  FieldValue,
+  FieldValues,
+} from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
+import {
+  familyStatementNeedsReview,
+  statementDefaultValue,
+} from '@anyko/document-values/bankruptcy-projection';
 import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
+import {
+  applyCreditorRegistryCandidate,
+  applyObligationCandidate,
+  isBankObligation,
+  obligationFields,
+} from '@anyko/document-values/obligations';
+import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
+import { comparableText } from '@anyko/document-values/text-value';
 
 import { sameFieldValue } from './field-value';
 
@@ -43,7 +60,30 @@ export function candidateSelection(
 ) {
   const unchanged = sameFieldValue(value, saved);
   return (candidate: ReviewField['candidates'][number]) =>
-    unchanged ? candidate.selected : sameFieldValue(value, candidate.value);
+    unchanged ? candidate.selected : sameReviewValue(value, candidate.value);
+}
+
+export function sameReviewValue(
+  a: FieldValue | undefined,
+  b: FieldValue | undefined,
+): boolean {
+  return typeof a === 'string' && typeof b === 'string'
+    ? comparableText(a) === comparableText(b)
+    : sameFieldValue(a, b);
+}
+
+export function reviewCandidateValue(
+  key: FieldKey,
+  current: FieldValue | undefined,
+  value: FieldValue,
+  registry: boolean,
+) {
+  if (!Array.isArray(value)) return value;
+  if (registry) return applyCreditorRegistryCandidate(current, value) ?? null;
+  return obligationFields.some((field) => field === key) &&
+    value.some(isBankObligation)
+    ? applyObligationCandidate(current, value)
+    : value;
 }
 
 export function reviewFields(
@@ -53,12 +93,18 @@ export function reviewFields(
 ) {
   const conflicts = new Set(view.facts.discrepancyFields);
   const evidenceLost = new Set(view.facts.needsReview);
-  const fields: ReviewField[] = view.package.fields.map((field) => {
+  const reviewable = hasSubmittedAttachments(view.package.fields)
+    ? view.package.fields.filter(
+        ({ key }) => key !== 'attachments' && key !== 'submittedAttachments',
+      )
+    : view.package.fields;
+  const fields: ReviewField[] = reviewable.map((field) => {
     const candidates = view.facts.candidates.filter(
       ({ field: key }) => key === field.key,
     );
     const conflict = conflicts.has(field.key);
     const lost = evidenceLost.has(field.key);
+    const current = values[field.key];
     return {
       field,
       candidates,
@@ -67,6 +113,11 @@ export function reviewFields(
       attention:
         conflict ||
         lost ||
+        (field.key === 'familyDetails' &&
+          typeof current === 'string' &&
+          familyStatementNeedsReview(current)) ||
+        (isDatedBankruptcyPackage(view.package.version) &&
+          statementDefaultValue(values, field.key) !== undefined) ||
         (view.facts.values[field.key] == null && candidates.length > 0),
     };
   });
@@ -91,14 +142,14 @@ export function reviewFields(
         ({ origin, value }) =>
           origin !== 'inference' &&
           !invalidReviewValue(field, value) &&
-          sameFieldValue(
+          sameReviewValue(
             normalizedReviewValue(field, value),
             normalizedReviewValue(field, candidates[0]?.value),
           ),
       ),
   );
-  const total = view.package.fields.length;
-  const complete = view.package.fields.filter(
+  const total = reviewable.length;
+  const complete = reviewable.filter(
     (field) => values[field.key] != null,
   ).length;
   return { attention, visible, quick, total, complete };

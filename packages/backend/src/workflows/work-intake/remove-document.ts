@@ -11,7 +11,12 @@ export const removeDocument =
   (
     deps: Pick<
       WorkIntakeDeps,
-      'works' | 'locks' | 'processing' | 'uow' | 'redactWorkUploadResponses'
+      | 'works'
+      | 'locks'
+      | 'processing'
+      | 'uow'
+      | 'facts'
+      | 'redactWorkUploadResponses'
     >,
   ) =>
   async (
@@ -55,6 +60,13 @@ export const removeDocument =
           ) {
             throw new WorkError('NOT_FOUND');
           }
+          await deps.facts
+            .in(tx)
+            .internal.removeSubmittedAttachment(
+              scope.workspaceId,
+              workId,
+              documentId,
+            );
           if (source.uploaded)
             await deps.redactWorkUploadResponses(tx, scope.workspaceId, [
               documentId,

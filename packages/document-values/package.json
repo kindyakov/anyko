@@ -3,12 +3,24 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./attachments": "./src/attachments.ts",
+    "./bankruptcy-format": "./src/bankruptcy-format.ts",
+    "./bankruptcy-projection": "./src/bankruptcy-projection.ts",
+    "./bankruptcy-statement": "./src/bankruptcy-statement.ts",
     "./calendar-date": "./src/calendar-date.ts",
+    "./employment": "./src/employment.ts",
+    "./inventory-layout": "./src/inventory-layout.ts",
     "./money": "./src/money.ts",
-    "./template-value": "./src/template-value.ts"
+    "./obligations": "./src/obligations.ts",
+    "./statement-layout": "./src/statement-layout.ts",
+    "./template-value": "./src/template-value.ts",
+    "./text-value": "./src/text-value.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "lvovich": "2.1.0"
   },
   "devDependencies": {
     "@anyko/typescript-config": "workspace:*",

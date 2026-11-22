@@ -1,29 +1,41 @@
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
 import { LlmError } from '@anyko/llm';
 
 import {
   type AgentSessionContext,
+  type DocumentAgents,
   type FieldDefinition,
 } from '../../modules/agents';
-import type { DocumentAnalysis } from '../../modules/documents';
-import { candidatesForContext, type WorkFacts } from '../../modules/facts';
+import {
+  candidatesForContext,
+  projectRunFacts,
+  type WorkFacts,
+} from '../../modules/facts';
 import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
+import type { AnalysisPlan } from '../../profiles/analysis-plan';
+import { missingFieldReasonLabels } from '../../profiles/bfl/analysis-discrepancy';
+import type { FactSourceText } from '../../profiles/bfl/automatic-value';
+import type { FieldKey } from '../../profiles/bfl/fields';
 import type { WorkDependencies } from '../work-dependencies';
 import { logWorkFailure } from '../work-execution/failure';
 import { analysisContextRevision } from '../work-execution/run-state';
 import { guardWorkRevision, workLockKey } from '../work-guards';
 
+import { attachmentAnalysis } from './attachment-analysis';
+import {
+  type ChecklistAnalysisSource,
+  validateChecklistSuggestions,
+} from './checklist-suggestions';
+import { passportSourceIds } from './identity-sources';
 import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
+import { runStepwiseAnalysis } from './stepwise-analysis';
 
-export interface ContinuationSource {
-  id: string;
+export interface ContinuationSource extends ChecklistAnalysisSource {
   filename: string;
   digest: string;
-  text: string;
-  pdfOcr?: DocumentAnalysis['pdfOcr'];
-  visuals: { path: string; description: string }[];
 }
 
 /** One entry point for continuing a logical work session; transport never owns its context. */
@@ -34,9 +46,13 @@ export function createWorkContinuation(deps: WorkDependencies) {
     readConnection(): ReturnType<
       WorkDependencies['connections']['internal']['connection']
     >;
+    pilotPlan?: AnalysisPlan;
     fields: FieldDefinition[];
+    excludedFields?: ReadonlySet<FieldKey> | undefined;
     candidates: WorkFacts['candidates'];
     sources: ContinuationSource[];
+    unreadableSources?: { filename: string; errorCode: string }[];
+    sourceTexts: readonly FactSourceText[];
     failures: number;
     completed: number;
     signal: AbortSignal;
@@ -50,6 +66,9 @@ export function createWorkContinuation(deps: WorkDependencies) {
         async (signal) => {
           const work = await input.current();
           const threadId = deps.newId();
+          const requirements = await deps.templateRequirements(
+            work.packageVersion,
+          );
           return workAttempt.write(async (tx) => {
             await guardWorkRevision(
               deps.works.in(tx).internal,
@@ -64,19 +83,29 @@ export function createWorkContinuation(deps: WorkDependencies) {
             await deps.processing
               .in(tx)
               .internal.thread(run.workspaceId, run.workId, threadId);
-            return { work, facts, session, threadId };
+            return { work, facts, session, threadId, requirements };
           }, signal);
         },
         input.signal,
       );
-      const candidates = candidatesForContext(
+      const found = candidatesForContext(
         input.candidates,
         snapshot.facts.candidates,
         run.documentIds,
         input.sources.map(({ id }) => id),
       );
+      const submitted = hasSubmittedAttachments(input.fields);
+      const candidates = submitted ? attachmentAnalysis(found) : found;
+      const passportIds = passportSourceIds(input.sources);
+      const normalizeContext = (proposals: WorkFacts['candidates']) => {
+        const located = locateEvidence(proposals, input.sources);
+        return submitted ? attachmentAnalysis(located, candidates) : located;
+      };
       let output:
-        Awaited<ReturnType<typeof deps.agents.model.reconcile>> | undefined;
+        | (Awaited<ReturnType<typeof deps.agents.model.reconcile>> & {
+            pilot?: Awaited<ReturnType<typeof runStepwiseAnalysis>>;
+          })
+        | undefined;
       const historyRef = {
         workspaceId: run.workspaceId,
         workId: run.workId,
@@ -111,6 +140,49 @@ export function createWorkContinuation(deps: WorkDependencies) {
             throw new Error('CONTEXT_REVISION_CHANGED');
         };
         const config = await input.readConnection();
+        const modelInput: Parameters<DocumentAgents['reconcile']>[0] = {
+          trace: {
+            correlationId: run.correlationId,
+            jobId: run.id,
+            stage: 'reconciliation',
+          },
+          traceTool: (event) => history.tool({ ...interaction, ...event }),
+          observe: history.observe({
+            ...interaction,
+            provider: config.connection.id,
+            model: config.extractionModel,
+          }),
+          sessionId: snapshot.session.id,
+          threadId: snapshot.threadId,
+          resource: `${run.workspaceId}:${run.workId}`,
+          modelId: config.extractionModel,
+          connection: config.connection,
+          fields: input.fields,
+          checklistRequirements: snapshot.requirements,
+          workRevision: snapshot.work.revision,
+          previousContext: snapshot.session.context,
+          facts: snapshot.facts,
+          candidates,
+          documents: input.sources.map(({ id, filename, digest, visuals }) => ({
+            id,
+            filename,
+            digest,
+            images: visuals.map((v) => v.path),
+          })),
+          signal: input.signal,
+          assertCurrent,
+          readSource: async (documentId, imagePath) => {
+            await assertCurrent();
+            const source = input.sources.find((s) => s.id === documentId);
+            if (!source) throw new Error('SOURCE_NOT_ALLOWED');
+            const text =
+              imagePath === null
+                ? source.text
+                : source.visuals.find((v) => v.path === imagePath)?.description;
+            if (text === undefined) throw new Error('SOURCE_NOT_ALLOWED');
+            return text;
+          },
+        };
         output = await callModel({
           logger: deps.logger,
           callId: snapshot.threadId,
@@ -119,49 +191,91 @@ export function createWorkContinuation(deps: WorkDependencies) {
           stage: 'reconciliation',
           provider: config.connection.id,
           model: config.extractionModel,
-          execute: () =>
-            deps.agents.model.reconcile({
-              traceTool: (event) => history.tool({ ...interaction, ...event }),
-              observe: history.observe({
-                ...interaction,
-                provider: config.connection.id,
-                model: config.extractionModel,
-              }),
-              sessionId: snapshot.session.id,
-              threadId: snapshot.threadId,
-              resource: `${run.workspaceId}:${run.workId}`,
-              modelId: config.extractionModel,
-              connection: config.connection,
-              fields: input.fields,
-              workRevision: snapshot.work.revision,
-              previousContext: snapshot.session.context,
-              facts: snapshot.facts,
-              candidates,
-              documents: input.sources.map(
-                ({ id, filename, digest, visuals }) => ({
+          async execute() {
+            if (!input.pilotPlan)
+              return deps.agents.model.reconcile(modelInput);
+            const model = deps.agents.model.runAnalysisStep;
+            if (!model) throw new Error('STEPWISE_AGENT_UNAVAILABLE');
+            const plan = input.pilotPlan;
+            const pilot = await runStepwiseAnalysis({
+              plan,
+              attempt: workAttempt,
+              fingerprint: JSON.stringify([
+                input.pilotPlan.revision,
+                settingsRevision,
+                run.inputRevision,
+                snapshot.session.revision,
+                analysisContextRevision(snapshot.work),
+                input.sources.map(({ id, ocrRevision, digest }) => [
                   id,
-                  filename,
+                  ocrRevision,
                   digest,
-                  images: visuals.map((v) => v.path),
+                ]),
+              ]),
+              model,
+              projectFacts: (draft) =>
+                projectRunFacts(snapshot.facts, {
+                  candidates,
+                  contextCandidates: normalizeContext(draft),
+                  fields: input.fields.map(({ key }) => key),
+                  excludedFields: input.excludedFields,
+                  confirmed:
+                    snapshot.work.confirmedRevision === snapshot.work.revision,
+                  preserveExisting: run.automaticUpload === true,
+                  passportIds,
+                  sourceTexts: input.sourceTexts,
+                }).next,
+              writeCheckpoint: (candidates, checkpoint) =>
+                deps.locks.run(
+                  workLockKey(run.workspaceId, run.workId),
+                  async (signal) => {
+                    await assertCurrent();
+                    const work = await input.current();
+                    if (
+                      analysisContextRevision(work) !==
+                      analysisContextRevision(snapshot.work)
+                    )
+                      throw new Error('CONTEXT_REVISION_CHANGED');
+                    await workAttempt.write(async (tx, write) => {
+                      await guardWorkRevision(
+                        deps.works.in(tx).internal,
+                        run,
+                        work.revision,
+                        signal,
+                      );
+                      await write.step({
+                        stage: 'reconciliation',
+                        status: 'running',
+                        output: {
+                          version: 1,
+                          sourceDigest: plan.revision,
+                          visuals: [],
+                          candidates,
+                          analysisCheckpoint: checkpoint,
+                        },
+                      });
+                    }, signal);
+                  },
+                  input.signal,
+                ),
+              turn: {
+                ...modelInput,
+                enableReasoning: config.extractionEnableReasoning,
+                previousSummary: snapshot.session.context?.summary ?? null,
+                ...(input.unreadableSources && {
+                  unreadableSources: input.unreadableSources,
                 }),
-              ),
-              signal: input.signal,
-              assertCurrent,
-              readSource: async (documentId, imagePath) => {
-                await assertCurrent();
-                const source = input.sources.find((s) => s.id === documentId);
-                if (!source) throw new Error('SOURCE_NOT_ALLOWED');
-                const text =
-                  imagePath === null
-                    ? source.text
-                    : source.visuals.find((v) => v.path === imagePath)
-                        ?.description;
-                if (text === undefined) throw new Error('SOURCE_NOT_ALLOWED');
-                return text;
               },
-            }),
+            });
+            return {
+              summary: pilot.summary,
+              candidates: pilot.candidates,
+              usage: pilot.usage,
+              pilot,
+            };
+          },
         });
-        output.candidates = locateEvidence(output.candidates, input.sources);
+        output.candidates = normalizeContext(output.candidates);
       } catch (error) {
         output = undefined;
         reconciliationCause = error;
@@ -203,7 +317,13 @@ export function createWorkContinuation(deps: WorkDependencies) {
             );
             return false;
           }
-          let validOutput = contextChanged ? undefined : output;
+          const pilotFailure = contextChanged
+            ? undefined
+            : output?.pilot?.failure;
+          let validOutput =
+            contextChanged || (pilotFailure && !output?.pilot?.steps.length)
+              ? undefined
+              : output;
           await workAttempt.write(async (tx, attemptWrite) => {
             const facts = deps.facts.in(tx).commands;
             const works = deps.works.in(tx).internal;
@@ -213,17 +333,76 @@ export function createWorkContinuation(deps: WorkDependencies) {
               workspaceId: run.workspaceId,
               workId: run.workId,
               fields: input.fields.map(({ key }) => key),
+              excludedFields: input.excludedFields,
               confirmed: work.confirmedRevision === work.revision,
               preserveExisting: run.automaticUpload === true,
               candidates,
+              passportIds,
+              sourceTexts: input.sourceTexts,
               ...(validOutput && { contextCandidates: validOutput.candidates }),
             });
             if (!acceptedFacts.contextAccepted) validOutput = undefined;
+            const suggestions = validOutput?.checklistSuggestions;
+            if (suggestions && snapshot.requirements.length) {
+              const documents = await works.documents(
+                run.workspaceId,
+                run.workId,
+              );
+              const sources = input.sources.filter((source) =>
+                documents.some(
+                  (row) =>
+                    !row.deleted &&
+                    row.id === source.id &&
+                    row.ocrRevision === source.ocrRevision,
+                ),
+              );
+              const { links, rejectedDocumentIds } =
+                validateChecklistSuggestions(
+                  snapshot.requirements,
+                  sources,
+                  suggestions,
+                );
+              if (!suggestions.length || links.length)
+                await works.replaceChecklistSuggestions(
+                  run.workspaceId,
+                  run.workId,
+                  sources
+                    .map(({ id }) => id)
+                    .filter((id) => !rejectedDocumentIds.has(id)),
+                  links.filter(
+                    ({ documentId }) => !rejectedDocumentIds.has(documentId),
+                  ),
+                );
+            }
             await sessions.history.outcome(historyRef, {
               ...interaction,
               status: validOutput ? 'accepted' : 'rejected',
               output: JSON.stringify({
                 summary: validOutput?.summary,
+                ...(validOutput?.pilot?.reviewReasons && {
+                  unfilledFields: validOutput.pilot.reviewReasons
+                    .filter(({ field }) =>
+                      acceptedFacts.missingFields.includes(field),
+                    )
+                    .map(({ field, reason }) => ({
+                      field,
+                      label:
+                        input.fields.find(({ key }) => key === field)?.label ??
+                        field,
+                      reason: missingFieldReasonLabels[reason],
+                    })),
+                }),
+                ...(validOutput?.pilot && {
+                  steps: validOutput.pilot.steps,
+                  discrepancies: validOutput.pilot.discrepancies,
+                  ...(validOutput.pilot.reviewOutcome && {
+                    reviewSummary: {
+                      ...validOutput.pilot.reviewOutcome,
+                      status: pilotFailure ? 'partial' : 'completed',
+                    },
+                  }),
+                }),
+                ...(pilotFailure && { failedStep: pilotFailure }),
                 proposalOutcomes: [
                   ...acceptedFacts.proposalOutcomes,
                   ...(contextChanged ? supersededProposals() : []),
@@ -233,7 +412,9 @@ export function createWorkContinuation(deps: WorkDependencies) {
               }),
               ...(!validOutput && {
                 errorCode:
-                  reconciliationError ?? 'CONTEXT_PROPOSALS_NOT_ACCEPTED',
+                  pilotFailure?.errorCode ??
+                  reconciliationError ??
+                  'CONTEXT_PROPOSALS_NOT_ACCEPTED',
               }),
             });
             if (validOutput && settingsRevision !== null) {
@@ -268,20 +449,30 @@ export function createWorkContinuation(deps: WorkDependencies) {
             }
             await attemptWrite.step({
               stage: 'reconciliation',
-              status: validOutput ? 'succeeded' : 'failed',
+              status:
+                validOutput && !validOutput.pilot?.failure
+                  ? 'succeeded'
+                  : 'failed',
               ...(!validOutput
                 ? {
                     errorCode: contextChanged
                       ? 'CONTEXT_REVISION_CHANGED'
-                      : 'CONTEXT_RECONCILIATION_FAILED',
+                      : (pilotFailure?.errorCode ??
+                        reconciliationError ??
+                        'CONTEXT_RECONCILIATION_FAILED'),
                   }
-                : { usage: validOutput.usage }),
+                : {
+                    usage: validOutput.usage,
+                    ...(validOutput.pilot?.failure && {
+                      errorCode: validOutput.pilot.failure.errorCode,
+                    }),
+                  }),
             });
             await attemptWrite.finish({
               status:
                 input.completed === 0
                   ? 'failed'
-                  : input.failures || !validOutput
+                  : input.failures || !validOutput || validOutput.pilot?.failure
                     ? 'partial'
                     : 'succeeded',
             });

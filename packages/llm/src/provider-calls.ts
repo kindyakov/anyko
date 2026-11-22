@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+import {
+  captureProviderStream,
+  isProviderStream,
+  providerStreamData,
+  ProviderStreamIdleError,
+} from './provider-stream';
+
 const tokens = z.number().int().min(0).max(2_147_483_647);
 const usageSchema = z.object({
   prompt_tokens: tokens.nullish(),
@@ -56,6 +63,11 @@ const requestSchema = z.object({
     )
     .optional(),
 });
+const traceRequestSchema = requestSchema.extend({
+  max_tokens: tokens.optional(),
+  reasoning: z.json().optional(),
+  response_format: z.json().optional(),
+});
 const responseChoices = z.array(
   z.object({
     message: message.nullish(),
@@ -92,25 +104,31 @@ export type ProviderCallObserver = (
   input: string | null,
 ) => Promise<(result: ProviderResult) => Promise<void>>;
 
-async function readResponse(response: Response) {
-  const copy = response.clone();
-  if (!copy.headers.get('content-type')?.includes('text/event-stream')) {
-    return [parseResponse(await copy.json())];
-  }
-  // generate() also works with compatible providers that reply as an event stream.
-  return (await copy.text())
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(
-      (line) => line.startsWith('data:') && line.slice(5).trim() !== '[DONE]',
-    )
-    .flatMap((line) => {
-      try {
-        return [parseResponse(JSON.parse(line.slice(5)))];
-      } catch {
-        return [];
-      }
-    });
+function readStreamResponse(raw: string) {
+  return providerStreamData(raw).flatMap((data) => {
+    try {
+      return [parseResponse(JSON.parse(data))];
+    } catch {
+      return [];
+    }
+  });
+}
+
+export async function readProviderRequest(
+  request: Parameters<typeof fetch>[0],
+  init?: RequestInit,
+  diagnostic = false,
+) {
+  const raw: unknown =
+    typeof init?.body === 'string'
+      ? JSON.parse(init.body)
+      : request instanceof Request
+        ? await request.clone().json()
+        : null;
+  return (
+    (diagnostic ? traceRequestSchema : requestSchema).safeParse(raw).data ??
+    null
+  );
 }
 
 export function observeProviderFetch(
@@ -122,42 +140,39 @@ export function observeProviderFetch(
       const [request, init] = args;
       const input = await Promise.resolve()
         .then(async () => {
-          const raw: unknown =
-            typeof init?.body === 'string'
-              ? JSON.parse(init.body)
-              : request instanceof Request
-                ? await request.clone().json()
-                : null;
-          const parsed = requestSchema.safeParse(raw);
-          return parsed.success ? JSON.stringify(parsed.data) : null;
+          const prompt = await readProviderRequest(request, init);
+          return prompt && JSON.stringify(prompt);
         })
         .catch(() => null);
       const finish = await observe(input);
       const started = performance.now();
-      let response: Response | undefined;
-      try {
-        response = await transport(...args);
-        return response;
-      } finally {
-        const payloads = response
-          ? await readResponse(response).catch(() => [])
-          : [];
+      const report = async (
+        response: Response | undefined,
+        payloads: ReturnType<typeof parseResponse>[],
+        error?: unknown,
+      ) => {
         const usage = payloads
           .flatMap((payload) => (payload.usage ? [payload.usage] : []))
           .at(-1);
         const choices = payloads.flatMap((payload) => payload.choices);
         const result: ProviderResult = {
-          status: response?.ok && choices.length ? 'responded' : 'failed',
+          status:
+            response?.ok && choices.length && error === undefined
+              ? 'responded'
+              : 'failed',
           // Error bodies and provider reasoning are outside the history contract.
           output:
             response?.ok && choices.length ? JSON.stringify(choices) : null,
-          errorCode: !response
-            ? 'TRANSPORT_ERROR'
-            : !response.ok
-              ? `HTTP_${String(response.status)}`
-              : !choices.length
-                ? 'RESPONSE_UNREADABLE'
-                : null,
+          errorCode:
+            error instanceof ProviderStreamIdleError
+              ? 'LLM_STREAM_IDLE'
+              : !response || error !== undefined
+                ? 'TRANSPORT_ERROR'
+                : !response.ok
+                  ? `HTTP_${String(response.status)}`
+                  : !choices.length
+                    ? 'RESPONSE_UNREADABLE'
+                    : null,
           durationMs: Math.round(performance.now() - started),
           inputTokens: usage?.prompt_tokens ?? null,
           outputTokens: usage?.completion_tokens ?? null,
@@ -171,7 +186,31 @@ export function observeProviderFetch(
         } catch {
           // A failed history write must not replace the outcome of a dispatched call.
         }
+      };
+      let response: Response;
+      try {
+        response = await transport(...args);
+      } catch (error) {
+        await report(undefined, [], error);
+        throw error;
       }
+      if (response.body && isProviderStream(response))
+        return captureProviderStream(response, (raw, error) =>
+          report(response, readStreamResponse(raw), error),
+        );
+      try {
+        const raw = await response.clone().text();
+        let payloads: ReturnType<typeof parseResponse>[] = [];
+        try {
+          payloads = [parseResponse(JSON.parse(raw))];
+        } catch {
+          // Malformed JSON is an unreadable response, not a transport failure.
+        }
+        await report(response, payloads);
+      } catch (error) {
+        await report(response, [], error);
+      }
+      return response;
     },
     { preconnect: transport.preconnect },
   );

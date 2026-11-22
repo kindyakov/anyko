@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 const schema = z.object({
   DATABASE_URL: z.url(),
+  DATABASE_LISTEN_URL: z.url().optional(),
   S3_ENDPOINT: z.url(),
   S3_BUCKET: z.string().min(1),
   S3_ACCESS_KEY: z.string().min(1),
@@ -10,6 +11,10 @@ const schema = z.object({
   AUTH_SECRET: z.string().min(32),
   AUTH_BASE_URL: z.url(),
   APP_ORIGIN: z.url(),
+  REDIS_URL: z
+    .url()
+    .refine((value) => /^rediss?:\/\//.test(value))
+    .optional(),
 });
 
 /** Maps full-mode environment to the `BackendConfig` sections; values are not echoed. */
@@ -21,14 +26,22 @@ export function parseBackendEnv(env: unknown) {
     );
   const value = parsed.data;
   return {
-    database: { url: value.DATABASE_URL },
+    database: {
+      url: value.DATABASE_URL,
+      ...(value.DATABASE_LISTEN_URL && {
+        listenUrl: value.DATABASE_LISTEN_URL,
+      }),
+    },
     storage: {
       endpoint: value.S3_ENDPOINT,
       bucket: value.S3_BUCKET,
       accessKeyId: value.S3_ACCESS_KEY,
       secretAccessKey: value.S3_SECRET_KEY,
     },
-    works: { encryptionKey: value.LLM_CONFIG_ENCRYPTION_KEY },
+    works: {
+      encryptionKey: value.LLM_CONFIG_ENCRYPTION_KEY,
+      chatRedisUrl: value.REDIS_URL,
+    },
     auth: {
       secret: value.AUTH_SECRET,
       baseUrl: value.AUTH_BASE_URL,

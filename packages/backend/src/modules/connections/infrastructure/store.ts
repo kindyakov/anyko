@@ -59,6 +59,8 @@ export function createConnectionsStore(
             baseURL: row.baseURL,
             visionModel: row.visionModel,
             extractionModel: row.extractionModel,
+            visionDisableReasoning: row.visionDisableReasoning,
+            extractionEnableReasoning: row.extractionEnableReasoning,
           }
         : null;
     },
@@ -77,6 +79,8 @@ export function createConnectionsStore(
         baseURL: row.baseURL,
         visionModel: row.visionModel,
         extractionModel: row.extractionModel,
+        visionDisableReasoning: row.visionDisableReasoning,
+        extractionEnableReasoning: row.extractionEnableReasoning,
         connection: {
           id: 'routerai',
           baseURL: row.baseURL,
@@ -99,6 +103,8 @@ export function createConnectionsStore(
           { id, images: true, tools: true, structuredOutput: true },
         );
       const revision = (previous?.revision ?? 0) + 1;
+      const sameEndpoint =
+        previous && !previous.revokedAt && previous.baseURL === input.baseURL;
       await db.llmSettings.create({
         data: {
           workspaceId,
@@ -106,6 +112,16 @@ export function createConnectionsStore(
           baseURL: input.baseURL,
           visionModel: input.visionModel,
           extractionModel: input.extractionModel,
+          visionDisableReasoning:
+            input.visionDisableReasoning ??
+            (sameEndpoint && previous.visionModel === input.visionModel
+              ? previous.visionDisableReasoning
+              : true),
+          extractionEnableReasoning:
+            input.extractionEnableReasoning ??
+            (sameEndpoint && previous.extractionModel === input.extractionModel
+              ? previous.extractionEnableReasoning
+              : true),
           encryptedKey: encrypt(workspaceId, apiKey),
         },
       });

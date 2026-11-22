@@ -47,6 +47,17 @@ const agentHistoryEvent = z.object({
       revision: z.number().int().nonnegative(),
     })
     .nullable(),
+  checklistChange: z
+    .object({
+      requirementKey: z.string(),
+      requirementLabel: z.string(),
+      documentId: z.uuid(),
+      filename: z.string(),
+      before: z.enum(['found', 'review', 'confirmed', 'rejected']).nullable(),
+      after: z.enum(['confirmed', 'rejected']),
+      revision: count,
+    })
+    .nullable(),
 });
 export const agentHistoryPage = pageResponseSchema(agentHistoryEvent, {
   runUsage: usage,

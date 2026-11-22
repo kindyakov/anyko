@@ -2,11 +2,15 @@ import type { FieldValues } from '@anyko/contracts/catalog';
 
 import { signerName } from './paper-format';
 
-export function renderStatementSignature(text: string, values: FieldValues) {
+export function renderStatementSignature(
+  text: string,
+  values: FieldValues,
+  modern = false,
+) {
   const signature =
     /^_{3,}\s+(?:\{signerName\}|\{lastName\} \{firstName\} \{middleName\})$/;
   if (!signature.test(text)) return null;
-  const name = signerName(values);
+  const name = signerName(values, modern);
   return (
     <span className="inline-flex w-full max-w-[19rem] items-baseline gap-2 text-right indent-0 whitespace-nowrap">
       <span

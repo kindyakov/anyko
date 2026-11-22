@@ -69,6 +69,7 @@ import {
 import { createDocumentProcessingStore } from '../modules/processing/infrastructure/store';
 import { hasPackage } from '../modules/templates';
 import { createTemplatePlaceholders } from '../modules/templates/infrastructure/template-placeholders';
+import { createTemplateRequirements } from '../modules/templates/infrastructure/template-requirements';
 import type { WorksModule } from '../modules/works';
 import {
   createWorkStore,
@@ -79,6 +80,7 @@ import { systemClock } from '../platform/clock';
 import { uuidV7 } from '../platform/ids';
 import type { JobRuntime } from '../platform/jobs';
 import { openTransaction, transactionHandle } from '../platform/transactions';
+import { bflAnalysisPlan } from '../profiles/bfl/analysis-plan';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
 import { createWorkChat, type WorkChat } from '../workflows/work-chat';
@@ -98,11 +100,13 @@ import {
 import { createWorkReview, type WorkReview } from '../workflows/work-review';
 import { createWorkView, type WorkViews } from '../workflows/work-view';
 
+import { createChatProgressFeed } from './chat-progress';
 import {
   type BackendConfig,
   BackendConfigError,
   validateBackendConfig,
 } from './config';
+import { createDatabaseEvents } from './database-events';
 import {
   createDocumentUnitOfWork,
   finishDocumentDeletion,
@@ -146,6 +150,7 @@ export interface ApiBackend {
     idempotency: IdempotencyApi;
   };
   readonly workHttp: {
+    subscribeEvents: import('../modules/works').SubscribeDatabaseEvents;
     // Фасад модуля works: список работ и события (запросы без сценария).
     works: WorksModule;
     views: WorkViews;
@@ -192,6 +197,17 @@ export function createBackend(
     throw new BackendConfigError('BACKEND_CONFIG_MISSING', 'auth');
   if (role === 'worker' && !worker)
     throw new BackendConfigError('BACKEND_CONFIG_MISSING', 'worker');
+  const listenUrl = validated.database.listenUrl;
+  if (
+    auth &&
+    new URL(listenUrl ?? validated.database.url).searchParams.get(
+      'pgbouncer',
+    ) === 'true'
+  )
+    throw new BackendConfigError(
+      'BACKEND_CONFIG_INVALID',
+      'database.listenUrl must be direct',
+    );
 
   // Two pools per process, both for the same database: queries (Prisma, agent store) and
   // session locks. A lock holder keeps its connection through external I/O, so it must not
@@ -204,6 +220,11 @@ export function createBackend(
   );
   const db = (dependencies.createDatabase ?? createDatabase)(pool);
   const locks = createResourceLocks(lockPool);
+  const listenPool =
+    auth && listenUrl ? createDatabasePool(listenUrl) : undefined;
+  const databaseEvents = auth
+    ? createDatabaseEvents(listenPool ?? pool)
+    : undefined;
   const storage = dependencies.storage ?? createS3Storage(validated.storage);
   const io = createProcessingIo(db, uuidV7);
   const documents = createDocumentsModule({
@@ -247,9 +268,17 @@ export function createBackend(
   });
   const processingFacade = createWorkProcessing(db, uow);
   const templatePlaceholders = createTemplatePlaceholders(db);
+  const templateRequirements = createTemplateRequirements(db);
 
   let agentsDelegate: DocumentAgents | undefined = dependencies.agents;
-  const agents = () => (agentsDelegate ??= createDocumentAgents({ pool }));
+  const agents = () =>
+    (agentsDelegate ??= createDocumentAgents({
+      pool,
+      traceDirectory: validated.worker?.llmTraceDirectory,
+      analysisMaxModelCalls: validated.worker?.analysisMaxModelCalls,
+      analysisMaxReads: validated.worker?.analysisMaxReads,
+      analysisReviewMaxReads: validated.worker?.analysisReviewMaxReads,
+    }));
   // Внешние вызовы модели доступны только вне транзакционного фасада.
   const model: DocumentAgents = {
     chat: (input) => agents().chat(input),
@@ -257,6 +286,11 @@ export function createBackend(
     describe: (input) => agents().describe(input),
     extract: (input) => agents().extract(input),
     reconcile: (input) => agents().reconcile(input),
+    runAnalysisStep: (input) => {
+      const run = agents().runAnalysisStep;
+      if (!run) throw new Error('STEPWISE_AGENT_UNAVAILABLE');
+      return run(input);
+    },
     eraseThread: (id) => agents().eraseThread(id),
     stop: async () => {
       await agentsDelegate?.stop();
@@ -268,13 +302,21 @@ export function createBackend(
     model,
   });
   const documentDeletions = createDeletionStore(db);
+  const chatProgress =
+    validated.works.chatRedisUrl &&
+    createChatProgressFeed(validated.works.chatRedisUrl);
   const work: WorkDependencies = {
+    ...(validated.worker?.stepwiseAnalysis && {
+      analysisPlan: bflAnalysisPlan,
+    }),
+    ...(chatProgress && { chatProgress }),
     newId: uuidV7,
     uow,
     works,
     facts,
     generation,
     templatePlaceholders,
+    templateRequirements,
     processing: processingFacade,
     connections,
     agents: agentsFacade,
@@ -307,6 +349,9 @@ export function createBackend(
       };
       for (const handle of [...started].reverse())
         await attempt(() => handle.stop());
+      if (chatProgress) chatProgress.close();
+      if (databaseEvents) await attempt(() => databaseEvents.stop());
+      if (listenPool) await attempt(() => listenPool.end());
       await attempt(() => lockPool.end());
       await attempt(() => work.agents.model.stop());
       await attempt(() => db.$disconnect());
@@ -314,7 +359,7 @@ export function createBackend(
       if (failures.length > 0) throw new Error('BACKEND_STOP_FAILED');
     })());
 
-  if (auth) {
+  if (auth && databaseEvents) {
     const access = createAccess({
       db,
       secret: auth.secret,
@@ -335,6 +380,7 @@ export function createBackend(
       connections,
       generation,
       templatePlaceholders,
+      templateRequirements,
       audit,
       storage,
       locks,
@@ -350,9 +396,10 @@ export function createBackend(
         idempotency,
       },
       workHttp: {
+        subscribeEvents: databaseEvents.subscribe,
         works,
         views: createWorkView(workflows),
-        chat: createWorkChat(workflows),
+        chat: createWorkChat(work),
         intake: createWorkIntake({
           ...workflows,
           lockDocumentRevisions,
@@ -368,7 +415,7 @@ export function createBackend(
           redactResponses: redactDeletedWorkResponses,
         }),
         review: createWorkReview(workflows),
-        generation: createWorkGeneration(workflows),
+        generation: createWorkGeneration({ ...workflows, clock: systemClock }),
         settings: { ...connections.queries, ...connections.commands },
         documents,
         access,

@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test';
 import { readdir } from 'node:fs/promises';
 
+import {
+  hasPdfOcrProcessorVersion,
+  pdfOcrProcessorVersionPattern,
+} from '@anyko/backend/documents';
 import { createDatabasePool } from '@anyko/database';
 
 test('the shared-source migration preserves old links and fills only usable OCR revisions', async () => {
@@ -104,6 +108,160 @@ test('the shared-source migration preserves old links and fills only usable OCR 
       )
       .catch((error: unknown) => error);
     expect(wrongRevision).toMatchObject({ code: '23503' });
+  } finally {
+    try {
+      await db.query('ROLLBACK');
+      await db.query('RESET search_path');
+      await db.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+    } finally {
+      db.release();
+      await pool.end();
+    }
+  }
+});
+
+test('PDF readiness matches the document policy and restores only missing, live links', async () => {
+  const databaseUrl = process.env.TEST_DATABASE_URL;
+  if (
+    !databaseUrl ||
+    !/^\/anyko_test(?:_[a-z0-9_]+)?$/.test(new URL(databaseUrl).pathname)
+  )
+    throw new Error('Dedicated anyko_test TEST_DATABASE_URL required');
+  const pool = createDatabasePool(databaseUrl);
+  const db = await pool.connect();
+  const schema = `catalog_${crypto.randomUUID().replaceAll('-', '')}`;
+  const migrations = new URL(
+    '../../../packages/database/prisma/migrations/',
+    import.meta.url,
+  );
+  const versions = [
+    'mineru-4.1.7+eslav.1',
+    'mineru-4.1.7+cyrillic-pdf.1',
+    'mineru-4.2.0+eslav.20',
+    'mineru-4.2.0+cyrillic-pdf.20',
+    'mineru-4.1.7',
+    'mineru-4.1.7+cyrillic-image.1',
+    'mineru-4.1.7+cyrillic-pdf.',
+    'mineru-4.1.7+eslav.1-extra',
+  ];
+  try {
+    await db.query(`CREATE SCHEMA ${schema}`);
+    await db.query(`SET search_path TO ${schema}`);
+    for (const entry of (await readdir(migrations)).sort()) {
+      if (
+        !/^\d{12}_/.test(entry) ||
+        entry === '202611180019_recognition_search' ||
+        entry > '202611180020_shared_work_sources'
+      )
+        continue;
+      await db.query(
+        await Bun.file(new URL(`${entry}/migration.sql`, migrations)).text(),
+      );
+    }
+    await db.query(`
+      INSERT INTO "AnykoWorkspace" (id, name) VALUES ('own', 'Own');
+      INSERT INTO "DocumentPackageVersion" (version, "packageId", title) VALUES ('test-v1', 'test', 'Test');
+      INSERT INTO "Work" (id, "workspaceId", "packageVersion", title, "createdBy", "updatedAt")
+        SELECT id, 'own', 'test-v1', id, 'u', now()
+        FROM unnest(ARRAY['new', 'pinned', 'removed', 'deleted-work']) AS id;
+    `);
+    await db.query(
+      `
+      INSERT INTO "SourceDocument"
+        (id, "workspaceId", filename, "sourceKey", "sourceChecksum", "requestKey", size, "createdBy")
+        SELECT 'pdf-' || ord, 'own', 'scan-' || ord || '.pdf', 'pdf-' || ord || '.pdf', 'hash-' || ord, ord::text, 1, 'u'
+        FROM unnest($1::text[]) WITH ORDINALITY AS versions(version, ord);
+    `,
+      [versions],
+    );
+    await db.query(
+      `
+      INSERT INTO "Run"
+        (id, "workspaceId", "documentId", revision, kind, status, "resultKey", "processorVersion", "initiatedBy", "correlationId", "updatedAt")
+        SELECT 'run-' || ord, 'own', 'pdf-' || ord, 1, 'document.ocr', 'succeeded',
+          'result-' || ord, version, 'u', 'c', now()
+        FROM unnest($1::text[]) WITH ORDINALITY AS versions(version, ord);
+    `,
+      [versions],
+    );
+    await db.query(`
+      INSERT INTO "Run"
+        (id, "workspaceId", "documentId", revision, kind, status, "resultKey", "processorVersion", "initiatedBy", "correlationId", "updatedAt")
+        VALUES ('second-ocr', 'own', 'pdf-2', 2, 'document.ocr', 'succeeded',
+          'second-result', 'mineru-4.1.7+cyrillic-pdf.1', 'u', 'c', now()),
+          ('pending-ocr', 'own', 'pdf-2', 3, 'document.ocr', 'queued', NULL, NULL, 'u', 'c', now());
+      INSERT INTO "SourceDocument"
+        (id, "workspaceId", filename, "sourceKey", "sourceChecksum", "requestKey", size, "createdBy")
+        VALUES ('deleted-source', 'own', 'deleted-source.pdf', 'deleted-source.pdf', 'deleted-hash', 'deleted-key', 1, 'u');
+      INSERT INTO "Run"
+        (id, "workspaceId", "documentId", revision, kind, status, "resultKey", "processorVersion", "initiatedBy", "correlationId", "updatedAt")
+        VALUES ('deleted-run', 'own', 'deleted-source', 1, 'document.ocr', 'succeeded',
+          'deleted-result', 'mineru-4.1.7+cyrillic-pdf.1', 'u', 'c', now());
+      INSERT INTO "WorkDocument" ("workId", "workspaceId", "documentId", "ocrRevision", removed)
+        VALUES ('new', 'own', 'pdf-2', NULL, false),
+          ('pinned', 'own', 'pdf-2', 1, false),
+          ('removed', 'own', 'pdf-2', NULL, true),
+          ('new', 'own', 'pdf-5', NULL, false),
+          ('deleted-work', 'own', 'pdf-2', NULL, false),
+          ('new', 'own', 'deleted-source', NULL, false);
+      UPDATE "Work" SET "deletedAt" = now() WHERE id = 'deleted-work';
+      UPDATE "SourceDocument" SET "deletedAt" = now() WHERE id = 'deleted-source';
+    `);
+    const expression = await Bun.file(
+      new URL('202611210072_ready_cyrillic_pdf/migration.sql', migrations),
+    ).text();
+    const loads = () =>
+      db.query(
+        'SELECT id, attempts, status, "resultKey" FROM "Run" ORDER BY id',
+      );
+    const before = await loads();
+    await db.query(expression);
+
+    const { rows } = await db.query<{ version: string; ready: boolean }>(`
+      SELECT run."processorVersion" AS version, ready.revision IS NOT NULL AS ready
+      FROM "Run" run
+      LEFT JOIN "ReadyDocumentRun" ready
+        ON ready."workspaceId" = run."workspaceId" AND ready."documentId" = run."documentId" AND ready.revision = run.revision
+      WHERE run.revision = 1 AND run.id LIKE 'run-%'
+      ORDER BY run.id
+    `);
+    expect(rows).toEqual(
+      versions.map((version) => ({
+        version,
+        ready: hasPdfOcrProcessorVersion(version),
+      })),
+    );
+    expect(rows.map(({ ready }) => ready)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+    ]);
+    const liveView = await db.query<{ definition: string }>(
+      `SELECT pg_get_viewdef('"ReadyDocumentRun"'::regclass) AS definition`,
+    );
+    expect(liveView.rows[0]?.definition).toContain(
+      pdfOcrProcessorVersionPattern.source,
+    );
+    expect(
+      (
+        await db.query(
+          'SELECT "workId", "documentId", "ocrRevision" FROM "WorkDocument" ORDER BY "workId", "documentId"',
+        )
+      ).rows,
+    ).toEqual([
+      { workId: 'deleted-work', documentId: 'pdf-2', ocrRevision: null },
+      { workId: 'new', documentId: 'deleted-source', ocrRevision: null },
+      { workId: 'new', documentId: 'pdf-2', ocrRevision: 2 },
+      { workId: 'new', documentId: 'pdf-5', ocrRevision: null },
+      { workId: 'pinned', documentId: 'pdf-2', ocrRevision: 1 },
+      { workId: 'removed', documentId: 'pdf-2', ocrRevision: null },
+    ]);
+    expect((await loads()).rows).toEqual(before.rows);
   } finally {
     try {
       await db.query('ROLLBACK');

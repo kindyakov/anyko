@@ -9,7 +9,7 @@ import type { AgentHistoryStore } from './history';
 export const reconciliationSchema = z
   .object({
     summary: z.string().min(1).max(4000),
-    candidates: z.array(candidateSchema).max(100),
+    candidates: z.array(candidateSchema).max(500),
   })
   .strict();
 type Reconciliation = z.infer<typeof reconciliationSchema>;

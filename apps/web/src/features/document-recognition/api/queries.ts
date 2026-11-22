@@ -14,12 +14,7 @@ import {
 
 import { callApi, callFileApi } from '@/lib/api/call';
 import { ApiError } from '@/lib/api/errors';
-
-import {
-  isRecognizing,
-  recognitionPollInterval,
-  recognitionPollMs,
-} from '../model/poll';
+import { liveQuery } from '@/lib/api/live-query';
 
 import { documentKeys } from './keys';
 
@@ -41,6 +36,7 @@ export function documentsQueryOptions(
     after,
   };
   return queryOptions({
+    meta: liveQuery(workspaceId, 'recognition-list'),
     queryKey: [...documentKeys.list(workspaceId), query],
     queryFn: ({ signal }) =>
       callApi(listDocuments, {
@@ -48,8 +44,6 @@ export function documentsQueryOptions(
         query,
         signal,
       }),
-    refetchInterval: (query) =>
-      query.state.data ? recognitionPollInterval(query.state.data) : false,
   });
 }
 
@@ -59,6 +53,7 @@ export function recognitionStatusQueryOptions(
   revision: number,
 ) {
   return queryOptions({
+    meta: liveQuery(workspaceId, 'recognition-status', documentId),
     queryKey: [
       ...documentKeys.all(workspaceId),
       'status',
@@ -77,19 +72,6 @@ export function recognitionStatusQueryOptions(
         if (error instanceof ApiError && error.status === 404) return null;
         throw error;
       }
-    },
-    refetchInterval: ({ state: { data, error } }) => {
-      if (
-        error instanceof ApiError &&
-        (error.status === 401 || error.status === 403)
-      )
-        return false;
-      return data === null ||
-        (data &&
-          (data.processingRevision ?? 0) >= revision &&
-          !isRecognizing(data))
-        ? false
-        : recognitionPollMs;
     },
   });
 }

@@ -1,13 +1,19 @@
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 
+import { createLocalModelTrace, type ModelTraceContext } from './local-trace';
 import {
   observeProviderFetch,
   type ProviderCallObserver,
 } from './provider-calls';
-import { createRouterContextLimits } from './router-context';
+import {
+  ProviderStreamIdleError,
+  watchProviderStream,
+} from './provider-stream';
+import { createModelContextLimits } from './router-context';
 
 export type { ProviderCallObserver } from './provider-calls';
+export type { ModelTraceContext } from './local-trace';
 export type { ModelContextLimits } from './router-context';
 
 const connectionSchema = z.object({
@@ -36,6 +42,7 @@ const modelSchema = z.object({
   images: z.boolean(),
   tools: z.boolean(),
   structuredOutput: z.boolean(),
+  streamIdleTimeoutMs: z.number().int().positive().optional(),
 });
 
 export type ModelConnection = z.infer<typeof connectionSchema>;
@@ -45,8 +52,12 @@ export type LlmErrorCode =
   | 'LLM_RATE_LIMITED'
   | 'LLM_UNAVAILABLE'
   | 'LLM_TIMEOUT'
+  | 'LLM_STREAM_IDLE'
   | 'LLM_CANCELLED'
   | 'LLM_INVALID_RESPONSE'
+  | 'LLM_COMPLETION_LIMIT'
+  | 'LLM_STEP_LIMIT'
+  | 'LLM_READ_LIMIT'
   | 'LLM_REQUEST_REJECTED';
 
 export class LlmError extends Error {
@@ -64,14 +75,24 @@ const llmErrorMessages = {
   LLM_RATE_LIMITED: 'Провайдер модели ограничил частоту запросов.',
   LLM_UNAVAILABLE: 'Провайдер модели недоступен.',
   LLM_TIMEOUT: 'Провайдер модели не ответил за отведённое время.',
+  LLM_STREAM_IDLE: 'Модель перестала передавать данные ответа.',
   LLM_CANCELLED: 'Запрос к модели отменён.',
   LLM_INVALID_RESPONSE: 'Ответ модели не соответствует ожидаемому формату.',
+  LLM_COMPLETION_LIMIT: 'Ответ модели оборвался на предельном числе токенов.',
+  LLM_STEP_LIMIT: 'Достигнут предел обращений к модели на одном шаге анализа.',
+  LLM_READ_LIMIT: 'Достигнут предел чтений при итоговой сверке.',
   LLM_REQUEST_REJECTED: 'Провайдер модели отклонил запрос.',
 } satisfies Record<LlmErrorCode, string>;
 
 /** No provider body, prompt or credential crosses the application error seam. */
 export function llmError(error: unknown, signal?: AbortSignal): LlmError {
   if (error instanceof LlmError) return error;
+  let cause = error;
+  for (let depth = 0; cause instanceof Error && depth < 6; depth++) {
+    if (cause instanceof ProviderStreamIdleError)
+      return new LlmError('LLM_STREAM_IDLE');
+    cause = cause.cause;
+  }
   if (signal?.aborted)
     return new LlmError(
       signal.reason instanceof DOMException &&
@@ -90,28 +111,91 @@ export function llmError(error: unknown, signal?: AbortSignal): LlmError {
   return new LlmError('LLM_INVALID_RESPONSE');
 }
 
-export function createModelGateway(options: { fetch?: typeof fetch } = {}) {
+export function createModelGateway(
+  options: { fetch?: typeof fetch; traceDirectory?: string } = {},
+) {
+  const contextLimits = createModelContextLimits(options.fetch ?? fetch);
   return {
-    contextLimits: createRouterContextLimits(options.fetch ?? fetch),
+    trace(
+      context: ModelTraceContext | undefined,
+      model: string,
+      connection: ModelConnection,
+    ) {
+      if (options.traceDirectory && context)
+        return createLocalModelTrace(
+          options.traceDirectory,
+          context,
+          model,
+          connection,
+        );
+    },
+    contextLimits(
+      connection: ModelConnection,
+      modelId: string,
+      signal: AbortSignal,
+    ) {
+      const parsed = connectionSchema.safeParse(connection);
+      return parsed.success
+        ? contextLimits(parsed.data, modelId, signal)
+        : Promise.resolve(null);
+    },
+    reasoningOptions(
+      connection: ModelConnection,
+      effort: 'none' | 'medium' | 'high',
+    ) {
+      return { [connection.id]: { reasoning: { effort } } };
+    },
     model(
       connection: ModelConnection,
       selection: ModelSelection,
       observe?: ProviderCallObserver,
+      trace?: ReturnType<typeof createLocalModelTrace>,
+      outputSchema?: z.ZodType,
     ) {
       const parsedConnection = connectionSchema.safeParse(connection);
       const parsedModel = modelSchema.safeParse(selection);
       if (!parsedConnection.success || !parsedModel.success)
         throw new LlmError('LLM_REQUEST_REJECTED');
       const config = parsedConnection.data;
-      const transport = observe
-        ? observeProviderFetch(options.fetch ?? fetch, observe)
+      const baseFetch = options.fetch ?? fetch;
+      const idleTimeoutMs = parsedModel.data.streamIdleTimeoutMs;
+      const transport = idleTimeoutMs
+        ? watchProviderStream(baseFetch, idleTimeoutMs)
         : options.fetch;
+      const observed = observe
+        ? observeProviderFetch(transport ?? baseFetch, observe)
+        : transport;
+      const traced = trace ? trace.wrap(observed ?? baseFetch) : observed;
+      const schema = outputSchema
+        ? z.toJSONSchema(outputSchema, { target: 'draft-07', io: 'input' })
+        : undefined;
       return createOpenAICompatible({
         name: config.id,
         baseURL: config.baseURL,
         apiKey: config.apiKey,
         supportsStructuredOutputs: parsedModel.data.structuredOutput,
-        ...(transport ? { fetch: transport } : {}),
+        ...(idleTimeoutMs && { includeUsage: true }),
+        ...(traced ? { fetch: traced } : {}),
+        // Keep the native contract identical to the application schema. Agent
+        // SDK compatibility converts bounds such as minimum and minItems to prose.
+        ...(schema && {
+          transformRequestBody: (body) => {
+            if (body.response_format === undefined) return body;
+            const format = z
+              .object({
+                type: z.literal('json_schema'),
+                json_schema: z.object({ name: z.string() }),
+              })
+              .parse(body.response_format);
+            return {
+              ...body,
+              response_format: {
+                type: format.type,
+                json_schema: { ...format.json_schema, strict: true, schema },
+              },
+            };
+          },
+        }),
       }).chatModel(parsedModel.data.id);
     },
   };
