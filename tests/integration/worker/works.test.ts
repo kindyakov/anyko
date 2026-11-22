@@ -4488,6 +4488,13 @@ test('invalid reconciliation preserves direct passport facts and a rerun keeps l
                 { documentId: document.id, imagePath: null, quote: birthplace },
               ],
             },
+            {
+              field: 'citizenship',
+              value: 'Российская Федерация',
+              evidence: [
+                { documentId: document.id, imagePath: null, quote: heading },
+              ],
+            },
           ]
         : [],
       usage: { inputTokens: 1, outputTokens: 1 },
@@ -4542,14 +4549,25 @@ test('invalid reconciliation preserves direct passport facts and a rerun keeps l
     );
     expect(recentCalls).toContain(2);
     expect(second.runs[0]?.status).toBe('partial');
-    expect(second.facts.values.lastName).toBe('Исправлено юристом');
-    expect(second.facts.values.birthPlace).toBe('ГОР. КИРОВ');
-    expect(
-      second.facts.candidates.filter(({ field }) => field === 'citizenship'),
-    ).toHaveLength(1);
-    expect(
-      second.facts.candidates.filter(({ field }) => field === 'birthPlace'),
-    ).toHaveLength(1);
+    expect(second.facts.values).toMatchObject({
+      lastName: 'Исправлено юристом',
+      birthPlace: 'ГОР. КИРОВ',
+      citizenship: 'Российская Федерация',
+    });
+    for (const [field, value, quote] of [
+      ['birthPlace', 'ГОР. КИРОВ', birthplace],
+      ['citizenship', 'Российская Федерация', heading],
+    ] as const) {
+      expect(
+        second.facts.candidates.filter((item) => item.field === field),
+      ).toMatchObject([
+        {
+          value,
+          selected: true,
+          evidence: [{ documentId: passport.id, imagePath: null, quote }],
+        },
+      ]);
+    }
   } finally {
     parseFixture = undefined;
     extractFixture = undefined;
@@ -4636,50 +4654,80 @@ test('statement and creditor list keep a newer documented balance after reconcil
       (view) => terminal(view) && view.documents.length === certificates.length,
     );
     expect(draft.runs[0]?.status).toBe('partial');
-    expect(draft.facts.values.debts).toHaveLength(3);
+    const { debts } = draft.facts.values;
+    if (!Array.isArray(debts)) throw new Error('DEBT_FACTS_MISSING');
+    expect(debts).toHaveLength(3);
+    expect(
+      debts.find(({ contractNumber }) => contractNumber === 'QA-VT-51'),
+    ).toMatchObject({ amount: '145006.47', amountDate: '18.11.2026' });
     expect(
       draft.facts.candidates.filter(({ field }) => field === 'debts'),
     ).toHaveLength(4);
-    await apiBackend.workHttp.review.confirmFacts(scope, {
+    expect(draft.facts.values.businessDebts).toBeNull();
+
+    const verifyDocuments = async (draft: WorkView, total: string) => {
+      await apiBackend.workHttp.review.confirmFacts(scope, {
+        workId,
+        revision: draft.work.revision,
+      });
+      const confirmed = await until(
+        input,
+        (view) => view.work.confirmedRevision === view.work.revision,
+      );
+      const previous = new Set(confirmed.generations.map(({ id }) => id));
+      await apiBackend.workHttp.generation.startGeneration(scope, {
+        workId,
+        revision: confirmed.work.revision,
+        correlationId: crypto.randomUUID(),
+      });
+      const latest = ({ id, status }: WorkView['generations'][number]) =>
+        !previous.has(id) && status === 'succeeded';
+      const output = await until(input, (view) =>
+        view.generations.some(latest),
+      );
+      const generation = output.generations.find(latest);
+      if (!generation) throw new Error('DEBT_GENERATION_MISSING');
+      for (const [version, totalLabel] of [
+        ['bfl-statement-v11', 'Общая сумма –'],
+        ['bfl-creditors-v3', 'Итого по договорам:'],
+      ] as const) {
+        const file = generation.files.find(
+          ({ templateVersion }) => templateVersion === version,
+        );
+        if (!file) throw new Error('DEBT_DOCUMENT_MISSING');
+        const { bytes } = await apiBackend.workHttp.generation.downloadResult(
+          scope,
+          {
+            workId,
+            generationId: brandGenerationId(generation.id),
+            fileId: brandFileId(file.id),
+          },
+        );
+        const text = strFromU8(
+          unzipSync(bytes)['word/document.xml'] ?? new Uint8Array(),
+        )
+          .replace(/<[^>]+>/gu, '')
+          .replace(/\s+/gu, ' ');
+        expect(text).toContain(`${totalLabel} ${total}`);
+        expect(text).toMatch(/QA-VT-51[^;]{0,140}145 006,47/u);
+        expect(text).not.toContain('151 000');
+        if (total === '[не заполнено]')
+          expect(text).not.toContain('172 500,25');
+      }
+      return output;
+    };
+    const incomplete = await verifyDocuments(draft, '[не заполнено]');
+    await apiBackend.workHttp.review.editValues(scope, {
       workId,
-      revision: draft.work.revision,
+      revision: incomplete.work.revision,
+      values: { ...incomplete.facts.values, businessDebts: [] },
     });
-    const confirmed = await until(
+    const complete = await until(
       input,
-      (view) => view.work.confirmedRevision === view.work.revision,
+      (view) => view.work.revision > incomplete.work.revision,
     );
-    await apiBackend.workHttp.generation.startGeneration(scope, {
-      workId,
-      revision: confirmed.work.revision,
-      correlationId: crypto.randomUUID(),
-    });
-    const output = await until(input, (view) =>
-      view.generations.some(({ status }) => status === 'succeeded'),
-    );
-    const generation = output.generations.find(
-      ({ status }) => status === 'succeeded',
-    );
-    if (!generation) throw new Error('DEBT_GENERATION_MISSING');
-    for (const version of ['bfl-statement-v11', 'bfl-creditors-v3']) {
-      const file = generation.files.find(
-        ({ templateVersion }) => templateVersion === version,
-      );
-      if (!file) throw new Error('DEBT_DOCUMENT_MISSING');
-      const { bytes } = await apiBackend.workHttp.generation.downloadResult(
-        scope,
-        {
-          workId,
-          generationId: brandGenerationId(generation.id),
-          fileId: brandFileId(file.id),
-        },
-      );
-      const xml = strFromU8(
-        unzipSync(bytes)['word/document.xml'] ?? new Uint8Array(),
-      );
-      expect(xml.replace(/\s/gu, ' ')).toContain('172 500,25');
-      expect(xml).toContain('QA-VT-51');
-      expect(xml).not.toContain('151 000');
-    }
+    expect(complete.facts.values.businessDebts).toEqual([]);
+    await verifyDocuments(complete, '172 500,25');
   } finally {
     parsing.release();
     parseFixture = undefined;
@@ -5408,6 +5456,7 @@ test('each EGRN cadastral number follows its property into the facts and the inv
     {
       row: {
         description: 'Квартира',
+        category: 'квартира',
         address: 'г. Тестовый, ул. Новая, д. 1, кв. 2',
       },
       number: '48:08:0000000:9000001',
@@ -5415,6 +5464,7 @@ test('each EGRN cadastral number follows its property into the facts and the inv
     {
       row: {
         description: 'Гараж',
+        category: 'гараж',
         address: 'г. Тестовый, ул. Садовая, д. 5',
       },
       number: '48:08:0000000:9000002',
@@ -5424,56 +5474,76 @@ test('each EGRN cadastral number follows its property into the facts and the inv
     description: 'Жилой дом',
     address: 'г. Тестовый, ул. Центральная, д. 8',
   };
-  const unsupported = '48:08:0000000:9000003';
+  const notProposed = '48:08:0000000:9000003';
+  const unsupported = '48:08:0000000:9000004';
+  const numberedEvidence = ({ row, number }: (typeof properties)[number]) => [
+    `Вид объекта недвижимости: ${row.description}.\nКадастровый номер: ${number}.`,
+    `Адрес: ${row.address}.`,
+  ];
+  const unnumberedQuote = `Вид объекта недвижимости: ${unnumbered.description}.\nКадастровый номер: ${notProposed}.\nАдрес: ${unnumbered.address}.`;
   parseFixture = () =>
     Promise.resolve({
       markdown: [
         'Выписка из Единого государственного реестра недвижимости',
-        ...properties.flatMap(({ row, number }) => [
-          `Вид объекта недвижимости: ${row.description}.`,
-          `Кадастровый номер: ${number}.`,
-          `Адрес: ${row.address}.`,
-        ]),
-        `Вид объекта недвижимости: ${unnumbered.description}.`,
-        `Адрес: ${unnumbered.address}.`,
+        ...properties.flatMap(numberedEvidence),
+        unnumberedQuote,
       ].join('\n'),
       processorVersion: 'fixture',
     });
   extractFixture = ({ document }) =>
     Promise.resolve({
       candidates: [
-        ...properties.map(({ row }) => row),
-        { ...unnumbered, identifier: unsupported },
-      ].map((row) => ({
+        ...properties.map(({ row, number }) => ({
+          value: [{ ...row, identifier: number }],
+          quotes: numberedEvidence({ row, number }),
+        })),
+        { value: [unnumbered], quotes: [unnumberedQuote] },
+        {
+          value: [{ ...unnumbered, identifier: unsupported }],
+          quotes: [unnumberedQuote],
+        },
+      ].map(({ value, quotes }) => ({
         field: 'realEstate',
-        value: [row],
-        evidence: [
-          {
-            documentId: document.id,
-            imagePath: null,
-            quote: `Адрес: ${row.address}.`,
-          },
-        ],
+        value,
+        evidence: quotes.map((quote) => ({
+          documentId: document.id,
+          imagePath: null,
+          quote,
+        })),
       })),
       usage: { inputTokens: 1, outputTokens: 1 },
     });
   try {
     const source = await upload(input, 'egrn-number-fixture');
     const initial = await until(input, terminal);
+    expect(initial.runs[0]?.status).toBe('succeeded');
     expect(initial.facts.values.realEstate).toEqual([
       ...properties.map(({ row, number }) => ({ ...row, identifier: number })),
       unnumbered,
     ]);
-    for (const { number } of properties) {
-      const evidence = initial.facts.candidates
-        .filter(({ field, selected }) => field === 'realEstate' && selected)
-        .flatMap(({ evidence }) => evidence);
-      expect(evidence).toContainEqual({
-        documentId: source.id,
-        imagePath: null,
-        quote: `Кадастровый номер: ${number}`,
+    const candidates = initial.facts.candidates.filter(
+      ({ field }) => field === 'realEstate',
+    );
+    for (const { row, number } of properties) {
+      expect(candidates).toContainEqual({
+        field: 'realEstate',
+        value: [{ ...row, identifier: number }],
+        selected: true,
+        evidence: numberedEvidence({ row, number }).map((quote) => ({
+          documentId: source.id,
+          imagePath: null,
+          quote,
+        })),
       });
     }
+    expect(candidates).toContainEqual({
+      field: 'realEstate',
+      value: [{ ...unnumbered, identifier: unsupported }],
+      selected: false,
+      evidence: [
+        { documentId: source.id, imagePath: null, quote: unnumberedQuote },
+      ],
+    });
 
     await apiBackend.workHttp.generation.startGeneration(scope, {
       workId,
@@ -5503,6 +5573,7 @@ test('each EGRN cadastral number follows its property into the facts and the inv
     );
     for (const { row, number } of properties)
       expect(xml).toContain(`${row.description}, кадастровый номер ${number}`);
+    expect(xml).not.toContain(notProposed);
     expect(xml).not.toContain(unsupported);
   } finally {
     parseFixture = undefined;
@@ -5605,20 +5676,18 @@ test('an EGRN source fills inventory and only confirmed supported files enter th
     const initial = await until(input, terminal);
     expect(initial.facts.values.realEstate).toEqual([realEstate]);
     expect(initial.facts.values.propertyDetails).toBeNull();
+    expect(initial.facts.values.attachments).toBeNull();
     expect(initial.facts.values.submittedAttachments).toBeNull();
     const sourceFacts = initial.facts.candidates.filter(({ evidence }) =>
       evidence.some(({ documentId }) => documentId === extract),
     );
     expect(
-      sourceFacts
-        .filter(({ field }) => field === 'attachments')
-        .map(({ value }) => value),
-    ).toContainEqual([
-      {
-        description: 'Выписка из Единого государственного реестра недвижимости',
-        category: 'egrn',
-      },
-    ]);
+      sourceFacts.find(({ field }) => field === 'attachments'),
+    ).toMatchObject({
+      value: [{ description: egrn, category: 'egrn' }],
+      selected: false,
+      evidence: [{ documentId: extract, imagePath: null, quote: egrn }],
+    });
     expect(
       sourceFacts.find(({ field }) => field === 'realEstate')?.value,
     ).toEqual([realEstate]);

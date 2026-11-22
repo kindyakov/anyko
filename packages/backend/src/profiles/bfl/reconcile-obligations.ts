@@ -134,7 +134,7 @@ export function reconcileObligations(
   const sources = new Map<FieldRow, Candidate['evidence']>();
   let observedAbsence = false;
   for (const candidate of candidates) {
-    const proposal = automaticValue(candidate, sourceTexts);
+    const proposal = automaticValue(candidate, { sources: sourceTexts });
     if (!Array.isArray(proposal)) continue;
     if (!proposal.length) observedAbsence = true;
     for (const row of proposal) {

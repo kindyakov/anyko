@@ -105,7 +105,7 @@ export function mergeCandidates(
     if (!found.length && proposals.length) continue;
     const supported = found
       .map((candidate) => ({
-        value: automaticValue(candidate, sourceTexts),
+        value: automaticValue(candidate, { sources: sourceTexts }),
         evidence: candidate.evidence,
       }))
       .filter(({ value }) => value !== null);
@@ -284,7 +284,10 @@ function reconcileCandidates(
     candidate,
   ) => candidate.value,
 ): FieldValue {
-  return reconcile(key, candidates.map(valueOf));
+  return reconcile(
+    key,
+    candidates.map((candidate) => valueOf(candidate)),
+  );
 }
 
 function comparableScalar(key: string, value: string): string {

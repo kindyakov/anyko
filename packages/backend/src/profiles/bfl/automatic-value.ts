@@ -114,7 +114,7 @@ function sourceLines(text: string) {
 /** Automatic values need numeric evidence. Keep the original proposal for human review. */
 export function automaticValue(
   candidate: Candidate,
-  sources?: readonly FactSourceText[],
+  { sources }: { sources?: readonly FactSourceText[] | undefined } = {},
 ): FieldValue {
   return supportedValue(candidate, false, sources);
 }
