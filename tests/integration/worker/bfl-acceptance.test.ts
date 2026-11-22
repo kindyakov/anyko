@@ -457,7 +457,7 @@ test.each(['active', 'dismissed'] as const)(
           visionDisableReasoning: true,
         });
         const workId = await api.workHttp.intake.createWork(scope, {
-          packageVersion: 'bfl-bankruptcy-v13',
+          packageVersion: 'bfl-bankruptcy-v14',
           title: name,
         });
         const read = () => api.workHttp.views.get(scope, workId);

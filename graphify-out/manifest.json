@@ -1104,9 +1104,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/index.ts": {
-    "mtime": 1795278813.2517598,
-    "seen": 1795278985.694486,
-    "ast_hash": "f8d6a57897b98688bab38218ad218429",
+    "mtime": 1795360174.2456415,
+    "seen": 1795360887.377878,
+    "ast_hash": "1deea7993879c1625da53cb7b7937f8a",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/works/index.ts": {
@@ -1182,15 +1182,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/assets/package.json": {
-    "mtime": 1795274929.0821695,
-    "seen": 1795275314.529027,
-    "ast_hash": "1e102a01250c73664d66591f1077fadc",
+    "mtime": 1795360270.961158,
+    "seen": 1795360887.3778758,
+    "ast_hash": "4d790bd3c1fe49590659d39d8a3bcec0",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/render-data.ts": {
-    "mtime": 1795299771.2186973,
-    "seen": 1795301781.631657,
-    "ast_hash": "4ba3efd5a5f433e4e74aa74bcd042f48",
+    "mtime": 1795360174.2461605,
+    "seen": 1795360887.3778834,
+    "ast_hash": "547e728ef0bc6fa79e68d813bf59ce1f",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/technical.ts": {
@@ -1200,9 +1200,9 @@
     "semantic_hash": ""
   },
   "packages/backend/tests/templates.test.ts": {
-    "mtime": 1795300624.709055,
-    "seen": 1795301781.6318285,
-    "ast_hash": "a15c6662014215eaee88f7d87d4f32a9",
+    "mtime": 1795360174.2477088,
+    "seen": 1795360887.3781974,
+    "ast_hash": "ee0f904430ab085b1c5b92161a2eef61",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611050009_document_packages/migration.sql": {
@@ -1230,9 +1230,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/assets/README.md": {
-    "mtime": 1795278901.917833,
-    "seen": 1795278985.6957314,
-    "ast_hash": "1331f272dedd1207b1473d809eaa8143",
+    "mtime": 1795360805.7318985,
+    "seen": 1795360887.3787858,
+    "ast_hash": "7def649fc02c699374070063db55e940",
     "semantic_hash": ""
   },
   "packages/backend/tests/integration/vision-retry.test.ts": {
@@ -3810,9 +3810,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/features/fact-review/model/preview.ts": {
-    "mtime": 1795299771.2192123,
-    "seen": 1795301781.6312697,
-    "ast_hash": "50d0edb07cd461c95b5cef7598a5783e",
+    "mtime": 1795360174.2466767,
+    "seen": 1795360887.3773763,
+    "ast_hash": "d7a4bbd42cae542ef6b524a6f0f37183",
     "semantic_hash": ""
   },
   "apps/web/src/features/fact-review/ui/preview/preview-paper.tsx": {
@@ -5616,9 +5616,9 @@
     "semantic_hash": ""
   },
   "packages/document-values/src/statement-layout.ts": {
-    "mtime": 1795278813.2507317,
-    "seen": 1795278985.6950552,
-    "ast_hash": "58f70b54ac9d7a0c9cd818a27c6e6c37",
+    "mtime": 1795360174.2451162,
+    "seen": 1795360887.3783665,
+    "ast_hash": "f09b99ae4e3c392911f6e4aa8ad33561",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611210064_revised_bankruptcy_forms/migration.sql": {
@@ -5634,9 +5634,9 @@
     "semantic_hash": ""
   },
   "packages/backend/tests/statement-amendment.test.ts": {
-    "mtime": 1795300697.799556,
-    "seen": 1795301781.6318233,
-    "ast_hash": "cf8bc819b2440f4e2aed759f0ac4e4ed",
+    "mtime": 1795360834.1608026,
+    "seen": 1795360887.3781905,
+    "ast_hash": "bafc0b5a77836ac6205f48f0409f61f8",
     "semantic_hash": ""
   },
   "packages/database/prisma/migrations/202611210065_statement_label_and_punctuation/migration.sql": {
@@ -5862,9 +5862,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/profiles/bfl/analysis-plan.ts": {
-    "mtime": 1795347906.3329737,
-    "seen": 1795348125.142877,
-    "ast_hash": "fcbaa673af131864420f69038b60f98a",
+    "mtime": 1795360484.8990593,
+    "seen": 1795360887.377987,
+    "ast_hash": "1c1a6fb42a76908ec5998b4cf79d0a91",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/stepwise-analysis.ts": {
@@ -5910,15 +5910,15 @@
     "semantic_hash": ""
   },
   "tests/integration/worker/bfl-acceptance.test.ts": {
-    "mtime": 1795354287.602901,
-    "seen": 1795354503.230032,
-    "ast_hash": "bdf6e50792b8c4316ef3705b1a833b14",
+    "mtime": 1795360174.2482314,
+    "seen": 1795360887.3785508,
+    "ast_hash": "51e5d5237b4c7cc8cfcc514aa93ce09e",
     "semantic_hash": ""
   },
   "tests/fixtures/bfl-acceptance/README.md": {
-    "mtime": 1795354341.4258118,
-    "seen": 1795354503.2304237,
-    "ast_hash": "921693902d89aaf232c31da85321d5a4",
+    "mtime": 1795360343.289104,
+    "seen": 1795360887.3787894,
+    "ast_hash": "2be342b60c97aecf87631b3e4845a30b",
     "semantic_hash": ""
   },
   "tests/fixtures/bfl-acceptance/active/03-snils.pdf": {
@@ -5943,6 +5943,12 @@
     "mtime": 1795353696.2480938,
     "seen": 1795354503.2304664,
     "ast_hash": "a92a9474db482e69b0971836f36e7389",
+    "semantic_hash": ""
+  },
+  "packages/database/prisma/migrations/202611220073_bfl_form_pagination/migration.sql": {
+    "mtime": 1795360343.288567,
+    "seen": 1795360887.378333,
+    "ast_hash": "30663c069bc78f0bccc2eb84ffd5337e",
     "semantic_hash": ""
   }
 }

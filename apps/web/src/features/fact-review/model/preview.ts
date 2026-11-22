@@ -24,6 +24,7 @@ import {
 } from '@anyko/document-values/employment';
 import { inventorySections } from '@anyko/document-values/inventory-layout';
 import {
+  bflContentTemplate,
   filingMoneyWords,
   isDatedBankruptcyPackage,
   revisedStatementTemplate,
@@ -62,10 +63,11 @@ export function previewStatementValues(
 }
 
 export function previewDocumentValues(
-  version: string,
+  assetVersion: string,
   values: FieldValues,
   fields: DocumentPackage['fields'],
 ) {
+  const version = bflContentTemplate(assetVersion);
   const modern = usesBankruptcyProjection(version, fields);
   const obligations = projectBankruptcyCollections(version, values, modern);
   if (!modern && !obligations) return null;

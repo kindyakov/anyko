@@ -17,8 +17,20 @@ const statementTemplates = new Set([
   'bfl-statement-v11',
 ]);
 
+export const bflLayoutPackage = 'bfl-bankruptcy-v14';
+export const bflLayoutTemplates = {
+  'bfl-statement-v12': 'bfl-statement-v11',
+  'bfl-inventory-v3': 'bfl-inventory-v2',
+  'bfl-creditors-v4': 'bfl-creditors-v3',
+} as const;
+export function bflContentTemplate(version: string): string {
+  return Object.hasOwn(bflLayoutTemplates, version)
+    ? bflLayoutTemplates[version as keyof typeof bflLayoutTemplates]
+    : version;
+}
+
 export const revisedStatementTemplate = (version: string | undefined) =>
-  version !== undefined && statementTemplates.has(version);
+  version !== undefined && statementTemplates.has(bflContentTemplate(version));
 
 export const revisedBankruptcyPackages = [
   'bfl-bankruptcy-v9',
@@ -30,6 +42,7 @@ export const revisedBankruptcyPackages = [
 const datedPackages = new Set<string>([
   datedBankruptcyPackage,
   ...revisedBankruptcyPackages,
+  bflLayoutPackage,
 ]);
 export const isDatedBankruptcyPackage = (version: string) =>
   datedPackages.has(version);

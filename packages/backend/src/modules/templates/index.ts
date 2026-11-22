@@ -10,7 +10,11 @@ import {
   creditorRegistryColumns,
   obligationColumns,
 } from '@anyko/document-values/obligations';
-import { revisedBankruptcyPackages } from '@anyko/document-values/statement-layout';
+import {
+  bflLayoutPackage,
+  bflLayoutTemplates,
+  revisedBankruptcyPackages,
+} from '@anyko/document-values/statement-layout';
 import { DiagnosticError } from '@anyko/logger';
 
 import { fieldDefinitions } from '../../profiles/bfl/fields';
@@ -198,10 +202,18 @@ const revisedPackages = revisedBankruptcyPackages.map((version, index) =>
     ],
   }),
 );
+const layoutPackage = documentPackageSchema.parse({
+  ...revisedPackages.find(({ version }) => version === cadastralPackage),
+  version: bflLayoutPackage,
+  documents: Object.keys(bflLayoutTemplates).map((version) =>
+    manifest.find((document) => document.version === version),
+  ),
+});
 export function availablePackages(): DocumentPackage[] {
-  return [requirePackage(cadastralPackage)];
+  return [layoutPackage];
 }
 const knownPackages = [
+  layoutPackage,
   ...revisedPackages,
   datedPackage,
   obligationPackage,
