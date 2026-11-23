@@ -53,6 +53,20 @@ describe('pipeline calculations', () => {
     ]);
   });
 
+  test('returns no image descriptions when vision was skipped', () => {
+    const steps: Step[] = [
+      {
+        id: 'one',
+        documentId: 'doc',
+        stage: 'vision',
+        status: 'skipped',
+        errorCode: null,
+        visuals: [],
+      },
+    ];
+    expect(visionVisuals(steps, 'doc')).toEqual([]);
+  });
+
   test('keeps vision visuals with their originating document and stable keys', () => {
     const steps = [
       {

@@ -192,6 +192,7 @@ export function createDocumentOcrWorkflow(options: {
         markdown: parsed.markdown,
         processorVersion: parsed.processorVersion,
         pdfOcr: parsed.pdfOcr,
+        tableImages: parsed.tableImages,
         images,
       });
       const bytes = new TextEncoder().encode(JSON.stringify(result));

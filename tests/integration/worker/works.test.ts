@@ -3888,6 +3888,46 @@ test('rotation followed by revocation stops a run pinned to the old revision bef
   }
 });
 
+test.each([1, 2])(
+  'vision respects verified native tables with PDF processor revision %i',
+  async (revision) => {
+    const input = await create();
+    const native = 'images/page_0_table_1.png';
+    const unknown = 'images/page_0_table_2.png';
+    parseFixture = () =>
+      Promise.resolve({
+        markdown: 'Имя: Анна. Номер: 42.',
+        processorVersion: `mineru-4.2.3+cyrillic-pdf.${String(revision)}`,
+        pdfOcr: { version: 1, pages: [] },
+        images: [native, unknown].map((path) => ({
+          path,
+          contentType: 'image/png',
+          bytes: fixtureImage,
+        })),
+        ...(revision === 2 && {
+          tableImages: [
+            { imagePath: native, origin: 'native', page: 1 },
+            { imagePath: unknown, origin: 'unknown', page: 1 },
+          ],
+        }),
+      });
+    try {
+      await upload(input);
+      const result = await until(input, terminal);
+      const run = result.runs[0];
+      expect(run?.status).toBe('succeeded');
+      const vision = run?.steps.find((step) => step.stage === 'vision');
+      const expected = revision === 1 ? [native, unknown] : [unknown];
+      expect(vision?.visuals.map(({ path }) => path)).toEqual(expected);
+      expect(
+        descriptionsByResource.get(`${input.workspaceId}:${input.workId}`),
+      ).toBe(expected.length);
+    } finally {
+      parseFixture = undefined;
+    }
+  },
+);
+
 test('deletion during the first visual prevents a second provider request', async () => {
   const input = await create();
   let release: () => void = () => {},

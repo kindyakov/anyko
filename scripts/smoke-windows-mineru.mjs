@@ -127,7 +127,7 @@ try {
   if (!result.ok) throw new Error(`OCR failed with status ${result.status}`);
   if (
     result.headers.get('content-type') !== 'application/zip' ||
-    result.headers.get('x-mineru-version') !== '4.2.3+cyrillic-pdf.1'
+    result.headers.get('x-mineru-version') !== '4.2.3+cyrillic-pdf.2'
   )
     throw new Error('Unexpected MinerU PDF response contract');
   const zip = resolve(temporary, 'result.zip');

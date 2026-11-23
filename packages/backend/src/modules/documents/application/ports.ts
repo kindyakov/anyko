@@ -4,7 +4,7 @@ import type { Logger } from '@anyko/logger';
 
 import type { ProcessingIo } from '../../processing';
 
-import type { pdfOcrSchema } from './result-schema';
+import type { pdfOcrSchema, pdfTableImagesSchema } from './result-schema';
 import type { SourceFormat } from './source-format';
 
 type DocumentStatus = 'queued' | 'running' | 'succeeded' | 'failed';
@@ -33,6 +33,7 @@ export interface DocumentResult {
   markdown: string;
   processorVersion: string;
   pdfOcr?: z.infer<typeof pdfOcrSchema>;
+  tableImages?: z.infer<typeof pdfTableImagesSchema>;
   images?: { path: string; contentType: string; bytes: Uint8Array }[];
 }
 interface Artifact {

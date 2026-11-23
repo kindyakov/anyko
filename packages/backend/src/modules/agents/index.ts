@@ -96,7 +96,7 @@ export type AnalysisStepInput = WorkReadContext & {
   ): Promise<string>;
 };
 // Bump when the visual instructions change the context passed to extraction.
-export const visionPromptRevision = 3;
+export const visionPromptRevision = 4;
 export const extractionPromptRevision = 8;
 
 export interface DocumentAgents {

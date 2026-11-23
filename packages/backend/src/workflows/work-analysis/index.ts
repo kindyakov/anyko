@@ -172,7 +172,15 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           const normalized = source.images.filter((image) =>
             image.path.includes('/anyko-'),
           );
-          for (const image of normalized.length ? normalized : source.images) {
+          const nativeTables = new Set(
+            source.tableImages
+              ?.filter(({ origin }) => origin === 'native')
+              .map(({ imagePath }) => imagePath),
+          );
+          const images = normalized.length ? normalized : source.images;
+          for (const image of images.filter(
+            ({ path }) => !nativeTables.has(path),
+          )) {
             signal.throwIfAborted();
             await current();
             const stepConnection = await readConnection();

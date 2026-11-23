@@ -16,6 +16,7 @@ import zipfile
 CONTAINER_IMAGES = {'avif': 'AVIF', 'heif': 'HEIF'}
 RASTER_FORMATS = {'jpg', 'png', 'webp', 'tiff', *CONTAINER_IMAGES}
 MAX_IMAGES = 256
+PDF_TABLE_IMAGES = 'pdf-table-images.json'
 REPORTED_ERRORS = {
     'TOO_MANY_EXPORTED_IMAGES',
     'DOCUMENT_VISUALS_TOO_LARGE',
@@ -123,7 +124,9 @@ class ZipWriter:
         name = PurePosixPath(path)
         if name.is_absolute() or '..' in name.parts or '\\' in path:
             raise ValueError('INVALID_EXPORT_PATH')
-        if path not in {'markdown.md', 'pdf-ocr.json'} and not path.startswith('images/'):
+        if path not in {'markdown.md', 'pdf-ocr.json', PDF_TABLE_IMAGES} and not path.startswith('images/'):
+            return
+        if path == PDF_TABLE_IMAGES and (len(data) > 128 * 1024 or self.size + len(data) > 13 * 1024 * 1024):
             return
         if path == 'pdf-ocr.json' and len(data) > 2 * 1024 * 1024:
             raise ValueError('EXPORT_TOO_LARGE')
@@ -150,6 +153,10 @@ class ZipWriter:
                 archive.writestr(path, data)
         data = stream.getvalue()
         if len(data) > 10 * 1024 * 1024:
+            table_images = self.files.pop(PDF_TABLE_IMAGES, None)
+            if table_images is not None:
+                self.size -= len(table_images)
+                return self.archive()
             raise ValueError('EXPORT_TOO_LARGE')
         return data
 
@@ -369,7 +376,7 @@ async def parse_source(identity: uuid.UUID, request: Request, format: str, visua
         if visual_only:
             processor_version += '+visual-inputs.1'
         elif format == 'pdf':
-            processor_version += '+cyrillic-pdf.1'
+            processor_version += '+cyrillic-pdf.2'
         elif format in RASTER_FORMATS:
             processor_version += '+cyrillic-image.1'
         return Response(result, media_type='application/zip', headers={'x-mineru-version': processor_version})
