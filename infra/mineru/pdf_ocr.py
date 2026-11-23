@@ -46,8 +46,8 @@ def require_signature(module, name, *parameters):
 
 
 def configure_primary_ocr(sdk_version):
-    if sdk_version != '4.1.7':
-        raise RuntimeError(f'Cyrillic OCR requires MinerU 4.1.7, found {sdk_version}')
+    if sdk_version != '4.2.3':
+        raise RuntimeError(f'Cyrillic OCR requires MinerU 4.2.3, found {sdk_version}')
     hybrid = import_module('mineru.model.runtime.hybrid')
     positional = Parameter.POSITIONAL_OR_KEYWORD
     require_signature(hybrid, 'atom_model_init', ('model_name', positional), ('kwargs', Parameter.VAR_KEYWORD))
@@ -62,7 +62,8 @@ def configure_primary_ocr(sdk_version):
             or not isinstance(getattr(repo, 'paths', None), dict)):
         raise RuntimeError('Incompatible MinerU OCR binding: MINERU_4_MODELS_ONNX')
     require_signature(repo, 'local_dir')
-    if hybrid.resolve_small_model_backend() != 'onnx':
+    device = import_module('mineru.model.runtime.device_state')
+    if device.resolve_model_backend() != 'onnx':
         raise RuntimeError('Cyrillic OCR requires the ONNX small-model backend')
     model = repo.local_dir() / OCR_MODEL_PATH
     dictionary = model.with_suffix('.txt')
