@@ -2,13 +2,18 @@ import type { Elysia } from 'elysia';
 
 import type { createAccess } from '@anyko/backend/access';
 import type { DocumentsModule } from '@anyko/backend/documents';
+import { isAppError } from '@anyko/backend/errors';
 import type { IdempotencyApi } from '@anyko/backend/idempotency';
 import { brandDocumentId } from '@anyko/backend/ids';
 import {
+  createDocumentDeletions,
   deleteDocument,
+  documentDeletionRejection,
   getDocument,
   getDocumentDeletion,
   getDocumentDeletionImpact,
+  getDocumentDeletionImpacts,
+  getDocumentDeletions,
   getDocumentImage,
   getDocumentResult,
   getDocumentSource,
@@ -110,6 +115,46 @@ export function documentRoutes(
   route(app, getDocumentDeletionImpact, ({ scope, params }) =>
     documents.queries.deletionImpact(scope, brandDocumentId(params.documentId)),
   );
+  route(app, getDocumentDeletionImpacts, async ({ scope, query }) => {
+    const impacts = [];
+    for (const documentId of query.documentIds) {
+      const impact = await documents.queries.deletionImpact(
+        scope,
+        brandDocumentId(documentId),
+      );
+      impacts.push({ documentId, ...impact });
+    }
+    return { impacts };
+  });
+  route(app, createDocumentDeletions, async ({ scope, body }) => {
+    const results = [];
+    for (const { documentId, impact } of body.documents) {
+      try {
+        await documents.commands.remove(
+          scope,
+          brandDocumentId(documentId),
+          impact,
+        );
+        results.push({ documentId, status: 'deleting' as const });
+      } catch (error) {
+        if (!isAppError(error)) throw error;
+        const code = documentDeletionRejection.safeParse(error.code);
+        if (!code.success) throw error;
+        results.push({
+          documentId,
+          status: 'rejected' as const,
+          code: code.data,
+        });
+      }
+    }
+    return { results };
+  });
+  route(app, getDocumentDeletions, async ({ scope, query }) => ({
+    results: await documents.queries.deletions(
+      scope,
+      query.documentIds.map(brandDocumentId),
+    ),
+  }));
   route(app, deleteDocument, async ({ scope, params, query }) => {
     await documents.commands.remove(
       scope,

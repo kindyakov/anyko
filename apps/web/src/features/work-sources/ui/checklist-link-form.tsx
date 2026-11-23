@@ -1,12 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { FileIcon, Link2 } from 'lucide-react';
 
 import type { WorkView } from '@anyko/contracts/works';
-import { Button, Select } from '@anyko/ui';
+import { ActionMenu } from '@anyko/ui';
 
 type Document = WorkView['documents'][number];
 
+/** Привязка файла работы к пункту чек-листа: выбор файла сразу привязывает его. */
 export function ChecklistLinkForm({
   label,
   documents,
@@ -18,36 +19,26 @@ export function ChecklistLinkForm({
   pending: boolean;
   onLink: (document: Document) => void;
 }) {
-  const [id, setId] = useState('');
-  const selected = documents.find((document) => document.id === id);
-
   return (
-    <form
-      className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (selected) onLink(selected);
-      }}
-    >
-      <Select
-        disabled={pending}
-        label={`Файл для «${label}»`}
-        placeholder="Выбрать файл"
-        items={documents.map(({ id, filename }) => ({
-          value: id,
-          label: filename,
-        }))}
-        value={selected?.id ?? ''}
-        onValueChange={setId}
-      />
-      <Button
-        type="submit"
-        size="sm"
-        variant="secondary"
-        disabled={pending || !selected}
-      >
-        Привязать
-      </Button>
-    </form>
+    <ActionMenu
+      label={`Привязать файл к «${label}»`}
+      align="start"
+      className="w-full justify-start"
+      trigger={
+        <>
+          <Link2 size={14} aria-hidden />
+          Привязать файл
+        </>
+      }
+      items={documents.map((document) => ({
+        id: document.id,
+        label: document.filename,
+        icon: <FileIcon size={14} />,
+        disabled: pending,
+        onSelect: () => {
+          onLink(document);
+        },
+      }))}
+    />
   );
 }

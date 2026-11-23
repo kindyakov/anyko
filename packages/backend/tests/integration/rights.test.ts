@@ -144,13 +144,13 @@ test('connection settings and recognitions are guarded by their own rights', asy
   await expectForbidden(
     api.documentHttp.documents.queries.list(
       memberScope(ws, 'works-only', ['works.read']),
-      { limit: 50 },
+      { page: 1, pageSize: 24 },
     ),
   );
   expect(
     await api.documentHttp.documents.queries.list(
       memberScope(ws, 'user', ['recognitions.use']),
-      { limit: 50 },
+      { page: 1, pageSize: 24 },
     ),
-  ).toEqual({ items: [], nextCursor: null });
+  ).toEqual({ items: [], page: 1, pageSize: 24, total: 0 });
 });

@@ -20,6 +20,7 @@ const collections = new Map([
   ['messages', 'message'],
   ['connections', 'connection'],
   ['recognitions', 'document'],
+  ['recognition-deletions', 'recognition-deletion'],
   ['documents', 'document'],
   ['images', 'image'],
   ['events', 'event'],

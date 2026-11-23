@@ -1,3 +1,5 @@
+import { Undo2 } from 'lucide-react';
+
 import type { FieldValue } from '@anyko/contracts/catalog';
 import type { AgentHistoryPage, WorkView } from '@anyko/contracts/works';
 import { Button, Notice } from '@anyko/ui';
@@ -30,17 +32,21 @@ export function FieldChange({
   const canEdit = useCan('works.edit');
   const restore = useRestoreField(workspaceId, workId, runId, eventId);
   return (
-    <div className="mt-3 grid gap-3">
-      <dl className="border-line grid gap-2 rounded-xl border p-3 sm:grid-cols-2">
-        <div className="min-w-0">
-          <dt className="text-muted">Прежнее значение</dt>
-          <dd>
+    <div className="grid gap-2.5">
+      <dl className="grid gap-1.5">
+        <div className="min-w-0 rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2">
+          <dt className="text-muted text-[11px] font-medium">
+            Прежнее значение
+          </dt>
+          <dd className="text-muted mt-0.5">
             <HistoryValue value={change.before} field={field} />
           </dd>
         </div>
-        <div className="min-w-0">
-          <dt className="text-muted">Новое значение</dt>
-          <dd>
+        <div className="min-w-0 rounded-lg border border-emerald-400/20 bg-emerald-400/[0.05] px-3 py-2">
+          <dt className="text-[11px] font-medium text-emerald-300">
+            Новое значение
+          </dt>
+          <dd className="text-ink mt-0.5">
             <HistoryValue value={change.after} field={field} />
           </dd>
         </div>
@@ -50,14 +56,13 @@ export function FieldChange({
           variant="secondary"
           size="sm"
           className="justify-self-start"
-          disabled={restore.isPending}
+          loading={restore.isPending}
           onClick={() => {
             restore.mutate(revision);
           }}
         >
-          {restore.isPending
-            ? 'Восстанавливаем…'
-            : 'Восстановить прежнее значение'}
+          <Undo2 size={14} />
+          Восстановить прежнее значение
         </Button>
       )}
       {restore.error && (

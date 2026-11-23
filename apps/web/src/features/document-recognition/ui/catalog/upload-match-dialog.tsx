@@ -1,9 +1,9 @@
 'use client';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import type { DocumentSummary } from '@anyko/contracts/documents';
-import { Button, FileIcon, Modal, Notice, StatusPill } from '@anyko/ui';
+import { Button, FileIcon, Modal, Notice, Pager, StatusPill } from '@anyko/ui';
 import { HorizonLoader } from '@anyko/ui/brand';
 
 import { useWorkspaceEvents } from '@/lib/api/live-events';
@@ -43,18 +43,19 @@ export function UploadMatchDialog({
   onClose: () => void;
 }) {
   useWorkspaceEvents(workspaceId);
-  const [cursors, setCursors] = useState<string[]>([]);
-  const after = cursors.at(-1);
+  const [number, setNumber] = useState(1);
   const page = useQuery({
     meta: liveQuery(workspaceId, 'recognition-list'),
-    queryKey: ['upload-matches', workspaceId, checksum, after],
+    queryKey: ['upload-matches', workspaceId, checksum, number],
     queryFn: ({ signal }) =>
-      findUploadMatches(workspaceId, checksum, signal, after),
-    initialData: after ? undefined : first,
+      findUploadMatches(workspaceId, checksum, signal, number),
+    initialData: number === 1 ? first : undefined,
+    placeholderData: keepPreviousData,
     gcTime: 0,
   });
   const current = page.data;
-  const next = current?.nextCursor;
+  // Сервер сводит номер за последней страницей к последней.
+  const shownPage = (!page.isPlaceholderData && current?.page) || number;
   const reusable = (document: DocumentSummary) =>
     !attached || attached.has(document.id) || document.readyRevision != null;
   const [selection, setSelected] = useState<string>();
@@ -111,9 +112,7 @@ export function UploadMatchDialog({
           </label>
         ))}
       </fieldset>
-      {after && page.isPending && (
-        <HorizonLoader label="Загружаем совпадения" />
-      )}
+      {page.isPending && <HorizonLoader label="Загружаем совпадения" />}
       {page.error && (
         <Notice role="alert" tone="danger">
           {describeDocumentError(page.error)}
@@ -129,32 +128,18 @@ export function UploadMatchDialog({
           Для добавления в работу нужно дождаться готового распознавания.
         </p>
       ) : null}
-      {(after || next) && (
-        <nav aria-label="Страницы совпадений" className="mt-3 flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!after}
-            onClick={() => {
+      {current && (
+        <div className="mt-3 empty:hidden">
+          <Pager
+            label="Страницы совпадений"
+            page={shownPage}
+            pages={Math.ceil(current.total / current.pageSize)}
+            onPage={(next) => {
               setSelected(undefined);
-              setCursors(cursors.slice(0, -1));
+              setNumber(next);
             }}
-          >
-            Назад
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!next}
-            onClick={() => {
-              if (!next) return;
-              setSelected(undefined);
-              setCursors([...cursors, next]);
-            }}
-          >
-            Далее
-          </Button>
-        </nav>
+          />
+        </div>
       )}
       <footer className="mt-5 flex flex-wrap justify-end gap-2 border-t border-white/10 pt-4">
         <Button variant="ghost" onClick={onClose}>

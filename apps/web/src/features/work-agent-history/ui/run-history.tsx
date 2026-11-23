@@ -1,49 +1,90 @@
 import { Tabs } from '@base-ui/react/tabs';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, ChartNoAxesColumn, Wrench } from 'lucide-react';
+import { Activity, ArrowLeft, ChartNoAxesColumn } from 'lucide-react';
 import { useState } from 'react';
 
-import type { AgentHistoryRunPage, WorkView } from '@anyko/contracts/works';
-import { Disclosure } from '@anyko/ui';
-import { Trace, TraceStep } from '@anyko/ui/chat';
+import type { WorkView } from '@anyko/contracts/works';
+import { Button, Pager, RelativeTime, Skeleton, StatusPill } from '@anyko/ui';
+import { Trace } from '@anyko/ui/chat';
+
+import { errorText } from '@/features/works';
 
 import { agentHistoryQuery } from '../api/queries';
 
-import { FieldChange } from './field-change';
-import { HistoryError, HistoryPagination } from './history-controls';
-import { Usage } from './usage';
+import { type HistoryRun, runStatuses } from './analysis-journal';
+import { HistoryError } from './history-controls';
+import { RunEvent, stageLabels } from './run-event';
+import { StageUsage, UsageStats } from './usage';
 
-type Run = AgentHistoryRunPage['items'][number];
-const stages: Record<string, string> = {
-  vision: 'Описание вложенного изображения',
-  extraction: 'Поиск сведений',
-  reconciliation: 'Сопоставление',
-  chat: 'Диалог с агентом',
-};
-const statuses: Record<string, string> = {
-  running: 'Исход пока неизвестен',
-  responded: 'Ответ получен',
-  failed: 'Ошибка запроса',
-  succeeded: 'Вызов инструмента выполнен',
-  accepted: 'Результат сохранён',
-  rejected: 'Результат отклонён',
-  superseded: 'Устаревшая попытка',
-};
 const tabStyles =
-  'text-muted data-[active]:text-ink data-[active]:border-brand-hot focus-visible:outline-brand-hot flex min-h-10 items-center gap-2 border-b-2 border-transparent px-1 text-sm font-medium focus-visible:outline-2';
+  'text-muted data-[active]:text-ink data-[active]:border-brand-hot focus-visible:outline-brand-hot -mb-px flex min-h-10 items-center gap-2 border-b-2 border-transparent px-1 text-sm font-medium transition-colors hover:text-ink focus-visible:-outline-offset-2 focus-visible:outline-2';
+const panelStyles = 'min-h-0 flex-1 overflow-y-auto px-4 py-4';
 
+/** Подробности запуска агента: события и расход, с возвратом к списку или чату. */
 export function RunHistory({
   workspaceId,
   view,
   run,
-  presentation = 'history',
+  kind,
   errorCode = null,
+  backLabel,
+  onBack,
 }: {
   workspaceId: string;
   view: WorkView;
-  run: Run;
-  presentation?: 'history' | 'chat';
+  run: HistoryRun;
+  kind: 'analysis' | 'chat';
   errorCode?: string | null;
+  backLabel: string;
+  onBack: () => void;
+}) {
+  const status = runStatuses[run.status];
+  return (
+    <Tabs.Root defaultValue="events" className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-white/[0.07] px-4 pt-3">
+        <Button variant="ghost" size="xs" className="-ml-2" onClick={onBack}>
+          <ArrowLeft size={14} />
+          {backLabel}
+        </Button>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <h3 className="font-heading text-base font-bold">
+            {kind === 'analysis' ? 'Автоматический анализ' : 'Действия агента'}
+          </h3>
+          <StatusPill tone={status.tone}>{status.text}</StatusPill>
+        </div>
+        <p className="text-muted mt-1 text-xs tabular-nums">
+          {new Date(run.createdAt).toLocaleString('ru-RU')} ·{' '}
+          <RelativeTime value={run.createdAt} />
+        </p>
+        {errorCode && (
+          <p className="mt-2 rounded-lg border border-red-400/20 bg-red-500/[0.06] px-2.5 py-2 text-xs leading-5 text-red-200">
+            {errorText(errorCode)}
+          </p>
+        )}
+        <Tabs.List aria-label="Подробности запуска" className="mt-3 flex gap-5">
+          <Tabs.Tab value="events" className={tabStyles}>
+            <Activity size={15} aria-hidden />
+            События
+          </Tabs.Tab>
+          <Tabs.Tab value="usage" className={tabStyles}>
+            <ChartNoAxesColumn size={15} aria-hidden />
+            Расход токенов
+          </Tabs.Tab>
+        </Tabs.List>
+      </div>
+      <RunContent workspaceId={workspaceId} view={view} run={run} />
+    </Tabs.Root>
+  );
+}
+
+function RunContent({
+  workspaceId,
+  view,
+  run,
+}: {
+  workspaceId: string;
+  view: WorkView;
+  run: HistoryRun;
 }) {
   const [page, setPage] = useState(1);
   const { data, error, isPending, refetch } = useQuery(
@@ -55,210 +96,73 @@ export function RunHistory({
       run.status === 'running' || run.status === 'queued',
     ),
   );
-  if (error) return <HistoryError error={error} retry={refetch} />;
-  if (isPending) return <p role="status">Загружаем историю…</p>;
+  if (error)
+    return (
+      <div className={panelStyles}>
+        <HistoryError error={error} retry={refetch} />
+      </div>
+    );
+  if (isPending)
+    return (
+      <div aria-busy className={`${panelStyles} grid content-start gap-2`}>
+        <span role="status" className="sr-only">
+          Загружаем историю
+        </span>
+        {[0, 1, 2, 3].map((item) => (
+          <Skeleton key={item} className="h-10 w-full rounded-lg" />
+        ))}
+      </div>
+    );
   const documentName = (id: string | null) =>
     view.documents.find((document) => document.id === id)?.filename;
-  const fields = new Map(
-    view.package.fields.map((field) => [field.key, field]),
-  );
-  const usage = (
+  return (
     <>
-      <Usage title="Вся работа" usage={data.workUsage} />
-      <Usage title="Выбранный запуск" usage={data.runUsage} />
-      {data.steps.length > 0 && (
-        <Disclosure title="Расход по этапам">
-          <div className="grid gap-2">
-            {data.steps.map((step) => (
-              <Usage
-                key={`${step.stage}:${step.documentId ?? ''}`}
-                usage={step.usage}
-                title={[
-                  stages[step.stage] ?? step.stage,
-                  documentName(step.documentId),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
+      <Tabs.Panel value="events" className={panelStyles}>
+        {data.total === 0 ? (
+          <p className="text-muted py-6 text-center text-sm">
+            Для запуска пока нет сохранённых событий.
+          </p>
+        ) : (
+          <Trace>
+            {data.items.map((event) => (
+              <RunEvent
+                key={event.id}
+                event={event}
+                view={view}
+                workspaceId={workspaceId}
+                runId={run.id}
               />
             ))}
-          </div>
-        </Disclosure>
-      )}
-    </>
-  );
-  const history = (
-    <>
-      {data.total === 0 && (
-        <p className="text-muted">Для запуска пока нет сохранённых событий.</p>
-      )}
-      {data.items.map((event) => {
-        const change = event.fieldChange;
-        const checklist = event.checklistChange;
-        const checklistAction = checklist && checklistChangeLabel(checklist);
-        const field = change ? fields.get(change.field) : undefined;
-        const title = [
-          stages[event.stage] ?? event.stage,
-          checklist?.filename ?? documentName(event.documentId),
-          checklist
-            ? checklistAction
-            : (statuses[event.status] ?? event.status),
-          checklist?.requirementLabel,
-          change ? (field?.label ?? change.field) : undefined,
-        ]
-          .filter(Boolean)
-          .join(' · ');
-        const payload = (event.input || event.output) && (
-          <>
-            {event.input && (
-              <Payload
-                title={
-                  event.kind === 'tool' ? 'Вызов инструмента' : 'Вход модели'
-                }
-                value={event.input}
-              />
-            )}
-            {event.output && (
-              <Payload
-                title={
-                  event.kind === 'decision'
-                    ? 'Решение по предложениям'
-                    : event.kind === 'tool'
-                      ? 'Результат инструмента'
-                      : 'Ответ модели'
-                }
-                value={event.output}
-              />
-            )}
-          </>
-        );
-        const details = (
-          <>
-            <p className="text-muted">
-              {new Date(event.createdAt).toLocaleString('ru-RU')}
-            </p>
-            {event.model && (
-              <p className="wrap-anywhere">
-                {event.provider} / {event.model}
-              </p>
-            )}
-            {event.kind === 'provider' && (
-              <p className="text-muted">
-                Вход {event.inputTokens ?? 'неизвестно'} · Выход{' '}
-                {event.outputTokens ?? 'неизвестно'}
-              </p>
-            )}
-            {event.errorCode && <p className="text-muted">{event.errorCode}</p>}
-            {change && (
-              <FieldChange
-                change={change}
-                field={field}
-                workspaceId={workspaceId}
-                workId={view.work.id}
-                runId={run.id}
-                eventId={event.id}
-                revision={view.work.revision}
-              />
-            )}
-            {checklist && presentation === 'chat' && (
-              <p>
-                {checklistAction} · {checklist.filename}
-              </p>
-            )}
-            {payload &&
-              (presentation === 'chat' && (change || checklist) ? (
-                <Disclosure title="Данные вызова">{payload}</Disclosure>
-              ) : (
-                payload
-              ))}
-          </>
-        );
-        return presentation === 'chat' ? (
-          <TraceStep
-            key={event.id}
-            icon={
-              event.kind === 'tool' ? (
-                <Wrench size={14} />
-              ) : (
-                <Activity size={14} />
-              )
-            }
-            title={
-              change
-                ? `Поле «${field?.label ?? change.field}»`
-                : (checklist?.requirementLabel ?? title)
-            }
-          >
-            {details}
-          </TraceStep>
-        ) : (
-          <Disclosure
-            key={event.id}
-            className="border-line rounded-xl border px-3"
-            title={title}
-          >
-            {details}
-          </Disclosure>
-        );
-      })}
-      <HistoryPagination
-        page={page}
-        pages={Math.ceil(data.total / data.pageSize)}
-        onPage={setPage}
-      />
-    </>
-  );
-  return presentation === 'chat' ? (
-    <Tabs.Root defaultValue="events" className="grid gap-4">
-      <Tabs.List
-        aria-label="Подробности запуска"
-        className="border-line flex gap-5 border-b"
-      >
-        <Tabs.Tab value="events" className={tabStyles}>
-          <Activity size={15} aria-hidden />
-          События
-        </Tabs.Tab>
-        <Tabs.Tab value="usage" className={tabStyles}>
-          <ChartNoAxesColumn size={15} aria-hidden />
-          Расход токенов
-        </Tabs.Tab>
-      </Tabs.List>
-      <Tabs.Panel value="events" className="min-w-0">
-        {errorCode && (
-          <p className="text-muted mb-3 text-xs">Код ошибки {errorCode}</p>
+          </Trace>
         )}
-        <Trace>{history}</Trace>
+        <div className="mt-4 flex justify-center empty:hidden">
+          <Pager
+            label="Страницы событий"
+            page={page}
+            pages={Math.ceil(data.total / data.pageSize)}
+            onPage={setPage}
+          />
+        </div>
       </Tabs.Panel>
-      <Tabs.Panel value="usage" className="min-w-0">
-        <div className="grid gap-3 text-sm">{usage}</div>
+      <Tabs.Panel
+        value="usage"
+        className={`${panelStyles} grid content-start gap-5`}
+      >
+        <UsageStats title="Этот запуск" usage={data.runUsage} />
+        <UsageStats title="Вся работа" usage={data.workUsage} />
+        <StageUsage
+          rows={data.steps.map((step) => ({
+            key: `${step.stage}:${step.documentId ?? ''}`,
+            title: [
+              stageLabels[step.stage] ?? step.stage,
+              documentName(step.documentId),
+            ]
+              .filter(Boolean)
+              .join(' · '),
+            usage: step.usage,
+          }))}
+        />
       </Tabs.Panel>
-    </Tabs.Root>
-  ) : (
-    <div className="grid gap-3 text-sm">
-      {usage}
-      {history}
-    </div>
-  );
-}
-
-function checklistChangeLabel({
-  before,
-  after,
-}: {
-  before: string | null;
-  after: 'confirmed' | 'rejected';
-}) {
-  if (after === 'confirmed')
-    return before === after ? 'Отметка уже стоит' : 'Отметка поставлена';
-  return before === after ? 'Отметка уже снята' : 'Отметка снята';
-}
-
-function Payload({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="mt-3">
-      <h4 className="font-medium">{title}</h4>
-      <pre className="bg-canvas mt-1 max-h-72 overflow-auto rounded-lg p-2 text-xs wrap-anywhere whitespace-pre-wrap">
-        {JSON.stringify(JSON.parse(value), null, 2)}
-      </pre>
-    </div>
+    </>
   );
 }

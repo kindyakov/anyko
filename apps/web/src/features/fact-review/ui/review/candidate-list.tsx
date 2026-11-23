@@ -1,4 +1,4 @@
-import { Crosshair } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 import type {
   FieldKey,
@@ -28,10 +28,10 @@ import {
   sameReviewValue,
 } from '@/features/fact-review/model/review';
 
-import { CandidateValue } from '../work-fields';
-
+import { CandidateOption } from './candidate-option';
 import { CourtChoices } from './court-choices';
 import { CurrentCandidateValue } from './current-candidate-value';
+import { FieldCardHeader } from './field-card-header';
 import {
   type CourtSources,
   type CreditorSource,
@@ -132,51 +132,61 @@ export function CandidateList({
                 : 'options',
           );
 
+          const apply = (
+            option: (typeof options)[number],
+            target: HTMLElement,
+          ) => {
+            target
+              .closest('article')
+              ?.querySelector('h3')
+              ?.focus({ preventScroll: true });
+            onApply({
+              [field.key]: reviewCandidateValue(
+                field.key,
+                current,
+                option.value,
+                option.creditorSources.size > 0,
+              ),
+            });
+          };
+
           return (
             <li key={field.key}>
               <article
                 aria-labelledby={`review-field-${field.key}`}
-                className={`glass rounded-2xl border p-4 sm:p-5 ${attention ? 'border-amber-400/25' : 'border-white/[0.08]'}`}
+                className={`glass relative overflow-hidden rounded-2xl border p-4 sm:p-5 ${attention ? 'border-amber-400/15' : 'border-white/[0.07]'}`}
               >
-                <header className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h3
-                      id={`review-field-${field.key}`}
-                      tabIndex={-1}
-                      className="inline-flex max-w-full flex-wrap items-center gap-x-2 rounded-md border border-white/10 bg-white/[0.05] px-2.5 py-1 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff8da4]"
-                    >
-                      <span className="text-xs font-medium text-white/65">
-                        Поле
-                      </span>
-                      <span className="h-3 w-px bg-white/20" aria-hidden />
-                      {field.label}
-                    </h3>
-                    {evidenceLost && (
-                      <StatusPill tone="warning">
-                        Нужна повторная сверка
-                      </StatusPill>
-                    )}
-                    {conflict && (
-                      <StatusPill tone="warning">Расхождение</StatusPill>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      jump(field.key);
-                    }}
-                  >
-                    <Crosshair size={14} aria-hidden />
-                    Показать поле в документе
-                  </Button>
-                </header>
+                {attention && (
+                  <span
+                    aria-hidden
+                    className="absolute inset-y-0 left-0 w-1 bg-amber-400/70"
+                  />
+                )}
+                <FieldCardHeader
+                  id={`review-field-${field.key}`}
+                  label={field.label}
+                  filled={
+                    !!defaultText ||
+                    (current != null &&
+                      !(typeof current === 'string' && !current.trim()))
+                  }
+                  conflict={conflict}
+                  evidenceLost={evidenceLost}
+                  onJump={() => {
+                    jump(field.key);
+                  }}
+                />
                 <CurrentCandidateValue
                   value={current}
                   defaultText={defaultText}
                   changed={changed}
                   evidenceLost={evidenceLost}
                   busy={busy}
+                  emptyHint={
+                    options.length
+                      ? 'Пусто — выберите вариант ниже'
+                      : 'Пусто — в файлах значение не найдено'
+                  }
                   onConfirmDefault={(text) => {
                     onApply({ [field.key]: text });
                   }}
@@ -203,28 +213,38 @@ export function CandidateList({
                 </CurrentCandidateValue>
                 {options.length > 0 && (
                   <section
-                    className="mt-4 space-y-2"
+                    className="mt-5 space-y-2.5"
                     aria-label="Варианты модели"
                   >
-                    <p className="text-xs font-medium text-white/70">
+                    <p className="text-muted flex items-center gap-1.5 text-[11px] font-medium tracking-wide uppercase">
+                      <Sparkles size={13} aria-hidden />
                       {matching.length
                         ? 'Другие варианты модели'
                         : 'Варианты модели'}
+                      <span className="tabular-nums">· {options.length}</span>
                     </p>
+                    {options.length > 1 && (
+                      <p className="text-sm text-amber-100/90">
+                        {matching.length
+                          ? 'В файлах есть и другие значения — проверьте, какое верное.'
+                          : 'Файлы расходятся — выберите верное значение.'}
+                      </p>
+                    )}
                     {options.map((option, index) => (
-                      <div
+                      <CandidateOption
+                        number={options.length > 1 ? index + 1 : undefined}
                         key={index}
-                        className="rounded-xl border border-white/[0.08] bg-black/20 p-3.5"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2.5">
-                          <div className="min-w-0 text-sm font-medium">
-                            <CandidateValue value={option.value} />
-                          </div>
-                          {option.courtSources.size ? (
+                        value={option.value}
+                        findings={option}
+                        documents={view.documents}
+                        onOpen={onOpen}
+                        action={
+                          option.courtSources.size ? (
                             <CourtChoices
                               field={field.key}
                               choices={choicesFor(option)}
                               busy={busy}
+                              primary={current == null && options.length === 1}
                               onApply={onApply}
                             />
                           ) : invalidReviewValue(field, option.value) ? (
@@ -241,7 +261,9 @@ export function CandidateList({
                             <Button
                               size="sm"
                               variant={
-                                current == null ? 'primary' : 'secondary'
+                                current == null && options.length === 1
+                                  ? 'primary'
+                                  : 'secondary'
                               }
                               disabled={
                                 busy ||
@@ -252,39 +274,21 @@ export function CandidateList({
                                   ))
                               }
                               onClick={(event) => {
-                                event.currentTarget
-                                  .closest('article')
-                                  ?.querySelector('h3')
-                                  ?.focus({ preventScroll: true });
-                                const value = reviewCandidateValue(
-                                  field.key,
-                                  current,
-                                  option.value,
-                                  option.creditorSources.size > 0,
-                                );
-                                onApply({ [field.key]: value });
+                                apply(option, event.currentTarget);
                               }}
                             >
                               Подставить это значение
                             </Button>
-                          )}
-                        </div>
-                        <div className="mt-3 border-t border-white/[0.08] pt-3">
-                          <FindingSources
-                            findings={option}
-                            documents={view.documents}
-                            onOpen={onOpen}
-                          />
-                        </div>
-                      </div>
+                          )
+                        }
+                      />
                     ))}
                   </section>
                 )}
-                {(evidenceLost || !candidates.length) && (
-                  <p className="text-muted mt-2 text-xs">
-                    {evidenceLost
-                      ? 'Часть исходных фрагментов больше недоступна. Сверьте значение с актуальными файлами.'
-                      : 'В файлах модель не нашла значения для этого поля.'}
+                {evidenceLost && (
+                  <p className="mt-3 text-xs text-zinc-500">
+                    Часть исходных фрагментов больше недоступна. Сверьте
+                    значение с актуальными файлами.
                   </p>
                 )}
               </article>

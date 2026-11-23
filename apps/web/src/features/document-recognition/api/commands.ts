@@ -7,9 +7,14 @@ import {
 import { useEffect, useRef } from 'react';
 
 import {
+  createDocumentDeletions,
   deleteDocument,
+  documentDeletionBatchLimit,
   type DocumentSummary,
   getDocumentDeletion,
+  getDocumentDeletionImpact,
+  getDocumentDeletionImpacts,
+  getDocumentDeletions,
   retryDocument,
   uploadDocument,
 } from '@anyko/contracts/documents';
@@ -108,6 +113,85 @@ async function runForDocuments(
   return { succeeded, failed };
 }
 
+function* deletionBatches<T>(documents: readonly T[]) {
+  for (
+    let offset = 0;
+    offset < documents.length;
+    offset += documentDeletionBatchLimit
+  )
+    yield documents.slice(offset, offset + documentDeletionBatchLimit);
+}
+
+export async function readDeletionImpacts(
+  workspaceId: string,
+  documents: readonly DocumentSummary[],
+  signal: AbortSignal,
+) {
+  if (documents.length === 1) {
+    const [document] = documents;
+    if (document)
+      return [
+        {
+          id: document.id,
+          filename: document.filename,
+          ...(await callApi(getDocumentDeletionImpact, {
+            params: { workspaceId, documentId: document.id },
+            signal,
+          })),
+        },
+      ];
+  }
+  const filenames = new Map(
+    documents.map(({ id, filename }) => [id, filename]),
+  );
+  const items = [];
+  for (const batch of deletionBatches(documents)) {
+    const { impacts } = await callApi(getDocumentDeletionImpacts, {
+      params: { workspaceId },
+      query: { documentIds: batch.map(({ id }) => id).join(',') },
+      signal,
+    });
+    for (const { documentId, ...impact } of impacts)
+      items.push({
+        id: documentId,
+        filename: filenames.get(documentId) ?? documentId,
+        ...impact,
+      });
+  }
+  return items;
+}
+
+async function requestBulkDeletion(
+  workspaceId: string,
+  documentIds: string[],
+  impacts: ReadonlyMap<string, string> | undefined,
+  signal: AbortSignal | undefined,
+) {
+  const succeeded: string[] = [];
+  const failed: { id: string; error: ApiError }[] = [];
+  for (const batch of deletionBatches(documentIds)) {
+    const documents = batch.map((documentId) => {
+      const impact = impacts?.get(documentId);
+      if (!impact) throw new ApiError('REVISION_CONFLICT', 409, undefined);
+      return { documentId, impact };
+    });
+    const { results } = await callApi(createDocumentDeletions, {
+      params: { workspaceId },
+      body: { documents },
+      ...(signal ? { signal } : {}),
+    });
+    for (const result of results) {
+      if (result.status === 'deleting') succeeded.push(result.documentId);
+      else
+        failed.push({
+          id: result.documentId,
+          error: new ApiError(result.code, undefined, undefined),
+        });
+    }
+  }
+  return { succeeded, failed };
+}
+
 export function useRecognitionAction(
   workspaceId: string,
   track: (document: DocumentSummary) => void,
@@ -131,16 +215,15 @@ export function useRecognitionAction(
           track(document);
         });
 
-      const requested = await runForDocuments(
-        documentIds,
-        signal,
-        (documentId) =>
-          callApi(deleteDocument, {
-            params: { workspaceId, documentId },
-            query: { impact: impacts?.get(documentId) },
-          }),
-        1,
-      );
+      const requested =
+        documentIds.length > 1
+          ? await requestBulkDeletion(workspaceId, documentIds, impacts, signal)
+          : await runForDocuments(documentIds, signal, (documentId) =>
+              callApi(deleteDocument, {
+                params: { workspaceId, documentId },
+                query: { impact: impacts?.get(documentId) },
+              }),
+            );
       if (!requested.succeeded.length) return requested;
       // Сначала отправляем все удаления. Список показывает принятые операции, пока мы ждём их завершения.
       await Promise.all([
@@ -148,11 +231,17 @@ export function useRecognitionAction(
         onDeletionAccepted?.(),
       ]);
       const deadline = Date.now() + deletionDeadlineMs;
-      const completed = await runForDocuments(
-        requested.succeeded,
-        signal,
-        (id) => waitForDeletion(workspaceId, id, deadline, signal),
-      );
+      const completed =
+        documentIds.length > 1
+          ? await waitForBulkDeletion(
+              workspaceId,
+              requested.succeeded,
+              deadline,
+              signal,
+            )
+          : await runForDocuments(requested.succeeded, signal, (id) =>
+              waitForDeletion(workspaceId, id, deadline, signal),
+            );
       return {
         succeeded: completed.succeeded,
         failed: [...requested.failed, ...completed.failed],
@@ -166,6 +255,45 @@ export function useRecognitionAction(
         }),
       ]),
   });
+}
+
+async function waitForBulkDeletion(
+  workspaceId: string,
+  documentIds: string[],
+  deadline: number,
+  signal: AbortSignal | undefined,
+) {
+  const pending = new Set(documentIds);
+  const succeeded: string[] = [];
+  const failed: { id: string; error: ApiError }[] = [];
+  while (pending.size && !signal?.aborted) {
+    for (const batch of deletionBatches([...pending])) {
+      const { results } = await callApi(getDocumentDeletions, {
+        params: { workspaceId },
+        query: { documentIds: batch.join(',') },
+        ...(signal ? { signal } : {}),
+      });
+      for (const { documentId, status } of results) {
+        if (status === 'deleting') continue;
+        pending.delete(documentId);
+        if (status === 'deleted') succeeded.push(documentId);
+        else
+          failed.push({
+            id: documentId,
+            error: new ApiError('DELETION_NEEDS_RECOVERY', 409, undefined),
+          });
+      }
+    }
+    if (!pending.size || Date.now() >= deadline) break;
+    await new Promise((resolve) => setTimeout(resolve, deletionPollMs));
+  }
+  if (!signal?.aborted)
+    for (const id of pending)
+      failed.push({
+        id,
+        error: new ApiError('DELETION_PENDING', 202, undefined),
+      });
+  return { succeeded, failed };
 }
 
 async function waitForDeletion(

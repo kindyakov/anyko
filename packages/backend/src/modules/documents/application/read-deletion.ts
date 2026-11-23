@@ -13,3 +13,13 @@ export const readDeletion =
     if (!status) throw new DocumentError('NOT_FOUND');
     return { status };
   };
+
+export const readDeletions =
+  (deps: Pick<DocumentDeps, 'store'>) =>
+  async (scope: WorkspaceScope, documentIds: DocumentId[]) => {
+    scope.require('recognitions.use');
+    const results = await deps.store.deletions(scope.workspaceId, documentIds);
+    if (results.length !== documentIds.length)
+      throw new DocumentError('NOT_FOUND');
+    return results;
+  };

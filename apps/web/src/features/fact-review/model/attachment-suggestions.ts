@@ -2,7 +2,7 @@ import type { FieldRow } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 import { attachmentCategory } from '@anyko/document-values/attachments';
 
-interface AttachmentSuggestion {
+export interface AttachmentSuggestion {
   row: FieldRow;
   page?: number;
 }

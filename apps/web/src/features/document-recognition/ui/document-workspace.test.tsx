@@ -31,6 +31,7 @@ function doc(id: string, filename: string, status: Status) {
 }
 
 const recognitionsAddress = `/api/v1/workspaces/${workspaceId}/recognitions`;
+const firstPageAddress = `${recognitionsAddress}?page=1&pageSize=24`;
 
 function renderWorkspace(onDeletionAccepted?: () => Promise<void>) {
   navigation.params = { workspace: workspaceId };
@@ -61,7 +62,9 @@ test('a failed attempt displays the server reason and code once; historical fail
     }
     return json(200, {
       items: [history, current],
-      nextCursor: null,
+      page: 1,
+      pageSize: 24,
+      total: 2,
       pendingDeletions: [],
     });
   });
@@ -110,7 +113,9 @@ test('the workspace stream refreshes the recognition list on a status change', a
   const sources = installEventSource();
   let listed = {
     items: [doc('d1', 'scan.pdf', 'running')],
-    nextCursor: null,
+    page: 1,
+    pageSize: 24,
+    total: 1,
     pendingDeletions: [],
   };
   const exchanges = serveApi(() => json(200, listed));
@@ -131,7 +136,13 @@ test('the workspace stream refreshes the recognition list on a status change', a
 test('each file of a multi-file upload gets its own idempotency key', async () => {
   const exchanges = serveApi((exchange) =>
     exchange.method === 'GET'
-      ? json(200, { items: [], nextCursor: null, pendingDeletions: [] })
+      ? json(200, {
+          items: [],
+          page: 1,
+          pageSize: 24,
+          total: 0,
+          pendingDeletions: [],
+        })
       : json(202, { document: doc('d1', 'a.pdf', 'queued') }),
   );
   const user = userEvent.setup();
@@ -171,7 +182,13 @@ test('each file of a multi-file upload gets its own idempotency key', async () =
 test('only server-confirmed recognition uploads contribute to the receipt', async () => {
   serveApi((exchange) => {
     if (exchange.method === 'GET')
-      return json(200, { items: [], nextCursor: null, pendingDeletions: [] });
+      return json(200, {
+        items: [],
+        page: 1,
+        pageSize: 24,
+        total: 0,
+        pendingDeletions: [],
+      });
     const file =
       exchange.body instanceof FormData ? exchange.body.get('file') : null;
     return file instanceof File && file.name === 'good.pdf'
@@ -214,7 +231,9 @@ test('a deletion that is still pending stops polling when the screen leaves the 
       return json(200, { status: 'deleting' });
     return json(200, {
       items: [doc('d1', 'scan.pdf', 'succeeded')],
-      nextCursor: null,
+      page: 1,
+      pageSize: 24,
+      total: 1,
       pendingDeletions: [],
     });
   });
@@ -262,7 +281,9 @@ test('an old result asks for new recognition and a 409 keeps the preview usable'
     }
     return json(200, {
       items: [document],
-      nextCursor: null,
+      page: 1,
+      pageSize: 24,
+      total: 1,
       pendingDeletions: [],
     });
   });
@@ -300,10 +321,10 @@ test('an old result asks for new recognition and a 409 keeps the preview usable'
       .slice(0, 4)
       .map(({ method, url }) => [method, url]),
   ).toEqual([
-    ['GET', recognitionsAddress],
+    ['GET', firstPageAddress],
     ['GET', `${address}/result`],
     ['POST', `${address}/retry`],
-    ['GET', recognitionsAddress],
+    ['GET', firstPageAddress],
   ]);
 });
 
@@ -319,7 +340,9 @@ test('a DOCX source error keeps the extracted text and the original download ava
       });
     return json(200, {
       items: [doc('word', 'sample.docx', 'succeeded')],
-      nextCursor: null,
+      page: 1,
+      pageSize: 24,
+      total: 1,
       pendingDeletions: [],
     });
   });
@@ -355,7 +378,9 @@ test('a HEIC recognition uses the JPEG preview and keeps the original download',
       });
     return json(200, {
       items: [doc('photo', 'photo.HEIC', 'succeeded')],
-      nextCursor: null,
+      page: 1,
+      pageSize: 24,
+      total: 1,
       pendingDeletions: [],
     });
   });
@@ -386,7 +411,9 @@ test('bulk retry runs only for selected failed files and reports partial success
     if (method !== 'POST')
       return json(200, {
         items: documents,
-        nextCursor: null,
+        page: 1,
+        pageSize: 24,
+        total: documents.length,
         pendingDeletions: [],
       });
     if (url === `${recognitionsAddress}/first/retry`) {
@@ -438,29 +465,45 @@ test('bulk retry runs only for selected failed files and reports partial success
 });
 
 test('bulk deletion confirms the selection before deleting and leaves unselected files', async () => {
+  const address = `/api/v1/workspaces/${workspaceId}/recognition-deletions`;
+  const firstId = crypto.randomUUID();
+  const secondId = crypto.randomUUID();
+  const ids = [firstId, secondId];
+  const selection = ids.map((documentId) => ({
+    documentId,
+    impact: deletionImpactToken,
+  }));
   let documents = [
-    doc('first', 'first.pdf', 'failed'),
-    doc('second', 'second.pdf', 'succeeded'),
+    doc(firstId, 'first.pdf', 'failed'),
+    doc(secondId, 'second.pdf', 'succeeded'),
     doc('kept', 'kept.pdf', 'succeeded'),
   ];
-  const exchanges = serveApi(({ method, url }) => {
-    if (method === 'DELETE') {
-      documents = documents.filter(
-        ({ id }) =>
-          url !== `${recognitionsAddress}/${id}?impact=${deletionImpactToken}`,
-      );
-      return json(202, { status: 'deleting' });
-    }
-    if (url.endsWith('/deletion-impact'))
-      return json(200, {
-        token: deletionImpactToken,
-        canDelete: true,
-        works: [],
+  const exchanges = serveApi(({ method, url, body }) => {
+    if (method === 'POST' && url === address) {
+      expect(body).toEqual({ documents: selection });
+      documents = documents.filter(({ id }) => !ids.includes(id));
+      return json(202, {
+        results: ids.map((documentId) => ({ documentId, status: 'deleting' })),
       });
-    if (url.endsWith('/deletion')) return json(200, { status: 'deleted' });
+    }
+    if (url.startsWith(`${address}/deletion-impact?`))
+      return json(200, {
+        impacts: ids.map((documentId) => ({
+          documentId,
+          token: deletionImpactToken,
+          canDelete: true,
+          works: [],
+        })),
+      });
+    if (url.startsWith(`${address}?`))
+      return json(200, {
+        results: ids.map((documentId) => ({ documentId, status: 'deleted' })),
+      });
     return json(200, {
       items: documents,
-      nextCursor: null,
+      page: 1,
+      pageSize: 24,
+      total: documents.length,
       pendingDeletions: [],
     });
   });
@@ -483,29 +526,30 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
       screen.getByRole('alertdialog', { name: 'Удалить выбранные файлы (2)?' }),
     );
   await user.click(dialog().getByRole('button', { name: 'Отмена' }));
-  expect(exchanges.some(({ method }) => method === 'DELETE')).toBe(false);
+  expect(exchanges.some(({ method }) => method === 'POST')).toBe(false);
   expect(refreshes).toBe(0);
   expect(screen.getByText('Выбрано: 2')).toBeTruthy();
 
   await user.click(screen.getByRole('button', { name: 'Удалить выбранные' }));
-  const confirm = dialog().getByRole<HTMLButtonElement>('button', {
-    name: 'Удалить файлы',
-  });
+  const confirm = () =>
+    dialog().getByRole<HTMLButtonElement>('button', {
+      name: 'Удалить файлы',
+    });
   await waitFor(() => {
-    expect(confirm.disabled).toBe(false);
+    expect(confirm().disabled).toBe(false);
   });
-  await user.click(confirm);
+  await user.click(confirm());
 
   const notices = within(screen.getByRole('region', { name: 'Уведомления' }));
   expect(await notices.findByText('Удалено: 2 из 2')).toBeTruthy();
   expect(refreshes).toBe(1);
   expect(
-    exchanges.filter(({ method }) => method === 'DELETE').map(({ url }) => url),
-  ).toEqual(
-    ['first', 'second'].map(
-      (id) => `${recognitionsAddress}/${id}?impact=${deletionImpactToken}`,
-    ),
-  );
+    exchanges.filter(({ method }) => method === 'POST').map(({ url }) => url),
+  ).toEqual([address]);
+  expect(exchanges.some(({ method }) => method === 'DELETE')).toBe(false);
+  expect(
+    exchanges.filter(({ url }) => url.startsWith(`${address}?`)),
+  ).toHaveLength(1);
   expect(screen.queryByRole('alertdialog')).toBeNull();
   expect(
     screen.getByRole('checkbox', { name: 'Выбрать kept.pdf', checked: false }),
@@ -518,18 +562,20 @@ test('bulk deletion confirms the selection before deleting and leaves unselected
   ).toBeNull();
 });
 
-test('search and multiple formats reset the cursor while selections survive page and filter changes', async () => {
+test('search and multiple formats return to the first page while selections survive page and filter changes', async () => {
   const exchanges = serveApi(({ url }) => {
     const query = new URL(url, 'http://local.test').searchParams;
-    const next = query.get('after') === 'page-two';
+    const page = query.get('page') === '2' ? 2 : 1;
     const searched = query.has('q');
     return json(200, {
       items: searched
         ? []
-        : next
+        : page === 2
           ? [doc('d2', 'second.pdf', 'succeeded')]
           : [doc('d1', 'first.pdf', 'succeeded')],
-      nextCursor: searched || next ? null : 'page-two',
+      page: searched ? 1 : page,
+      pageSize: 1,
+      total: searched ? 0 : 2,
       pendingDeletions: [],
     });
   });
@@ -538,13 +584,18 @@ test('search and multiple formats reset the cursor while selections survive page
   await user.click(
     await screen.findByRole('checkbox', { name: 'Выбрать first.pdf' }),
   );
-  await user.click(screen.getByRole('button', { name: 'Далее' }));
+  await user.click(screen.getByRole('button', { name: 'Страница 2' }));
   expect(await screen.findByText('second.pdf')).toBeTruthy();
   expect(screen.queryByText('first.pdf')).toBeNull();
   expect(screen.getByText('Вне страницы: 1')).toBeTruthy();
+  expect(
+    screen
+      .getByRole('button', { name: 'Страница 2' })
+      .getAttribute('aria-current'),
+  ).toBe('page');
   expect(exchanges.map(({ url }) => url)).toEqual([
-    recognitionsAddress,
-    recognitionsAddress + '?after=page-two',
+    firstPageAddress,
+    recognitionsAddress + '?page=2&pageSize=24',
   ]);
   await user.type(
     screen.getByRole('searchbox', { name: 'Поиск файлов по имени' }),
@@ -559,6 +610,8 @@ test('search and multiple formats reset the cursor while selections survive page
     expect(Object.fromEntries(request.searchParams)).toEqual({
       q: 'счёт',
       formats: 'heif,pdf',
+      page: '1',
+      pageSize: '24',
     });
   });
   expect(screen.getByText('Выбрано: 1')).toBeTruthy();
@@ -570,9 +623,9 @@ test('search and multiple formats reset the cursor while selections survive page
       checked: true,
     }),
   ).toBeTruthy();
-  await user.click(screen.getByRole('button', { name: 'Далее' }));
+  await user.click(screen.getByRole('button', { name: 'Следующая страница' }));
   await screen.findByText('second.pdf');
-  await user.click(screen.getByRole('button', { name: 'Назад' }));
+  await user.click(screen.getByRole('button', { name: 'Предыдущая страница' }));
   expect(await screen.findByText('first.pdf')).toBeTruthy();
 });
 
@@ -594,10 +647,12 @@ test('a running selection that fails on another page reports the error and can b
       });
     if (url === `${recognitionsAddress}/running`)
       return json(200, { document: failed });
-    const first = url === recognitionsAddress;
+    const first = !url.includes('page=2');
     return json(200, {
       items: first ? [running] : [doc('second', 'second.pdf', 'succeeded')],
-      nextCursor: first ? 'page-two' : null,
+      page: first ? 1 : 2,
+      pageSize: 1,
+      total: 2,
       pendingDeletions: [],
     });
   });
@@ -606,7 +661,7 @@ test('a running selection that fails on another page reports the error and can b
   await user.click(
     await screen.findByRole('checkbox', { name: 'Выбрать first.pdf' }),
   );
-  await user.click(screen.getByRole('button', { name: 'Далее' }));
+  await user.click(screen.getByRole('button', { name: 'Следующая страница' }));
   await screen.findByText('second.pdf');
   const notifications = within(
     screen.getByRole('region', { name: 'Уведомления' }),

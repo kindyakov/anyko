@@ -105,28 +105,33 @@ test('the Files step links a source and separates conditional checklist requirem
   renderWork();
   const user = userEvent.setup();
   await user.click(await screen.findByRole('tab', { name: /^1\s*Файлы/ }));
-  const checklist = within(
-    screen.getByRole('complementary', { name: 'Чек-лист документов' }),
-  );
+  const openChecklist = async () => {
+    await user.click(screen.getByRole('button', { name: 'Чек-лист' }));
+    return screen.findByRole('dialog', { name: 'Чек-лист документов' });
+  };
+  const checklist = within(await openChecklist());
   expect(screen.getAllByRole('list', { name: 'Обычно нужны' })).toHaveLength(1);
   const usual = within(checklist.getByRole('list', { name: 'Обычно нужны' }));
   const conditional = within(
     checklist.getByRole('list', { name: 'По обстоятельствам' }),
   );
   expect(
-    usual.getByText('Не найдено', { selector: 'summary span' }),
+    usual.getByRole('button', { name: /Паспорт гражданина\s*Не найдено/ }),
   ).toBeTruthy();
   expect(
-    conditional.getByText('Уточнить', { selector: 'summary span' }),
+    conditional.getByRole('button', {
+      name: /Свидетельство о браке\s*Уточнить/,
+    }),
   ).toBeTruthy();
   await user.click(usual.getByText('Паспорт гражданина'));
   await user.click(
-    usual.getByRole('combobox', { name: 'Файл для «Паспорт гражданина»' }),
+    usual.getByRole('button', {
+      name: 'Привязать файл к «Паспорт гражданина»',
+    }),
   );
   await user.click(
-    await screen.findByRole('option', { name: document.filename }),
+    await screen.findByRole('menuitem', { name: document.filename }),
   );
-  await user.click(usual.getByRole('button', { name: 'Привязать' }));
   expect(
     await usual.findByRole('button', { name: document.filename }),
   ).toBeTruthy();
@@ -134,9 +139,17 @@ test('the Files step links a source and separates conditional checklist requirem
     url: address,
     body: { decision: 'confirmed', ocrRevision: 4 },
   });
+  await user.keyboard('{Escape}');
+  await waitFor(() => {
+    expect(
+      screen.queryByRole('dialog', { name: 'Чек-лист документов' }),
+    ).toBeNull();
+  });
   await user.click(screen.getByRole('tab', { name: /^3\s*Проверка/ }));
+  const reopened = within(await openChecklist());
+  await user.click(reopened.getByText('Паспорт гражданина'));
   expect(
-    checklist.getByRole('button', { name: document.filename }),
+    reopened.getByRole('button', { name: document.filename }),
   ).toBeTruthy();
 });
 
@@ -195,20 +208,30 @@ test('work history can open a retained analysis run outside the recent work view
   });
   renderWork();
   const user = userEvent.setup();
+  await user.click(await screen.findByRole('button', { name: 'Агент' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Агент' });
+  await user.click(within(dialog).getByRole('tab', { name: 'Журнал' }));
   await user.click(
-    await screen.findByRole('button', { name: 'История анализа' }),
+    await within(dialog).findByRole('button', {
+      name: /Автоматический анализ.*Готово/,
+    }),
   );
-  const dialog = await screen.findByRole('dialog', { name: 'История анализа' });
-  expect(await within(dialog).findByText('Выбранный запуск')).toBeTruthy();
-  expect(
-    within(dialog).getAllByText('2 вызовов · Вход 14 · Выход 8'),
-  ).toHaveLength(2);
   await user.click(
-    within(dialog).getByRole('button', {
-      name: 'Сопоставление · Результат сохранён',
+    await within(dialog).findByRole('button', {
+      name: /Сопоставление · Результат сохранён/,
     }),
   );
   expect(within(dialog).getByText(/Проверены сведения/)).toBeTruthy();
+  await user.click(within(dialog).getByRole('tab', { name: 'Расход токенов' }));
+  for (const name of ['Этот запуск', 'Вся работа']) {
+    const usage = within(within(dialog).getByRole('region', { name }));
+    expect(usage.getByText('14')).toBeTruthy();
+    expect(usage.getByText('8')).toBeTruthy();
+  }
+  await user.click(within(dialog).getByRole('button', { name: 'К журналу' }));
+  expect(
+    within(dialog).getByRole('tab', { name: 'Журнал', selected: true }),
+  ).toBeTruthy();
   expect(
     requests.some(({ url }) => url.includes(`/runs/${run.id}/agent-history`)),
   ).toBe(true);
@@ -252,13 +275,10 @@ test('work chat sends a message and reopens with the saved reply and system entr
   });
   renderWork();
   const user = userEvent.setup();
-  const open = () =>
-    user.click(screen.getByRole('button', { name: 'Чат с агентом' }));
-  await screen.findByRole('button', { name: 'Чат с агентом' });
+  const open = () => user.click(screen.getByRole('button', { name: 'Агент' }));
+  await screen.findByRole('button', { name: 'Агент' });
   await open();
-  const dialog = within(
-    await screen.findByRole('dialog', { name: 'Чат с агентом' }),
-  );
+  const dialog = within(await screen.findByRole('dialog', { name: 'Агент' }));
   expect(
     await dialog.findByRole('button', {
       name: /Автоматический анализ.*Готово/,
@@ -275,7 +295,7 @@ test('work chat sends a message and reopens with the saved reply and system entr
   expect(posted?.idempotencyKey).toBeTruthy();
   await user.keyboard('{Escape}');
   await waitFor(() => {
-    expect(screen.queryByRole('dialog', { name: 'Чат с агентом' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Агент' })).toBeNull();
   });
   await open();
   expect(await screen.findByText(question)).toBeTruthy();
@@ -305,10 +325,8 @@ test('chat shows a failed or partial write with guidance instead of a success re
   });
   renderWork();
   const user = userEvent.setup();
-  await user.click(
-    await screen.findByRole('button', { name: 'Чат с агентом' }),
-  );
-  const chat = within(screen.getByRole('dialog', { name: 'Чат с агентом' }));
+  await user.click(await screen.findByRole('button', { name: 'Агент' }));
+  const chat = within(screen.getByRole('dialog', { name: 'Агент' }));
   const [partial, failed] = await chat.findAllByRole('alert');
   expect(partial?.textContent).toContain('Готово частично');
   expect(partial?.textContent).toContain('проверить сохранённые правки');
@@ -323,7 +341,13 @@ test('upload confirmation is visible when returning to Files after a pending upl
   const document = { ...source, status: 'queued' };
   const requests = serveApi(({ method, url }) => {
     if (url.includes('checksum='))
-      return json(200, { items: [], nextCursor: null, pendingDeletions: [] });
+      return json(200, {
+        items: [],
+        page: 1,
+        pageSize: 24,
+        total: 0,
+        pendingDeletions: [],
+      });
     if (method !== 'POST') return json(200, workView);
     const reply = json(202, { document });
     reply.json = async () => {
@@ -373,7 +397,9 @@ test('a matching queued source becomes reusable in the work after its OCR comple
           },
         ],
         checksum: digest,
-        nextCursor: null,
+        page: 1,
+        pageSize: 12,
+        total: 1,
         pendingDeletions: [],
       });
     if (method === 'POST' && url === `${workAddress}/attach`)
@@ -709,15 +735,17 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
   renderWork();
 
   expect(
-    await screen.findByText('Проверьте сведения и разрешите расхождения'),
+    await screen.findByRole('tab', {
+      name: /Проверка\s*требуют внимания:\s*1/,
+      selected: true,
+    }),
   ).toBeTruthy();
-  expect(screen.getByText(/^Найдено полей: 2, расхождений: 1\./)).toBeTruthy();
   expect(screen.getByText('Требуют проверки')).toBeTruthy();
   const review = within(
     screen.getByRole('region', { name: 'Найденные сведения' }),
   );
   expect(
-    review.getByRole('button', { name: 'Требуют внимания · 1', pressed: true }),
+    screen.getByRole('button', { name: 'Требуют внимания · 1', pressed: true }),
   ).toBeTruthy();
   expect(review.getByRole('heading', { name: 'Поле Имя' })).toBeTruthy();
   expect(review.queryByRole('heading', { name: 'Поле Фамилия' })).toBeNull();
@@ -732,7 +760,7 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
     review.getByRole('button', { name: 'Подставить это значение' }),
   );
   expect(
-    review.getByRole('button', { name: 'Требуют внимания · 1' }),
+    screen.getByRole('button', { name: 'Требуют внимания · 1' }),
   ).toBeTruthy();
   expect(review.getByText('Расхождение')).toBeTruthy();
   expect(review.getByText('Не сохранено')).toBeTruthy();
@@ -743,10 +771,12 @@ test('review shows the saved discrepancy list through an unsaved edit and refres
 
   await user.click(screen.getByRole('button', { name: 'Сохранить' }));
   expect(
-    await review.findByRole('button', { name: 'Требуют внимания · 0' }),
+    await screen.findByRole('button', { name: 'Требуют внимания · 0' }),
   ).toBeTruthy();
   expect(review.getByText('Поля для проверки не отмечены')).toBeTruthy();
-  expect(screen.getByText('Проверьте найденные сведения')).toBeTruthy();
+  expect(
+    screen.getByRole('tab', { name: /Проверка/ }).textContent,
+  ).not.toContain('требуют внимания');
   expect(requests.find(({ method }) => method === 'PATCH')?.body).toMatchObject(
     {
       revision: 1,
@@ -857,7 +887,7 @@ test('merged values show their included findings and keep them out of attention'
     review.queryByRole('heading', { name: 'Поле Обязательства' }),
   ).toBeNull();
   expect(review.getByRole('heading', { name: 'Поле Имя' })).toBeTruthy();
-  await user.click(review.getByRole('button', { name: 'Все поля · 2' }));
+  await user.click(screen.getByRole('button', { name: 'Все поля · 2' }));
   expect(review.getAllByText('Совпадает полностью или частично')).toHaveLength(
     2,
   );

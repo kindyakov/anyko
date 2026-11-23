@@ -539,6 +539,18 @@ test('separate images and all document data are physically erased; unknown/activ
         )
       ).status,
     ).toBe('needs-recovery');
+    const statuses = await recognition.queries.deletions(
+      memberScope(workspaceId),
+      [brandDocumentId(document.id), brandDocumentId(second.id)],
+    );
+    expect(
+      new Map(statuses.map(({ documentId, status }) => [documentId, status])),
+    ).toEqual(
+      new Map([
+        [document.id, 'deleted'],
+        [second.id, 'needs-recovery'],
+      ]),
+    );
     expect(
       (
         await recognition.queries.pendingDeletions(memberScope(workspaceId))

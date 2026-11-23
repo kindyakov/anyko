@@ -147,6 +147,10 @@ export interface DocumentsQueries {
     scope: WorkspaceScope,
     documentId: DocumentId,
   ): Promise<{ status: DocumentDeletionStatus }>;
+  deletions(
+    scope: WorkspaceScope,
+    documentIds: DocumentId[],
+  ): Promise<{ documentId: string; status: DocumentDeletionStatus }[]>;
 }
 
 export interface DocumentsInternal {

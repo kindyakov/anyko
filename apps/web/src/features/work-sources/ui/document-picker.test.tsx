@@ -44,7 +44,9 @@ test('keeps available selections when a document becomes unavailable at submissi
             readyRevision: null,
           },
         ],
-        nextCursor: null,
+        page: 1,
+        pageSize: 12,
+        total: 3,
         pendingDeletions: [],
       });
     }

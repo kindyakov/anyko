@@ -2,7 +2,7 @@ import { listDocuments } from './application/list-documents';
 import { listPendingDeletions } from './application/list-pending-deletions';
 import type { DocumentDeps } from './application/ports';
 import { readAnalysis, readAnalysisSource } from './application/read-analysis';
-import { readDeletion } from './application/read-deletion';
+import { readDeletion, readDeletions } from './application/read-deletion';
 import { readDeletionImpact } from './application/read-deletion-impact';
 import { readDocument } from './application/read-document';
 import { readImage } from './application/read-image';
@@ -37,6 +37,7 @@ export function createDocumentsModule(deps: DocumentDeps): DocumentsModule {
       source: source.recognition,
       image: image.recognition,
       deletion: readDeletion(deps),
+      deletions: readDeletions(deps),
       deletionImpact: readDeletionImpact(deps),
     },
     internal: {

@@ -29,6 +29,7 @@ import {
   editWork,
   editWorkChecklistLink,
   editWorkDocumentRecognition,
+  editWorkTitle,
   generateWork,
   getWork,
   getWorkAgentHistory,
@@ -113,6 +114,13 @@ export function worksRoutes(
   route(app, deleteWork, ({ scope, params, correlationId }) =>
     deletion.request(scope, brandWorkId(params.workId), correlationId),
   );
+  route(app, editWorkTitle, async ({ scope, params, body }) => {
+    await works.commands.rename(scope, {
+      workId: brandWorkId(params.workId),
+      title: body.title,
+    });
+    return { status: 'updated' as const };
+  });
   route(app, getWorkDeletion, ({ scope, params }) =>
     deletion.status(scope, brandWorkId(params.workId)),
   );

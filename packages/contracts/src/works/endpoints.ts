@@ -82,6 +82,19 @@ export const createWork = endpoint({
   idempotency: 'key',
 });
 
+export const editWorkTitle = endpoint({
+  summary: 'Изменяет название работы',
+  method: 'PATCH',
+  path: '/workspaces/:workspaceId/works/:workId',
+  params: workParams,
+  body: json(z.strictObject({ title: z.string().trim().min(1).max(200) })),
+  response: json(z.object({ status: z.literal('updated') })),
+  status: 200,
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_WORK_INPUT'],
+  invalid: 'INVALID_WORK_INPUT',
+  idempotency: 'natural',
+});
+
 export const deleteWork = endpoint({
   summary: 'Принимает запрос на удаление работы',
   method: 'DELETE',

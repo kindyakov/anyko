@@ -1,18 +1,26 @@
 import { useQuery } from '@tanstack/react-query';
+import { Trash2 } from 'lucide-react';
+import { useState } from 'react';
 
+import type { DocumentSummary } from '@anyko/contracts/documents';
 import {
-  type DocumentSummary,
-  getDocumentDeletionImpact,
-} from '@anyko/contracts/documents';
-import { Button, Confirm, Notice } from '@anyko/ui';
+  Button,
+  Checkbox,
+  Confirm,
+  HoldButton,
+  Notice,
+  Spinner,
+} from '@anyko/ui';
 
-import { callApi } from '@/lib/api/call';
 import { liveQuery } from '@/lib/api/live-query';
 
+import { readDeletionImpacts } from '../../api/commands';
 import { documentKeys } from '../../api/keys';
 import { describeDocumentError } from '../../model/error-texts';
 
-import { HoldDelete } from './hold-delete';
+import { DeletionImpact } from './deletion-impact';
+
+const acknowledgement = 'Подтверждаю удаление из перечисленных работ';
 
 export function ConfirmDocumentDeletion({
   deleting,
@@ -39,36 +47,17 @@ export function ConfirmDocumentDeletion({
     ],
     enabled: deleting.length > 0 && !pending,
     staleTime: 0,
-    queryFn: async ({ signal }) => {
-      const items = [];
-      for (let offset = 0; offset < deleting.length; offset += 4) {
-        signal.throwIfAborted();
-        items.push(
-          ...(await Promise.all(
-            deleting
-              .slice(offset, offset + 4)
-              .map(async ({ id, filename }) => ({
-                id,
-                filename,
-                ...(await callApi(getDocumentDeletionImpact, {
-                  params: { workspaceId, documentId: id },
-                  signal,
-                })),
-              })),
-          )),
-        );
-      }
-      return items;
-    },
+    queryFn: ({ signal }) => readDeletionImpacts(workspaceId, deleting, signal),
   });
+  // Подтверждение действует только для показанного списка связей: новый список требует нового согласия.
+  const tokens = impacts.data?.map(({ token }) => token).join(':') ?? '';
+  const [accepted, setAccepted] = useState<string | null>(null);
   const affected = impacts.data?.filter(({ works }) => works.length > 0) ?? [];
-  const works = new Set(
-    affected.flatMap(({ works }) => works.map(({ id }) => id)),
-  );
   const forbidden = impacts.data?.some(({ canDelete }) => !canDelete);
   const busy = affected.some(({ works }) => works.some((work) => work.busy));
   const canConfirm =
     impacts.isSuccess && !impacts.isFetching && !forbidden && !busy && !pending;
+  const guarded = affected.length > 0 && canConfirm;
   const label = bulk ? 'Удалить файлы' : 'Удалить документ';
   const confirm = () => {
     if (canConfirm)
@@ -87,22 +76,37 @@ export function ConfirmDocumentDeletion({
       onConfirm={confirm}
       onCancel={onCancel}
       confirmAction={
-        affected.length && canConfirm ? (
-          <HoldDelete
-            key={impacts.data.map(({ token }) => token).join(':')}
-            label={label}
-            onConfirm={confirm}
-          />
-        ) : !canConfirm ? (
-          <Button variant="danger" disabled loading={pending}>
+        guarded && accepted !== tokens ? (
+          <HoldButton
+            key={tokens}
+            className="sm:min-w-64"
+            progressLabel="Прогресс подтверждения удаления"
+            icon={<Trash2 size={16} />}
+            onComplete={confirm}
+          >
+            Удерживайте, чтобы удалить
+          </HoldButton>
+        ) : !canConfirm || guarded ? (
+          <Button
+            variant="danger"
+            className="sm:min-w-64"
+            disabled={!canConfirm}
+            loading={pending}
+            onClick={confirm}
+          >
+            <Trash2 size={16} />
             {label}
           </Button>
         ) : undefined
       }
       details={
-        <div className="mt-4 grid gap-3">
+        <div className="mt-5 grid gap-4">
           {impacts.isPending && (
-            <p role="status" className="text-muted text-sm">
+            <p
+              role="status"
+              className="text-muted flex items-center gap-2.5 text-sm"
+            >
+              <Spinner className="size-4" />
               Проверяем связи с работами…
             </p>
           )}
@@ -126,34 +130,7 @@ export function ConfirmDocumentDeletion({
             </Notice>
           )}
           {affected.length > 0 && (
-            <>
-              <p className="text-sm font-medium">
-                Затронуто работ: {works.size}
-              </p>
-              <ul
-                className="grid max-h-36 gap-2 overflow-y-auto text-sm"
-                aria-label="Затронутые работы"
-              >
-                {affected.map(({ id, works, filename }) => (
-                  <li key={id}>
-                    {bulk && <p className="text-muted">{filename}</p>}
-                    <ul className="grid gap-1">
-                      {works.map((work) => (
-                        <li key={work.id}>
-                          {work.title}
-                          {work.busy && ' · идёт обработка'}
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-              <p className="text-muted text-sm">
-                Работы потеряют этот источник. Значения без доказательств
-                сохранятся для проверки. Сформированные DOCX останутся в
-                истории.
-              </p>
-            </>
+            <DeletionImpact affected={affected} grouped={bulk} />
           )}
           {forbidden && (
             <Notice tone="warning">
@@ -165,6 +142,20 @@ export function ConfirmDocumentDeletion({
               Дождитесь завершения анализа или формирования документов в
               затронутых работах.
             </Notice>
+          )}
+          {guarded && (
+            <Checkbox
+              className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3 transition-colors hover:border-white/15 has-data-checked:border-red-400/30 has-data-checked:bg-red-500/[0.05]"
+              checked={accepted === tokens}
+              onCheckedChange={(checked) => {
+                setAccepted(checked ? tokens : null);
+              }}
+            >
+              {acknowledgement}
+              <span className="text-muted block text-xs leading-5">
+                Вместо удержания кнопки
+              </span>
+            </Checkbox>
           )}
         </div>
       }

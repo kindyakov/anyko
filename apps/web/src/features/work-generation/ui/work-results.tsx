@@ -2,6 +2,7 @@
 import {
   BadgeCheck,
   Download,
+  FileSearch,
   FileType2,
   PackageCheck,
   ShieldCheck,
@@ -180,7 +181,8 @@ export function WorkResults({
                   <ShieldCheck size={17} />
                   Подтвердить сведения
                 </Button>
-                <Button variant="ghost" onClick={onReview}>
+                <Button variant="secondary" onClick={onReview}>
+                  <FileSearch size={16} aria-hidden />
                   Проверить ещё раз
                 </Button>
               </>

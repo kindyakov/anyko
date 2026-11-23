@@ -1,7 +1,7 @@
 import { type ComponentType, type ReactNode, useState } from 'react';
 
 import type { DocumentSummary } from '@anyko/contracts/documents';
-import { Skeleton, StatusPill, useToast } from '@anyko/ui';
+import { StatusPill, useToast } from '@anyko/ui';
 
 import { ApiError, isUnauthorized } from '@/lib/api/errors';
 
@@ -13,30 +13,38 @@ import {
 } from '../model/error-texts';
 
 import { ConfirmDocumentDeletion } from './catalog/confirm-document-deletion';
-import { DocumentSelectionActions } from './catalog/document-selection-actions';
+import {
+  CatalogToolbar,
+  DocumentSelectionActions,
+} from './catalog/document-selection-actions';
+import { CatalogSkeleton, DocumentTile } from './catalog/document-tile';
+import { useCatalogView } from './catalog/use-catalog-view';
 import { DocumentRow } from './document-row';
 import { DocumentViewer, type ViewedDocument } from './document-viewer';
 
 export function DocumentList({
   workspaceId,
   documents,
+  total,
   observed,
   loading,
   filtered,
   track,
   search,
-  children,
+  pager,
   AddToWork,
   onDeletionAccepted,
 }: {
   workspaceId: string;
   documents: DocumentSummary[];
+  /** Всего файлов по текущим фильтрам, на всех страницах. */
+  total: number;
   observed: DocumentSummary[];
   loading: boolean;
   filtered: boolean;
   track: (document: DocumentSummary) => void;
   search: ReactNode;
-  children: ReactNode;
+  pager: ReactNode;
   onDeletionAccepted?: (() => Promise<void>) | undefined;
   AddToWork?:
     | ComponentType<{
@@ -65,6 +73,12 @@ export function DocumentList({
     useState<ReadonlyMap<string, string>>();
   const [deleting, setDeleting] = useState<DocumentSummary[]>([]);
   const { add } = useToast();
+  const [view, setView] = useCatalogView();
+  const Card = view === 'grid' ? DocumentTile : DocumentRow;
+  const layout =
+    view === 'grid'
+      ? 'grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3'
+      : 'grid gap-2';
   const visibleIds = new Set(documents.map(({ id }) => id));
   const selected = [...selection.values()];
   const visibleSelected = documents.filter((document) =>
@@ -157,9 +171,9 @@ export function DocumentList({
           className="font-heading text-xl font-bold tracking-tight"
         >
           Файлы
-          {documents.length > 0 && (
-            <span className="text-muted ml-2 text-base font-medium">
-              {documents.length}
+          {total > 0 && (
+            <span className="text-muted ml-2 text-base font-medium tabular-nums">
+              {total}
             </span>
           )}
         </h2>
@@ -167,12 +181,21 @@ export function DocumentList({
           <StatusPill tone="progress">Распознаётся: {processing}</StatusPill>
         )}
       </div>
-      {search}
+      <CatalogToolbar
+        disabled={!!pending}
+        pageCount={documents.length}
+        selectedOnPage={visibleSelected}
+        search={search}
+        view={view}
+        onView={setView}
+        onSelectPage={(checked) => {
+          changeSelection(documents, checked);
+        }}
+      />
       <DocumentSelectionActions
         disabled={!!pending}
         retrying={pending?.kind === 'retry' && pending.bulk}
         retryable={retryable.length}
-        pageCount={documents.length}
         selectedCount={selected.length}
         selectedOnPage={visibleSelected}
         addToWork={
@@ -185,9 +208,6 @@ export function DocumentList({
             },
           }
         }
-        onSelectPage={(checked) => {
-          changeSelection(documents, checked);
-        }}
         onClear={() => {
           setSelection(new Map());
         }}
@@ -198,7 +218,6 @@ export function DocumentList({
           setDeleting(selected);
         }}
       />
-      {children}
       {AddToWork && workSelection && (
         <AddToWork
           selected={workSelection}
@@ -208,21 +227,7 @@ export function DocumentList({
         />
       )}
       {loading ? (
-        <ul className="grid gap-3" aria-busy aria-label="Файлы загружаются">
-          {[0, 1, 2].map((item) => (
-            <li
-              key={item}
-              className="glass flex items-center gap-4 rounded-2xl border border-white/[0.06] p-4"
-            >
-              <Skeleton className="size-12 rounded-xl" />
-              <div className="flex-1">
-                <Skeleton className="h-4 w-1/3" />
-                <Skeleton className="mt-2 h-3 w-1/5" />
-              </div>
-              <Skeleton className="h-9 w-28 rounded-lg" />
-            </li>
-          ))}
-        </ul>
+        <CatalogSkeleton view={view} className={layout} />
       ) : documents.length === 0 ? (
         <p className="glass text-muted rounded-2xl border border-dashed border-white/10 px-6 py-10 text-center text-sm">
           {filtered
@@ -230,9 +235,9 @@ export function DocumentList({
             : 'Здесь появятся загруженные файлы и результаты распознавания.'}
         </p>
       ) : (
-        <ul className="grid gap-3" aria-label="Загруженные файлы">
+        <ul className={layout} aria-label="Загруженные файлы">
           {documents.map((document, index) => (
-            <DocumentRow
+            <Card
               key={document.id}
               workspaceId={workspaceId}
               document={document}
@@ -269,6 +274,7 @@ export function DocumentList({
           ))}
         </ul>
       )}
+      {pager && <div className="mt-6 flex justify-center">{pager}</div>}
       <DocumentViewer
         document={viewing}
         requiresRetry={

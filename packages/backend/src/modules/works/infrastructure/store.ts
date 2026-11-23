@@ -110,6 +110,13 @@ export function createWorkStore(
         },
       });
     },
+    async rename(workspaceId, id, title) {
+      const result = await db.work.updateMany({
+        where: { workspaceId, id, deletedAt: null },
+        data: { title },
+      });
+      return result.count === 1;
+    },
     async attach(workspaceId, workId, documents, actorId) {
       if (!documents.length) return 0;
       const uploadGroupId = await uploads.joinUploadGroup(

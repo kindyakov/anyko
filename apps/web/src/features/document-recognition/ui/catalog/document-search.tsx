@@ -59,14 +59,14 @@ export function DocumentSearch({
         className={
           catalog
             ? 'flex flex-wrap items-center gap-2'
-            : 'mb-4 flex flex-wrap items-center gap-3'
+            : 'flex min-w-0 flex-1 flex-wrap items-center gap-3'
         }
       >
         <div
           className={
             catalog
               ? 'relative min-w-36 flex-1'
-              : 'relative min-w-48 flex-1 sm:max-w-sm'
+              : 'relative min-w-48 flex-1 sm:max-w-md'
           }
         >
           <Search

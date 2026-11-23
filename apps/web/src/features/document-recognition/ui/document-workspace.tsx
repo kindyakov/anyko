@@ -1,11 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { type ComponentProps, useCallback, useState } from 'react';
 
 import { type DocumentSummary, getDocument } from '@anyko/contracts/documents';
-import { Button, Notice, RelativeTime, useToast } from '@anyko/ui';
+import { Button, Notice, Pager, RelativeTime, useToast } from '@anyko/ui';
 import { DropZone } from '@anyko/ui/brand';
 
 import { callApi, newIdempotencyKey } from '@/lib/api/call';
@@ -55,14 +55,13 @@ function WorkspaceDocuments({
     q: '',
     formats: [],
   });
-  const [cursors, setCursors] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
   const filtered = !!filters.q || filters.formats.length > 0;
-  const list = useQuery(
-    documentsQueryOptions(workspaceId, filters, cursors.at(-1)),
-  );
+  const list = useQuery(documentsQueryOptions(workspaceId, filters, page));
   const documents = list.data?.items ?? emptyDocuments;
   const deletions = list.data?.pendingDeletions ?? [];
-  const nextCursor = list.data?.nextCursor;
+  // Сервер сводит номер за последней страницей к последней, например после удаления файлов.
+  const shownPage = (!list.isPlaceholderData && list.data?.page) || page;
   const { track, trackPending, observed } = useRecognitionFailureToasts(
     workspaceId,
     documents,
@@ -71,7 +70,7 @@ function WorkspaceDocuments({
     (next: DocumentFilters) => {
       trackPending(documents);
       setFilters(next);
-      setCursors([]);
+      setPage(1);
     },
     [documents, trackPending],
   );
@@ -213,45 +212,27 @@ function WorkspaceDocuments({
         onDeletionAccepted={onDeletionAccepted}
         workspaceId={workspaceId}
         documents={documents}
+        total={list.data?.total ?? 0}
         observed={observed}
         loading={list.isPending}
         filtered={filtered}
         track={track}
         AddToWork={AddToWork}
         search={<DocumentSearch filters={filters} onChange={changeFilters} />}
-      >
-        {(cursors.length > 0 || !!nextCursor) && (
-          <nav
-            aria-label="Страницы файлов"
-            className="mb-3 flex flex-wrap items-center gap-3"
-          >
-            <Button
-              variant="secondary"
-              disabled={cursors.length === 0}
-              onClick={() => {
+        pager={
+          list.data && (
+            <Pager
+              label="Страницы файлов"
+              page={shownPage}
+              pages={Math.ceil(list.data.total / list.data.pageSize)}
+              onPage={(next) => {
                 trackPending(documents);
-                setCursors((previous) => previous.slice(0, -1));
+                setPage(next);
               }}
-            >
-              <ChevronLeft size={16} aria-hidden /> Назад
-            </Button>
-            <span className="text-muted text-sm" aria-live="polite">
-              Страница {cursors.length + 1}
-            </span>
-            <Button
-              variant="secondary"
-              disabled={!nextCursor}
-              onClick={() => {
-                if (!nextCursor) return;
-                trackPending(documents);
-                setCursors([...cursors, nextCursor]);
-              }}
-            >
-              Далее <ChevronRight size={16} aria-hidden />
-            </Button>
-          </nav>
-        )}
-      </DocumentList>
+            />
+          )
+        }
+      />
     </>
   );
 }

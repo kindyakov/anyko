@@ -34,6 +34,7 @@ export function DropZone({
   title,
   hint,
   inputLabel,
+  compact = false,
 }: {
   /** Returns the number of files confirmed by the server. */
   onFiles: (files: File[]) => Promise<number>;
@@ -44,6 +45,8 @@ export function DropZone({
   title: string;
   hint: string;
   inputLabel: string;
+  /** Узкая полоса вместо большого блока — когда файлы уже загружены. */
+  compact?: boolean;
 }) {
   const input = useRef<HTMLInputElement>(null);
   const depth = useRef(0);
@@ -119,64 +122,105 @@ export function DropZone({
       }}
       data-over={hovering || undefined}
       data-disabled={disabled || undefined}
-      className="group/drop glass relative isolate overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(60%_70%_at_50%_55%,#2a0a1299_0%,transparent_70%)] px-6 py-8 transition-[border-color,box-shadow] duration-300 data-[disabled]:*:opacity-60 data-[over]:border-[#ff3b62]/70 data-[over]:shadow-[0_0_0_4px_#db143c22,0_0_60px_-10px_#db143c] sm:px-10 sm:py-10"
+      className={`group/drop glass relative isolate overflow-hidden border transition-[border-color,box-shadow] duration-300 data-[disabled]:*:opacity-60 data-[over]:border-[#ff3b62]/70 data-[over]:shadow-[0_0_0_4px_#db143c22,0_0_60px_-10px_#db143c] ${compact ? 'rounded-2xl border-dashed border-white/15 px-4 py-3.5 sm:px-5' : 'rounded-3xl border-white/10 bg-[radial-gradient(60%_70%_at_50%_55%,#2a0a1299_0%,transparent_70%)] px-6 py-8 sm:px-10 sm:py-10'}`}
     >
-      <div className="flex flex-col items-center text-center">
-        <p className="font-heading text-xl font-bold tracking-tight text-white sm:text-2xl">
-          <span className="group-data-[over]/drop:hidden">{title}</span>
-          <span className="hidden group-data-[over]/drop:inline">
-            Отпустите — Anyko заберёт файлы
+      {compact ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+          <span className="relative -z-10 hidden size-11 shrink-0 sm:block">
+            <span className="absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-1/2">
+              <EventHorizon
+                state={state}
+                pulseId={receipt?.id ?? 0}
+                className="size-24"
+              />
+            </span>
           </span>
-        </p>
-        <p className="text-muted mt-2 max-w-xl text-sm leading-6">{hint}</p>
-        {/* The emblem is larger than its slot and glows behind the copy. */}
-        <div className="relative -z-10 my-2 h-48 w-full sm:h-56">
-          <span className="absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-1/2">
-            <EventHorizon
-              state={state}
-              pulseId={receipt?.id ?? 0}
-              className="size-72 sm:size-[26rem] lg:size-[30rem]"
-            />
-          </span>
-          {flying.map((file, index) => (
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">
+              <span className="group-data-[over]/drop:hidden">{title}</span>
+              <span className="hidden group-data-[over]/drop:inline">
+                Отпустите — Anyko заберёт файлы
+              </span>
+            </p>
+            <p className="text-muted mt-0.5 text-xs leading-5">{hint}</p>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
             <span
-              key={file.id}
-              aria-hidden
-              className={`animate-absorb absolute top-1/2 left-1/2 -mt-4 -ml-14 flex h-8 w-28 items-center gap-1.5 rounded-lg border border-white/15 bg-zinc-900/90 px-2 text-[11px] text-zinc-200 shadow-[0_0_16px_#db143c80] motion-reduce:hidden ${orbits[index] ?? ''}`}
+              role="status"
+              className={receipt ? 'text-muted text-xs' : 'sr-only'}
             >
-              {file.image ? (
-                <ImageIcon size={13} className="text-rose-300" />
-              ) : (
-                <FileText size={13} className="text-rose-300" />
-              )}
-              <span className="truncate">{file.name}</span>
+              {receipt &&
+                `Принято ${String(receipt.count)} ${plural === 'one' ? 'файл' : plural === 'few' ? 'файла' : 'файлов'}`}
             </span>
-          ))}
+            <Button
+              size="sm"
+              disabled={disabled}
+              loading={loading}
+              onClick={() => input.current?.click()}
+            >
+              <Upload size={15} />
+              {multiple ? 'Выбрать файлы' : 'Выбрать файл'}
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-col items-center gap-2.5">
-          <Button
-            size="lg"
-            disabled={disabled}
-            loading={loading}
-            onClick={() => input.current?.click()}
-          >
-            <Upload size={17} />
-            {multiple ? 'Выбрать файлы' : 'Выбрать файл'}
-          </Button>
-          <span
-            role="status"
-            className={receipt ? 'text-ink text-sm' : 'sr-only'}
-          >
-            {receipt &&
-              `Принято ${String(receipt.count)} ${plural === 'one' ? 'файл' : plural === 'few' ? 'файла' : 'файлов'}`}
-          </span>
-          {!receipt && (
-            <span className="text-muted hidden text-xs sm:inline">
-              или перетащите их в Anyko
+      ) : (
+        <div className="flex flex-col items-center text-center">
+          <p className="font-heading text-xl font-bold tracking-tight text-white sm:text-2xl">
+            <span className="group-data-[over]/drop:hidden">{title}</span>
+            <span className="hidden group-data-[over]/drop:inline">
+              Отпустите — Anyko заберёт файлы
             </span>
-          )}
+          </p>
+          <p className="text-muted mt-2 max-w-xl text-sm leading-6">{hint}</p>
+          {/* The emblem is larger than its slot and glows behind the copy. */}
+          <div className="relative -z-10 my-2 h-48 w-full sm:h-56">
+            <span className="absolute top-1/2 left-1/2 flex -translate-x-1/2 -translate-y-1/2">
+              <EventHorizon
+                state={state}
+                pulseId={receipt?.id ?? 0}
+                className="size-72 sm:size-[26rem] lg:size-[30rem]"
+              />
+            </span>
+            {flying.map((file, index) => (
+              <span
+                key={file.id}
+                aria-hidden
+                className={`animate-absorb absolute top-1/2 left-1/2 -mt-4 -ml-14 flex h-8 w-28 items-center gap-1.5 rounded-lg border border-white/15 bg-zinc-900/90 px-2 text-[11px] text-zinc-200 shadow-[0_0_16px_#db143c80] motion-reduce:hidden ${orbits[index] ?? ''}`}
+              >
+                {file.image ? (
+                  <ImageIcon size={13} className="text-rose-300" />
+                ) : (
+                  <FileText size={13} className="text-rose-300" />
+                )}
+                <span className="truncate">{file.name}</span>
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-col items-center gap-2.5">
+            <Button
+              size="lg"
+              disabled={disabled}
+              loading={loading}
+              onClick={() => input.current?.click()}
+            >
+              <Upload size={17} />
+              {multiple ? 'Выбрать файлы' : 'Выбрать файл'}
+            </Button>
+            <span
+              role="status"
+              className={receipt ? 'text-ink text-sm' : 'sr-only'}
+            >
+              {receipt &&
+                `Принято ${String(receipt.count)} ${plural === 'one' ? 'файл' : plural === 'few' ? 'файла' : 'файлов'}`}
+            </span>
+            {!receipt && (
+              <span className="text-muted hidden text-xs sm:inline">
+                или перетащите их в Anyko
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
       <Input
         ref={input}
         type="file"

@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query';
+import { keepPreviousData, queryOptions } from '@tanstack/react-query';
 
 import {
   getDocument,
@@ -23,21 +23,28 @@ export type DocumentFilters = {
   formats: readonly SourceFormat[];
 };
 
+/** Файлов на странице каталога; выбор из каталога в окне работы показывает меньше. */
+const catalogPageSize = 24;
+
 export function documentsQueryOptions(
   workspaceId: string,
   filters: DocumentFilters,
-  after?: string,
+  page: number,
+  pageSize = catalogPageSize,
 ) {
   const query = {
     q: filters.q || undefined,
     formats: filters.formats.length
       ? [...filters.formats].sort().join(',')
       : undefined,
-    after,
+    page,
+    pageSize,
   };
   return queryOptions({
     meta: liveQuery(workspaceId, 'recognition-list'),
     queryKey: [...documentKeys.list(workspaceId), query],
+    // Пока грузится соседняя страница, остаётся текущая: список не мигает пустотой.
+    placeholderData: keepPreviousData,
     queryFn: ({ signal }) =>
       callApi(listDocuments, {
         params: { workspaceId },

@@ -1893,7 +1893,10 @@ test('a shared source pins the latest ready OCR in each work and survives unlink
   try {
     documentId = brandDocumentId((await upload(input)).id);
     await ocr.entered();
-    const catalog = await documents.queries.list(scope, { limit: 20 });
+    const catalog = await documents.queries.list(scope, {
+      page: 1,
+      pageSize: 20,
+    });
     expect(
       catalog.items.find(({ id }) => id === documentId)?.readyRevision,
     ).toBeNull();
@@ -1921,7 +1924,9 @@ test('a shared source pins the latest ready OCR in each work and survives unlink
   try {
     await documents.commands.retry(scope, documentId, crypto.randomUUID());
     await waiting.entered();
-    const [ready] = (await documents.queries.list(scope, { limit: 20 })).items;
+    const [ready] = (
+      await documents.queries.list(scope, { page: 1, pageSize: 20 })
+    ).items;
     expect(ready).toMatchObject({
       id: documentId,
       status: 'running',

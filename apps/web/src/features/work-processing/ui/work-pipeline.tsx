@@ -101,6 +101,18 @@ export function WorkPipeline({
     );
   const running = current.status === 'queued' || current.status === 'running';
   const { done, percent } = runProgress(current.steps);
+  const count = (status: Run['steps'][number]['status']) =>
+    current.steps.filter((step) => step.status === status).length;
+  const segments = [
+    { key: 'succeeded', label: 'Готово', color: 'bg-emerald-400/70' },
+    { key: 'failed', label: 'Ошибка', color: 'bg-red-400/80' },
+    { key: 'skipped', label: 'Не требуется', color: 'bg-white/20' },
+  ]
+    .map((segment) => ({
+      ...segment,
+      count: count(segment.key as Run['steps'][number]['status']),
+    }))
+    .filter((segment) => segment.count > 0);
   return (
     <div className="grid grid-cols-1 gap-8">
       <section
@@ -145,12 +157,30 @@ export function WorkPipeline({
           </div>
         </div>
         <Progress.Root value={percent} aria-label="Ход извлечения">
-          <Progress.Track className="mb-5 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-            <Progress.Indicator
-              className={`block h-full rounded-full bg-[linear-gradient(90deg,#7a0a22,#db143c,#ff8aa3)] shadow-[0_0_12px_#db143c] transition-[width] duration-700 ease-out ${running ? 'animate-flow bg-size-[28px_100%]' : ''}`}
-            />
+          <Progress.Track className="animate-draw mb-2 flex h-1.5 origin-left gap-px overflow-hidden rounded-full bg-white/[0.06]">
+            {running ? (
+              <Progress.Indicator className="animate-flow block h-full rounded-full bg-[linear-gradient(90deg,#7a0a22,#db143c,#ff8aa3)] bg-size-[28px_100%] shadow-[0_0_12px_#db143c] transition-[width] duration-700 ease-out" />
+            ) : (
+              segments.map(({ key, count, color }) => (
+                <span
+                  key={key}
+                  className={`h-full transition-[flex-grow] duration-700 ease-out ${color}`}
+                  style={{ flexGrow: count }}
+                />
+              ))
+            )}
           </Progress.Track>
         </Progress.Root>
+        {!running && (
+          <p className="text-muted mb-5 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+            {segments.map(({ key, count, color, label }) => (
+              <span key={key} className="inline-flex items-center gap-1.5">
+                <span aria-hidden className={`size-2 rounded-full ${color}`} />
+                {label}: <span className="text-ink tabular-nums">{count}</span>
+              </span>
+            ))}
+          </p>
+        )}
         {running && (
           <p className="text-muted mb-5 flex items-center gap-2 text-xs">
             <Spinner className="size-3.5" />

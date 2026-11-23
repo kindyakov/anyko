@@ -23,6 +23,7 @@ export type WorkStage =
   | { kind: 'empty' }
   | { kind: 'ready'; pending: number; first: boolean }
   | { kind: 'processing'; run: Run; done: number; total: number }
+  | { kind: 'failed'; run: Run }
   | { kind: 'review'; run: Run; fields: number; conflicts: number }
   | { kind: 'confirmed' }
   | { kind: 'generating' }
@@ -75,6 +76,7 @@ export function workStage(view: WorkView): WorkStage {
     };
   if (view.work.confirmedRevision === view.work.revision)
     return { kind: 'confirmed' };
+  if (last.status === 'failed') return { kind: 'failed', run: last };
   return {
     kind: 'review',
     run: last,
@@ -89,6 +91,7 @@ export function stepOf(stage: WorkStage): StepKey {
     case 'ready':
       return 'files';
     case 'processing':
+    case 'failed':
       return 'extraction';
     case 'review':
       return 'review';
@@ -130,10 +133,10 @@ const errors: Record<string, string> = {
   STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED:
     'Модель вернула ответ в неверном формате.',
   LLM_INVALID_RESPONSE: 'Модель вернула ответ в неверном формате.',
+  LLM_EVIDENCE_NOT_FOUND: 'Цитаты модели не найдены в источнике.',
   LLM_COMPLETION_LIMIT:
     'Модель не завершила разбор файла. Достигнут лимит ответа.',
   LLM_STEP_LIMIT: 'Достигнут предел обращений к модели на шаге анализа.',
-  LLM_EVIDENCE_NOT_FOUND: 'Цитаты модели не найдены в источнике.',
   LLM_READ_LIMIT: 'Итоговая сверка не завершена. Достигнут предел чтений.',
   ANALYSIS_REVIEW_INCOMPLETE:
     'Итоговая сверка не завершена. Для части пустых полей не указана причина.',

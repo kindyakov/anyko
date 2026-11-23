@@ -17,7 +17,7 @@ export function LinkedWorks({
   const more = works.slice(2);
   return (
     <div
-      className="mt-2 flex flex-wrap items-center gap-1.5"
+      className="flex min-w-0 flex-wrap items-center gap-1.5"
       role="group"
       aria-label="Связанные работы"
     >

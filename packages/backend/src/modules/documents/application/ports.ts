@@ -82,11 +82,6 @@ export interface DocumentParser {
   ): Promise<DocumentResult>;
   eraseAttempt(attemptId: string): Promise<void>;
 }
-export interface DocumentPosition {
-  createdAt: Date;
-  id: string;
-}
-
 interface DocumentListFilters {
   checksum?: string | undefined;
   q?: string | undefined;
@@ -94,13 +89,16 @@ interface DocumentListFilters {
 }
 
 export interface DocumentListInput extends DocumentListFilters {
-  after?: string | undefined;
-  limit: number;
+  /** Номер страницы с 1; номер за последней страницей сводится к последней. */
+  page: number;
+  pageSize: number;
 }
 
 export interface DocumentPage {
   items: DocumentView[];
-  nextCursor: string | null;
+  page: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface DocumentStore {
@@ -129,8 +127,8 @@ export interface DocumentStore {
   }): Promise<DocumentView>;
   list(
     workspaceId: string,
-    input: DocumentListFilters & { limit: number; after?: DocumentPosition },
-  ): Promise<DocumentView[]>;
+    input: DocumentListInput,
+  ): Promise<Omit<DocumentPage, 'pageSize'>>;
   linkedWorks(
     workspaceId: string,
     documentIds: string[],
@@ -167,6 +165,12 @@ export interface DocumentStore {
     workspaceId: string,
     documentId: string,
   ): Promise<'deleting' | 'deleted' | 'needs-recovery' | null>;
+  deletions(
+    workspaceId: string,
+    documentIds: string[],
+  ): Promise<
+    { documentId: string; status: 'deleting' | 'deleted' | 'needs-recovery' }[]
+  >;
   image(
     workspaceId: string,
     documentId: string,

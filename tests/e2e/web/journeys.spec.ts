@@ -12,6 +12,13 @@ function required(name: string): string {
   return value;
 }
 
+// Панель агента: колонка на широком экране и окно на узком.
+function agentPanel(page: Page) {
+  return page
+    .getByRole('complementary', { name: 'Агент' })
+    .or(page.getByRole('dialog', { name: 'Агент' }));
+}
+
 async function signIn(page: Page, role: 'OWNER' | 'MEMBER' | 'OUTSIDER') {
   await page.getByLabel('Почта').fill(required(`E2E_${role}_EMAIL`));
   await page
@@ -165,14 +172,21 @@ test('work goes from list through upload, automatic status and editable facts', 
     'Имя: Анна',
   );
   await page.getByRole('button', { name: 'Закрыть просмотр' }).click();
-  await expect(page.getByText('Проверьте найденные сведения')).toBeVisible();
-  await page.getByRole('button', { name: 'История анализа' }).click();
-  const history = page.getByRole('dialog', { name: 'История анализа' });
+  await expect(
+    page.getByRole('region', { name: 'Следующий шаг' }),
+  ).toContainText('Сведения ждут проверки');
+  await page.getByRole('button', { name: 'Агент', exact: true }).click();
+  const history = agentPanel(page);
+  await history.getByRole('tab', { name: 'Журнал' }).click();
   await history
-    .getByRole('button', { name: 'Сопоставление · Результат сохранён' })
+    .getByRole('button', { name: /Автоматический анализ/ })
+    .first()
+    .click();
+  await history
+    .getByRole('button', { name: /Сопоставление · Результат сохранён/ })
     .click();
   await expect(history.getByText(/Тестовый контекст/)).toBeVisible();
-  await history.getByRole('button', { name: 'Закрыть', exact: true }).click();
+  await page.getByRole('button', { name: 'Закрыть панель агента' }).click();
   await page.getByRole('tab', { name: /Проверка/ }).click();
   await page
     .getByRole('button', { name: 'Черновики документов', exact: true })
@@ -210,8 +224,8 @@ test('chat shows incremental Markdown and resumes after a reload and a stream di
   await page.getByLabel('Название работы').fill('Потоковый ответ');
   await page.getByRole('button', { name: 'Создать и открыть' }).click();
   await expect(page).toHaveURL(/\/works\/[0-9a-f-]+$/);
-  const openChat = page.getByRole('button', { name: 'Чат с агентом' });
-  const chat = page.getByRole('dialog', { name: 'Чат с агентом' });
+  const openChat = page.getByRole('button', { name: 'Агент', exact: true });
+  const chat = agentPanel(page);
   await openChat.click();
   const message = chat.getByRole('textbox', { name: 'Сообщение агенту' });
   await message.fill('Проверьте потоковый ответ.');
@@ -297,8 +311,8 @@ test('chat field history restores the selected field and keeps other values', as
   });
   await expect(prepared).toBeOK();
 
-  await page.getByRole('button', { name: 'Чат с агентом' }).click();
-  const chat = page.getByRole('dialog', { name: 'Чат с агентом' });
+  await page.getByRole('button', { name: 'Агент', exact: true }).click();
+  const chat = agentPanel(page);
   const message = chat.getByRole('textbox', { name: 'Сообщение агенту' });
   const send = chat.getByRole('button', { name: 'Отправить', exact: true });
   await expect(
@@ -324,7 +338,7 @@ test('chat field history restores the selected field and keeps other values', as
   });
   await page.screenshot({ path: testInfo.outputPath('chat-desktop.png') });
   await entry.getByRole('button', { name: 'Действия агента' }).click();
-  const details = page.getByRole('dialog', { name: 'Действия агента' });
+  const details = agentPanel(page);
   await expect(details.getByRole('tab', { name: 'События' })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -334,7 +348,7 @@ test('chat field history restores the selected field and keeps other values', as
   await expect(details.getByText('Вся работа', { exact: true })).toBeVisible();
   await details.getByRole('tab', { name: 'События' }).click();
   const change = details.getByRole('button', {
-    name: 'Поле «Фамилия»',
+    name: /Изменено поле «Фамилия»/,
   });
   await change.focus();
   await page.keyboard.press('Enter');
@@ -347,7 +361,7 @@ test('chat field history restores the selected field and keeps other values', as
   ).toBeVisible();
   await expect(details.getByText('Петрова', { exact: true })).toBeVisible();
   await expect(
-    details.getByRole('button', { name: 'Данные вызова' }),
+    details.getByRole('button', { name: 'Технические подробности' }),
   ).toHaveAttribute('aria-expanded', 'false');
 
   const restore = details.getByRole('button', {
@@ -358,6 +372,8 @@ test('chat field history restores the selected field and keeps other values', as
     path: testInfo.outputPath('field-history-desktop.png'),
   });
   await page.setViewportSize({ width: 390, height: 844 });
+  // На узком экране панель становится окном, и событие снова свёрнуто.
+  await change.click();
   await restore.scrollIntoViewIfNeeded();
   await expect(restore).toBeVisible();
   await page.screenshot({
@@ -396,7 +412,7 @@ test('chat field history restores the selected field and keeps other values', as
   expect(restored.work.inputRevision).toBe(initial.work.inputRevision);
   expect(restored.runs).toEqual(initial.runs);
 
-  await details.getByRole('button', { name: 'Вернуться к чату' }).click();
+  await details.getByRole('button', { name: 'К чату' }).click();
   await expect(chat).toBeVisible();
   await message.fill('Запишите таблицу в поле фамилии.');
   await send.click();
@@ -427,8 +443,10 @@ test('recognition reports a failed file and allows retry', async ({ page }) => {
   const listed = await listing;
   expect(listed.status()).toBe(200);
   const pageBody: unknown = await listed.json();
-  expect(pageBody).toHaveProperty('nextCursor');
   expect(pageBody).toMatchObject({
+    page: 1,
+    pageSize: 24,
+    total: expect.any(Number),
     items: expect.any(Array),
     pendingDeletions: expect.any(Array),
   });
@@ -491,8 +509,11 @@ test('the catalog picker attaches sources selected on different pages', async ({
   await picker
     .getByRole('checkbox', { name: 'Выбрать Каталог E2E 50.pdf' })
     .click();
-  await picker.getByRole('button', { name: 'Далее' }).click();
-  await expect(picker.getByText('Страница 2')).toBeVisible();
+  // 51 файл по 12 на странице: самый старый — на последней, пятой странице.
+  await picker.getByRole('button', { name: 'Страница 5', exact: true }).click();
+  await expect(
+    picker.getByRole('button', { name: 'Страница 5', exact: true }),
+  ).toHaveAttribute('aria-current', 'page');
   await picker
     .getByRole('checkbox', { name: 'Выбрать Каталог E2E 00.pdf' })
     .click();
@@ -625,30 +646,31 @@ test('linked catalog deletion shows affected works and requires deliberate confi
       .getByText(work),
   ).toBeVisible();
   const hold = confirmation.getByRole('button', {
-    name: 'Удерживайте 3 секунды',
+    name: 'Удерживайте, чтобы удалить',
   });
   await hold.hover();
   await page.mouse.down();
-  const progress = confirmation.getByRole('progressbar');
+  const progress = confirmation.getByRole('progressbar', {
+    name: 'Прогресс подтверждения удаления',
+  });
   await expect
-    .poll(() =>
-      progress.evaluate((element) => (element as HTMLProgressElement).value),
-    )
+    .poll(async () => Number(await progress.getAttribute('aria-valuenow')))
     .toBeGreaterThan(0);
   await page.mouse.up();
-  await expect(progress).toHaveAttribute('value', '0');
+  await expect(progress).toHaveAttribute('aria-valuenow', '0');
   await confirmation.getByRole('button', { name: 'Отмена' }).click();
   await expect(remove).toBeVisible();
   await remove.click();
   const confirm = confirmation.getByRole('button', {
     name: 'Удалить документ',
   });
-  await expect(confirm).toBeDisabled();
+  await expect(confirm).toBeHidden();
   await confirmation
     .getByRole('checkbox', {
       name: 'Подтверждаю удаление из перечисленных работ',
     })
     .check();
+  await expect(hold).toBeHidden();
   await confirm.click();
   await expect(confirmation).toBeHidden();
   await expect(remove).toBeHidden();

@@ -2,7 +2,7 @@
 import { Check, Eye, FolderOpen, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 
-import { type WorkView } from '@anyko/contracts/works';
+import { workSourceLimit, type WorkView } from '@anyko/contracts/works';
 import {
   Button,
   Confirm,
@@ -13,6 +13,7 @@ import {
   stagger,
   StatusPill,
   type Tone,
+  Tooltip,
 } from '@anyko/ui';
 import { DropZone } from '@anyko/ui/brand';
 
@@ -69,46 +70,36 @@ export function WorkSources({
   const [picking, setPicking] = useState(false);
   const [deleting, setDeleting] = useState<Document>();
   const uploading = uploads.some((item) => item.state === 'uploading');
+  const free = workSourceLimit - view.documents.length;
+  const dropZone = view.documents.length ? (
+    <DropZone
+      compact
+      title="Перетащите ещё файлы клиента"
+      hint={`PDF, DOCX или фото до 20 МБ · можно добавить ещё ${String(free)}`}
+      inputLabel="Файлы клиента"
+      accept={accept}
+      busy={uploading}
+      disabled={disabled.upload}
+      onFiles={onUpload}
+    />
+  ) : (
+    <DropZone
+      title="Отправьте файлы клиента в Anyko"
+      hint="Паспорт, СНИЛС, справки, выписки, договоры — PDF, DOCX или фото до 20 МБ, всего до 20 файлов."
+      inputLabel="Файлы клиента"
+      accept={accept}
+      busy={uploading}
+      disabled={disabled.upload}
+      onFiles={onUpload}
+    />
+  );
+  // Файлы, которые не прочитались, — первыми: с ними нужно что-то сделать.
+  const documents = view.documents.toSorted(
+    (a, b) => Number(b.status === 'failed') - Number(a.status === 'failed'),
+  );
   return (
-    <div className="grid grid-cols-1 gap-8">
-      <DropZone
-        title={
-          view.documents.length
-            ? 'Добавьте ещё файлы клиента'
-            : 'Отправьте файлы клиента в Anyko'
-        }
-        hint="Паспорт, СНИЛС, справки, выписки, договоры — PDF, DOCX или фото до 20 МБ, всего до 20 файлов. Новые файлы дополнят уже найденные сведения."
-        inputLabel="Файлы клиента"
-        accept={accept}
-        busy={uploading}
-        disabled={disabled.upload}
-        onFiles={onUpload}
-      />
-      {uploads.length > 0 && (
-        <ul className="grid gap-2" aria-label="Загрузка файлов">
-          {uploads.map((item) => (
-            <li
-              key={item.id}
-              className={`animate-rise flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${item.state === 'failed' ? 'border-red-400/25 bg-red-500/[0.06]' : 'border-white/[0.07] bg-white/[0.02]'}`}
-            >
-              <span className="mt-0.5">
-                {item.state === 'uploading' ? (
-                  <Spinner className="size-4" />
-                ) : item.state === 'done' ? (
-                  <Check size={16} className="text-emerald-300" />
-                ) : (
-                  <X size={16} className="text-red-300" />
-                )}
-              </span>
-              <span className="min-w-0 flex-1 wrap-anywhere">
-                {item.state === 'failed'
-                  ? item.reason
-                  : `${item.name} — ${item.state === 'uploading' ? 'обрабатываем' : 'добавлен'}`}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+    <div className="grid grid-cols-1 gap-6">
+      {!view.documents.length && dropZone}
       <section aria-labelledby="sources-title">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <h2
@@ -117,7 +108,7 @@ export function WorkSources({
           >
             Файлы работы
             <span className="text-muted ml-2 text-base font-medium">
-              {view.documents.length} из 20
+              {view.documents.length} из {workSourceLimit}
             </span>
           </h2>
           <Button
@@ -131,13 +122,39 @@ export function WorkSources({
             Добавить из каталога
           </Button>
         </div>
+        {view.documents.length > 0 && <div className="mb-4">{dropZone}</div>}
+        {uploads.length > 0 && (
+          <ul className="mb-4 grid gap-2" aria-label="Загрузка файлов">
+            {uploads.map((item) => (
+              <li
+                key={item.id}
+                className={`animate-rise flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${item.state === 'failed' ? 'border-red-400/25 bg-red-500/[0.06]' : 'border-white/[0.07] bg-white/[0.02]'}`}
+              >
+                <span className="mt-0.5">
+                  {item.state === 'uploading' ? (
+                    <Spinner className="size-4" />
+                  ) : item.state === 'done' ? (
+                    <Check size={16} className="text-emerald-300" />
+                  ) : (
+                    <X size={16} className="text-red-300" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 wrap-anywhere">
+                  {item.state === 'failed'
+                    ? item.reason
+                    : `${item.name} — ${item.state === 'uploading' ? 'обрабатываем' : 'добавлен'}`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         {!view.documents.length ? (
           <p className="glass text-muted rounded-2xl border border-dashed border-white/10 px-6 py-8 text-center text-sm">
             Пока пусто. Загруженные файлы появятся здесь.
           </p>
         ) : (
           <ul className="grid gap-3 lg:grid-cols-2">
-            {view.documents.map((doc, index) => {
+            {documents.map((doc, index) => {
               const [label, tone] = labels[doc.status];
               const failure =
                 doc.status === 'failed'
@@ -174,30 +191,33 @@ export function WorkSources({
                         }}
                       />
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Просмотреть ${doc.filename}`}
-                      title="Просмотреть"
-                      disabled={doc.status !== 'succeeded' && !requiresRetry}
-                      onClick={() => {
-                        onOpen(doc);
-                      }}
-                    >
-                      <Eye size={17} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Убрать ${doc.filename} из работы`}
-                      title="Убрать из работы"
-                      disabled={disabled.remove}
-                      onClick={() => {
-                        setDeleting(doc);
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </Button>
+                    <Tooltip content="Просмотреть">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Просмотреть ${doc.filename}`}
+                        disabled={doc.status !== 'succeeded' && !requiresRetry}
+                        onClick={() => {
+                          onOpen(doc);
+                        }}
+                      >
+                        <Eye size={17} />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip content="Убрать из работы">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Убрать ${doc.filename} из работы`}
+                        disabled={disabled.remove}
+                        className="hover:bg-red-500/10 hover:text-red-300"
+                        onClick={() => {
+                          setDeleting(doc);
+                        }}
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    </Tooltip>
                   </div>
                   {failure && (
                     <p className="min-w-0 basis-full rounded-lg border border-red-400/15 bg-red-500/[0.06] px-3 py-2 text-xs leading-relaxed wrap-anywhere text-red-200">
