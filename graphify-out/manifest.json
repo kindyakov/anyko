@@ -180,8 +180,8 @@
     "semantic_hash": ""
   },
   "apps/web/next-env.d.ts": {
-    "mtime": 1795289412.5722792,
-    "seen": 1795289449.9703348,
+    "mtime": 1795433712.4914203,
+    "seen": 1795434110.6424303,
     "ast_hash": "aa94238a90e7d04b7a47ecc3145ba6a0",
     "semantic_hash": ""
   },
@@ -1404,9 +1404,9 @@
     "semantic_hash": ""
   },
   "scripts/smoke-windows-web.mjs": {
-    "mtime": 1794179202.8586566,
-    "seen": 1795244937.3213992,
-    "ast_hash": "6ce0ba3f2b0c889f3a6e9d0e856157ab",
+    "mtime": 1795433636.6708343,
+    "seen": 1795433689.922254,
+    "ast_hash": "45ffd38bdaa0d2b1accb2ee8ac7f01ad",
     "semantic_hash": ""
   },
   "scripts/stage-windows-infrastructure.mjs": {
@@ -1662,9 +1662,9 @@
     "semantic_hash": ""
   },
   "apps/api/src/http/routes/works/index.ts": {
-    "mtime": 1795376894.812415,
-    "seen": 1795376938.4239762,
-    "ast_hash": "fec126eedef8580cf81a2d32c9de62d2",
+    "mtime": 1795432629.7327662,
+    "seen": 1795433689.9204655,
+    "ast_hash": "0d0136b62c0116ec0d360735c4bd6735",
     "semantic_hash": ""
   },
   "apps/api/tests/openapi.test.ts": {
@@ -2274,9 +2274,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/features/works/ui/work-list.tsx": {
-    "mtime": 1795378463.8682058,
-    "seen": 1795378755.6753721,
-    "ast_hash": "ed620a065ebf2557378fcb7b68a98376",
+    "mtime": 1795433608.6814945,
+    "seen": 1795433689.9210007,
+    "ast_hash": "8849652ccbd16b6ccafdbf10870ad4fa",
     "semantic_hash": ""
   },
   "apps/api/tests/idempotency-registry.test.ts": {
@@ -3738,9 +3738,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/features/fact-review/ui/work-review.tsx": {
-    "mtime": 1795389975.8868017,
-    "seen": 1795390377.4483263,
-    "ast_hash": "e7d9de4635fe586acd4085b5479408af",
+    "mtime": 1795434084.3921247,
+    "seen": 1795434110.642619,
+    "ast_hash": "d14771ec2934521eaf51eccae4c8fc52",
     "semantic_hash": ""
   },
   "apps/web/src/features/work-generation/ui/work-results.tsx": {
@@ -5279,18 +5279,6 @@
     "ast_hash": "d64f6625914fed42373443578be9c288",
     "semantic_hash": ""
   },
-  "apps/web/src/features/fact-review/ui/review/attachment-review.test.tsx": {
-    "mtime": 1795301512.4371254,
-    "seen": 1795301781.6312876,
-    "ast_hash": "018f693ffef1cf3691576f1a6bd4adfb",
-    "semantic_hash": ""
-  },
-  "apps/web/src/features/fact-review/ui/review/attachment-review.tsx": {
-    "mtime": 1795379254.038918,
-    "seen": 1795390377.4483104,
-    "ast_hash": "4d9f2819c4fb832516950aca80998a99",
-    "semantic_hash": ""
-  },
   "apps/web/src/features/fact-review/ui/review/court-choices.tsx": {
     "mtime": 1795427316.626008,
     "seen": 1795427468.39449,
@@ -6131,12 +6119,6 @@
     "ast_hash": "8aaa23550d919a50fe4bdb38d5a7f295",
     "semantic_hash": ""
   },
-  "apps/web/src/features/fact-review/ui/review/attachment-document.tsx": {
-    "mtime": 1795379238.021097,
-    "seen": 1795390377.4483073,
-    "ast_hash": "ad16917510f2ef09bec36243c01e976b",
-    "semantic_hash": ""
-  },
   "packages/backend/src/modules/generation/cell-line.ts": {
     "mtime": 1795390317.0023642,
     "seen": 1795390377.448641,
@@ -6171,6 +6153,24 @@
     "mtime": 1795432146.9103515,
     "seen": 1795432194.9245653,
     "ast_hash": "29be04cd109ecbc5fb14fe8d44ee1bd0",
+    "semantic_hash": ""
+  },
+  "apps/web/src/features/fact-review/ui/review/attachments/attachment-document.tsx": {
+    "mtime": 1795379238.021097,
+    "seen": 1795434110.6425958,
+    "ast_hash": "ad16917510f2ef09bec36243c01e976b",
+    "semantic_hash": ""
+  },
+  "apps/web/src/features/fact-review/ui/review/attachments/attachment-review.test.tsx": {
+    "mtime": 1795301512.4371254,
+    "seen": 1795434110.6425972,
+    "ast_hash": "018f693ffef1cf3691576f1a6bd4adfb",
+    "semantic_hash": ""
+  },
+  "apps/web/src/features/fact-review/ui/review/attachments/attachment-review.tsx": {
+    "mtime": 1795379254.038918,
+    "seen": 1795434110.6425984,
+    "ast_hash": "4d9f2819c4fb832516950aca80998a99",
     "semantic_hash": ""
   }
 }

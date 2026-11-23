@@ -121,7 +121,9 @@ export function WorkList() {
         <RenameWorkDialog
           workspaceId={workspaceId}
           work={renaming}
-          onClose={() => setRenaming(undefined)}
+          onClose={() => {
+            setRenaming(undefined);
+          }}
         />
       )}
       {pendingPage ? (
@@ -230,7 +232,13 @@ export function WorkList() {
               packages={packages}
               workspaceId={workspaceId}
               view={view}
-              onRename={canEdit ? () => setRenaming(work) : undefined}
+              onRename={
+                canEdit
+                  ? () => {
+                      setRenaming(work);
+                    }
+                  : undefined
+              }
               onDelete={
                 canDelete
                   ? () => {

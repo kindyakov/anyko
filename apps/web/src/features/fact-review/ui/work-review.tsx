@@ -16,7 +16,7 @@ import {
 
 import type { FactsForm } from './facts-form';
 import { PackagePreview } from './package-preview';
-import { AttachmentReview } from './review/attachment-review';
+import { AttachmentReview } from './review/attachments/attachment-review';
 import { CandidateList } from './review/candidate-list';
 import { EditConflicts } from './review/edit-conflicts';
 import { EmploymentReview } from './review/employment-review';

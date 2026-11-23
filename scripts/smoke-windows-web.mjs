@@ -9,6 +9,25 @@ if (process.platform !== 'win32' || process.arch !== 'x64') {
 const parent = await mkdtemp(join(tmpdir(), 'anyko-web-smoke-'));
 let root = resolve(parent, 'web');
 let server;
+
+async function relocateWeb(source, destination) {
+  const deadline = performance.now() + 5_000;
+  for (;;) {
+    try {
+      await rename(source, destination);
+      return;
+    } catch (error) {
+      // Windows may briefly retain a handle in the bundle after restore exits.
+      if (
+        !['EACCES', 'EBUSY', 'EPERM'].includes(error.code) ||
+        performance.now() >= deadline
+      )
+        throw error;
+      await Bun.sleep(100);
+    }
+  }
+}
+
 try {
   await cp(process.env.ANYKO_WINDOWS_WEB_OUTPUT ?? 'work/windows-web', root, {
     recursive: true,
@@ -23,17 +42,20 @@ try {
   };
   for (let attempt = 0; attempt < 2; attempt++) {
     const bun = resolve(root, 'bun.exe');
-    const restore = Bun.spawn([bun, 'restore-windows-web-links.mjs', '.'], {
-      cwd: root,
-      env,
-      stdout: 'ignore',
-      stderr: 'inherit',
-    });
+    const restore = Bun.spawn(
+      [bun, resolve(root, 'restore-windows-web-links.mjs'), root],
+      {
+        cwd: parent,
+        env,
+        stdout: 'ignore',
+        stderr: 'inherit',
+      },
+    );
     if ((await restore.exited) !== 0)
       throw new Error('Failed to restore web links');
     if (attempt === 0) {
       const moved = resolve(parent, 'moved');
-      await rename(root, moved);
+      await relocateWeb(root, moved);
       root = moved;
     }
   }
