@@ -55,6 +55,7 @@ export type LlmErrorCode =
   | 'LLM_STREAM_IDLE'
   | 'LLM_CANCELLED'
   | 'LLM_INVALID_RESPONSE'
+  | 'LLM_EVIDENCE_NOT_FOUND'
   | 'LLM_COMPLETION_LIMIT'
   | 'LLM_STEP_LIMIT'
   | 'LLM_READ_LIMIT'
@@ -78,6 +79,7 @@ const llmErrorMessages = {
   LLM_STREAM_IDLE: 'Модель перестала передавать данные ответа.',
   LLM_CANCELLED: 'Запрос к модели отменён.',
   LLM_INVALID_RESPONSE: 'Ответ модели не соответствует ожидаемому формату.',
+  LLM_EVIDENCE_NOT_FOUND: 'Цитаты модели не найдены в источнике.',
   LLM_COMPLETION_LIMIT: 'Ответ модели оборвался на предельном числе токенов.',
   LLM_STEP_LIMIT: 'Достигнут предел обращений к модели на одном шаге анализа.',
   LLM_READ_LIMIT: 'Достигнут предел чтений при итоговой сверке.',

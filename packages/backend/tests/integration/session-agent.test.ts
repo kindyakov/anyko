@@ -19,6 +19,7 @@ import {
   templateBytes,
   templateData,
 } from '../../src/modules/templates';
+import { automaticValue } from '../../src/profiles/bfl/automatic-value';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 import { completionStream } from '../support/completion-stream';
 
@@ -96,7 +97,10 @@ test('real extraction preserves candidates with valid citations when other field
   });
   const threads: string[] = [];
   const fields = requirePackage('bfl-bankruptcy-v13').fields;
-  const extract = (text: string) => {
+  const extract = (
+    text: string,
+    visuals: { path: string; description: string }[] = [],
+  ) => {
     const threadId = crypto.randomUUID();
     threads.push(threadId);
     return agents.extract({
@@ -118,15 +122,21 @@ test('real extraction preserves candidates with valid citations when other field
       onRejectedEvidence: (rejected) => {
         rejections.push(...rejected);
       },
-      document: { id: documentId, text, visuals: [] },
+      document: { id: documentId, text, visuals },
       signal: AbortSignal.timeout(10000),
     });
   };
-  const expectInvalid = async (text: string) => {
+  const expectInvalid = async (
+    text: string,
+    expected: { code: string; diagnosticMessage?: string } = {
+      code: 'LLM_INVALID_RESPONSE',
+    },
+    visuals?: Parameters<typeof extract>[1],
+  ) => {
     try {
-      await extract(text);
+      await extract(text, visuals);
     } catch (error) {
-      expect(error).toMatchObject({ code: 'LLM_INVALID_RESPONSE' });
+      expect(error).toMatchObject(expected);
       return;
     }
     throw new Error('EXPECTED_INVALID_EXTRACTION');
@@ -149,6 +159,13 @@ test('real extraction preserves candidates with valid citations when other field
     expect(file).toContain(`extraction-${documentId}-1-`);
     const trace = await readFile(join(traces, file), 'utf8');
     expect(trace).not.toContain(apiKey);
+    expect(trace).toContain('Цитируй содержимое ячейки без тегов.');
+    expect(trace).toContain(
+      'Строку из описания изображения цитируй только с точным imagePath',
+    );
+    expect(trace).toContain(
+      'Если полный номер есть в тексте, процитируй его из текста (imagePath=null).',
+    );
     expect(trace).toContain(JSON.stringify(source).slice(1, -1));
     const record: unknown = JSON.parse(trace);
     const wireSchema = z
@@ -219,7 +236,9 @@ test('real extraction preserves candidates with valid citations when other field
       { ...candidate, origin: 'document' },
     ]);
     returnedCandidates = [forged];
-    await expectInvalid('Регистрация: г. Тула, ул. Мира');
+    await expectInvalid('Регистрация: г. Тула, ул. Мира', {
+      code: 'LLM_EVIDENCE_NOT_FOUND',
+    });
     returnedCandidates = [extra];
     await expectInvalid('Регистрация: г. Тула, ул. Мира');
     returnedCandidates = [
@@ -241,6 +260,54 @@ test('real extraction preserves candidates with valid citations when other field
       { ...candidate, origin: 'document' },
     ]);
     expect(await readFile(blockedDirectory, 'utf8')).toBe('occupied');
+
+    // Synthetic test number with valid check digits.
+    const inn = '999900000097';
+    const table = `<table><tr><td>2</td><td>ИНН</td><td>${inn}</td></tr></table>`;
+    const visual = {
+      path: 'images/page_0_table_2.jpg',
+      description: `2 | ИНН | ${inn}`,
+    };
+    const pipeCitation = {
+      documentId,
+      imagePath: null,
+      quote: visual.description,
+    };
+    const innCandidate = {
+      field: 'inn' as const,
+      value: inn,
+      evidence: [pipeCitation],
+    };
+    returnedCandidates = [innCandidate];
+    await expectInvalid(
+      table,
+      {
+        code: 'LLM_EVIDENCE_NOT_FOUND',
+        diagnosticMessage: 'Цитаты модели не найдены в источнике.',
+      },
+      [visual],
+    );
+    expect(rejections.at(-1)).toEqual({ field: 'inn', count: 1 });
+
+    const cellCitation = { ...pipeCitation, quote: inn };
+    returnedCandidates = [{ ...innCandidate, evidence: [cellCitation] }];
+    const textual = await extract(table, [visual]);
+    expect(textual.candidates).toEqual([
+      { ...innCandidate, origin: 'document', evidence: [cellCitation] },
+    ]);
+    expect(textual.candidates.map((entry) => automaticValue(entry))).toEqual([
+      inn,
+    ]);
+
+    const imageCitation = { ...pipeCitation, imagePath: visual.path };
+    returnedCandidates = [{ ...innCandidate, evidence: [imageCitation] }];
+    const visualOnly = await extract('Выписка.', [visual]);
+    expect(visualOnly.candidates).toEqual([
+      { ...innCandidate, origin: 'document', evidence: [imageCitation] },
+    ]);
+    expect(visualOnly.candidates.map((entry) => automaticValue(entry))).toEqual(
+      [null],
+    );
   } finally {
     for (const threadId of threads) await agents.eraseThread(threadId);
     await agents.stop();

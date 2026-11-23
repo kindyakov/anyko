@@ -89,6 +89,8 @@ export const modelFieldValueInstructions =
 export const modelQuoteInstructions =
   'В quote процитируй источник дословно. Сохрани буквы, цифры и знаки. Любая последовательность пробельных символов, включая переводы строк, считается одним пробелом. Указывай page только при известном физическом номере страницы (целое число от 1).';
 
+export const modelExtractionQuoteInstructions = `${modelQuoteInstructions} В распознанном тексте таблицы могут быть записаны в HTML. Цитируй содержимое ячейки без тегов. Если нужны фрагменты из нескольких ячеек, приведи отдельную цитату для каждой. Не склеивай их и не вставляй разделитель «|»: его нет между ячейками в HTML. Для цитаты из текста укажи imagePath=null. Строку из описания изображения цитируй только с точным imagePath этого изображения.`;
+
 type ModelValue = z.infer<ReturnType<typeof modelCandidateSchema>>['value'];
 
 export function decodeModelFieldValue(value: ModelValue) {
