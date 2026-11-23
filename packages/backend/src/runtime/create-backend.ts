@@ -275,6 +275,7 @@ export function createBackend(
     (agentsDelegate ??= createDocumentAgents({
       pool,
       traceDirectory: validated.worker?.llmTraceDirectory,
+      minModelContextTokens: validated.worker?.minModelContextTokens,
       analysisMaxModelCalls: validated.worker?.analysisMaxModelCalls,
       analysisMaxReads: validated.worker?.analysisMaxReads,
       analysisReviewMaxReads: validated.worker?.analysisReviewMaxReads,

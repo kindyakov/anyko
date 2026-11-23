@@ -104,6 +104,27 @@ test('stepwise analysis defaults to false and requires a lowercase boolean', () 
   }
 });
 
+test('model context minimum has a default and accepts only positive integers', () => {
+  expect(parseBackendEnv(backendEnv, worker).worker.minModelContextTokens).toBe(
+    131072,
+  );
+  expect(
+    parseBackendEnv(
+      { ...backendEnv, ANYKO_MIN_MODEL_CONTEXT_TOKENS: '262144' },
+      worker,
+    ).worker.minModelContextTokens,
+  ).toBe(262144);
+  for (const value of ['0', '-1', '1.5', '']) {
+    const env = { ...backendEnv, ANYKO_MIN_MODEL_CONTEXT_TOKENS: value };
+    expect(() => parseBackendEnv(env, worker)).toThrow(
+      'ANYKO_MIN_MODEL_CONTEXT_TOKENS',
+    );
+    expect(() =>
+      parseWorkerConfig({ ...env, REDIS_URL: worker.redisUrl }),
+    ).toThrow('ANYKO_MIN_MODEL_CONTEXT_TOKENS');
+  }
+});
+
 test.each([
   ['ANYKO_CHAT_MAX_MODEL_CALLS', 'chatMaxModelCalls', 64],
   ['ANYKO_RECONCILE_MAX_MODEL_CALLS', 'reconcileMaxModelCalls', 64],

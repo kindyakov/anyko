@@ -16,6 +16,8 @@ export type { ProviderCallObserver } from './provider-calls';
 export type { ModelTraceContext } from './local-trace';
 export type { ModelContextLimits } from './router-context';
 
+export const defaultMinModelContextTokens = 131072;
+
 const connectionSchema = z.object({
   id: z.string().regex(/^[\w-]{1,80}$/),
   baseURL: z.url().refine((value) => {
@@ -56,6 +58,7 @@ export type LlmErrorCode =
   | 'LLM_CANCELLED'
   | 'LLM_INVALID_RESPONSE'
   | 'LLM_EVIDENCE_NOT_FOUND'
+  | 'LLM_CONTEXT_TOO_SMALL'
   | 'LLM_COMPLETION_LIMIT'
   | 'LLM_STEP_LIMIT'
   | 'LLM_READ_LIMIT'
@@ -80,6 +83,8 @@ const llmErrorMessages = {
   LLM_CANCELLED: 'Запрос к модели отменён.',
   LLM_INVALID_RESPONSE: 'Ответ модели не соответствует ожидаемому формату.',
   LLM_EVIDENCE_NOT_FOUND: 'Цитаты модели не найдены в источнике.',
+  LLM_CONTEXT_TOO_SMALL:
+    'Контекстное окно модели меньше допустимого. Выберите в настройках модель с большим окном.',
   LLM_COMPLETION_LIMIT: 'Ответ модели оборвался на предельном числе токенов.',
   LLM_STEP_LIMIT: 'Достигнут предел обращений к модели на одном шаге анализа.',
   LLM_READ_LIMIT: 'Достигнут предел чтений при итоговой сверке.',
@@ -114,9 +119,14 @@ export function llmError(error: unknown, signal?: AbortSignal): LlmError {
 }
 
 export function createModelGateway(
-  options: { fetch?: typeof fetch; traceDirectory?: string } = {},
+  options: {
+    fetch?: typeof fetch;
+    traceDirectory?: string;
+    minModelContextTokens?: number;
+  } = {},
 ) {
   const contextLimits = createModelContextLimits(options.fetch ?? fetch);
+  const minimum = options.minModelContextTokens ?? defaultMinModelContextTokens;
   return {
     trace(
       context: ModelTraceContext | undefined,
@@ -131,15 +141,17 @@ export function createModelGateway(
           connection,
         );
     },
-    contextLimits(
+    async contextLimits(
       connection: ModelConnection,
       modelId: string,
       signal: AbortSignal,
     ) {
       const parsed = connectionSchema.safeParse(connection);
-      return parsed.success
-        ? contextLimits(parsed.data, modelId, signal)
-        : Promise.resolve(null);
+      if (!parsed.success) return null;
+      const limits = await contextLimits(parsed.data, modelId, signal);
+      if (limits?.context != null && limits.context < minimum)
+        throw new LlmError('LLM_CONTEXT_TOO_SMALL');
+      return limits;
     },
     reasoningOptions(
       connection: ModelConnection,

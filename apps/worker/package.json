@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@anyko/backend": "workspace:*",
+    "@anyko/llm": "workspace:*",
     "@anyko/logger": "workspace:*",
     "bullmq": "6.7.0",
     "ioredis": "6.0.0",

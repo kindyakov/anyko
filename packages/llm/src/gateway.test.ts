@@ -37,11 +37,11 @@ test('RouterAI context lookup uses the selected model and the smallest published
         const payload = {
           data: {
             endpoints: [
-              { context_length: 32768, max_completion_tokens: 8000 },
+              { context_length: 262144, max_completion_tokens: 131072 },
               {
-                context_length: 16384,
-                max_prompt_tokens: 14000,
-                max_completion_tokens: 4096,
+                context_length: 131072,
+                max_prompt_tokens: 120000,
+                max_completion_tokens: 48000,
               },
             ],
           },
@@ -59,11 +59,11 @@ test('RouterAI context lookup uses the selected model and the smallest published
   const signal = new AbortController().signal;
   expect(
     await gateway.contextLimits(connection, 'example/small', signal),
-  ).toEqual({ context: 16384, prompt: 14000, completion: 4096 });
+  ).toEqual({ context: 131072, prompt: 120000, completion: 48000 });
   await gateway.contextLimits(connection, 'example/small', signal);
   expect(
     await gateway.contextLimits(connection, '~example/large', signal),
-  ).toEqual({ context: 16384, prompt: 14000, completion: 4096 });
+  ).toEqual({ context: 131072, prompt: 120000, completion: 48000 });
   expect(
     await gateway.contextLimits(
       { ...connection, baseURL: 'https://fixture.invalid/v1' },
@@ -398,4 +398,40 @@ test('compatible model metadata can publish a completion limit independently of 
     new AbortController().signal,
   );
   expect(limits?.completion).toBe(48000);
+  expect(limits?.context).toBeNull();
+});
+
+test('the gateway rejects a published context below the configured minimum', async () => {
+  const fakeFetch = Object.assign(
+    (url: Parameters<typeof fetch>[0]) =>
+      Promise.resolve(
+        Response.json({
+          context_window: new Request(url).url.endsWith('/small')
+            ? 131071
+            : 131072,
+        }),
+      ),
+    { preconnect: fetch.preconnect },
+  );
+  const connection = {
+    id: 'compatible',
+    baseURL: 'https://fixture.invalid/v1',
+    apiKey: 'fixture',
+  };
+  const signal = new AbortController().signal;
+  const gateway = createModelGateway({ fetch: fakeFetch });
+  const minimum = await gateway.contextLimits(connection, 'minimum', signal);
+  expect(minimum?.context).toBe(131072);
+  const below = await gateway
+    .contextLimits(connection, 'small', signal)
+    .catch((error: unknown) => error);
+  expect(below).toMatchObject({ code: 'LLM_CONTEXT_TOO_SMALL' });
+  const stricter = createModelGateway({
+    fetch: fakeFetch,
+    minModelContextTokens: 262144,
+  });
+  const aboveDefault = await stricter
+    .contextLimits(connection, 'minimum', signal)
+    .catch((error: unknown) => error);
+  expect(aboveDefault).toMatchObject({ code: 'LLM_CONTEXT_TOO_SMALL' });
 });

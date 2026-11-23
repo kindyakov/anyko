@@ -3967,8 +3967,8 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
         new URL(request.url).pathname === '/v1/models/fixture'
       )
         return Response.json({
-          context_length: 32768,
-          max_completion_tokens: 8192,
+          context_length: 131072,
+          max_completion_tokens: 64000,
         });
       providerCalls++;
       const value: unknown = await request.json();

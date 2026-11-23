@@ -1,5 +1,7 @@
 import { type WorkView } from '@anyko/contracts/works';
 
+import { sharedCodeTexts } from '@/lib/api/errors';
+
 import { connectionRevokedText } from './command-errors';
 
 export type StepKey = 'files' | 'extraction' | 'review' | 'documents';
@@ -146,6 +148,7 @@ const errors: Record<string, string> = {
   DOCUMENT_GENERATION_FAILED: 'Не удалось сформировать документ.',
   GENERATION_INTERRUPTED: 'Формирование было прервано.',
   WORK_PROCESSING_FAILED: 'Обработка завершилась с ошибкой.',
+  LLM_CONTEXT_TOO_SMALL: sharedCodeTexts.LLM_CONTEXT_TOO_SMALL,
 };
 export function errorText(code: string) {
   return errors[code] ?? `Этап завершился с ошибкой (${code}).`;

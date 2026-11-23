@@ -1,9 +1,17 @@
 import { z } from 'zod';
 
+import { defaultMinModelContextTokens } from '@anyko/llm';
+
 export const analysisStepwiseSchema = z
   .enum(['true', 'false'])
   .default('false')
   .transform((value) => value === 'true');
+
+export const minModelContextSchema = z.coerce
+  .number()
+  .int()
+  .positive()
+  .default(defaultMinModelContextTokens);
 
 const schema = z.object({
   DATABASE_URL: z.url().refine((value) => /^postgres(ql)?:\/\//.test(value)),
@@ -13,6 +21,7 @@ const schema = z.object({
   S3_SECRET_KEY: z.string().min(1),
   LLM_CONFIG_ENCRYPTION_KEY: z.string().regex(/^[a-f\d]{64}$/i),
   ANYKO_ANALYSIS_STEPWISE: analysisStepwiseSchema,
+  ANYKO_MIN_MODEL_CONTEXT_TOKENS: minModelContextSchema,
   ANYKO_CHAT_MAX_MODEL_CALLS: z.coerce.number().int().min(1).max(64).optional(),
   ANYKO_RECONCILE_MAX_MODEL_CALLS: z.coerce
     .number()
@@ -87,6 +96,7 @@ export function parseBackendEnv(
       },
       shutdownTimeoutMs: worker.shutdownTimeoutMs,
       llmTraceDirectory: worker.llmTraceDirectory,
+      minModelContextTokens: value.ANYKO_MIN_MODEL_CONTEXT_TOKENS,
       stepwiseAnalysis: value.ANYKO_ANALYSIS_STEPWISE,
       analysisMaxModelCalls: value.ANYKO_ANALYSIS_MAX_MODEL_CALLS,
       analysisMaxReads: value.ANYKO_ANALYSIS_MAX_READS,

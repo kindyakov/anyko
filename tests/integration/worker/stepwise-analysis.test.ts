@@ -154,7 +154,7 @@ test.each([
           expect(new URL(request.url).hostname).toBe('fixture.invalid');
           if (!request.url.endsWith('/chat/completions'))
             return Response.json({
-              context_length: completionLimit ? 65536 : 262144,
+              context_length: completionLimit ? 131072 : 262144,
               max_completion_tokens: advertisedLimit,
             });
           const body = requestSchema.parse(await request.json());

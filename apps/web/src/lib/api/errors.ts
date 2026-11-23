@@ -34,6 +34,8 @@ export function isUnauthorized(error: unknown): boolean {
 
 // Тексты кодов доступа и повтора одинаковы для всех команд: features включают их в свою таблицу `codes`.
 export const sharedCodeTexts = {
+  LLM_CONTEXT_TOO_SMALL:
+    'Контекстное окно модели меньше допустимого. Выберите в настройках модель с большим окном.',
   FORBIDDEN: 'Недостаточно прав для этого действия.',
   IDEMPOTENCY_IN_PROGRESS:
     'Предыдущий запрос ещё выполняется. Подождите и повторите.',

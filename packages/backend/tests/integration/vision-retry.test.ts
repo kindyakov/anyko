@@ -20,7 +20,11 @@ test('RouterAI DeepSeek transcription sends the image bytes and preserves the re
   const agents = createDocumentAgents({
     pool,
     fetch: Object.assign(
-      async (_request: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      async (request: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        if (new Request(request, init).method === 'GET')
+          return Response.json({
+            data: { endpoints: [{ context_length: 131072 }] },
+          });
         calls++;
         const body = z
           .object({
@@ -114,7 +118,9 @@ test('real Mastra OCR reports the stream idle error without retrying processing 
     pool,
     timeoutMs: 75,
     fetch: Object.assign(
-      () => {
+      (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        if (new Request(url, init).method === 'GET')
+          return Promise.resolve(new Response(null, { status: 404 }));
         calls++;
         return Promise.resolve(
           new Response(
@@ -162,15 +168,26 @@ test('real Mastra OCR reports the stream idle error without retrying processing 
   }
 });
 
-test('real Mastra vision rejects a wrapped response without retrying', async () => {
+test('real Mastra vision accepts fenced JSON and retries only missing JSON once', async () => {
   let calls = 0;
+  const fenced = '```json\n{"description":"Схема"}\n```';
+  let responses = [fenced];
   const pool = createDatabasePool(
     z.string().min(1).parse(process.env.TEST_DATABASE_URL),
   );
   const agents = createDocumentAgents({
     pool,
     fetch: Object.assign(
-      () => {
+      (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const request = new Request(url, init);
+        if (request.method === 'GET')
+          return Promise.resolve(
+            Response.json({
+              context_length: request.url.endsWith('/too-small')
+                ? 131071
+                : 131072,
+            }),
+          );
         calls++;
         return Promise.resolve(
           completionStream({
@@ -183,7 +200,7 @@ test('real Mastra vision rejects a wrapped response without retrying', async () 
                 index: 0,
                 message: {
                   role: 'assistant',
-                  content: '```json\n{"description":"Схема"}\n```',
+                  content: responses.shift() ?? 'unexpected provider call',
                 },
                 finish_reason: 'stop',
               },
@@ -197,27 +214,45 @@ test('real Mastra vision rejects a wrapped response without retrying', async () 
   });
   try {
     await agents.ready();
-    const result = agents.describe({
-      connection: {
-        id: 'fixture',
-        baseURL: 'https://fixture.invalid/v1',
-        apiKey: crypto.randomUUID(),
-      },
-      modelId: 'fixture',
-      resource: crypto.randomUUID(),
-      threadId: crypto.randomUUID(),
-      bytes: new Uint8Array([1]),
-      mediaType: 'image/jpeg',
-      signal: AbortSignal.timeout(10000),
+    const describe = (modelId = 'fixture') =>
+      agents.describe({
+        connection: {
+          id: 'fixture',
+          baseURL: 'https://fixture.invalid/v1',
+          apiKey: crypto.randomUUID(),
+        },
+        modelId,
+        resource: crypto.randomUUID(),
+        threadId: crypto.randomUUID(),
+        bytes: new Uint8Array([1]),
+        mediaType: 'image/jpeg',
+        signal: AbortSignal.timeout(10000),
+      });
+    const tooSmall = await describe('too-small').catch(
+      (error: unknown) => error,
+    );
+    expect(tooSmall).toMatchObject({ code: 'LLM_CONTEXT_TOO_SMALL' });
+    expect(calls).toBe(0);
+    expect(await describe()).toMatchObject({ description: 'Схема' });
+    expect(calls).toBe(1);
+
+    responses = [fenced + '\n```json\nnot JSON\n```', fenced];
+    expect(await describe()).toEqual({
+      description: 'Схема',
+      usage: { inputTokens: 8, outputTokens: 6 },
     });
-    const failure = await result.then(
+    expect(calls).toBe(3);
+
+    responses = ['{"description":42}', fenced];
+    const failure = await describe().then(
       () => null,
       (error: unknown) => error,
     );
     expect(failure).toMatchObject({
       code: 'LLM_INVALID_RESPONSE',
     });
-    expect(calls).toBe(1);
+    expect(calls).toBe(4);
+    expect(responses).toEqual([fenced]);
   } finally {
     await agents.stop();
     await pool.end();

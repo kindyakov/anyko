@@ -38,6 +38,7 @@ const backendConfigSchema = z
     worker: z
       .object({
         redisUrl,
+        minModelContextTokens: z.number().int().positive().optional(),
         stepwiseAnalysis: z.boolean().optional(),
         analysisMaxModelCalls: z.number().int().min(1).max(64).optional(),
         analysisMaxReads: z.number().int().min(1).max(256).optional(),

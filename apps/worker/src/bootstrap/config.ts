@@ -3,11 +3,15 @@ import { z } from 'zod';
 import { parseWorkerQueues } from '@anyko/backend/jobs';
 import { DiagnosticError } from '@anyko/logger';
 
-import { analysisStepwiseSchema } from './backend-config';
+import {
+  analysisStepwiseSchema,
+  minModelContextSchema,
+} from './backend-config';
 
 const schema = z.object({
   ANYKO_LLM_TRACE_DIR: z.string().optional(),
   ANYKO_ANALYSIS_STEPWISE: analysisStepwiseSchema,
+  ANYKO_MIN_MODEL_CONTEXT_TOKENS: minModelContextSchema,
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),

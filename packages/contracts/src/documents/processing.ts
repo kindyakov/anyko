@@ -13,6 +13,8 @@ export const documentProcessingMessages = {
   OCR_NO_READABLE_TEXT: 'В документе не найден читаемый текст.',
   OCR_VISION_NOT_CONFIGURED:
     'Для распознавания изображений требуется действующее подключение vision-модели. Проверьте настройки рабочего пространства.',
+  OCR_VISION_CONTEXT_TOO_SMALL:
+    'Контекстное окно vision-модели меньше допустимого. Выберите в настройках модель с большим окном.',
   OCR_VISION_RATE_LIMITED:
     'Облачная vision-модель временно ограничила число запросов. Попробуйте ещё раз позже.',
   OCR_TIMEOUT:
