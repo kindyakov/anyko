@@ -339,6 +339,7 @@ test('chat shows a failed or partial write with guidance instead of a success re
 test('upload confirmation is visible when returning to Files after a pending upload', async () => {
   const response = Promise.withResolvers<undefined>();
   const document = { ...source, status: 'queued' };
+  const view = { ...workView, documents: [{ ...source, status: 'running' }] };
   const requests = serveApi(({ method, url }) => {
     if (url.includes('checksum='))
       return json(200, {
@@ -348,7 +349,7 @@ test('upload confirmation is visible when returning to Files after a pending upl
         total: 0,
         pendingDeletions: [],
       });
-    if (method !== 'POST') return json(200, workView);
+    if (method !== 'POST') return json(200, view);
     const reply = json(202, { document });
     reply.json = async () => {
       await response.promise;
@@ -368,6 +369,14 @@ test('upload confirmation is visible when returning to Files after a pending upl
     });
   });
   expect(screen.queryByText('Принято 1 файл')).toBeNull();
+  const files = within(screen.getByRole('region', { name: /Файлы работы/ }));
+  const uploads = within(files.getByRole('list', { name: 'Загрузка файлов' }));
+  const attached = within(
+    files.getByRole('list', { name: 'Прикреплённые файлы' }),
+  );
+  expect(uploads.getByText(`${source.filename} — обрабатываем`)).toBeTruthy();
+  expect(attached.getByText(source.filename, { exact: true })).toBeTruthy();
+  expect(attached.getByText('Распознаётся')).toBeTruthy();
   await user.click(screen.getByRole('tab', { name: /Извлечение/ }));
   response.resolve(undefined);
   await waitFor(() => {

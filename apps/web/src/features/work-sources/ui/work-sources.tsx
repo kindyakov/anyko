@@ -153,7 +153,10 @@ export function WorkSources({
             Пока пусто. Загруженные файлы появятся здесь.
           </p>
         ) : (
-          <ul className="grid gap-3 lg:grid-cols-2">
+          <ul
+            className="grid gap-3 lg:grid-cols-2"
+            aria-label="Прикреплённые файлы"
+          >
             {documents.map((doc, index) => {
               const [label, tone] = labels[doc.status];
               const failure =

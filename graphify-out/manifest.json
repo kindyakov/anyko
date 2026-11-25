@@ -180,8 +180,8 @@
     "semantic_hash": ""
   },
   "apps/web/next-env.d.ts": {
-    "mtime": 1795433712.4914203,
-    "seen": 1795434110.6424303,
+    "mtime": 1795434372.575284,
+    "seen": 1795509706.9006968,
     "ast_hash": "aa94238a90e7d04b7a47ecc3145ba6a0",
     "semantic_hash": ""
   },
@@ -3282,9 +3282,9 @@
     "semantic_hash": ""
   },
   "tests/e2e/web/journeys.spec.ts": {
-    "mtime": 1795391227.9038882,
-    "seen": 1795391640.4426572,
-    "ast_hash": "ced9e03929bcf7b4fbbea3436981ede2",
+    "mtime": 1795509657.586851,
+    "seen": 1795509706.9021106,
+    "ast_hash": "9b01453aa773c136b21dcc242c28ac8c",
     "semantic_hash": ""
   },
   "packages/backend/src/profiles/bfl/fields.ts": {
@@ -3600,9 +3600,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/app/(workspace)/w/[workspace]/works/[id]/_screen/work-screen.test.tsx": {
-    "mtime": 1795391227.95321,
-    "seen": 1795391640.4416006,
-    "ast_hash": "e77765a0d0aa6fe6b3a72e6986e72507",
+    "mtime": 1795509666.8012772,
+    "seen": 1795509706.900745,
+    "ast_hash": "e93c1a7ab2de6a13f0af08067b014d2f",
     "semantic_hash": ""
   },
   "apps/web/src/features/document-recognition/model/error-texts.ts": {
@@ -3756,9 +3756,9 @@
     "semantic_hash": ""
   },
   "apps/web/src/features/work-sources/ui/work-sources.tsx": {
-    "mtime": 1795390084.32944,
-    "seen": 1795390377.4483774,
-    "ast_hash": "6e2317f93d13dd19ae37426c8ebb7395",
+    "mtime": 1795509666.8649015,
+    "seen": 1795509706.9010463,
+    "ast_hash": "964cb76a86d5ab2259aacd87c9f3e31f",
     "semantic_hash": ""
   },
   "apps/web/src/features/work-processing/model/pipeline.test.ts": {

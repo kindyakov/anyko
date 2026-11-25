@@ -130,8 +130,9 @@ test('work goes from list through upload, automatic status and editable facts', 
   await page.request.post('http://127.0.0.1:3031/__e2e/ocr/hold');
   const row = page
     .getByRole('region', { name: /Файлы работы/ })
+    .getByRole('list', { name: 'Прикреплённые файлы', exact: true })
     .getByRole('listitem')
-    .filter({ hasText: 'source.pdf' });
+    .filter({ has: page.getByText('source.pdf', { exact: true }) });
   const cursor = await (async () => {
     try {
       await page
