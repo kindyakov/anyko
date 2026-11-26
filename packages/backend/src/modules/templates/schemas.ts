@@ -5,7 +5,7 @@ import { inventorySectionKeys } from '@anyko/document-values/inventory-layout';
 import { moneyPlaceholders } from '@anyko/document-values/money';
 
 import { isCalendarDateField, isRublesField } from '../../profiles/bfl/fields';
-import { fieldKeySchema } from '../../profiles/fields';
+import { fieldKeySchema, valueTypeSchema } from '../../profiles/fields';
 
 const paragraph = z.object({
   text: z.string(),
@@ -91,7 +91,9 @@ export const documentPackageSchema = z.object({
       label: z.string(),
       multiline: z.boolean(),
       kind: z.enum(['text', 'rows']),
-      valueType: z.enum(['date', 'money']).optional(),
+      valueType: valueTypeSchema.optional(),
+      innLength: z.literal(12).optional(),
+      role: z.string().min(1).optional(),
       limits: z.object({
         maxLength: z.number().int().positive().optional(),
         maxRows: z.number().int().positive().optional(),
@@ -101,6 +103,10 @@ export const documentPackageSchema = z.object({
           key: z.string(),
           label: z.string(),
           maxLength: z.number().int().positive(),
+          valueType: valueTypeSchema.optional(),
+          innLength: z.literal(12).optional(),
+          moneyFormat: z.literal('sourceCurrency').optional(),
+          evidence: z.enum(['row', 'sourceCurrency']).optional(),
         }),
       ),
     }),

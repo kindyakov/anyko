@@ -22,14 +22,36 @@ export type FieldRow = z.infer<typeof fieldRowSchema>;
 export type FieldValue = z.infer<typeof fieldValueSchema>;
 export type FieldValues = z.infer<typeof storedFieldValuesSchema>;
 
-export interface FieldDefinition {
+export const valueTypeSchema = z.enum([
+  'inn',
+  'snils',
+  'passport',
+  'address',
+  'date',
+  'money',
+]);
+
+export interface ValueDefinition {
+  valueType?: z.infer<typeof valueTypeSchema> | undefined;
+  innLength?: 12 | undefined;
+}
+
+export interface FieldColumn extends ValueDefinition {
+  key: string;
+  label: string;
+  maxLength: number;
+  moneyFormat?: 'sourceCurrency' | undefined;
+  evidence?: 'row' | 'sourceCurrency' | undefined;
+}
+
+export interface FieldDefinition extends ValueDefinition {
   key: FieldKey;
   label: string;
+  role?: string | undefined;
   multiline: boolean;
   kind: 'text' | 'rows';
-  valueType?: 'date' | 'money' | undefined;
   limits: { maxLength?: number | undefined; maxRows?: number | undefined };
-  columns: { key: string; label: string; maxLength: number }[];
+  columns: FieldColumn[];
 }
 
 export function packageValuesSchema(fields: readonly FieldDefinition[]) {

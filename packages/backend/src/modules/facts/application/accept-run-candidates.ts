@@ -15,7 +15,7 @@ import { projectRunFacts } from './project-run-facts';
 export const acceptRunCandidates =
   ({ store }: { store: Pick<FactsStore, 'get' | 'save'> }) =>
   async (input: AcceptRunCandidatesInput): Promise<AcceptedRunCandidates> => {
-    const { workspaceId, workId, fields } = input;
+    const { workspaceId, workId, fields, packageFields } = input;
     const existing = await store.get(workspaceId, workId);
     const { next, extractionAccepted, contextAccepted, extraction, context } =
       projectRunFacts(existing, input);
@@ -26,11 +26,17 @@ export const acceptRunCandidates =
       ['extraction', extraction, !extractionAccepted],
       ['reconciliation', context ?? [], !contextAccepted],
     ] as const) {
-      const before = markSelectedCandidates({
-        ...existing,
-        candidates: proposals,
-      });
-      const after = markSelectedCandidates({ ...next, candidates: proposals });
+      const before = markSelectedCandidates(
+        {
+          ...existing,
+          candidates: proposals,
+        },
+        packageFields,
+      );
+      const after = markSelectedCandidates(
+        { ...next, candidates: proposals },
+        packageFields,
+      );
       for (const [
         index,
         { selected: included, ...candidate },

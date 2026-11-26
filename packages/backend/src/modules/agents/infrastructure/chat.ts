@@ -136,7 +136,12 @@ export function createChatAgent(options: {
           content: JSON.stringify({
             message: input.userText,
             context: {
-              fields: input.fields.map(({ key, label }) => ({ key, label })),
+              fields: input.fields.map(({ key, label, role, valueType }) => ({
+                key,
+                label,
+                role,
+                valueType,
+              })),
               sources: input.documents,
               ...(checklist && {
                 checklist: {

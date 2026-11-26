@@ -98,7 +98,10 @@ export const getWork =
         documents,
         checklist: checklistWithContracts(checklist, facts),
         canEditChecklist: scope.has('works.edit') && !cleanupPending,
-        facts: { ...facts, candidates: markSelectedCandidates(facts) },
+        facts: {
+          ...facts,
+          candidates: markSelectedCandidates(facts, pack.fields),
+        },
         discrepancyFields: findFactDiscrepancies(facts, pack.fields),
         runs: cleanupPending
           ? []
