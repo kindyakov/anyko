@@ -1,18 +1,16 @@
 import { businessAbsenceInstructions } from './business-absence';
-import {
-  type FieldDefinition,
-  isCalendarDateField,
-  isRublesColumn,
-} from './fields';
+import type { FieldDefinition } from './fields';
 
 export function factInstructions(
   fields: readonly FieldDefinition[],
   { extraction = false }: { extraction?: boolean } = {},
 ) {
   const keys = new Set(fields.map(({ key }) => key));
-  const hasInn =
-    keys.has('inn') ||
-    fields.some(({ columns }) => columns.some(({ key }) => key === 'inn'));
+  const hasInn = fields.some(
+    ({ valueType, columns }) =>
+      valueType === 'inn' ||
+      columns.some(({ valueType }) => valueType === 'inn'),
+  );
   return [
     fields.some(({ kind }) => kind === 'rows') &&
       'Для табличного поля верни строку только о конкретном объекте, платеже, договоре или событии. Если источник прямо подтверждает отсутствие таких записей, верни пустой массив с дословной цитатой этого утверждения. Если в источнике нет сведений о поле, пропусти кандидат.',
@@ -30,25 +28,21 @@ export function factInstructions(
     extraction &&
       hasInn &&
       'Если полный номер есть в тексте, процитируй его из текста (imagePath=null). Если номер есть только в описании изображения, процитируй описание с точным imagePath и предложи значение для проверки юристом.',
-    keys.has('snils') &&
+    fields.some(({ valueType }) => valueType === 'snils') &&
       'СНИЛС в value — строка из 11 цифр с ведущими нулями, допустимы пробелы и дефисы между цифрами. Подпись реквизита оставь только в цитате. При неполном номере не восстанавливай цифры.',
-    (keys.has('inn') ||
-      keys.has('snils') ||
-      fields.some(
-        ({ key }) =>
-          isCalendarDateField(key) ||
-          key === 'cashOnHand' ||
-          key === 'debtTotal',
-      )) &&
+    fields.some(
+      ({ valueType }) =>
+        valueType === 'inn' ||
+        valueType === 'snils' ||
+        valueType === 'date' ||
+        valueType === 'money',
+    ) &&
       'Для автоматического заполнения ИНН и СНИЛС должника, дат и сумм в отдельных полях нужна текстовая цитата (imagePath=null), в которой прямо указан полный номер, дата или сумма.',
     keys.has('citizenship') &&
       'Название «Паспорт гражданина Российской Федерации» либо заголовок «Российская Федерация» вместе с паспортными полями фамилии, имени и места рождения — прямое документальное подтверждение гражданства России. Приведи дословную цитату из распознанного текста паспорта (imagePath=null). Если схема ответа содержит origin, укажи origin: document.',
-    fields.some(({ key, columns }) =>
+    fields.some(({ columns }) =>
       columns.some(
-        ({ key: column }) =>
-          isRublesColumn(key, column) ||
-          column === 'inn' ||
-          (key === 'valuables' && column === 'amount'),
+        ({ valueType }) => valueType === 'money' || valueType === 'inn',
       ),
     ) &&
       'Для автоматического заполнения сумм и ИНН в обычной таблице процитируй значение и опознавательные колонки (например, название и основание) в одной строке текстовой цитаты (imagePath=null). Для банковских обязательств и занятости следуй их отдельным правилам. В valuables сохраняй валюту источника.',

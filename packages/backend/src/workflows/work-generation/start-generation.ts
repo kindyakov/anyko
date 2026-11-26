@@ -2,7 +2,6 @@ import {
   hasSubmittedAttachments,
   submittedAttachmentRows,
 } from '@anyko/document-values/attachments';
-import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
 
 import type { AuditModule } from '../../modules/audit';
 import type { ConnectionsModule } from '../../modules/connections';
@@ -10,7 +9,6 @@ import type { ResourceLocks } from '../../modules/documents';
 import type { FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
-import { requirePackage } from '../../modules/templates';
 import { WorkError, type WorksModule } from '../../modules/works';
 import type { Clock } from '../../platform/clock';
 import type { WorkId } from '../../platform/ids';
@@ -18,10 +16,12 @@ import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
 import { changeWork } from '../change-work';
 import { workCommandPolicy } from '../work-command-guards';
+import type { ResolveWorkPackage } from '../work-package';
 
 // Старт генерации: снимок сведений, результат, запуск и журнал в одной транзакции. Исполнение — в worker.
 export const startGeneration =
   (deps: {
+    resolvePackage: ResolveWorkPackage;
     uow: UnitOfWork;
     clock: Clock;
     works: WorksModule;
@@ -52,25 +52,26 @@ export const startGeneration =
             .in(tx)
             .internal.configuration(scope.workspaceId);
           const facts = deps.facts.in(tx);
+          const { description: pack } = deps.resolvePackage(
+            work.packageVersion,
+          );
           const { values, needsReview } = await facts.queries.get(
             scope,
             input.workId,
+            pack.fields,
           );
           if (needsReview?.length) throw new WorkError('NOT_READY');
-          const pack = requirePackage(work.packageVersion);
           if (hasSubmittedAttachments(pack.fields))
             values.submittedAttachments = submittedAttachmentRows(
               values.submittedAttachments,
               new Set(
                 documents.filter(({ deleted }) => !deleted).map(({ id }) => id),
               ),
+              pack.attachments ?? [],
             );
           const confirmed = work.confirmedRevision === work.revision;
           let revision = work.revision;
-          if (
-            isDatedBankruptcyPackage(work.packageVersion) &&
-            values.documentDate === null
-          ) {
+          if (pack.defaultDocumentDate && values.documentDate === null) {
             const date = deps.clock
               .now()
               .toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });

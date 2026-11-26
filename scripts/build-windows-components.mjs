@@ -13,6 +13,7 @@ for (const [app, entry] of [
   ['api', 'apps/api/src/index.ts'],
   ['worker', 'apps/worker/src/index.ts'],
   ['provision-access', 'scripts/provision-local.ts'],
+  ['publish-packages', 'scripts/publish-packages.ts'],
   ['prepare-storage', 'scripts/prepare-storage.ts'],
   ['template-probe', 'packages/backend/tests/portable-template-probe.ts'],
 ]) {

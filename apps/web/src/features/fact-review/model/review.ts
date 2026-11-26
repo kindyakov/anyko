@@ -17,7 +17,6 @@ import {
   isBankObligation,
   obligationFields,
 } from '@anyko/document-values/obligations';
-import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
 import { comparableText } from '@anyko/document-values/text-value';
 
 import { sameFieldValue } from './field-value';
@@ -116,7 +115,7 @@ export function reviewFields(
         (field.key === 'familyDetails' &&
           typeof current === 'string' &&
           familyStatementNeedsReview(current)) ||
-        (isDatedBankruptcyPackage(view.package.version) &&
+        (view.package.defaultDocumentDate &&
           statementDefaultValue(values, field.key) !== undefined) ||
         (view.facts.values[field.key] == null && candidates.length > 0),
     };

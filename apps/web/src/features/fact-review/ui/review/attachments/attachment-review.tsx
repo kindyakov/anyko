@@ -6,6 +6,7 @@ import { useState } from 'react';
 import type { FieldRow, FieldValue } from '@anyko/contracts/catalog';
 import type { WorkView } from '@anyko/contracts/works';
 import {
+  type PackageAttachment,
   packageAttachments,
   submittedAttachmentRows,
 } from '@anyko/document-values/attachments';
@@ -24,6 +25,7 @@ const sectionTitle =
   'text-muted mb-2 text-xs font-semibold tracking-wide uppercase';
 
 export function AttachmentReview({
+  attachments = packageAttachments,
   documents,
   candidates,
   value,
@@ -31,6 +33,7 @@ export function AttachmentReview({
   onChange,
   onOpen,
 }: {
+  attachments?: readonly PackageAttachment[] | undefined;
   documents: WorkView['documents'];
   candidates: WorkView['facts']['candidates'];
   value: FieldValue | undefined;
@@ -44,6 +47,7 @@ export function AttachmentReview({
   const selected = submittedAttachmentRows(
     value,
     new Set(documents.map(({ id }) => id)),
+    attachments,
   );
   const suggestions = attachmentSuggestions(candidates);
   const save = (documentId: string, row: FieldRow | null) => {
@@ -89,7 +93,7 @@ export function AttachmentReview({
           <section>
             <h3 className={sectionTitle}>Пункты комплекта</h3>
             <ul className="grid gap-2">
-              {packageAttachments.map(
+              {attachments.map(
                 ({ documentId, description, category, originalOnly }) => (
                   <li
                     key={documentId}

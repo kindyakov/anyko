@@ -5,9 +5,9 @@ import {
   analysisDiscrepancySchema,
   analysisMissingFieldSchema,
   analysisProposalFeedbackSchema,
-} from '../../../profiles/bfl/analysis-discrepancy';
-import { candidateSchema } from '../../../profiles/bfl/candidate';
-import { fieldKeySchema } from '../../../profiles/bfl/fields';
+} from '../../../profiles/analysis-discrepancy';
+import { candidateSchema } from '../../../profiles/candidate';
+import { fieldKeySchema } from '../../../profiles/fields';
 
 const workStepSchema = z.object({
   id: z.uuid(),
@@ -101,6 +101,7 @@ export const stepOutputSchema = z
   .object({
     version: z.literal(1),
     sourceDigest: z.string().default(''),
+    stageRevision: z.string().min(1).optional(),
     visuals: z
       .array(
         z.object({
@@ -120,6 +121,9 @@ export const stepOutputSchema = z
   })
   .strict();
 export type StepOutput = z.infer<typeof stepOutputSchema>;
+export type CachedWorkStep =
+  | { stage: 'vision'; sourceDigest: string }
+  | { stage: 'extraction'; sourceDigest: string; stageRevision: string };
 
 export interface WorkRunSnapshot {
   id: string;
@@ -183,8 +187,7 @@ export interface WorkProcessingStore {
   cached(
     run: WorkRunSnapshot,
     documentId: string,
-    stage: 'vision' | 'extraction',
-    sourceDigest: string,
+    key: CachedWorkStep,
   ): Promise<StepOutput | null>;
   sourceVisuals(
     workspaceId: string,

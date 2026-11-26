@@ -107,6 +107,7 @@ export function WorkReview({
           )}
           {hasSubmittedAttachments(view.package.fields) && (
             <AttachmentReview
+              attachments={view.package.attachments}
               documents={view.documents}
               candidates={view.facts.candidates}
               value={values.submittedAttachments}

@@ -5,8 +5,10 @@ import type { FactsModule } from '../../modules/facts';
 import type { ProcessingModule } from '../../modules/processing';
 import type { WorksModule, WorkSourceAttachment } from '../../modules/works';
 import type { Tx, UnitOfWork } from '../../platform/transactions';
+import type { ResolveWorkPackage } from '../work-package';
 
 export interface WorkIntakeDeps {
+  resolvePackage: ResolveWorkPackage;
   uow: UnitOfWork;
   works: WorksModule;
   processing: ProcessingModule;

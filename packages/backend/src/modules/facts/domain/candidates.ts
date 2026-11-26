@@ -1,4 +1,19 @@
+import {
+  type FieldDefinition,
+  packageValuesSchema,
+} from '../../../profiles/fields';
 import { factsSchema, type WorkFacts } from '../schemas';
+
+export function selectPackageCandidates(
+  candidates: WorkFacts['candidates'],
+  fields: readonly FieldDefinition[],
+) {
+  const accepts = packageValuesSchema(fields);
+  return candidates.filter(
+    ({ field, value }) =>
+      value !== null && accepts.safeParse({ [field]: value }).success,
+  );
+}
 
 export function candidatesForContext(
   raw: WorkFacts['candidates'],

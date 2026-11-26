@@ -5,8 +5,8 @@ import {
 
 import type { WorkFacts } from '../../modules/facts';
 import type { ChecklistItem } from '../../modules/works';
-import { evidencedContract } from '../../profiles/bfl/automatic-value';
-import type { FieldRow } from '../../profiles/bfl/fields';
+import type { FactPolicy } from '../../profiles/fact-policy';
+import type { FieldRow } from '../../profiles/fields';
 
 type ChecklistWithContracts = ChecklistItem & {
   contracts?: {
@@ -21,7 +21,9 @@ type ChecklistWithContracts = ChecklistItem & {
 export function checklistWithContracts(
   checklist: ChecklistItem[],
   facts: WorkFacts,
+  obligations: FactPolicy['obligations'],
 ): ChecklistWithContracts[] {
+  if (!obligations) return checklist;
   return checklist.map((item) => {
     if (item.key !== 'debt-certificate') return item;
     const contracts: FieldRow[] = [];
@@ -53,7 +55,7 @@ export function checklistWithContracts(
           (entry) => entry.documentId === documentId,
         );
         return value.flatMap((row) => {
-          const contract = evidencedContract(quotes, row);
+          const contract = obligations.evidencedContract(quotes, row);
           if (!contract) return [];
           add(contract.identity);
           return [{ documentId, row: contract.identity }];

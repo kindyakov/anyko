@@ -74,7 +74,7 @@ export function inventorySections(
   values: Values,
   fields: readonly { key: string; columns?: readonly { key: string }[] }[] = [],
 ) {
-  if (version !== 'bfl-inventory-v2') return undefined;
+  if (version !== 'inventory') return undefined;
   const includeCadastralNumber = fields.some(
     ({ key, columns }) =>
       key === 'realEstate' && columns?.some(({ key }) => key === 'identifier'),

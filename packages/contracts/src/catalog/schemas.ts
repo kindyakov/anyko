@@ -50,6 +50,13 @@ export const documentTemplateSchema = z.object({
     })
     .optional(),
   blocks: z.array(previewBlockSchema),
+  filling: z
+    .object({
+      functionId: z.literal('bfl-v1'),
+      layout: z.enum(['statement', 'inventory', 'creditors']),
+      splitAttachments: z.boolean().optional(),
+    })
+    .optional(),
   placeholders: z
     .array(
       z.union([
@@ -72,13 +79,26 @@ export const documentPackageSchema = z.object({
   version: z.string(),
   title: z.string(),
   technical: z.boolean(),
+  defaultDocumentDate: z.boolean().optional(),
+  attachments: z
+    .array(
+      z.object({
+        documentId: z.string().regex(/^package:[a-z-]+$/u),
+        description: z.string().min(1),
+        category: z.string().min(1),
+        originalOnly: z.boolean(),
+      }),
+    )
+    .optional(),
   fields: z.array(
     z.object({
       key: fieldKeySchema,
       label: z.string(),
       multiline: z.boolean(),
       kind: z.enum(['text', 'rows']),
-      valueType: z.enum(['date', 'money']).optional(),
+      valueType: z
+        .enum(['inn', 'snils', 'passport', 'address', 'date', 'money'])
+        .optional(),
       limits: z.object({
         maxLength: z.number().int().positive().optional(),
         maxRows: z.number().int().positive().optional(),

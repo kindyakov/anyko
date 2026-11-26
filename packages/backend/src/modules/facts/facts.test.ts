@@ -1,16 +1,66 @@
 import { expect, test } from 'bun:test';
 
+import { bflFactPolicy } from '../../profiles/bfl/fact-policy';
+import { fieldDefinitions } from '../../profiles/bfl/fields';
+
 import {
-  confirmFacts,
-  editFacts,
-  emptyFacts,
-  findFactDiscrepancies,
-  markSelectedCandidates,
-  mergeCandidates,
+  confirmFacts as confirmFactsGeneric,
+  editFacts as editFactsGeneric,
+  emptyFacts as emptyFactsGeneric,
+  findFactDiscrepancies as findFactDiscrepanciesGeneric,
+  markSelectedCandidates as markSelectedCandidatesGeneric,
+  mergeCandidates as mergeCandidatesGeneric,
 } from './domain/values';
 import type { WorkFacts } from './schemas';
 
-import { type FactEvidence, refreshFactEvidence } from './index';
+import {
+  type FactEvidence,
+  refreshFactEvidence as refreshFactEvidenceGeneric,
+} from './index';
+
+const emptyFacts = () => emptyFactsGeneric(fieldDefinitions);
+const confirmFacts = (facts: WorkFacts) =>
+  confirmFactsGeneric(facts, fieldDefinitions);
+const editFacts = (
+  facts: WorkFacts,
+  values: Parameters<typeof editFactsGeneric>[1],
+) => editFactsGeneric(facts, values, fieldDefinitions, bflFactPolicy);
+const findFactDiscrepancies = (facts: WorkFacts) =>
+  findFactDiscrepanciesGeneric(facts, fieldDefinitions, bflFactPolicy);
+const markSelectedCandidates = (facts: WorkFacts) =>
+  markSelectedCandidatesGeneric(facts, fieldDefinitions, bflFactPolicy);
+const refreshFactEvidence = (
+  facts: WorkFacts,
+  refresh: Parameters<typeof refreshFactEvidenceGeneric>[1],
+) =>
+  refreshFactEvidenceGeneric(facts, refresh, fieldDefinitions, bflFactPolicy);
+const mergeCandidates = (
+  ...args: Parameters<typeof mergeCandidatesGeneric>
+) => {
+  const [
+    facts,
+    candidates,
+    confirmed,
+    preserve,
+    excluded,
+    passports,
+    checks,
+    texts,
+    fields = fieldDefinitions,
+  ] = args;
+  return mergeCandidatesGeneric(
+    facts,
+    candidates,
+    confirmed,
+    preserve,
+    excluded,
+    passports,
+    checks,
+    texts,
+    fields,
+    bflFactPolicy,
+  );
+};
 
 const candidate = (value: string): WorkFacts['candidates'][number] => ({
   field: 'personName',

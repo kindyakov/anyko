@@ -1,9 +1,8 @@
 import { z } from 'zod';
 
-import { creditorRegistryColumns } from '@anyko/document-values/obligations';
-
-import { candidateSchema } from '../../../profiles/bfl/candidate';
-import type { FieldDefinition, FieldValue } from '../../../profiles/bfl/fields';
+import type { AgentPolicy } from '../../../profiles/agent-policy';
+import { candidateSchema } from '../../../profiles/candidate';
+import type { FieldDefinition, FieldValue } from '../../../profiles/fields';
 
 const evidenceEntry = candidateSchema.shape.evidence.element;
 const unpagedEvidence = evidenceEntry.omit({ page: true }).extend({
@@ -20,13 +19,16 @@ const evidence = z
   .min(1)
   .max(12);
 
-export function modelFields(fields: readonly FieldDefinition[]) {
+export function modelFields(
+  fields: readonly FieldDefinition[],
+  policy: AgentPolicy['modelFields'],
+) {
   return fields
-    .filter(({ key }) => key !== 'submittedAttachments')
+    .filter(({ key }) => !policy?.serverFields.includes(key))
     .map((field) => ({
       ...field,
       columns: field.columns.filter(
-        ({ key }) => !Object.hasOwn(creditorRegistryColumns, key),
+        ({ key }) => !policy?.serverColumns.includes(key),
       ),
     }));
 }

@@ -1,14 +1,13 @@
 import { z } from 'zod';
 
 import { calendarDatePlaceholders } from '@anyko/document-values/calendar-date';
-import { inventorySectionKeys } from '@anyko/document-values/inventory-layout';
 import { moneyPlaceholders } from '@anyko/document-values/money';
-
 import {
-  fieldKeySchema,
-  isCalendarDateField,
-  isRublesField,
-} from '../../profiles/bfl/fields';
+  isTemplateFilling,
+  type TemplateFilling,
+} from '@anyko/document-values/template-filling';
+
+import { columnKeySchema, fieldKeySchema, valueTypeSchema } from './fields';
 
 const paragraph = z.object({
   text: z.string(),
@@ -31,7 +30,7 @@ const cell = z.object({
   merge: z.enum(['none', 'start', 'continue']),
 });
 const row = z.object({
-  repeat: z.union([fieldKeySchema, z.enum(inventorySectionKeys)]).nullable(),
+  repeat: fieldKeySchema.nullable(),
   cells: z.array(cell),
 });
 const block = z.discriminatedUnion('kind', [
@@ -46,15 +45,15 @@ const block = z.discriminatedUnion('kind', [
 const bindingKey = z
   .string()
   .regex(/^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*$/);
-export const templatePlaceholderSchema = z.discriminatedUnion('placeholder', [
+const templatePlaceholderSchema = z.discriminatedUnion('placeholder', [
   z.object({
     tag: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/),
-    field: fieldKeySchema.refine(isCalendarDateField),
+    field: fieldKeySchema,
     placeholder: z.enum(calendarDatePlaceholders),
   }),
   z.object({
     tag: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/),
-    field: fieldKeySchema.refine(isRublesField),
+    field: fieldKeySchema,
     placeholder: z.enum(moneyPlaceholders),
   }),
   z
@@ -65,7 +64,6 @@ export const templatePlaceholderSchema = z.discriminatedUnion('placeholder', [
     })
     .refine(({ tag, field }) => tag === field),
 ]);
-export type TemplatePlaceholder = z.infer<typeof templatePlaceholderSchema>;
 const document = z.object({
   id: z.string(),
   version: z.string(),
@@ -82,28 +80,46 @@ const document = z.object({
     .optional(),
   blocks: z.array(block),
   placeholders: z.array(templatePlaceholderSchema).optional(),
+  filling: z.custom<TemplateFilling>(isTemplateFilling).optional(),
 });
 export const documentPackageSchema = z.object({
   id: z.string(),
   version: z.string(),
   title: z.string(),
   technical: z.boolean(),
+  defaultDocumentDate: z.boolean().optional(),
+  attachments: z
+    .array(
+      z.object({
+        documentId: z.string().regex(/^package:[a-z-]+$/u),
+        description: z.string().min(1),
+        category: z.string().min(1),
+        originalOnly: z.boolean(),
+      }),
+    )
+    .optional(),
   fields: z.array(
     z.object({
       key: fieldKeySchema,
       label: z.string(),
       multiline: z.boolean(),
       kind: z.enum(['text', 'rows']),
-      valueType: z.enum(['date', 'money']).optional(),
+      valueType: valueTypeSchema.optional(),
+      innLength: z.literal(12).optional(),
+      role: z.string().min(1).optional(),
       limits: z.object({
         maxLength: z.number().int().positive().optional(),
         maxRows: z.number().int().positive().optional(),
       }),
       columns: z.array(
         z.object({
-          key: z.string(),
+          key: columnKeySchema,
           label: z.string(),
           maxLength: z.number().int().positive(),
+          valueType: valueTypeSchema.optional(),
+          innLength: z.literal(12).optional(),
+          moneyFormat: z.literal('sourceCurrency').optional(),
+          evidence: z.enum(['row', 'sourceCurrency']).optional(),
         }),
       ),
     }),

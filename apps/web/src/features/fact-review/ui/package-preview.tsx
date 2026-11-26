@@ -10,13 +10,10 @@ import {
   type FieldValues,
 } from '@anyko/contracts/catalog';
 import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
-import { omittedStatementAttachments } from '@anyko/document-values/statement-layout';
+import { prepareTemplate } from '@anyko/document-values/template-filling';
 import { Button, Disclosure } from '@anyko/ui';
 
-import {
-  mentions,
-  previewStatementValues,
-} from '@/features/fact-review/model/preview';
+import { mentions } from '@/features/fact-review/model/preview';
 
 import { PreviewPaper } from './preview/preview-paper';
 import { FieldEditor } from './work-fields';
@@ -132,16 +129,13 @@ export function PackagePreview(props: Props) {
   const zoomIndex = zooms.findIndex((item) => item.value === scale);
   const zoomClass = zooms[zoomIndex]?.className ?? '';
   const focusedField = pack.fields.find(({ key }) => key === focusKey);
-  const paperValues = previewStatementValues(
-    pack,
-    document.id,
+  const prepared = prepareTemplate(
+    { ...document, fields: pack.fields, attachments: pack.attachments },
     values,
-    needsReview,
+    { referenceDate: new Date().toISOString().slice(0, 10), needsReview },
   );
-  const omittedAttachments = omittedStatementAttachments(
-    document.version,
-    values,
-  );
+  const { omittedAttachments } = prepared;
+  const paperValues: FieldValues = { ...values, ...prepared.sro };
   return (
     <Tabs.Root
       value={document.version}
@@ -251,6 +245,7 @@ export function PackagePreview(props: Props) {
               pack={pack}
               document={document}
               values={paperValues}
+              prepared={prepared}
               disabled={disabled}
               onChange={onChange}
             />

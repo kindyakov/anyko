@@ -3,13 +3,11 @@ import { expect, test } from 'bun:test';
 import PizZip from 'pizzip';
 
 import { generateDocument } from '../src/modules/generation';
-import {
-  availablePackages,
-  requirePackage,
-  templateBytes,
-  templateData,
-} from '../src/modules/templates';
 import { emptyFieldValues } from '../src/profiles/bfl/fields';
+import { createProcessingProfiles } from '../src/runtime/processing-profiles';
+import { requirePackage, templateBytes } from '../src/runtime/template-assets';
+
+import { templateData } from './helpers/template-data';
 
 test('the cadastral field is enabled only for new-package facts and inventory', () => {
   const archived = requirePackage('bfl-bankruptcy-v12');
@@ -57,7 +55,7 @@ test('the cadastral field is enabled only for new-package facts and inventory', 
 
 test('the pagination release keeps v13 pinned and renders v14 layout rules', () => {
   const archived = requirePackage('bfl-bankruptcy-v13');
-  const current = availablePackages()[0];
+  const current = createProcessingProfiles(false).available()[0];
   expect(current?.version).toBe('bfl-bankruptcy-v14');
   if (!current) throw new Error('Missing current package');
   expect(
@@ -151,8 +149,6 @@ test('the revised statement uses lowercase passport label and terminates each at
   const statement = pack.documents.find(({ id }) => id === 'statement');
   if (!statement) throw new Error('Missing statement');
   expect(statement.version).toBe('bfl-statement-v11');
-  const archived = requirePackage('bfl-bankruptcy-v11');
-  expect(archived.documents[0]?.version).toBe('bfl-statement-v10');
 
   const values = {
     ...emptyFieldValues(),

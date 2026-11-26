@@ -1,13 +1,21 @@
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
-import type { FieldKey, FieldValues } from '../../profiles/bfl/fields';
+import type { FactPolicy } from '../../profiles/fact-policy';
+import type {
+  FieldDefinition,
+  FieldKey,
+  FieldValues,
+} from '../../profiles/fields';
 
 import type { RunProposals } from './application/project-run-facts';
 import type { FactEvidence } from './domain/values';
 import type { WorkFacts } from './schemas';
 
-export { candidatesForContext } from './domain/candidates';
+export {
+  candidatesForContext,
+  selectPackageCandidates,
+} from './domain/candidates';
 export {
   emptyFacts,
   findFactDiscrepancies,
@@ -48,14 +56,28 @@ interface FactsCommands {
   ): Promise<AcceptedRunCandidates>;
   edit(
     scope: WorkspaceScope,
-    input: { workId: WorkId; values: Partial<FieldValues> },
+    input: {
+      workId: WorkId;
+      values: Partial<FieldValues>;
+      fields: readonly FieldDefinition[];
+    },
   ): Promise<{ before: FieldValues; after: FieldValues }>;
-  confirm(scope: WorkspaceScope, input: { workId: WorkId }): Promise<void>;
+  confirm(
+    scope: WorkspaceScope,
+    input: { workId: WorkId; fields: readonly FieldDefinition[] },
+  ): Promise<void>;
 }
 // Запросы внутренние: право или действующий запуск проверяет вызывающий сценарий.
 interface FactsQueries {
-  forAnalysis(input: AnalysisFactsRef): Promise<WorkFacts>;
-  get(scope: WorkspaceScope, workId: WorkId): Promise<WorkFacts>;
+  forAnalysis(
+    input: AnalysisFactsRef,
+    fields: readonly FieldDefinition[],
+  ): Promise<WorkFacts>;
+  get(
+    scope: WorkspaceScope,
+    workId: WorkId,
+    fields: readonly FieldDefinition[],
+  ): Promise<WorkFacts>;
 }
 // Фасад сведений. Правка и подтверждение меняют только сведения; ревизию работы меняет сценарий
 // (workflows/work-review), потому что ревизия принадлежит works. Права works.edit проверяет команда.
@@ -68,6 +90,7 @@ export interface FactsPorts {
       workspaceId: string,
       workId: string,
       documentId: string,
+      fields: readonly FieldDefinition[],
     ): Promise<void>;
     defaultDocumentDate(
       workspaceId: string,
@@ -78,6 +101,8 @@ export interface FactsPorts {
       workspaceId: string,
       workId: string,
       refresh: (evidence: FactEvidence) => FactEvidence | null,
+      fields: readonly FieldDefinition[],
+      factPolicy?: FactPolicy,
     ): Promise<WorkFacts>;
   };
 }
@@ -85,4 +110,4 @@ export interface FactsModule extends FactsPorts {
   in(tx: Tx): FactsPorts;
 }
 
-export type { FieldValues } from '../../profiles/bfl/fields';
+export type { FieldValues } from '../../profiles/fields';

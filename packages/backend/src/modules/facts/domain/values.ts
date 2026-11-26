@@ -1,5 +1,3 @@
-import { formatPreviousNames } from '@anyko/document-values/bankruptcy-projection';
-import { canonicalCalendarDate } from '@anyko/document-values/calendar-date';
 import { canonicalMoneyAmount } from '@anyko/document-values/money';
 import {
   containsCreditorRegistryCandidate,
@@ -8,39 +6,44 @@ import {
 } from '@anyko/document-values/obligations';
 import { comparableText } from '@anyko/document-values/text-value';
 
+import type { FactSourceText } from '../../../profiles/agent-policy';
+import type { FactPolicy, SourceChecks } from '../../../profiles/fact-policy';
+import type {
+  FieldDefinition,
+  FieldRow,
+  FieldValue,
+  FieldValues,
+} from '../../../profiles/fields';
 import {
-  automaticValue,
-  type debtSourceChecks,
-  type FactSourceText,
-  valueWithRemainingEvidence,
-} from '../../../profiles/bfl/automatic-value';
-import {
-  emptyFieldValues,
-  fieldDefinitions,
-  fieldIdentity,
-  type FieldRow,
-  type FieldValue,
-  type FieldValues,
-  isCalendarDateField,
-  isRublesColumn,
-  isRublesField,
-  readFieldValues,
-} from '../../../profiles/bfl/fields';
-import { isKnownObligationType } from '../../../profiles/bfl/obligation-type';
-import {
-  containsObligations,
-  fillsObligationType,
-  hasUnknownObligationType,
-  reconcileObligations,
-  supersedesObligation,
-  usesBankObligations,
-} from '../../../profiles/bfl/reconcile-obligations';
+  canonicalScalar,
+  isRubles,
+  typedEvidence,
+} from '../../../profiles/value-types';
 import { factsSchema, type WorkFacts } from '../schemas';
 
-export function emptyFacts(): WorkFacts {
+export function packageFacts(
+  current: WorkFacts,
+  fields: readonly FieldDefinition[],
+): WorkFacts {
+  const keys = new Set(fields.map(({ key }) => key));
+  return {
+    ...current,
+    values: Object.fromEntries(
+      fields.map(({ key }) => [key, current.values[key] ?? null]),
+    ),
+    manual: current.manual.filter((key) => keys.has(key)),
+    confirmed: current.confirmed.filter((key) => keys.has(key)),
+    ...(current.needsReview && {
+      needsReview: current.needsReview.filter((key) => keys.has(key)),
+    }),
+    candidates: current.candidates.filter(({ field }) => keys.has(field)),
+  };
+}
+
+export function emptyFacts(fields: readonly FieldDefinition[]): WorkFacts {
   return {
     version: 1,
-    values: emptyFieldValues(),
+    values: Object.fromEntries(fields.map(({ key }) => [key, null])),
     manual: [],
     confirmed: [],
     candidates: [],
@@ -54,12 +57,16 @@ export function mergeCandidates(
   preserveExisting = false,
   excludedFields?: ReadonlySet<Candidate['field']>,
   passportIds?: ReadonlySet<string>,
-  sourceChecks?: ReturnType<typeof debtSourceChecks>,
+  sourceChecks?: SourceChecks,
   sourceTexts?: readonly FactSourceText[],
+  fields: readonly FieldDefinition[] = [],
+  policy: FactPolicy = {},
 ): WorkFacts {
   const values = { ...current.values };
   const confirmedFields = new Set(current.confirmed);
-  for (const { key } of fieldDefinitions) {
+  const obligations = policy.obligations;
+  for (const definition of fields) {
+    const { key } = definition;
     if (excludedFields?.has(key)) continue;
     const saved = values[key] ?? null;
     const isConfirmed = confirmed || confirmedFields.has(key);
@@ -71,8 +78,8 @@ export function mergeCandidates(
       continue;
     const proposals = candidates.filter((candidate) => candidate.field === key);
     const found = proposals.filter(({ origin }) => origin !== 'inference');
-    if (usesBankObligations(key, [saved, ...found.map(({ value }) => value)])) {
-      const { value: proposed, missingCurrentBalance } = reconcileObligations(
+    if (obligations?.uses(key, [saved, ...found.map(({ value }) => value)])) {
+      const { value: proposed, missingCurrentBalance } = obligations.reconcile(
         saved,
         found,
         sourceChecks,
@@ -86,8 +93,8 @@ export function mergeCandidates(
                   (row) =>
                     sameObligation(old, row) &&
                     (sourceChecks?.hasNewerBalance(old) ||
-                      supersedesObligation(row, old) ||
-                      fillsObligationType(row, old)),
+                      obligations.supersedes(row, old) ||
+                      obligations.fillsType(row, old)),
                 ) ?? old)
               : old,
           ),
@@ -105,22 +112,35 @@ export function mergeCandidates(
     if (!found.length && proposals.length) continue;
     const supported = found
       .map((candidate) => ({
-        value: automaticValue(candidate, { sources: sourceTexts }),
+        value: automaticValue(policy, candidate, {
+          sources: sourceTexts,
+          definition,
+        }),
         evidence: candidate.evidence,
       }))
       .filter(({ value }) => value !== null);
     const proposed =
-      key === 'employmentIncome' && ambiguousIncome(supported)
+      key === policy.employmentIncomeField && ambiguousIncome(supported)
         ? null
         : reconcile(
-            key,
+            policy,
+            definition,
             supported.map(({ value }) => value),
           );
-    const passport = preferredPassportValue(key, proposed, found, passportIds);
+    const passport = preferredPassportValue(
+      definition,
+      proposed,
+      found,
+      passportIds,
+      policy,
+    );
     if (preserveExisting && saved !== null) {
       if (Array.isArray(saved) && Array.isArray(proposed))
-        values[key] = reconcile(key, [saved, proposed]) ?? saved;
-      if (passport !== undefined && includesFactValue(key, saved, passport))
+        values[key] = reconcile(policy, definition, [saved, proposed]) ?? saved;
+      if (
+        passport !== undefined &&
+        includesFactValue(policy, definition, saved, passport)
+      )
         values[key] = passport;
       continue;
     }
@@ -136,17 +156,18 @@ export function mergeCandidates(
 }
 
 function preferredPassportValue(
-  key: string,
+  definition: FieldDefinition,
   proposed: FieldValue,
   candidates: WorkFacts['candidates'],
   passportIds: ReadonlySet<string> | undefined,
+  policy: FactPolicy,
 ) {
   if (
     !passportIds?.size ||
     typeof proposed !== 'string' ||
-    key === 'previousNames' ||
-    isCalendarDateField(key) ||
-    isRublesField(key)
+    definition.key === policy.previousNamesField ||
+    definition.valueType === 'date' ||
+    definition.valueType === 'money'
   )
     return undefined;
   for (const candidate of candidates) {
@@ -155,19 +176,29 @@ function preferredPassportValue(
       !candidate.evidence.some(({ documentId }) => passportIds.has(documentId))
     )
       continue;
-    const value = automaticValue(candidate);
-    if (typeof value === 'string' && includesFactValue(key, proposed, value))
+    const value = automaticValue(policy, candidate, { definition });
+    if (
+      typeof value === 'string' &&
+      includesFactValue(policy, definition, proposed, value)
+    )
       return value;
   }
   return undefined;
 }
 
 /** Расхождения определяются по сохранённым сведениям и сведённым кандидатам. */
-export function findFactDiscrepancies(current: WorkFacts) {
-  return fieldDefinitions
-    .filter(({ key }) => {
+export function findFactDiscrepancies(
+  current: WorkFacts,
+  fields: readonly FieldDefinition[],
+  policy: FactPolicy = {},
+) {
+  const obligations = policy.obligations;
+  return fields
+    .filter((definition) => {
+      const { key } = definition;
       const candidates = current.candidates.filter(
-        (c) => c.field === key && reconcile(key, [c.value]) !== null,
+        (c) =>
+          c.field === key && reconcile(policy, definition, [c.value]) !== null,
       );
       if (!candidates.length) return false;
       const saved = current.values[key] ?? null;
@@ -185,119 +216,164 @@ export function findFactDiscrepancies(current: WorkFacts) {
         return true;
       if (!documentCandidates.length) return false;
       if (
-        usesBankObligations(key, [
-          saved,
-          ...candidates.map(({ value }) => value),
-        ])
+        obligations?.uses(key, [saved, ...candidates.map(({ value }) => value)])
       ) {
-        if (!current.confirmed.includes(key) && hasUnknownObligationType(saved))
+        if (
+          !current.confirmed.includes(key) &&
+          obligations.hasUnknownType(saved)
+        )
           return true;
         return documentCandidates.some(
-          (candidate) => !matchesObligationCandidate(saved, candidate),
+          (candidate) =>
+            !matchesObligationCandidate(saved, candidate, policy, obligations),
         );
       }
-      const original = reconcileCandidates(key, documentCandidates);
-      if (original === null && key !== 'citizenship') return true;
+      const original = reconcileCandidates(
+        policy,
+        definition,
+        documentCandidates,
+      );
+      if (original === null && key !== policy.citizenshipField) return true;
 
       const manual = current.manual.includes(key);
       if (manual && saved === null) return true;
       if (saved === null) return false;
 
-      const comparableSaved = comparableFactValue(key, reconcile(key, [saved]));
+      const comparableSaved = comparableFactValue(
+        policy,
+        key,
+        reconcile(policy, definition, [saved]),
+      );
       if (
-        comparableFactValue(key, original) === comparableSaved ||
+        comparableFactValue(policy, key, original) === comparableSaved ||
         candidates.some(
           ({ value }) =>
-            comparableFactValue(key, reconcile(key, [value])) ===
-            comparableSaved,
+            comparableFactValue(
+              policy,
+              key,
+              reconcile(policy, definition, [value]),
+            ) === comparableSaved,
         )
       )
         return false;
       const automatic = reconcileCandidates(
-        key,
+        policy,
+        definition,
         documentCandidates,
-        automaticValue,
+        (candidate) => automaticValue(policy, candidate, { definition }),
       );
-      return comparableFactValue(key, automatic) !== comparableSaved;
+      return comparableFactValue(policy, key, automatic) !== comparableSaved;
     })
     .map(({ key }) => key);
 }
 
-export function markSelectedCandidates({
-  values,
-  candidates,
-  needsReview,
-}: WorkFacts) {
+export function markSelectedCandidates(
+  { values, candidates, needsReview }: WorkFacts,
+  fields: readonly FieldDefinition[],
+  policy: FactPolicy = {},
+) {
+  const obligations = policy.obligations;
+  const definitions = new Map(fields.map((field) => [field.key, field]));
   return candidates.map((candidate) => {
     const { field, value } = candidate;
-    const saved = reconcile(field, [values[field] ?? null]);
+    const definition = definitions.get(field);
+    if (!definition) return { ...candidate, selected: false };
+    const saved = reconcile(policy, definition, [values[field] ?? null]);
     const selected =
       saved !== null &&
       !needsReview?.includes(field) &&
       (candidate.creditorSource
         ? containsCreditorRegistryCandidate(saved, value)
-        : usesBankObligations(field, [saved, value])
-          ? matchesObligationCandidate(saved, candidate)
-          : includesFactValue(field, saved, value) ||
+        : obligations?.uses(field, [saved, value])
+          ? matchesObligationCandidate(saved, candidate, policy, obligations)
+          : includesFactValue(policy, definition, saved, value) ||
             (candidate.origin !== 'inference' &&
-              (field === 'citizenship' ||
-                reconcile(field, [saved, value]) !== null) &&
-              includesFactValue(field, saved, automaticValue(candidate))));
+              (field === policy.citizenshipField ||
+                reconcile(policy, definition, [saved, value]) !== null) &&
+              includesFactValue(
+                policy,
+                definition,
+                saved,
+                automaticValue(policy, candidate, { definition }),
+              )));
     return { ...candidate, selected };
   });
 }
 
-function matchesObligationCandidate(saved: FieldValue, candidate: Candidate) {
-  const supported = automaticValue(candidate);
+function matchesObligationCandidate(
+  saved: FieldValue,
+  candidate: Candidate,
+  policy: FactPolicy,
+  obligations: NonNullable<FactPolicy['obligations']>,
+) {
+  const supported = automaticValue(policy, candidate);
   // A less precise model label cannot hide a conflict with the quoted type.
   if (
     Array.isArray(supported) &&
-    supported.some(({ type }) => isKnownObligationType(type))
+    supported.some(({ type }) => obligations.knownType(type))
   )
-    return containsObligations(saved, supported);
+    return obligations.contains(saved, supported);
   return (
-    containsObligations(saved, candidate.value) ||
-    containsObligations(saved, supported)
+    obligations.contains(saved, candidate.value) ||
+    obligations.contains(saved, supported)
   );
 }
 
 function includesFactValue(
-  key: string,
+  policy: FactPolicy,
+  definition: FieldDefinition,
   saved: FieldValue,
   proposed: FieldValue,
 ) {
+  const { key } = definition;
   if (!Array.isArray(saved) || !Array.isArray(proposed))
     return (
-      comparableFactValue(key, saved) ===
-      comparableFactValue(key, reconcile(key, [proposed]))
+      comparableFactValue(policy, key, saved) ===
+      comparableFactValue(
+        policy,
+        key,
+        reconcile(policy, definition, [proposed]),
+      )
     );
   return (
-    comparableFactValue(key, reconcile(key, [saved, proposed])) ===
-    comparableFactValue(key, saved)
+    comparableFactValue(
+      policy,
+      key,
+      reconcile(policy, definition, [saved, proposed]),
+    ) === comparableFactValue(policy, key, saved)
   );
 }
 
 function reconcileCandidates(
-  key: string,
+  policy: FactPolicy,
+  definition: FieldDefinition,
   candidates: WorkFacts['candidates'],
   valueOf: (candidate: WorkFacts['candidates'][number]) => FieldValue = (
     candidate,
   ) => candidate.value,
 ): FieldValue {
   return reconcile(
-    key,
+    policy,
+    definition,
     candidates.map((candidate) => valueOf(candidate)),
   );
 }
 
-function comparableScalar(key: string, value: string): string {
-  return comparableText(
-    key === 'previousNames' ? formatPreviousNames(value) : value,
-  );
+function comparableScalar(
+  policy: FactPolicy,
+  key: string,
+  value: string,
+): string {
+  return comparableText(policy.comparableText?.(key, value) ?? value);
 }
 
-function comparableFactValue(key: string, value: FieldValue): string {
-  if (typeof value === 'string') return stable(comparableScalar(key, value));
+function comparableFactValue(
+  policy: FactPolicy,
+  key: string,
+  value: FieldValue,
+): string {
+  if (typeof value === 'string')
+    return stable(comparableScalar(policy, key, value));
   return Array.isArray(value)
     ? JSON.stringify(value.map((row) => stable([row])).sort())
     : stable(value);
@@ -306,28 +382,34 @@ function comparableFactValue(key: string, value: FieldValue): string {
 export function editFacts(
   current: WorkFacts,
   values: Partial<FieldValues>,
+  fields: readonly FieldDefinition[],
+  policy: FactPolicy = {},
 ): WorkFacts {
   const manual = new Set(current.manual);
-  const next = readFieldValues({ ...current.values, ...values });
-  for (const { key } of fieldDefinitions) {
+  const next = { ...current.values };
+  for (const definition of fields) {
+    const { key } = definition;
     if (!Object.hasOwn(values, key)) continue;
     const previous = current.values[key] ?? null;
-    const value = next[key] ?? null;
+    const value = values[key] ?? null;
+    next[key] = value;
     if (
       typeof value === 'string' &&
-      (isCalendarDateField(key) || isRublesField(key))
+      (definition.valueType === 'date' || definition.valueType === 'money')
     ) {
-      const comparable = reconcile(key, [value]);
+      const comparable = reconcile(policy, definition, [value]);
       if (comparable !== null)
         next[key] =
-          comparable === reconcile(key, [previous]) ? previous : comparable;
+          comparable === reconcile(policy, definition, [previous])
+            ? previous
+            : comparable;
     }
     if (Array.isArray(value)) {
-      const normalized = value.map((row) => comparableRow(key, row));
+      const normalized = value.map((row) => comparableRow(definition, row));
       next[key] =
         Array.isArray(previous) &&
         stable(normalized) ===
-          stable(previous.map((row) => comparableRow(key, row)))
+          stable(previous.map((row) => comparableRow(definition, row)))
           ? previous
           : normalized;
     }
@@ -336,35 +418,75 @@ export function editFacts(
   return factsSchema.parse({ ...current, values: next, manual: [...manual] });
 }
 
-export function confirmFacts(current: WorkFacts): WorkFacts {
+export function confirmFacts(
+  current: WorkFacts,
+  fields: readonly FieldDefinition[],
+): WorkFacts {
   return factsSchema.parse({
     ...current,
-    confirmed: fieldDefinitions.map(({ key }) => key),
+    confirmed: fields.map(({ key }) => key),
     ...(current.needsReview && { needsReview: [] }),
   });
 }
 
 type Candidate = WorkFacts['candidates'][number];
+function automaticValue(
+  policy: FactPolicy,
+  candidate: Candidate,
+  context?: Parameters<NonNullable<FactPolicy['automaticValue']>>[1],
+) {
+  if (policy.automaticValue) return policy.automaticValue(candidate, context);
+  const { evidence, value } = candidate;
+  const definition = context?.definition;
+  const supported = (cell: string, matches: ReturnType<typeof typedEvidence>) =>
+    !matches ||
+    evidence.some(
+      ({ imagePath, quote }) => imagePath === null && matches(cell, quote),
+    );
+  if (typeof value === 'string' && !supported(value, typedEvidence(definition)))
+    return null;
+  if (
+    Array.isArray(value) &&
+    value.some((row) =>
+      definition?.columns.some((column) => {
+        const cell = row[column.key];
+        return (
+          typeof cell === 'string' && !supported(cell, typedEvidence(column))
+        );
+      }),
+    )
+  )
+    return null;
+  return value;
+}
 export type FactEvidence = Candidate['evidence'][number];
 
 function supportedParts(
-  field: Candidate['field'],
+  policy: FactPolicy,
+  definition: FieldDefinition,
   saved: FieldValue,
   candidates: Candidate[],
   reviewed: boolean,
   reduced?: ReadonlySet<Candidate>,
 ) {
   const proposals = candidates
-    .filter((candidate) => candidate.field === field)
+    .filter((candidate) => candidate.field === definition.key)
     .map((candidate) => {
-      if (reduced?.has(candidate)) return valueWithRemainingEvidence(candidate);
-      return reviewed ? candidate.value : automaticValue(candidate);
+      if (reduced?.has(candidate))
+        return policy.valueWithRemainingEvidence
+          ? policy.valueWithRemainingEvidence(candidate, definition)
+          : candidate.value;
+      return reviewed
+        ? candidate.value
+        : automaticValue(policy, candidate, { definition });
     });
   if (!Array.isArray(saved)) {
-    const comparable = reconcile(field, [saved]);
+    const comparable = reconcile(policy, definition, [saved]);
     return new Set(
       comparable !== null &&
-        proposals.some((value) => includesFactValue(field, comparable, value))
+        proposals.some((value) =>
+          includesFactValue(policy, definition, comparable, value),
+        )
         ? ['value']
         : [],
     );
@@ -376,9 +498,11 @@ function supportedParts(
         : [],
     );
   const rows = proposals.flatMap((value) =>
-    Array.isArray(value) ? value.map((row) => comparableRow(field, row)) : [],
+    Array.isArray(value)
+      ? value.map((row) => comparableRow(definition, row))
+      : [],
   );
-  const identity = fieldIdentity(field);
+  const identity = policy.identity?.(definition.key) ?? [];
   const rowKey = (row: FieldRow) => {
     const key = identity.map((column) => row[column]);
     return key.length && key.every((cell) => cell?.trim())
@@ -391,7 +515,7 @@ function supportedParts(
   };
   const supported = new Set<string>();
   for (const [index, original] of saved.entries()) {
-    const row = comparableRow(field, original);
+    const row = comparableRow(definition, original);
     const key = rowKey(row);
     const matching = rows.filter((candidate) =>
       isBankObligation(row)
@@ -411,7 +535,10 @@ function supportedParts(
 export function refreshFactEvidence(
   current: WorkFacts,
   refresh: (evidence: FactEvidence) => FactEvidence | null,
+  fields: readonly FieldDefinition[],
+  policy: FactPolicy = {},
 ): WorkFacts {
+  const definitions = new Map(fields.map((field) => [field.key, field]));
   const lost = new Set<Candidate['field']>();
   const reduced = new Set<Candidate>();
   const candidates = current.candidates.flatMap((candidate) => {
@@ -429,11 +556,25 @@ export function refreshFactEvidence(
   const needsReview = new Set(current.needsReview);
   for (const field of lost) {
     const value = current.values[field];
-    if (value === null) continue;
+    const definition = definitions.get(field);
+    if (value == null || !definition) continue;
     const reviewed =
       current.manual.includes(field) || current.confirmed.includes(field);
-    const before = supportedParts(field, value, current.candidates, reviewed);
-    const after = supportedParts(field, value, candidates, reviewed, reduced);
+    const before = supportedParts(
+      policy,
+      definition,
+      value,
+      current.candidates,
+      reviewed,
+    );
+    const after = supportedParts(
+      policy,
+      definition,
+      value,
+      candidates,
+      reviewed,
+      reduced,
+    );
     if ([...before].some((part) => !after.has(part))) needsReview.add(field);
   }
   return factsSchema.parse({
@@ -455,11 +596,12 @@ function stable(value: FieldValue): string {
     );
   return JSON.stringify(value);
 }
-function comparableRow(field: string, row: FieldRow): FieldRow {
+function comparableRow(definition: FieldDefinition, row: FieldRow): FieldRow {
   return Object.fromEntries(
     Object.entries(row).map(([column, value]) => [
       column,
-      value !== null && isRublesColumn(field, column)
+      value !== null &&
+      isRubles(definition.columns.find(({ key }) => key === column))
         ? (canonicalMoneyAmount(value) ?? value)
         : value,
     ]),
@@ -495,7 +637,12 @@ function ambiguousIncome(
   );
 }
 
-function reconcile(key: string, found: FieldValue[]): FieldValue {
+function reconcile(
+  policy: FactPolicy,
+  definition: FieldDefinition,
+  found: FieldValue[],
+): FieldValue {
+  const { key } = definition;
   if (!found.length) return null;
   const isRows = (value: FieldValue): value is FieldRow[] =>
     Array.isArray(value);
@@ -503,13 +650,9 @@ function reconcile(key: string, found: FieldValue[]): FieldValue {
     const distinct = new Map<string, string>();
     for (const value of found) {
       if (typeof value !== 'string') continue;
-      const canonical = isCalendarDateField(key)
-        ? canonicalCalendarDate(value)
-        : isRublesField(key)
-          ? canonicalMoneyAmount(value)
-          : value;
+      const canonical = canonicalScalar(definition, value);
       if (canonical === undefined) continue;
-      const comparable = comparableScalar(key, canonical);
+      const comparable = comparableScalar(policy, key, canonical);
       if (!distinct.has(comparable)) distinct.set(comparable, canonical);
     }
     return distinct.size === 1
@@ -524,10 +667,10 @@ function reconcile(key: string, found: FieldValue[]): FieldValue {
     return null;
   for (const table of found)
     for (const supplied of table) {
-      const row = comparableRow(key, supplied);
-      const identity = fieldIdentity(key);
+      const row = comparableRow(definition, supplied);
+      const identity = policy.identity?.(key) ?? [];
       const id =
-        key === 'employmentIncome'
+        key === policy.employmentIncomeField
           ? JSON.stringify([
               row.employer?.trim(),
               row.month?.trim(),

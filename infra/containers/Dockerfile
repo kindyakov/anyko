@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json bun.lock ./
 COPY apps ./apps
 COPY packages ./packages
+COPY scripts/publish-packages.ts ./scripts/publish-packages.ts
 
 FROM source AS tools
 RUN bun install --frozen-lockfile

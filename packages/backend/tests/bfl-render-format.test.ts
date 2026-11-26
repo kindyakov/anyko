@@ -11,12 +11,10 @@ import { createLogger } from '@anyko/logger';
 
 import providerFixtures from '../../../tests/fixtures/bfl-acceptance/provider-fixtures.json';
 import { generateDocument } from '../src/modules/generation';
-import {
-  requirePackage,
-  templateBytes,
-  templateData,
-} from '../src/modules/templates';
 import { emptyFieldValues, readFieldValues } from '../src/profiles/bfl/fields';
+import { requirePackage, templateBytes } from '../src/runtime/template-assets';
+
+import { templateData } from './helpers/template-data';
 
 const partialFacts = readFieldValues(
   Object.fromEntries(

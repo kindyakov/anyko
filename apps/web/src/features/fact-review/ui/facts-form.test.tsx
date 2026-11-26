@@ -862,6 +862,7 @@ test('employment review exposes the calculation inputs and the statement uses on
       {
         ...pack.documents[0],
         id: 'statement',
+        filling: { functionId: 'bfl-v1', layout: 'statement' },
         blocks: [
           { kind: 'paragraph', paragraph: paragraph('{employmentDetails}') },
         ],
@@ -894,8 +895,10 @@ test('employment review exposes the calculation inputs and the statement uses on
   );
   const statement = await screen.findByRole('article', { name: 'Заявление' });
   expect(statement.textContent).toContain(
-    'В настоящее время работаю в ООО Юг.',
+    'В настоящее время я осуществляю трудовую деятельность в ООО Юг.',
   );
-  expect(statement.textContent).toContain('60900,00 руб.');
+  expect(statement.textContent).toContain(
+    '60 900,00 (шестьдесят тысяч девятьсот рублей)',
+  );
   expect(statement.textContent).not.toContain('ООО Север');
 });

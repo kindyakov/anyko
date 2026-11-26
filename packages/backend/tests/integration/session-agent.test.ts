@@ -14,13 +14,15 @@ import { llmError } from '@anyko/llm';
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 import { emptyFacts, markSelectedCandidates } from '../../src/modules/facts';
 import { generateDocument } from '../../src/modules/generation';
+import { bflAgentPolicy } from '../../src/profiles/bfl/agent-policy';
+import { automaticValue } from '../../src/profiles/bfl/automatic-value';
+import { bflFactPolicy } from '../../src/profiles/bfl/fact-policy';
+import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 import {
   requirePackage,
   templateBytes,
-  templateData,
-} from '../../src/modules/templates';
-import { automaticValue } from '../../src/profiles/bfl/automatic-value';
-import { fieldDefinitions } from '../../src/profiles/bfl/fields';
+} from '../../src/runtime/template-assets';
+import { templateData } from '../helpers/template-data';
 import { completionStream } from '../support/completion-stream';
 
 test('real extraction preserves candidates with valid citations when other fields or citations are invalid', async () => {
@@ -104,6 +106,7 @@ test('real extraction preserves candidates with valid citations when other field
     const threadId = crypto.randomUUID();
     threads.push(threadId);
     return agents.extract({
+      policy: bflAgentPolicy,
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -428,6 +431,7 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
     const threadId = crypto.randomUUID();
     threads.push(threadId);
     return agents.extract({
+      policy: bflAgentPolicy,
       connection: {
         id: 'routerai',
         baseURL: 'https://routerai.ru/api/v1',
@@ -437,7 +441,7 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
       enableReasoning,
       resource: crypto.randomUUID(),
       threadId,
-      fields: requirePackage('bfl-bankruptcy-v3').fields,
+      fields: requirePackage('bfl-bankruptcy-v12').fields,
       document: { id: documentId, text, visuals: [] },
       signal: AbortSignal.timeout(10000),
     });
@@ -616,6 +620,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
     const threadId = crypto.randomUUID();
     threads.push(threadId);
     return agents.reconcile({
+      policy: bflAgentPolicy,
       connection: {
         id: 'routerai',
         baseURL: 'https://routerai.ru/api/v1',
@@ -627,7 +632,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
       threadId,
       workRevision: 1,
       previousContext: null,
-      facts: emptyFacts(),
+      facts: emptyFacts(fieldDefinitions),
       candidates: [
         {
           ...extracted,
@@ -798,6 +803,7 @@ test.each([131072, null])(
       const streamed: string[] = [];
       const result = await agents
         .chat({
+          policy: bflAgentPolicy,
           connection: {
             id: 'fixture',
             baseURL: 'https://fixture.invalid/v1',
@@ -805,7 +811,7 @@ test.each([131072, null])(
           },
           modelId: 'fixture',
           fields: [],
-          facts: emptyFacts(),
+          facts: emptyFacts(fieldDefinitions),
           documents: [],
           listSourceImages: () => Promise.resolve([]),
           readSource: () => Promise.reject(new Error('UNEXPECTED_SOURCE_READ')),
@@ -865,6 +871,7 @@ test('provider failures do not leak document or provider bodies through SDK cons
     for (let attempt = 0; attempt < 2; attempt++) {
       const result = await agents
         .reconcile({
+          policy: bflAgentPolicy,
           connection: {
             id: 'fixture',
             baseURL: 'https://fixture.invalid/v1',
@@ -876,7 +883,7 @@ test('provider failures do not leak document or provider bodies through SDK cons
           threadId,
           workRevision: 1,
           previousContext: null,
-          facts: emptyFacts(),
+          facts: emptyFacts(fieldDefinitions),
           candidates: [],
           fields: [],
           documents: [],
@@ -1072,6 +1079,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     ),
   });
   const input = {
+    policy: bflAgentPolicy,
     connection: {
       id: 'routerai',
       baseURL: 'https://routerai.ru/api/v1',
@@ -1083,7 +1091,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     workRevision: 1,
     modelId: 'fixture/small',
     previousContext: null,
-    facts: emptyFacts(),
+    facts: emptyFacts(fieldDefinitions),
     candidates: [],
     documents: [oldSource],
     fields,
@@ -1143,7 +1151,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
       threadId: nextThreadId,
       modelId: 'fixture/large',
       workRevision: 2,
-      fields: requirePackage('bfl-bankruptcy-v6').fields,
+      fields: requirePackage('bfl-bankruptcy-v12').fields,
       previousContext: {
         version: 1,
         workRevision: 1,
@@ -1188,7 +1196,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
         ...input,
         threadId: oversizedThreadId,
         modelId: 'fixture/oversized-input',
-        fields: requirePackage('bfl-bankruptcy-v6').fields,
+        fields: requirePackage('bfl-bankruptcy-v12').fields,
         documents: [oldSource, newSource, ...otherSources],
         previousContext: {
           version: 1,
@@ -1217,7 +1225,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
         .reconcile({
           ...input,
           ...attempt,
-          fields: requirePackage('bfl-bankruptcy-v6').fields,
+          fields: requirePackage('bfl-bankruptcy-v12').fields,
           documents: [oldSource, newSource, ...otherSources].map((source) => ({
             ...source,
             filename: 'Документы о составе имущества.pdf',
@@ -1363,6 +1371,7 @@ test('reconciliation finalizes with cited candidates after a parallel batch exha
   try {
     await agents.ready();
     const result = await agents.reconcile({
+      policy: bflAgentPolicy,
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -1374,8 +1383,8 @@ test('reconciliation finalizes with cited candidates after a parallel batch exha
       threadId,
       workRevision: 1,
       previousContext: null,
-      facts: emptyFacts(),
-      fields: requirePackage('bfl-bankruptcy-v6').fields,
+      facts: emptyFacts(fieldDefinitions),
+      fields: requirePackage('bfl-bankruptcy-v12').fields,
       candidates: [],
       documents: [
         {
@@ -1513,10 +1522,11 @@ test('court lookup uses only the territory and sends verified address alternativ
       { preconnect: fetch.preconnect },
     ),
   });
-  const pack = requirePackage('bfl-bankruptcy-v6');
+  const pack = requirePackage('bfl-bankruptcy-v12');
   try {
     await agents.ready();
     const result = await agents.reconcile({
+      policy: bflAgentPolicy,
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -1528,7 +1538,7 @@ test('court lookup uses only the territory and sends verified address alternativ
       threadId,
       workRevision: 1,
       previousContext: null,
-      facts: emptyFacts(),
+      facts: emptyFacts(fieldDefinitions),
       fields: pack.fields,
       candidates: [
         {
@@ -1585,7 +1595,7 @@ test('court lookup uses only the territory and sends verified address alternativ
     const statement = pack.documents.find(({ id }) => id === 'statement');
     if (!statement) throw new Error('EXPECTED_STATEMENT');
     const values = {
-      ...emptyFacts().values,
+      ...emptyFacts(fieldDefinitions).values,
       courtName:
         result.candidates.find(({ field }) => field === 'courtName')?.value ??
         null,
@@ -1695,7 +1705,7 @@ test('official creditor details stay a proposal until selecting them for the lin
       id === documentId ? quote : (source?.text ?? source?.quote ?? ''),
     );
   };
-  const facts = emptyFacts();
+  const facts = emptyFacts(fieldDefinitions);
   facts.values.debts = [
     row,
     { name: 'АО «Другой кредитор»', basis: 'договор М-6', amount: '10.00' },
@@ -1791,9 +1801,10 @@ test('official creditor details stay a proposal until selecting them for the lin
       { preconnect: fetch.preconnect },
     ),
   });
-  const pack = requirePackage('bfl-bankruptcy-v7');
+  const pack = requirePackage('bfl-bankruptcy-v12');
   const reconcile = () =>
     agents.reconcile({
+      policy: bflAgentPolicy,
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -1844,7 +1855,10 @@ test('official creditor details stay a proposal until selecting them for the lin
       values: { ...facts.values, debts: facts.values.debts.slice(0, 2) },
       candidates: [ground, proposal],
     };
-    expect(markSelectedCandidates(reviewed)[1]?.selected).toBe(false);
+    expect(
+      markSelectedCandidates(reviewed, fieldDefinitions, bflFactPolicy)[1]
+        ?.selected,
+    ).toBe(false);
     const patched = applyCreditorRegistryCandidate(
       reviewed.values.debts,
       proposal.value,
@@ -1854,24 +1868,28 @@ test('official creditor details stay a proposal until selecting them for the lin
       { name: 'АО «Другой кредитор»', amount: '10.00' },
     ]);
     expect(
-      markSelectedCandidates({
-        ...reviewed,
-        values: { ...reviewed.values, debts: patched ?? null },
-      })[1]?.selected,
+      markSelectedCandidates(
+        {
+          ...reviewed,
+          values: { ...reviewed.values, debts: patched ?? null },
+        },
+        fieldDefinitions,
+        bflFactPolicy,
+      )[1]?.selected,
     ).toBe(true);
     const data = templateData(
       { ...reviewed.values, debts: patched ?? null },
-      'bfl-statement-v7',
+      'bfl-statement-v11',
     );
     expect(data.creditorHeaders?.[0]).toMatchObject({
-      name: fullName,
+      name: fullName + ' (ПАО ВТБ)',
       address,
       inn: '7702070139',
     });
     expect(
       templateData(
         { ...reviewed.values, debts: patched ?? null },
-        'bfl-creditors-v2',
+        'bfl-creditors-v3',
       ).debts,
     ).toMatchObject([
       { name: fullName, address, amount: '720,50' },
@@ -1891,6 +1909,7 @@ test('official creditor details stay a proposal until selecting them for the lin
     chatMode = true;
     const chat = (documentIds: string[]) =>
       agents.chat({
+        policy: bflAgentPolicy,
         connection: {
           id: 'fixture',
           baseURL: 'https://fixture.invalid/v1',

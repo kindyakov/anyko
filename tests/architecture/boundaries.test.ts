@@ -127,6 +127,21 @@ const cases = [
     'packages/backend/src/modules/facts/index.ts',
     '../../workflows/index.ts',
   ],
+  [
+    'common-backend-no-concrete-profile',
+    'packages/backend/src/modules/facts/module.ts',
+    '../../profiles/bfl/fields.ts',
+  ],
+  [
+    'common-backend-no-concrete-profile',
+    'packages/backend/src/workflows/work-analysis/definition.ts',
+    '../../profiles/bfl/analysis-plan.ts',
+  ],
+  [
+    'common-backend-no-concrete-profile',
+    'packages/backend/src/modules/templates/index.ts',
+    '../../profiles/bfl/analysis-plan.ts',
+  ],
   ['database-private', 'apps/api/index.ts', '../../packages/database/index.ts'],
   [
     'profiles-no-io',

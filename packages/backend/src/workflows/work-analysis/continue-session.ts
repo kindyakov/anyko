@@ -9,15 +9,17 @@ import {
 import {
   candidatesForContext,
   projectRunFacts,
+  selectPackageCandidates,
   type WorkFacts,
 } from '../../modules/facts';
 import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
+import type { AgentPolicy, FactSourceText } from '../../profiles/agent-policy';
+import { missingFieldReasonLabels } from '../../profiles/analysis-discrepancy';
 import type { AnalysisPlan } from '../../profiles/analysis-plan';
-import { missingFieldReasonLabels } from '../../profiles/bfl/analysis-discrepancy';
-import type { FactSourceText } from '../../profiles/bfl/automatic-value';
-import type { FieldKey } from '../../profiles/bfl/fields';
+import type { FactPolicy } from '../../profiles/fact-policy';
+import type { FieldKey } from '../../profiles/fields';
 import type { WorkDependencies } from '../work-dependencies';
 import { logWorkFailure } from '../work-execution/failure';
 import { analysisContextRevision } from '../work-execution/run-state';
@@ -31,6 +33,7 @@ import {
 import { passportSourceIds } from './identity-sources';
 import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
+import { digest } from './revision';
 import { runStepwiseAnalysis } from './stepwise-analysis';
 
 export interface ContinuationSource extends ChecklistAnalysisSource {
@@ -43,11 +46,15 @@ export function createWorkContinuation(deps: WorkDependencies) {
   return async (input: {
     attempt: WorkAttempt;
     settingsRevision: number | null;
+    analysisRevision: string;
+    policy: AgentPolicy;
+    factPolicy?: FactPolicy | undefined;
     readConnection(): ReturnType<
       WorkDependencies['connections']['internal']['connection']
     >;
     pilotPlan?: AnalysisPlan;
     fields: FieldDefinition[];
+    packageFields: readonly FieldDefinition[];
     excludedFields?: ReadonlySet<FieldKey> | undefined;
     candidates: WorkFacts['candidates'];
     sources: ContinuationSource[];
@@ -76,7 +83,9 @@ export function createWorkContinuation(deps: WorkDependencies) {
               work.revision,
               signal,
             );
-            const facts = await deps.facts.in(tx).queries.forAnalysis(run);
+            const facts = await deps.facts
+              .in(tx)
+              .queries.forAnalysis(run, input.packageFields);
             const session = await deps.agents
               .in(tx)
               .internal.ensure(run.workspaceId, run.workId);
@@ -89,14 +98,17 @@ export function createWorkContinuation(deps: WorkDependencies) {
         input.signal,
       );
       const found = candidatesForContext(
-        input.candidates,
-        snapshot.facts.candidates,
+        selectPackageCandidates(input.candidates, input.fields),
+        selectPackageCandidates(snapshot.facts.candidates, input.fields),
         run.documentIds,
         input.sources.map(({ id }) => id),
       );
       const submitted = hasSubmittedAttachments(input.fields);
       const candidates = submitted ? attachmentAnalysis(found) : found;
-      const passportIds = passportSourceIds(input.sources);
+      const passportIds = passportSourceIds(
+        input.sources,
+        input.factPolicy?.passportCitation,
+      );
       const normalizeContext = (proposals: WorkFacts['candidates']) => {
         const located = locateEvidence(proposals, input.sources);
         return submitted ? attachmentAnalysis(located, candidates) : located;
@@ -158,6 +170,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
           modelId: config.extractionModel,
           connection: config.connection,
           fields: input.fields,
+          policy: input.policy,
           checklistRequirements: snapshot.requirements,
           workRevision: snapshot.work.revision,
           previousContext: snapshot.session.context,
@@ -199,17 +212,19 @@ export function createWorkContinuation(deps: WorkDependencies) {
             const plan = input.pilotPlan;
             const pilot = await runStepwiseAnalysis({
               plan,
+              factPolicy: input.factPolicy,
               attempt: workAttempt,
-              fingerprint: JSON.stringify([
-                input.pilotPlan.revision,
+              fingerprint: digest([
+                input.analysisRevision,
                 settingsRevision,
                 run.inputRevision,
                 snapshot.session.revision,
                 analysisContextRevision(snapshot.work),
-                input.sources.map(({ id, ocrRevision, digest }) => [
-                  id,
-                  ocrRevision,
-                  digest,
+                input.sources.map((source) => [
+                  source.id,
+                  source.ocrRevision,
+                  source.digest,
+                  source.visuals,
                 ]),
               ]),
               model,
@@ -217,7 +232,9 @@ export function createWorkContinuation(deps: WorkDependencies) {
                 projectRunFacts(snapshot.facts, {
                   candidates,
                   contextCandidates: normalizeContext(draft),
-                  fields: input.fields.map(({ key }) => key),
+                  fields: input.fields,
+                  packageFields: input.packageFields,
+                  factPolicy: input.factPolicy,
                   excludedFields: input.excludedFields,
                   confirmed:
                     snapshot.work.confirmedRevision === snapshot.work.revision,
@@ -332,7 +349,9 @@ export function createWorkContinuation(deps: WorkDependencies) {
             const acceptedFacts = await facts.acceptRunCandidates({
               workspaceId: run.workspaceId,
               workId: run.workId,
-              fields: input.fields.map(({ key }) => key),
+              fields: input.fields,
+              packageFields: input.packageFields,
+              factPolicy: input.factPolicy,
               excludedFields: input.excludedFields,
               confirmed: work.confirmedRevision === work.revision,
               preserveExisting: run.automaticUpload === true,

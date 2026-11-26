@@ -1,4 +1,3 @@
-import { hasSubmittedAttachments } from './attachments';
 import { formatBankruptcyMoney, formatCreditorText } from './bankruptcy-format';
 import {
   bankruptcyStatement,
@@ -6,7 +5,7 @@ import {
   statementNameParts,
 } from './bankruptcy-statement';
 import type { assessEmployment } from './employment';
-import { canonicalMoneyAmount, formatMoneyAmount } from './money';
+import { canonicalMoneyAmount } from './money';
 import {
   groupCreditorObligations,
   hasOverlappingObligations,
@@ -21,30 +20,19 @@ type Row = Record<string, string | null>;
 type Value = string | Row[] | null | undefined;
 type Values = Readonly<Record<string, Value>>;
 
-export function usesBankruptcyProjection(
-  version: string | undefined,
-  fields: readonly { key: string }[] = [],
-): boolean {
+export function usesBankruptcyProjection(version: string | undefined): boolean {
   return (
     bankruptcyStatement(version) ||
-    version === 'bfl-inventory-v2' ||
-    version === 'bfl-creditors-v3' ||
-    (!!version && version.startsWith('bfl-') && hasSubmittedAttachments(fields))
+    version === 'inventory' ||
+    version === 'creditors'
   );
 }
 
-export function projectBankruptcyCollections(
-  version: string,
-  values: Values,
-  modern: boolean,
-) {
+export function projectBankruptcyCollections(version: string, values: Values) {
   if (!obligationTemplate(version)) return null;
   const { debts, businessDebts, creditorHeaders, total, totalWords } =
-    obligationAmounts(values.debts, values.businessDebts, modern);
-  if (!modern)
-    return { debts, businessDebts, creditorHeaders, total, totalWords };
-  const isCreditorList = version.startsWith('bfl-creditors-');
-  const grouped = version === 'bfl-creditors-v3';
+    obligationAmounts(values.debts, values.businessDebts, true);
+  const isCreditorList = version === 'creditors';
   const rows = (entries: Row[] | null, other: Row[] | null): Row[] => {
     if (isCreditorList && !entries?.length)
       return [
@@ -68,13 +56,13 @@ export function projectBankruptcyCollections(
         ),
       ];
     const projected =
-      grouped && entries ? groupDebtRows(entries, other ?? []) : entries;
+      isCreditorList && entries ? groupDebtRows(entries, other ?? []) : entries;
     return (
       projected?.map((row) => ({
         ...formatCreditor(row),
-        name: version.startsWith('bfl-statement-')
-          ? displayCreditorName(row.creditorShortName || row.name)
-          : displayCreditorName(row.name),
+        name: displayCreditorName(
+          isCreditorList ? row.name : row.creditorShortName || row.name,
+        ),
         ...(isCreditorList && { arrears: '-', penalties: '-' }),
       })) ?? []
     );
@@ -199,16 +187,13 @@ export function statementDefaultValue(values: Values, key: string) {
 export function employmentStatement(
   values: Values,
   employment: ReturnType<typeof assessEmployment>,
-  revised = false,
 ): string | null {
   if (employment.status !== 'active') return employment.statement;
   const { last, first, middle } = statementNameParts(values);
   const full = [last, first, middle].filter(Boolean).join(' ');
   const opening = `В настоящее время я${full ? `, ${full},` : ''} осуществляю трудовую деятельность в ${employment.employer}.`;
   if (employment.average === null) return opening;
-  const words = revised
-    ? filingMoneyWords(employment.average)
-    : formatMoneyAmount(employment.average, 'RUB_WORDS');
+  const words = filingMoneyWords(employment.average);
   return (
     opening +
     ` Мой доход составляет ${formatBankruptcyMoney(employment.average)} (${words}), после налогообложения.`

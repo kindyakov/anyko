@@ -3,6 +3,7 @@ import type { Tx, UnitOfWork } from '../../../platform/transactions';
 
 import { claimRunAttempt, type RunAttempt } from './run-attempt';
 import type {
+  CachedWorkStep,
   StepOutput,
   WorkProcessingStore,
   WorkRunOutcome,
@@ -21,11 +22,7 @@ export interface WorkAttempt extends RunAttempt<
 > {
   assertCurrent(): Promise<void>;
   analysisCheckpoint(): Promise<StepOutput | null>;
-  cached(
-    documentId: string,
-    stage: 'vision' | 'extraction',
-    sourceDigest: string,
-  ): Promise<StepOutput | null>;
+  cached(documentId: string, key: CachedWorkStep): Promise<StepOutput | null>;
   step(input: WorkStepInput): Promise<void>;
   // Блокирует строку попытки до конца транзакции с записями других модулей.
   write<T>(
@@ -61,8 +58,8 @@ export function claimWorkAttempt(deps: {
         if (!(await deps.store.valid(claim)))
           throw new Error('STALE_WORK_ATTEMPT');
       },
-      cached: (documentId, stage, sourceDigest) =>
-        deps.store.cached(claim.snapshot, documentId, stage, sourceDigest),
+      cached: (documentId, key) =>
+        deps.store.cached(claim.snapshot, documentId, key),
       analysisCheckpoint: () => deps.store.analysisCheckpoint(claim.snapshot),
       step: (input) => deps.store.step(claim, input),
       write: (apply, signal) =>

@@ -1,13 +1,10 @@
-import { russianPassportCitation } from '../../profiles/bfl/passport-evidence';
-
 import type { ChecklistAnalysisSource } from './checklist-suggestions';
 
 export function passportSourceIds(
   sources: readonly Pick<ChecklistAnalysisSource, 'id' | 'text'>[],
+  passportCitation?: (text: string) => string | undefined,
 ) {
   return new Set(
-    sources
-      .filter(({ text }) => russianPassportCitation(text))
-      .map(({ id }) => id),
+    sources.filter(({ text }) => passportCitation?.(text)).map(({ id }) => id),
   );
 }

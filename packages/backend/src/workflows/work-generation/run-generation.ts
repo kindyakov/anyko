@@ -3,11 +3,6 @@ import { DiagnosticError } from '@anyko/logger';
 import { checksum } from '../../modules/documents';
 import { generateDocument } from '../../modules/generation';
 import type { WorkAttempt } from '../../modules/processing';
-import {
-  requirePackage,
-  templateBytes,
-  templateData,
-} from '../../modules/templates';
 import type { WorkDependencies } from '../work-dependencies';
 import { logWorkFailure } from '../work-execution/failure';
 import { createRunState } from '../work-execution/run-state';
@@ -52,9 +47,8 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
         message: 'Не найдены данные задания на формирование документов.',
         operation: 'work.generation.load',
       });
-    const pack = await deps.templatePlaceholders(
-      requirePackage(record.packageVersion),
-    );
+    const resolved = deps.resolvePackage(record.packageVersion);
+    const pack = resolved.description;
     let completed = 0;
     await step({ stage: 'generation', status: 'running' });
     for (const file of record.files) {
@@ -69,7 +63,7 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
           message: 'Шаблон формируемого файла отсутствует в пакете документов.',
           operation: 'work.generation.readTemplate',
         });
-      const expected = templateBytes(template.version);
+      const expected = resolved.templateBytes(template.version);
       const templateKey = `templates/${template.version}/${template.checksum}.docx`;
       if (!(await deps.storage.exists(templateKey)))
         await deps.storage.put(templateKey, expected, DOCX, signal);
@@ -85,10 +79,11 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
       try {
         bytes = generateDocument(
           source,
-          templateData(record.values, template.version, template.placeholders, {
-            fields: pack.fields,
-            referenceDate: record.createdAt.toISOString().slice(0, 10),
-          }),
+          resolved.templateData(
+            record.values,
+            template,
+            record.createdAt.toISOString().slice(0, 10),
+          ),
           {
             logger: deps.logger,
             templateVersion: template.version,

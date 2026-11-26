@@ -4,7 +4,7 @@ import type { Database } from '@anyko/database';
 
 import type { GenerationStore } from '..';
 import { transactionHandle, type Tx } from '../../../platform/transactions';
-import { readFieldValues } from '../../../profiles/bfl/fields';
+import { storedFieldValuesSchema } from '../../../profiles/fields';
 import { generationFileSchema, generationSchema } from '../schemas';
 
 export function createGenerationStore(
@@ -32,7 +32,7 @@ export function createGenerationStore(
       return row
         ? {
             ...row,
-            values: readFieldValues(row.values),
+            values: storedFieldValuesSchema.parse(row.values),
             files: row.files.map((file) =>
               generationFileSchema
                 .extend({

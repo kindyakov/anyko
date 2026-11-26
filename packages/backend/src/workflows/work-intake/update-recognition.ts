@@ -76,6 +76,7 @@ export const updateRecognition =
     deps: Pick<
       WorkIntakeDeps,
       | 'works'
+      | 'resolvePackage'
       | 'facts'
       | 'documents'
       | 'processing'
@@ -143,12 +144,15 @@ export const updateRecognition =
               ))
           )
             throw new WorkError('NOT_FOUND');
+          const pack = deps.resolvePackage(work.packageVersion);
           const refreshed = await deps.facts
             .in(tx)
             .internal.refreshEvidence(
               workspaceId,
               workId,
               recognitionEvidence(documentId, previous, next),
+              pack.description.fields,
+              pack.factPolicy,
             );
           return {
             confirmed:

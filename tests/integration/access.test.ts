@@ -189,7 +189,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     expect((await request(worksRoot)).status).toBe(401);
     const workBody = {
       title: 'Synthetic access work',
-      packageVersion: 'technical-document-v1',
+      packageVersion: 'bfl-bankruptcy-v14',
     };
     const headers = {
       cookie: ownerCookie,
@@ -234,7 +234,7 @@ test('real sessions enforce closed signup, mutation origin and document workspac
     ).toBe(400);
     const edit = {
       revision: 0,
-      values: { ...work.facts.values, personName: 'Manual fixture' },
+      values: { ...work.facts.values, lastName: 'Manual fixture' },
     };
     const invalidEdit = await request(`${worksRoot}/${work.work.id}/fields`, {
       method: 'PATCH',

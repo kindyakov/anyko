@@ -15,7 +15,7 @@ import { projectRunFacts } from './project-run-facts';
 export const acceptRunCandidates =
   ({ store }: { store: Pick<FactsStore, 'get' | 'save'> }) =>
   async (input: AcceptRunCandidatesInput): Promise<AcceptedRunCandidates> => {
-    const { workspaceId, workId, fields } = input;
+    const { workspaceId, workId, fields, packageFields, factPolicy } = input;
     const existing = await store.get(workspaceId, workId);
     const { next, extractionAccepted, contextAccepted, extraction, context } =
       projectRunFacts(existing, input);
@@ -26,11 +26,19 @@ export const acceptRunCandidates =
       ['extraction', extraction, !extractionAccepted],
       ['reconciliation', context ?? [], !contextAccepted],
     ] as const) {
-      const before = markSelectedCandidates({
-        ...existing,
-        candidates: proposals,
-      });
-      const after = markSelectedCandidates({ ...next, candidates: proposals });
+      const before = markSelectedCandidates(
+        {
+          ...existing,
+          candidates: proposals,
+        },
+        packageFields,
+        factPolicy,
+      );
+      const after = markSelectedCandidates(
+        { ...next, candidates: proposals },
+        packageFields,
+        factPolicy,
+      );
       for (const [
         index,
         { selected: included, ...candidate },
@@ -52,9 +60,9 @@ export const acceptRunCandidates =
     return {
       contextAccepted,
       proposalOutcomes,
-      missingFields: fields.filter((field) => next.values[field] === null),
-      discrepancyFields: findFactDiscrepancies(next).filter((field) =>
-        fields.includes(field),
-      ),
+      missingFields: fields
+        .map(({ key }) => key)
+        .filter((key) => next.values[key] == null),
+      discrepancyFields: findFactDiscrepancies(next, fields, factPolicy),
     };
   };

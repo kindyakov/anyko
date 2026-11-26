@@ -165,7 +165,17 @@ test.each([
           const latest = userMessages[0];
           const input = z
             .object({
-              step: z.object({ key: z.string(), instructions: z.string() }),
+              step: z.object({
+                key: z.string(),
+                instructions: z.string(),
+                fields: z.array(
+                  z.object({
+                    key: z.string(),
+                    role: z.string().optional(),
+                    valueType: z.string().optional(),
+                  }),
+                ),
+              }),
               documents: z.array(z.object({ id: z.uuid() })),
               review: z
                 .object({ fields: z.array(z.object({ key: z.string() })) })
@@ -201,6 +211,11 @@ test.each([
           ];
           let toolCall;
           if (start && key === 'identity') {
+            expect(input.step.fields.find(({ key }) => key === 'inn')).toEqual({
+              key: 'inn',
+              role: 'debtor',
+              valueType: 'inn',
+            });
             expect(input.step.instructions).toContain(
               '«Паспорт гражданина Российской Федерации»',
             );

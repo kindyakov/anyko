@@ -14,7 +14,6 @@ import {
   canApplyCreditorRegistryCandidate,
   containsCreditorRegistryCandidate,
 } from '@anyko/document-values/obligations';
-import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
 import { Button, StatusPill } from '@anyko/ui';
 
 import { courtOptions } from '@/features/fact-review/model/court-options';
@@ -63,7 +62,7 @@ export function CandidateList({
         ({ field, candidates, conflict, evidenceLost, attention }) => {
           const saved = view.facts.values[field.key];
           const current = values[field.key];
-          const defaultText = isDatedBankruptcyPackage(view.package.version)
+          const defaultText = view.package.defaultDocumentDate
             ? statementDefaultValue(values, field.key)
             : undefined;
           const changed = !sameFieldValue(current, saved);

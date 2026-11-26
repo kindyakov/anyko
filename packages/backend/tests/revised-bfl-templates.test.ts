@@ -12,12 +12,10 @@ import {
 } from '@anyko/document-values/bankruptcy-projection';
 
 import { generateDocument } from '../src/modules/generation';
-import {
-  requirePackage,
-  templateBytes,
-  templateData,
-} from '../src/modules/templates';
 import { emptyFieldValues } from '../src/profiles/bfl/fields';
+import { requirePackage, templateBytes } from '../src/runtime/template-assets';
+
+import { templateData } from './helpers/template-data';
 
 test('keeps unknown debt visible while showing a dash for confirmed absence', () => {
   const values = {
@@ -25,15 +23,13 @@ test('keeps unknown debt visible while showing a dash for confirmed absence', ()
     businessDebts: null,
   };
   expect(
-    projectBankruptcyCollections('bfl-creditors-v2', values, true)
-      ?.businessDebts,
+    projectBankruptcyCollections('creditors', values)?.businessDebts,
   ).toMatchObject([{ rowNumber: '-', name: '-', type: '[не заполнено]' }]);
   expect(
-    projectBankruptcyCollections(
-      'bfl-creditors-v2',
-      { ...values, businessDebts: [] },
-      true,
-    )?.businessDebts,
+    projectBankruptcyCollections('creditors', {
+      ...values,
+      businessDebts: [],
+    })?.businessDebts,
   ).toMatchObject([{ rowNumber: '-', name: '-', type: '-' }]);
 });
 
@@ -114,13 +110,7 @@ function renderedText(
     .join('\n');
 }
 
-test('statement v9 keeps the approved frozen templates and composes an address without empty parts', () => {
-  expect(requirePackage('bfl-bankruptcy-v8').documents[0]?.version).toBe(
-    'bfl-statement-v8',
-  );
-  expect(requirePackage('bfl-bankruptcy-v9').documents[0]?.version).toBe(
-    'bfl-statement-v9',
-  );
+test('the statement composes an address without empty parts', () => {
   const values = {
     ...emptyFieldValues(),
     lastName: 'ИВАНОВА',
@@ -134,7 +124,7 @@ test('statement v9 keeps the approved frozen templates and composes an address w
     house: '17',
     apartment: '1',
   };
-  const text = renderedText('bfl-statement-v9', values);
+  const text = renderedText('bfl-statement-v11', values);
   expect(text).toContain('Липецкая область, г. Задонск, д. 17, кв. 1');
   expect(text).toContain('зарегистрированную и проживающую по адресу');
   expect(text).toContain('с настоящим заявлением о признании себя банкротом');
@@ -171,7 +161,7 @@ test('the statement states insolvency in the grammatical gender of a male debtor
   expect(text).not.toContain('перестала');
 });
 
-test('statement v10 groups the obligations of one creditor and omits closed contracts', () => {
+test('the statement groups the obligations of one creditor and omits closed contracts', () => {
   const values = {
     ...emptyFieldValues(),
     debts: [
@@ -199,7 +189,7 @@ test('statement v10 groups the obligations of one creditor and omits closed cont
       },
     ],
   };
-  const text = renderedText('bfl-statement-v10', values);
+  const text = renderedText('bfl-statement-v11', values);
   expect(
     text.match(/Неспособность удовлетворить требования кредитора/gu),
   ).toHaveLength(1);
@@ -212,7 +202,7 @@ test('statement v10 groups the obligations of one creditor and omits closed cont
 
 test('inventory v2 keeps category order, repeats apartments and prints cash in section 6.1', () => {
   expect(
-    requirePackage('bfl-bankruptcy-v11').fields.some(
+    requirePackage('bfl-bankruptcy-v12').fields.some(
       ({ key }) => key === 'cashOnHand',
     ),
   ).toBe(true);
@@ -280,7 +270,6 @@ test('creditors v3 lists each creditor once per section with every active contra
   expect(output.match(/№ A-01/gu)).toHaveLength(1);
   expect(output).not.toContain('CLOSED');
   expect(output).toContain('Итого по договорам: 12 685,30 руб.');
-  expect(templateData(values, 'bfl-creditors-v2').debts).toHaveLength(3);
 });
 
 test('revised creditor and inventory forms distinguish unchanged, unknown and previous names', () => {

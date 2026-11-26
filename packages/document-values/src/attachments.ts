@@ -13,6 +13,13 @@ export const attachmentCategories = {
   trusteeRemuneration: 'Вознаграждение финансовому управляющему',
 } as const;
 
+export interface PackageAttachment {
+  documentId: string;
+  description: string;
+  category: string;
+  originalOnly: boolean;
+}
+
 export const packageAttachments = [
   {
     documentId: 'package:creditors',
@@ -44,8 +51,11 @@ export const packageAttachments = [
   },
 ] as const;
 
-export function packageAttachment(documentId: string | null | undefined) {
-  return packageAttachments.find((item) => item.documentId === documentId);
+export function packageAttachment(
+  documentId: string | null | undefined,
+  attachments: readonly PackageAttachment[],
+) {
+  return attachments.find((item) => item.documentId === documentId);
 }
 
 export function hasSubmittedAttachments(fields: readonly { key: string }[]) {
@@ -69,6 +79,7 @@ type AttachmentRow = Record<string, string | null>;
 export function submittedAttachmentRows(
   value: string | AttachmentRow[] | null | undefined,
   documentIds?: ReadonlySet<string>,
+  attachments: readonly PackageAttachment[] = packageAttachments,
 ) {
   return Array.isArray(value)
     ? value.filter(
@@ -76,13 +87,14 @@ export function submittedAttachmentRows(
           documentId &&
           (!documentIds ||
             documentIds.has(documentId) ||
-            packageAttachment(documentId)),
+            packageAttachment(documentId, attachments)),
       )
     : [];
 }
 
 export function attachmentDescriptions(
   value: string | AttachmentRow[] | null | undefined,
+  attachments: readonly PackageAttachment[] = packageAttachments,
 ) {
   return submittedAttachmentRows(value).flatMap((row) => {
     const description = row.description?.trim();
@@ -90,7 +102,7 @@ export function attachmentDescriptions(
     const category = attachmentCategory(row.category);
     if (!description || !kind || !category) return [];
     const payment =
-      !packageAttachment(row.documentId) &&
+      !packageAttachment(row.documentId, attachments) &&
       (category === 'procedureExpenses' || category === 'trusteeRemuneration')
         ? ` — ${attachmentCategories[category].toLocaleLowerCase('ru')}`
         : '';

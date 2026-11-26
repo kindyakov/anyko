@@ -21,6 +21,10 @@ import {
   obligationStatuses,
 } from '@anyko/document-values/obligations';
 
+import type { FactSourceText } from '../agent-policy';
+import type { FieldDefinition } from '../fields';
+import { attestedAmount, attestedDate, typedEvidence } from '../value-types';
+
 import { businessAbsenceRule } from './business-absence';
 import {
   cadastralNumbersIn,
@@ -28,75 +32,15 @@ import {
 } from './cadastral-number';
 import type { candidateSchema } from './candidate';
 import {
+  bflField,
   fieldIdentity,
   type FieldRow,
   type FieldValue,
-  isCalendarDateField,
-  isRublesColumn,
-  isRublesField,
 } from './fields';
 import { evidencedObligationType } from './obligation-type';
 import { hasRussianPassportCitizenship } from './passport-evidence';
 
 type Candidate = z.infer<typeof candidateSchema>;
-
-function digits(value: string) {
-  return value.normalize('NFKC').replace(/[\s‐‑-]/g, '');
-}
-
-function checksum(value: string, weights: readonly number[]) {
-  return weights.reduce((sum, weight, i) => sum + weight * Number(value[i]), 0);
-}
-
-function validInn(value: string, individual: boolean) {
-  if (!/^[0-9]+$/.test(value) || /^0{4}/.test(value)) return false;
-  const digit = (weights: readonly number[]) =>
-    String((checksum(value, weights) % 11) % 10);
-  if (value.length === 10 && !individual)
-    return digit([2, 4, 10, 3, 5, 9, 4, 6, 8]) === value[9];
-  return (
-    value.length === 12 &&
-    digit([7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === value[10] &&
-    digit([3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8]) === value[11]
-  );
-}
-
-function validSnils(value: string) {
-  if (!/^[0-9]{11}$/.test(value)) return false;
-  const number = Number(value.slice(0, 9));
-  if (number === 0) return false;
-  if (number <= 1001998) return true;
-  const sum = checksum(value, [9, 8, 7, 6, 5, 4, 3, 2, 1]);
-  return (sum % 101) % 100 === Number(value.slice(-2));
-}
-
-function attestedIdentifier(value: string, quote: string) {
-  const candidates =
-    quote.match(/[0-9](?:[ \t\u00a0\u202f\u3000‐‑-]*[0-9])*/g) ?? [];
-  return candidates.some((item) => digits(item) === value);
-}
-
-function attestedDate(value: string, quote: string) {
-  const expected = canonicalCalendarDate(value);
-  return (
-    expected !== undefined &&
-    datesInText(quote).some((item) => canonicalCalendarDate(item) === expected)
-  );
-}
-
-function attestedAmount(value: string, quote: string, rubles = true) {
-  const expected = canonicalMoneyAmount(value);
-  const text = datesInText(quote).reduce(
-    (remaining, date) => remaining.replace(date, ' '),
-    quote.normalize('NFKC'),
-  );
-  if (expected === undefined) return false;
-  if (rubles) return moneyAmountsInText(text).includes(expected);
-  // The valuables register may give a value in a different currency.
-  const values =
-    text.match(/-?\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?/g) ?? [];
-  return values.some((amount) => canonicalMoneyAmount(amount) === expected);
-}
 
 function proofLines(evidence: Candidate['evidence'], includeVisuals = false) {
   return evidence
@@ -115,14 +59,23 @@ function sourceLines(text: string) {
 /** Automatic values need numeric evidence. Keep the original proposal for human review. */
 export function automaticValue(
   candidate: Candidate,
-  { sources }: { sources?: readonly FactSourceText[] | undefined } = {},
+  {
+    sources,
+    definition = bflField(candidate.field),
+  }: {
+    sources?: readonly FactSourceText[] | undefined;
+    definition?: FieldDefinition | undefined;
+  } = {},
 ): FieldValue {
-  return supportedValue(candidate, false, sources);
+  return supportedValue(candidate, definition, false, sources);
 }
 
 /** After evidence loss, keep only values identifiable in the remaining quotes. */
-export function valueWithRemainingEvidence(candidate: Candidate): FieldValue {
-  return supportedValue(candidate, true);
+export function valueWithRemainingEvidence(
+  candidate: Candidate,
+  definition = bflField(candidate.field),
+): FieldValue {
+  return supportedValue(candidate, definition, true);
 }
 
 function comparableCitationText(text: string) {
@@ -272,6 +225,7 @@ function evidencedBusinessAbsence(
 
 function supportedValue(
   candidate: Candidate,
+  definition: FieldDefinition | undefined,
   requireText: boolean,
   sources: readonly FactSourceText[] = [],
 ): FieldValue {
@@ -284,24 +238,8 @@ function supportedValue(
       )
         ? 'Российская Федерация'
         : null;
-    if (field === 'inn' || field === 'snils') {
-      const identifier = digits(value);
-      const valid =
-        field === 'inn' ? validInn(identifier, true) : validSnils(identifier);
-      return valid &&
-        proofLines(candidate.evidence).some((quote) =>
-          attestedIdentifier(identifier, quote),
-        )
-        ? value
-        : null;
-    }
-    const matches = isCalendarDateField(field)
-      ? attestedDate
-      : isRublesField(field)
-        ? attestedAmount
-        : requireText
-          ? (text: string, line: string) => mentions(line, text)
-          : null;
+    const matches =
+      typedEvidence(definition) ?? (requireText ? mentions : undefined);
     return matches &&
       !proofLines(candidate.evidence).some((quote) => matches(value, quote))
       ? null
@@ -325,7 +263,7 @@ function supportedValue(
   ) {
     const row = value.length === 1 ? value[0] : undefined;
     return row
-      ? evidencedObligation(candidate.evidence, row, requireText)
+      ? evidencedObligation(candidate.evidence, row, requireText, definition)
       : null;
   }
   const identity = fieldIdentity(field);
@@ -343,17 +281,13 @@ function supportedValue(
     return Object.entries(row).every(([column, cell]) => {
       if (cell === null) return true;
       if (Object.hasOwn(creditorRegistryColumns, column)) return false;
-      const rubles = isRublesColumn(field, column);
-      if (rubles || (field === 'valuables' && column === 'amount'))
-        return matching.some((line) => attestedAmount(cell, line, rubles));
-      if (column === 'inn') {
-        const identifier = digits(cell);
-        return (
-          validInn(identifier, false) &&
-          matching.some((line) => attestedIdentifier(identifier, line))
-        );
-      }
-      return !requireText || matching.some((line) => mentions(line, cell));
+      const columnDefinition = definition?.columns.find(
+        ({ key }) => key === column,
+      );
+      const matches = typedEvidence(columnDefinition);
+      return matches
+        ? matching.some((line) => matches(cell, line))
+        : !requireText || matching.some((line) => mentions(line, cell));
     });
   });
   return supported ? value : null;
@@ -584,11 +518,6 @@ function contractLines(lines: string[], number: string) {
   };
 }
 
-export interface FactSourceText {
-  documentId: string;
-  text: string;
-}
-
 /**
  * A later source can block an old balance even when extraction proposed no usable
  * candidate. Only explicitly dated statements with a proven contract identity count.
@@ -736,6 +665,7 @@ function evidencedObligation(
   evidence: Candidate['evidence'],
   row: FieldRow,
   requireText: boolean,
+  definition: FieldDefinition | undefined,
 ): FieldValue {
   const { contractDate, amountDate, contractNumber } = row;
   if (!contractDate || !amountDate || !contractNumber) return null;
@@ -780,16 +710,12 @@ function evidencedObligation(
       ].includes(column)
     )
       return true;
-    if (['arrears', 'penalties', 'interest'].includes(column))
-      return credible.lines.some((line) => attestedAmount(cell, line));
-    if (column === 'inn') {
-      const identifier = digits(cell);
-      return (
-        validInn(identifier, false) &&
-        credible.lines.some((line) => attestedIdentifier(identifier, line))
-      );
-    }
-    return !requireText || credible.lines.some((line) => mentions(line, cell));
+    const matches = typedEvidence(
+      definition?.columns.find(({ key }) => key === column),
+    );
+    return matches
+      ? credible.lines.some((line) => matches(cell, line))
+      : !requireText || credible.lines.some((line) => mentions(line, cell));
   });
   return supported ? [row] : null;
 }

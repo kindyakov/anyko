@@ -231,6 +231,8 @@ model DocumentPackageVersion {
  version String @id
  packageId String
  title String
+ descriptionHash String?
+ description String?
  documents PackageDocument[]
  works Work[]
  generations WorkGeneration[]
@@ -240,6 +242,7 @@ model DocumentTemplateVersion {
  templateId String
  title String
  checksum String
+ descriptionHash String?
  packages PackageDocument[]
  placeholders DocumentTemplatePlaceholder[]
  requirements DocumentTemplateRequirement[]

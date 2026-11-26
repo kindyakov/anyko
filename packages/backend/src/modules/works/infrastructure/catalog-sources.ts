@@ -40,6 +40,7 @@ export function createCatalogWorkLinks(db: Pick<Database, 'workDocument'>) {
               title: true,
               revision: true,
               confirmedRevision: true,
+              packageVersion: true,
             },
           },
         },

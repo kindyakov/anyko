@@ -31,7 +31,14 @@ await lstat(resolve(web, 'junctions.json'));
 const components = resolve(
   process.env.ANYKO_WINDOWS_COMPONENTS_OUTPUT ?? 'work/windows-components',
 );
-for (const name of ['api', 'worker', 'prepare-storage', 'provision-access']) {
+const executables = [
+  'api',
+  'worker',
+  'prepare-storage',
+  'provision-access',
+  'publish-packages',
+];
+for (const name of executables) {
   await lstat(resolve(components, `anyko-${name}.exe`));
 }
 const output = resolve(
@@ -55,7 +62,7 @@ for (const [name, input] of inputs)
   await copyClean(resolve(input), resolve(stage, name));
 await copyClean(web, resolve(stage, 'web'));
 await mkdir(resolve(stage, 'components'));
-for (const name of ['api', 'worker', 'prepare-storage', 'provision-access']) {
+for (const name of executables) {
   await copyFile(
     resolve(components, `anyko-${name}.exe`),
     resolve(stage, 'components', `anyko-${name}.exe`),

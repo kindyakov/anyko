@@ -9,18 +9,13 @@ import type {
   PreviewParagraph,
   PreviewRow,
 } from '@anyko/contracts/catalog';
-import { bankruptcyCollectionCell } from '@anyko/document-values/bankruptcy-projection';
+import type { prepareTemplate } from '@anyko/document-values/template-filling';
 import { missingTemplateValue } from '@anyko/document-values/template-value';
-
-import {
-  previewDocumentValues,
-  previewEntries,
-} from '@/features/fact-review/model/preview';
 
 import { FieldEditor, TextSlot } from '../work-fields';
 
 import { CollectionNote } from './collection-note';
-import { paperMargins, paragraphStyle, signerName } from './paper-format';
+import { paperMargins, paragraphStyle } from './paper-format';
 import { PreviewTable } from './preview-table';
 import { ScalarSlot } from './scalar-slot';
 import { renderStatementSignature } from './statement-signature';
@@ -29,31 +24,44 @@ export function PreviewPaper({
   pack,
   document,
   values,
+  prepared,
   disabled,
   onChange,
 }: {
   pack: DocumentPackage;
   document: DocumentPackage['documents'][number];
   values: FieldValues;
+  prepared: ReturnType<typeof prepareTemplate>;
   disabled: boolean;
   onChange: (key: FieldKey, value: FieldValue) => void;
 }) {
   const listNumbers = new Map<string, number>();
   const { version, margins } = document;
-  const projected = previewDocumentValues(version, values, pack.fields);
-  const collectionValue = projected?.value ?? ((key: FieldKey) => values[key]);
-  const collectionNote = (key: FieldKey, collection: FieldValue) =>
-    projected?.isCollection(key) ? (
-      projected.emptyNote(key, collection)
-    ) : (
-      <CollectionNote
-        fieldKey={key}
-        fields={pack.fields}
-        collection={collection}
-        disabled={disabled}
-        onChange={onChange}
-      />
-    );
+  const { scalars, repeating, computedRepeats, defaults } = prepared;
+  const computed = new Set(computedRepeats);
+  const scalar = (key: string) =>
+    Object.hasOwn(scalars, key) ? scalars[key] : undefined;
+  const collectionRows = (key: string) =>
+    Object.hasOwn(repeating, key) ? (repeating[key] ?? []) : [];
+  const changeEntry =
+    (repeat: FieldKey, index: number) => (key: string, next: string | null) => {
+      const collection = values[repeat];
+      const rows =
+        Array.isArray(collection) && collection.length ? collection : [{}];
+      onChange(
+        repeat,
+        rows.map((row, i) => (i === index ? { ...row, [key]: next } : row)),
+      );
+    };
+  const collectionNote = (key: FieldKey, collection: FieldValue) => (
+    <CollectionNote
+      fieldKey={key}
+      fields={pack.fields}
+      collection={collection}
+      disabled={disabled}
+      onChange={onChange}
+    />
+  );
   const tokens = (
     p: PreviewParagraph,
     row?: FieldRow,
@@ -70,7 +78,7 @@ export function PreviewPaper({
         if (key === 'signerName' && !row) {
           return (
             <span key={index} aria-label="Фамилия и инициалы подписанта">
-              {signerName(values, projected?.modern)}
+              {scalar('signerName') ?? missingTemplateValue}
               {suffix}
             </span>
           );
@@ -78,31 +86,36 @@ export function PreviewPaper({
         const column = pack.fields
           .find((item) => item.key === rowField)
           ?.columns.find((item) => item.key === key);
-        const source = rowField ? collectionValue(rowField) : undefined;
-        const absent =
-          projected?.modern && Array.isArray(source) && !source.length;
-        if (key === 'rowNumber' && row && !column)
-          return (
-            (row.rowNumber ?? (absent ? '-' : String(rowNumber ?? 1))) + suffix
-          );
-        if (row && projected?.isCollection(rowField))
-          return (row[key] ?? missingTemplateValue) + suffix;
-        const text = !row && projected?.text(key);
-        if (typeof text === 'string') return text + suffix;
-        if (row && absent) return '-' + suffix;
-        if (row) {
+        if (row && rowField) {
+          const source = values[rowField];
+          const rowIndex = (rowNumber ?? 1) - 1;
+          const display = Object.hasOwn(row, key) ? row[key] : undefined;
+          if (
+            computed.has(rowField) ||
+            (Array.isArray(source) && !source.length && document.filling)
+          )
+            return (display ?? missingTemplateValue) + suffix;
+          if (key === 'rowNumber' && !column)
+            return (display ?? String(rowIndex + 1)) + suffix;
+          const raw = Array.isArray(source)
+            ? (source[rowIndex]?.[key] ?? null)
+            : null;
           const hint = column?.label ?? '…';
           const slot = (
             <TextSlot
               key={index}
               label={`${document.title}: ${column?.label ?? key}`}
               maxLength={column?.maxLength}
-              placeholder={projected?.modern ? missingTemplateValue : hint}
-              value={row[key] ?? null}
+              placeholder={
+                display === missingTemplateValue || document.filling
+                  ? missingTemplateValue
+                  : hint
+              }
+              value={raw}
               displayValue={
-                projected?.modern && row[key]
-                  ? bankruptcyCollectionCell(key, row[key], source, true)
-                  : undefined
+                display === missingTemplateValue
+                  ? undefined
+                  : (display ?? undefined)
               }
               disabled={disabled}
               multiline
@@ -124,9 +137,12 @@ export function PreviewPaper({
             fields={pack.fields}
             formats={document.placeholders}
             values={values}
-            modern={projected?.modern ?? false}
-            defaultText={projected?.defaultText(key)}
-            translatedText={projected?.translatedText}
+            displayValue={scalar(key)}
+            defaultText={
+              Object.hasOwn(defaults, key) && values[key] == null
+                ? defaults[key]
+                : undefined
+            }
             disabled={disabled}
             suffix={suffix}
             onChange={onChange}
@@ -144,8 +160,9 @@ export function PreviewPaper({
     const loop = /\{#([^{}]+)\}/.exec(p.text)?.[1];
     const repeat = loop || undefined;
     if (repeat && !row) {
-      const collection = collectionValue(repeat);
-      const rows = Array.isArray(collection) ? collection : [];
+      const collection = values[repeat];
+      const rows = collectionRows(repeat);
+      if (computed.has(repeat) && !rows.length) return null;
       return (
         <div key={id} data-field={repeat} className="rounded-[3px]">
           {rows.length ? (
@@ -154,14 +171,7 @@ export function PreviewPaper({
                 { ...p, text: p.text.replace(/\{[#/][^{}]+\}/g, '').trimEnd() },
                 `${id}-${String(index)}`,
                 item,
-                (key, next) => {
-                  onChange(
-                    repeat,
-                    rows.map((existing, i) =>
-                      i === index ? { ...existing, [key]: next } : existing,
-                    ),
-                  );
-                },
+                changeEntry(repeat, index),
                 repeat,
                 index + 1,
               ),
@@ -185,7 +195,10 @@ export function PreviewPaper({
     const contents =
       (document.id === 'statement' &&
         !row &&
-        renderStatementSignature(p.text, values, projected?.modern)) ||
+        renderStatementSignature(
+          p.text,
+          scalar('signerName') ?? missingTemplateValue,
+        )) ||
       (p.text ? tokens(p, row, changeRow, rowField, rowNumber) : <br />);
     return (
       <div
@@ -209,10 +222,11 @@ export function PreviewPaper({
   };
   const tableRow = (row: PreviewRow, index: number) => {
     const repeat = row.repeat;
-    const collection = repeat ? collectionValue(repeat) : undefined;
+    const collection = repeat ? values[repeat] : undefined;
     const absent = Array.isArray(collection) && !collection.length;
-    if (repeat && absent && projected?.isCollection(repeat)) return null;
-    if (repeat && absent && !projected?.modern)
+    const rows = repeat ? collectionRows(repeat) : [];
+    if (repeat && computed.has(repeat) && !rows.length) return null;
+    if (repeat && absent && !rows.length)
       return (
         <tr key={index} data-field={repeat}>
           <td
@@ -223,10 +237,7 @@ export function PreviewPaper({
           </td>
         </tr>
       );
-    const entries = previewEntries(
-      row,
-      projected?.modern && absent ? null : collection,
-    );
+    const entries = rows.length ? rows : [{}];
     return entries.map((entry, number) => (
       <tr
         key={`${String(index)}-${String(number)}`}
@@ -240,19 +251,7 @@ export function PreviewPaper({
                   p,
                   String(pIndex),
                   repeat ? entry : undefined,
-                  (key, next) => {
-                    if (!repeat) return;
-                    const current =
-                      Array.isArray(collection) && collection.length
-                        ? collection
-                        : [{}];
-                    onChange(
-                      repeat,
-                      current.map((item, i) =>
-                        i === number ? { ...item, [key]: next } : item,
-                      ),
-                    );
-                  },
+                  repeat ? changeEntry(repeat, number) : undefined,
                   repeat ?? undefined,
                   number + 1,
                 ),

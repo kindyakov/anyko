@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
-import { candidateSchema } from '../../profiles/bfl/candidate';
+import { candidateSchema } from '../../profiles/candidate';
 import {
   type FieldKey,
   fieldKeySchema,
   type FieldValues,
-} from '../../profiles/bfl/fields';
+} from '../../profiles/fields';
 
 export interface WorkFacts {
   version: 1;

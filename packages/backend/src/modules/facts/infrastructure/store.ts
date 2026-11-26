@@ -10,7 +10,7 @@ export function createFactsStore(db: Pick<Database, 'workFacts'>): FactsStore {
       const row = await db.workFacts.findFirst({
         where: { workspaceId, workId },
       });
-      return row ? factsSchema.parse(row.payload) : emptyFacts();
+      return row ? factsSchema.parse(row.payload) : emptyFacts([]);
     },
     async save(workspaceId, workId, facts) {
       const payload = factsSchema.parse(facts);

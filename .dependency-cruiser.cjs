@@ -27,6 +27,10 @@ const presentModules = existsSync(moduleRoot)
 // Известных нарушений feature-границ нет (список только сокращается).
 const webKnownFeatureViolations = [];
 
+// Only the runtime composition root selects concrete processing profiles.
+const backendSource = '^packages/backend/src/';
+const concreteProfiles = `${backendSource}profiles/[^/]+/`;
+
 module.exports = {
   forbidden: [
     {
@@ -179,6 +183,15 @@ module.exports = {
       to: {
         path: '^packages/(database|backend/src/(runtime|workflows|platform|modules/[^/]+/infrastructure))/',
       },
+    },
+    {
+      name: 'common-backend-no-concrete-profile',
+      severity: 'error',
+      from: {
+        path: `${backendSource}(?:modules|workflows)/`,
+        pathNot: '\\.test\\.ts$',
+      },
+      to: { path: concreteProfiles },
     },
     {
       name: 'platform-no-business',

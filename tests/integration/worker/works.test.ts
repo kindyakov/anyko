@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -34,9 +34,17 @@ import {
 } from '../../../packages/backend/src/platform/ids';
 import { emptyFieldValues } from '../../../packages/backend/src/profiles/bfl/fields';
 import { createBackend } from '../../../packages/backend/src/runtime';
+import { publishRegisteredPackages } from '../../../packages/backend/src/runtime/publish-packages';
+import { requirePackage } from '../../../packages/backend/src/runtime/template-assets';
+import { completionStream } from '../../../packages/backend/tests/support/completion-stream';
 import { memberScope } from '../../../packages/backend/tests/support/scope';
 
 import { integrationConfig } from './support/composition';
+import {
+  debtClaimProfile,
+  registerDebtClaim,
+  unregisterDebtClaim,
+} from './support/debt-claim';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (
@@ -96,6 +104,124 @@ let waitForExtraction:
   | undefined;
 let extractFixture: DocumentAgents['extract'] | undefined;
 let parseFixture: DocumentParser['parseDocument'] | undefined;
+test('debt claim analysis and chat have no bankruptcy instructions or lookup tools', async () => {
+  const requests: { instructions: string; tools: string[]; stage: string }[] =
+    [];
+  const model = createDocumentAgents({
+    pool: actualPool,
+    fetch: Object.assign(
+      async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const body = z
+          .object({
+            stream: z.boolean().optional(),
+            messages: z.array(
+              z.object({ role: z.string(), content: z.unknown() }),
+            ),
+            tools: z
+              .array(z.object({ function: z.object({ name: z.string() }) }))
+              .optional(),
+          })
+          .parse(await new Request(url, init).json());
+        const instructions = JSON.stringify(
+          body.messages.filter(({ role }) => role === 'system'),
+        );
+        const stage = instructions.includes('последнего сообщения пользователя')
+          ? 'chat'
+          : instructions.includes('сопоставить документы')
+            ? 'reconciliation'
+            : 'extraction';
+        requests.push({
+          stage,
+          instructions,
+          tools: body.tools?.map(({ function: fn }) => fn.name) ?? [],
+        });
+        const content =
+          stage === 'chat'
+            ? 'Проверьте материалы работы.'
+            : JSON.stringify({
+                candidates: [],
+                ...(stage === 'reconciliation' && {
+                  summary: 'Источники проверены',
+                }),
+              });
+        const response = {
+          id: 'claim-policy',
+          object: 'chat.completion',
+          created: 1,
+          model: 'fixture',
+          usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 },
+          choices: [
+            {
+              index: 0,
+              message: { role: 'assistant', content },
+              finish_reason: 'stop',
+            },
+          ],
+        };
+        return body.stream
+          ? completionStream(response)
+          : Response.json(response);
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const input = await create('test-debt-claim-v2');
+  const lawyerId = await createChatActor(input.workspaceId);
+  actualAgents = model;
+  chatHook = (turn) => model.chat(turn);
+  parseFixture = () =>
+    Promise.resolve({
+      markdown: 'Суд: Мировой судья участка № 1.',
+      processorVersion: 'claim-policy',
+      images: [],
+    });
+  try {
+    await upload(input);
+    expect((await until(input, terminal)).runs[0]).toMatchObject({
+      status: 'succeeded',
+    });
+    const chat = apiBackend.workHttp.chat;
+    const { workId } = input;
+    const scope = memberScope(input.workspaceId, lawyerId);
+    const { runId } = await chat.send(scope, {
+      workId,
+      userText: 'Проверь подсудность.',
+      correlationId: crypto.randomUUID(),
+    });
+    let chatStatus: string | undefined;
+    await until(input, async () => {
+      const { items } = await chat.list(scope, {
+        workId,
+        page: 1,
+        pageSize: 15,
+      });
+      chatStatus = items.find(
+        (item) => item.kind === 'chat' && item.runId === runId,
+      )?.status;
+      return chatStatus === 'succeeded' || chatStatus === 'failed';
+    });
+    expect(chatStatus).toBe('succeeded');
+    expect(requests.map(({ stage }) => stage)).toEqual([
+      'extraction',
+      'reconciliation',
+      'chat',
+    ]);
+    for (const { instructions, tools } of requests) {
+      expect(instructions).not.toMatch(
+        /должник|кредитор|lookupArbitrationCourt|lookupCreditorRegistry/iu,
+      );
+      expect(tools).not.toContain('lookupArbitrationCourt');
+      expect(tools).not.toContain('lookupCreditorRegistry');
+    }
+  } finally {
+    chatHook = undefined;
+    actualAgents = undefined;
+    parseFixture = undefined;
+    await model.stop();
+    await db.user.delete({ where: { id: lawyerId } });
+  }
+});
+
 const agents: DocumentAgents = {
   chat(input) {
     if (chatHook) return chatHook(input);
@@ -184,7 +310,8 @@ const testConfig = integrationConfig({
 const apiBackend = createBackend(testConfig, {
   logger,
   role: 'api',
-  dependencies: { storage, agents },
+  packageCatalog: 'published',
+  dependencies: { storage, agents, processingProfiles: [debtClaimProfile] },
 });
 const runtime = {
   saveSettings: (
@@ -194,26 +321,30 @@ const runtime = {
   deps: { documents: apiBackend.documentHttp.documents },
   stop: () => apiBackend.stop(),
 };
-const workerBackend = createBackend(testConfig, {
-  logger,
-  role: 'worker',
-  dependencies: {
-    storage,
-    agents,
-    parser: {
-      parseDocument: async (...args) => {
-        if (parseFixture) return parseFixture(...args);
-        await pauseOcr?.();
-        return {
-          markdown: 'Имя: Анна. Номер: 42.',
-          processorVersion: 'fixture',
-          images: imageFixture,
-        };
+const createFixtureWorker = (packageCatalog?: 'published') =>
+  createBackend(testConfig, {
+    logger,
+    role: 'worker',
+    ...(packageCatalog && { packageCatalog }),
+    dependencies: {
+      storage,
+      agents,
+      processingProfiles: [debtClaimProfile],
+      parser: {
+        parseDocument: async (...args) => {
+          if (parseFixture) return parseFixture(...args);
+          await pauseOcr?.();
+          return {
+            markdown: 'Имя: Анна. Номер: 42.',
+            processorVersion: 'fixture',
+            images: imageFixture,
+          };
+        },
+        eraseAttempt: () => Promise.resolve(),
       },
-      eraseAttempt: () => Promise.resolve(),
     },
-  },
-});
+  });
+const workerBackend = createFixtureWorker('published');
 let worker: Awaited<ReturnType<typeof startJobWorker>> | undefined;
 const workerPrefix = `test-work-${crypto.randomUUID()}`;
 async function ready() {
@@ -263,7 +394,7 @@ const terminal = (view: WorkView) =>
   view.runs.every((run) => !['queued', 'running'].includes(run.status));
 
 test('the source checklist preserves scoped manual decisions when the work is analysed again', async () => {
-  const input = await create('bfl-bankruptcy-v7');
+  const input = await create('bfl-bankruptcy-v12');
   const { workspaceId, workId } = input;
   const scope = memberScope(workspaceId);
   const app = fixtureApp(workspaceId);
@@ -451,7 +582,7 @@ test('the source checklist preserves scoped manual decisions when the work is an
 });
 
 test('a bankruptcy statement can be formed, downloaded and the work confirmed without source files', async () => {
-  const input = await create('bfl-bankruptcy-v7');
+  const input = await create('bfl-bankruptcy-v12');
   const scope = memberScope(input.workspaceId);
   const { generation, review, views } = apiBackend.workHttp;
   const { workId } = input;
@@ -471,7 +602,7 @@ test('a bankruptcy statement can be formed, downloaded and the work confirmed wi
     ({ status }) => status === 'succeeded',
   );
   const statement = result?.files.find(
-    ({ templateVersion }) => templateVersion === 'bfl-statement-v7',
+    ({ templateVersion }) => templateVersion === 'bfl-statement-v11',
   );
   if (!result || !statement) throw new Error('MISSING_BLANK_STATEMENT');
   const { bytes } = await generation.downloadResult(scope, {
@@ -489,7 +620,7 @@ test('a bankruptcy statement can be formed, downloaded and the work confirmed wi
 });
 
 test('one persisted package date reaches all four printed positions and previous downloads stay intact', async () => {
-  const input = await create('bfl-bankruptcy-v8');
+  const input = await create('bfl-bankruptcy-v12');
   const scope = memberScope(input.workspaceId);
   const { workId } = input;
   const { views, review, generation } = apiBackend.workHttp;
@@ -537,11 +668,11 @@ test('one persisted package date reaches all four printed positions and previous
         .map((match) => match[1])
         .join('');
       expect(printed.split(date)).toHaveLength(
-        file.templateVersion === 'bfl-statement-v8' ? 3 : 2,
+        file.templateVersion === 'bfl-statement-v11' ? 3 : 2,
       );
       contents.set(file.templateVersion, printed);
     }
-    return contents.get('bfl-statement-v8');
+    return contents.get('bfl-statement-v11');
   };
   const first = await generate();
   const chosenDate = first.facts.values.documentDate;
@@ -722,6 +853,206 @@ async function rejects(operation: Promise<unknown>, code: string) {
   expect(failure).toBeInstanceOf(Error);
   expect(failure instanceof Error ? failure.message : '').toContain(code);
 }
+
+test('each debt claim package scopes saved evidence, decisions and the generated DOCX', async () => {
+  expect(
+    (await apiBackend.workHttp.views.packages()).map(({ version }) => version),
+  ).toEqual(['bfl-bankruptcy-v14']);
+  const bfl = await create('bfl-bankruptcy-v12');
+  const bflView = await apiBackend.workHttp.views.get(
+    memberScope(bfl.workspaceId),
+    bfl.workId,
+  );
+  expect(bflView.facts.values).not.toHaveProperty('plaintiffInn');
+  expect(bflView.facts.values).not.toHaveProperty('defendantInn');
+  const evidence = {
+    courtName: 'Районный суд',
+    courtAddress: 'Улица Садовая, 7',
+    plaintiffInn: '7707083893',
+    defendantInn: '500100732259',
+    personName: 'Постороннее поле',
+  };
+  parseFixture = () =>
+    Promise.resolve({
+      markdown: Object.values(evidence).join('\n'),
+      processorVersion: 'debt-claim-fixture',
+      images: [],
+    });
+  extractFixture = ({ document }) =>
+    Promise.resolve({
+      candidates: Object.entries(evidence).map(([field, value]) => ({
+        field,
+        value,
+        evidence: [{ documentId: document.id, imagePath: null, quote: value }],
+      })),
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+  try {
+    for (const [version, keys] of [
+      ['test-debt-claim-v1', ['courtName', 'courtAddress', 'plaintiffInn']],
+      [
+        'test-debt-claim-v2',
+        ['courtName', 'courtAddress', 'plaintiffInn', 'defendantInn'],
+      ],
+    ] as const) {
+      const input = await create(version);
+      const scope = memberScope(input.workspaceId);
+      const { workId } = input;
+      const { review, views, generation } = apiBackend.workHttp;
+      const production = createBackend(testConfig, {
+        logger,
+        role: 'api',
+        packageCatalog: 'published',
+        dependencies: { storage, agents },
+      });
+      try {
+        await production.ready();
+        await rejects(
+          production.workHttp.intake.createWork(scope, {
+            title: 'Тест выбора',
+            packageVersion: version,
+          }),
+          'INVALID_WORK_INPUT',
+        );
+      } finally {
+        await production.stop();
+      }
+      const documentId = brandDocumentId((await upload(input)).id);
+      const analyzed = await until(input, terminal);
+      expect(
+        analyzed.runs.some(
+          ({ kind, status }) => kind === 'analysis' && status === 'succeeded',
+        ),
+      ).toBe(true);
+      expect(Object.keys(analyzed.facts.values).sort()).toEqual(
+        [...keys].sort(),
+      );
+      expect(analyzed.facts.values.plaintiffInn).toBe(evidence.plaintiffInn);
+      expect(analyzed.facts.values.defendantInn).toBe(
+        keys.length === 4 ? evidence.defendantInn : undefined,
+      );
+      expect(
+        analyzed.facts.candidates.map(({ field }) => field).sort(),
+      ).toEqual([...keys].sort());
+      await rejects(
+        review.editValues(scope, {
+          workId,
+          revision: analyzed.work.revision,
+          values: { personName: 'Чужое поле' },
+        }),
+        'INVALID_WORK_INPUT',
+      );
+      await review.editValues(scope, {
+        workId,
+        revision: analyzed.work.revision,
+        values: { courtAddress: 'Проверенный адрес' },
+      });
+      const edited = await views.get(scope, workId);
+      await review.confirmFacts(scope, {
+        workId,
+        revision: edited.work.revision,
+      });
+      const confirmed = await views.get(scope, workId);
+      expect([...confirmed.facts.confirmed].sort()).toEqual([...keys].sort());
+      await analyze(input);
+      const rerun = await until(
+        input,
+        (view) => terminal(view) && view.runs.length > confirmed.runs.length,
+      );
+      expect(rerun.facts.values.courtAddress).toBe('Проверенный адрес');
+      expect(rerun.facts.values.plaintiffInn).toBe(evidence.plaintiffInn);
+      expect(rerun.facts.manual).toContain('courtAddress');
+      expect(rerun.facts.confirmed).toContain('plaintiffInn');
+      expect(rerun.discrepancyFields).toEqual(['courtAddress']);
+      await generation.startGeneration(scope, {
+        workId,
+        revision: rerun.work.revision,
+        correlationId: crypto.randomUUID(),
+      });
+      const generated = await until(
+        input,
+        (view) => view.generations[0]?.status === 'succeeded',
+      );
+      const record = generated.generations[0];
+      const file = record?.files[0];
+      if (!record || !file) throw new Error('MISSING_CLAIM_DOCX');
+      const { bytes } = await generation.downloadResult(scope, {
+        workId,
+        generationId: brandGenerationId(record.id),
+        fileId: brandFileId(file.id),
+      });
+      const content = unzipSync(bytes)['word/document.xml'];
+      if (!content) throw new Error('MISSING_CLAIM_DOCUMENT_XML');
+      const xml = strFromU8(content);
+      expect(xml).toContain('Проверенный адрес');
+      expect(xml).toContain(evidence.plaintiffInn);
+      expect(xml.includes(evidence.defendantInn)).toBe(keys.length === 4);
+
+      const lawyerId = await createChatActor(input.workspaceId);
+      try {
+        chatHook = async (turn) => {
+          const change = await turn.writeField(
+            { field: 'defendantInn', value: '7707083893' },
+            'fixture-chat-write',
+            turn.signal,
+          );
+          expect(change).toMatchObject(
+            keys.length === 4
+              ? { field: 'defendantInn', after: '7707083893' }
+              : { errorCode: 'INVALID_WORK_INPUT' },
+          );
+          return {
+            answer: 'Проверен ИНН ответчика.',
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+        };
+        const chat = apiBackend.workHttp.chat;
+        const { runId } = await chat.send(
+          memberScope(input.workspaceId, lawyerId),
+          {
+            workId,
+            userText: 'Исправь ИНН ответчика.',
+            correlationId: crypto.randomUUID(),
+          },
+        );
+        let status: string | undefined;
+        await until(input, async () => {
+          const { items } = await chat.list(scope, {
+            workId,
+            page: 1,
+            pageSize: 1,
+          });
+          status = items.find((item) => item.runId === runId)?.status;
+          return (
+            status !== undefined && status !== 'queued' && status !== 'running'
+          );
+        });
+        expect(status).toBe(keys.length === 4 ? 'succeeded' : 'failed');
+        const afterChat = await views.get(scope, workId);
+        expect(afterChat.facts.values.defendantInn).toBe(
+          keys.length === 4 ? '7707083893' : undefined,
+        );
+      } finally {
+        chatHook = undefined;
+        await db.user.delete({ where: { id: lawyerId } });
+      }
+
+      const catalog = apiBackend.documentHttp.documents;
+      const impact = await catalog.queries.deletionImpact(scope, documentId);
+      await catalog.commands.remove(scope, documentId, impact.token);
+      const afterDeletion = await views.get(scope, workId);
+      expect(afterDeletion.facts.values.plaintiffInn).toBe(
+        evidence.plaintiffInn,
+      );
+      expect(afterDeletion.facts.needsReview).toContain('plaintiffInn');
+      expect(afterDeletion.facts.confirmed).not.toContain('plaintiffInn');
+      expect(afterDeletion.facts.candidates).toEqual([]);
+    }
+  } finally {
+    parseFixture = undefined;
+    extractFixture = undefined;
+  }
+});
 
 async function createChatActor(workspaceId: string) {
   const id = crypto.randomUUID();
@@ -1016,7 +1347,7 @@ test('chat shares the work session, waits for the current turn and retains read-
 });
 
 test('chat links and unlinks a checklist source, records both changes, and rejects an unavailable source', async () => {
-  const input = await create('bfl-bankruptcy-v7');
+  const input = await create('bfl-bankruptcy-v12');
   const { workspaceId, workId } = input;
   const userId = await createChatActor(workspaceId);
   const app = fixtureApp(workspaceId, userId);
@@ -1517,7 +1848,7 @@ test('chat tool edits one field, records its history, and restores through the w
 });
 
 test('chat recovery cannot acknowledge a checklist confirmation superseded by a manual rejection', async () => {
-  const input = await create('bfl-bankruptcy-v7');
+  const input = await create('bfl-bankruptcy-v12');
   const { workspaceId, workId } = input;
   const userId = await createChatActor(workspaceId);
   const scope = memberScope(workspaceId, userId);
@@ -1720,6 +2051,12 @@ test('recovery of a chat turn does not reapply a field value superseded before r
   }
 }, 30_000);
 
+beforeAll(async () => {
+  await publishRegisteredPackages(db);
+  await registerDebtClaim(db);
+  await apiBackend.ready();
+});
+
 afterAll(async () => {
   await workerBackend.stop();
   await runtime.stop();
@@ -1728,6 +2065,7 @@ afterAll(async () => {
   await db.workArtifact.deleteMany({ where });
   await db.workAgentThread.deleteMany({ where });
   await db.work.deleteMany({ where });
+  await unregisterDebtClaim(db);
   await db.workDeletion.deleteMany({ where });
   await db.idempotencyKey.deleteMany({ where });
   await db.llmSettings.deleteMany({ where });
@@ -1801,6 +2139,8 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
     select: { settingsRevision: true },
   });
   expect(generationRun.settingsRevision).toBe(1);
+  expect(generated.session?.revision).toBe(reopened.session?.revision);
+  expect(extractionCount).toBe(count);
 
   // Запуск генерации пишет событие журнала в той же транзакции, что и постановку.
   expect(
@@ -2439,7 +2779,7 @@ test('a package generates three individually scoped DOCX files from one snapshot
   const legacy = await create();
   const createdId = await apiBackend.workHttp.intake.createWork(
     memberScope(legacy.workspaceId, 'fixture'),
-    { packageVersion: 'bfl-bankruptcy-v3', title: 'Синтетический комплект' },
+    { packageVersion: 'bfl-bankruptcy-v12', title: 'Синтетический комплект' },
   );
   const created = await apiBackend.workHttp.views.get(
     memberScope(legacy.workspaceId),
@@ -2460,7 +2800,6 @@ test('a package generates three individually scoped DOCX files from one snapshot
         { name: 'Банк А', basis: 'Договор А', amount: '100.00' },
         { name: 'Банк Б', basis: 'Договор Б', amount: '200.00' },
       ],
-      requestsDetails: 'Ввести процедуру реструктуризации долгов',
     },
   });
   const saved = await apiBackend.workHttp.views.get(
@@ -2984,7 +3323,12 @@ test('deletion during model execution hides derivatives immediately and fences t
       input,
       (state) => !state.cleanupPending && !state.documents.length,
     );
-    expect(clean.facts.values).toEqual(emptyFieldValues());
+    expect(clean.facts.values).toEqual({
+      personName: null,
+      documentNumber: null,
+      documentDate: null,
+      observations: null,
+    });
     expect(await db.run.count({ where: { workId: input.workId } })).toBe(0);
     expect(
       await db.workAgentThread.count({ where: { workId: input.workId } }),
@@ -4342,57 +4686,74 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
   }
 });
 
-test('rerunning analysis refreshes changed vision and extraction prompts independently', async () => {
+test('changed extraction declarations invalidate only extraction, and unversioned rows miss', async () => {
   const input = await create();
   const resource = `${input.workspaceId}:${input.workId}`;
-  imageFixture = [
+  const pack = requirePackage('technical-document-v1');
+  const field = pack.fields.find(({ key }) => key === 'personName');
+  const [template] = pack.documents;
+  if (!field || !template) throw new Error('MISSING_PACKAGE_FIXTURE');
+  const label = field.label;
+  const checksum = template.checksum;
+  let deployment: ReturnType<typeof createFixtureWorker> | undefined;
+  let recognitions = 0;
+  const images = [
     {
       path: 'images/picture.png',
       contentType: 'image/png',
       bytes: fixtureImage,
     },
   ];
+  parseFixture = () => {
+    recognitions++;
+    return Promise.resolve({
+      markdown: 'Имя: Анна. Номер: 42.',
+      processorVersion: 'fixture',
+      images,
+    });
+  };
   try {
     const source = await upload(input);
     const first = await until(input, terminal);
     const run = first.runs[0];
     expect(run?.status).toBe('succeeded');
     if (!run) throw new Error('MISSING_ANALYSIS');
-    // Older runs used the OCR digest alone as the cache key.
-    expect(
-      await db.$executeRaw`
-        UPDATE "RunStep"
-        SET output = jsonb_set(output, '{sourceDigest}', to_jsonb(regexp_replace(output->>'sourceDigest', '^(extraction-[0-9]+:)?vision-[0-9]+:', '')))
-        WHERE "runId" = ${run.id} AND stage IN ('vision', 'extraction')
-          AND output->>'sourceDigest' ~ '^(extraction-[0-9]+:)?vision-[0-9]+:'
-      `,
-    ).toBe(2);
     expect(descriptionsByResource.get(resource)).toBe(1);
     expect(extractionDocuments.get(resource)).toEqual([source.id]);
 
+    // Exercise revision changes in the fixture registry. Published packages keep
+    // their stored declaration when the code-owned description changes.
+    await worker?.stop();
+    worker = undefined;
+    deployment = createFixtureWorker();
+    await deployment.ready();
+    worker = await startJobWorker(deployment.jobs, { prefix: workerPrefix });
+    field.label = 'Имя заявителя';
     await analyze(input);
     const refreshed = await until(
       input,
       (view) => terminal(view) && view.runs[0]?.id !== run.id,
     );
     expect(refreshed.runs[0]?.status).toBe('succeeded');
-    expect(descriptionsByResource.get(resource)).toBe(2);
     expect(extractionDocuments.get(resource)).toEqual([source.id, source.id]);
+    expect(descriptionsByResource.get(resource)).toBe(1);
 
+    // A new DOCX checksum does not alter the model inputs.
+    template.checksum = '1'.repeat(64);
     await analyze(input);
     const cached = await until(
       input,
       (view) => terminal(view) && view.runs[0]?.id !== refreshed.runs[0]?.id,
     );
     expect(cached.runs[0]?.status).toBe('succeeded');
-    expect(descriptionsByResource.get(resource)).toBe(2);
+    expect(descriptionsByResource.get(resource)).toBe(1);
     expect(extractionDocuments.get(resource)).toEqual([source.id, source.id]);
 
     const refreshedRun = refreshed.runs[0];
     if (!refreshedRun) throw new Error('MISSING_REFRESHED_ANALYSIS');
     const downgraded = await db.$executeRaw`
       UPDATE "RunStep"
-      SET output = jsonb_set(output, '{sourceDigest}', to_jsonb(regexp_replace(output->>'sourceDigest', '^extraction-[0-9]+:', '')))
+      SET output = output - 'stageRevision'
       WHERE "runId" = ${refreshedRun.id} AND stage = 'extraction'
     `;
     expect(downgraded).toBe(1);
@@ -4402,14 +4763,21 @@ test('rerunning analysis refreshes changed vision and extraction prompts indepen
       (view) => terminal(view) && view.runs[0]?.id !== cached.runs[0]?.id,
     );
     expect(extractedAgain.runs[0]?.status).toBe('succeeded');
-    expect(descriptionsByResource.get(resource)).toBe(2);
+    expect(descriptionsByResource.get(resource)).toBe(1);
     expect(extractionDocuments.get(resource)).toEqual([
       source.id,
       source.id,
       source.id,
     ]);
+    expect(recognitions).toBe(1);
   } finally {
-    imageFixture = [];
+    if (deployment) {
+      await deployment.stop();
+      worker = undefined;
+    }
+    field.label = label;
+    template.checksum = checksum;
+    parseFixture = undefined;
   }
 });
 
@@ -4500,7 +4868,7 @@ test('failed context continuation preserves previous facts and marks its old sum
 });
 
 test('invalid reconciliation preserves direct passport facts and a rerun keeps lawyer choices and citations', async () => {
-  const input = await create('bfl-bankruptcy-v8');
+  const input = await create('bfl-bankruptcy-v12');
   const scope = memberScope(input.workspaceId);
   const workId = brandWorkId(input.workId);
   const heading = 'Паспорт гражданина Российской Федерации';
@@ -5041,7 +5409,7 @@ test('bank certificates retain evidence and a manual contract decision, and both
   const { workspaceId } = await create();
   const scope = memberScope(workspaceId, 'fixture');
   const workId = await apiBackend.workHttp.intake.createWork(scope, {
-    packageVersion: 'bfl-bankruptcy-v7',
+    packageVersion: 'bfl-bankruptcy-v12',
     title: 'Синтетические банковские справки',
   });
   const input = { workspaceId, workId };
@@ -5126,7 +5494,7 @@ test('bank certificates retain evidence and a manual contract decision, and both
     if (
       !certificate ||
       !fields
-        ?.find(({ key }) => key === 'debts')
+        .find(({ key }) => key === 'debts')
         ?.columns.some(({ key }) => key === 'amountDate')
     )
       throw new Error('EXPECTED_BANK_FIELDS');
@@ -5246,7 +5614,7 @@ test('bank certificates retain evidence and a manual contract decision, and both
     if (!generation) throw new Error('GENERATION_MISSING');
 
     const files = generation.files.filter(({ templateVersion }) =>
-      ['bfl-statement-v7', 'bfl-creditors-v2'].includes(templateVersion),
+      ['bfl-statement-v11', 'bfl-creditors-v3'].includes(templateVersion),
     );
     expect(files).toHaveLength(2);
     for (const { id, templateVersion } of files) {
@@ -5261,12 +5629,12 @@ test('bank certificates retain evidence and a manual contract decision, and both
       const xml = strFromU8(
         unzipSync(result.bytes)['word/document.xml'] ?? new Uint8Array(),
       );
-      expect(xml).toContain('1434,21');
-      expect(xml).toContain('1234,15');
+      expect(xml).toContain('1 434,21');
+      expect(xml).toContain('1 234,15');
       expect(xml).toContain('200,06');
       expect(xml.match(/BANK-01/g)).toHaveLength(1);
-      expect(xml).not.toMatch(/BANK-03|BANK-04|7000,10|2222,10|8,15/);
-      if (templateVersion === 'bfl-statement-v7') {
+      expect(xml).not.toMatch(/BANK-03|BANK-04|7 000,10|2 222,10|8,15/);
+      if (templateVersion === 'bfl-statement-v11') {
         const header = xml.slice(0, xml.indexOf('</w:tbl>'));
         expect(header.match(/Синтетический Банк/g)).toHaveLength(1);
       }
@@ -5281,7 +5649,7 @@ test('employment records and income certificates reach review and the downloaded
   const { workspaceId } = await create();
   const scope = memberScope(workspaceId, 'fixture');
   const workId = await apiBackend.workHttp.intake.createWork(scope, {
-    packageVersion: 'bfl-bankruptcy-v7',
+    packageVersion: 'bfl-bankruptcy-v12',
     title: 'Синтетическая трудовая и справки о доходах',
   });
   const input = { workspaceId, workId };
@@ -5375,8 +5743,8 @@ test('employment records and income certificates reach review and the downloaded
     return Promise.resolve({ markdown, processorVersion: 'fixture' });
   };
   extractFixture = ({ document, fields }) => {
-    expect(fields?.some(({ key }) => key === 'employmentHistory')).toBe(true);
-    expect(fields?.some(({ key }) => key === 'employmentIncome')).toBe(true);
+    expect(fields.some(({ key }) => key === 'employmentHistory')).toBe(true);
+    expect(fields.some(({ key }) => key === 'employmentIncome')).toBe(true);
     const evidence = (quote: string) => ({
       documentId: document.id,
       imagePath: null,
@@ -5480,14 +5848,14 @@ test('employment records and income certificates reach review and the downloaded
       values: { ...reviewed.facts.values, documentDate: '14.03.2026' },
     });
     const active = await renderStatement(await until(input, terminal));
-    expect(active).toContain('В настоящее время работаю в ООО Юг.');
-    expect(active).toContain('60900,00 руб.');
+    expect(active).toContain('осуществляю трудовую деятельность в ООО Юг.');
+    expect(active).toContain('60 900,00');
     expect(active).not.toContain('ООО Север');
 
     await addSource('employment-termination');
     const terminated = await renderStatement(await until(input, terminal));
     expect(terminated).toContain('не осуществляю трудовую деятельность');
-    expect(terminated).not.toMatch(/ООО Юг|Средняя заработная плата|60900,00/);
+    expect(terminated).not.toMatch(/ООО Юг|Средняя заработная плата|60 900,00/);
   } finally {
     parseFixture = undefined;
     extractFixture = undefined;
@@ -5630,7 +5998,7 @@ test('each EGRN cadastral number follows its property into the facts and the inv
 test('an EGRN source fills inventory and only confirmed supported files enter the statement', async () => {
   const { workspaceId } = await create();
   const scope = memberScope(workspaceId, 'fixture');
-  const packageVersion = 'bfl-bankruptcy-v8';
+  const packageVersion = 'bfl-bankruptcy-v12';
   const workId = await apiBackend.workHttp.intake.createWork(scope, {
     packageVersion,
     title: 'Синтетические приложения к заявлению',

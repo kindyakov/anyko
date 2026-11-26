@@ -7,6 +7,7 @@ import { grantMembership } from '../../src/modules/access/infrastructure/auth';
 import { type AuditWriter, record } from '../../src/modules/audit';
 import { type ApiBackend, createBackend } from '../../src/runtime';
 import { createDocumentUnitOfWork } from '../../src/runtime/documents/unit-of-work';
+import { createProcessingProfiles } from '../../src/runtime/processing-profiles';
 import { integrationConfig } from '../support/composition';
 import { memberScope } from '../support/scope';
 
@@ -216,7 +217,10 @@ test('deleting a document records one event, and a repeat delete records nothing
       createdBy: 'synthetic-actor',
     },
   });
-  const documents = createDocumentUnitOfWork(db);
+  const documents = createDocumentUnitOfWork(
+    db,
+    createProcessingProfiles(false).resolve,
+  );
   expect(await documents.remove(ws, documentId, 'delete-actor')).toBe(true);
   expect(await documents.remove(ws, documentId, 'delete-actor')).toBe(true);
   const events = await db.auditEvent.findMany({

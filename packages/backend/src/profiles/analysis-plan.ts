@@ -4,7 +4,6 @@ export interface AnalysisGoal {
   kind: 'collect' | 'review';
   fields: readonly string[];
   instructions: string;
-  lookups?: readonly ('court' | 'creditor')[];
 }
 
 export interface AnalysisPlan {

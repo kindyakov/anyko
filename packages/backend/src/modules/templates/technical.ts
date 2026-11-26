@@ -2,9 +2,8 @@ import { createHash } from 'node:crypto';
 
 import PizZip from 'pizzip';
 
-import { fieldDefinitions } from '../../profiles/bfl/fields';
-
-import type { DocumentPackage } from './schemas';
+import type { PackageDescription } from '../../profiles/package-description';
+import { documentPackageSchema } from '../../profiles/template-schema';
 
 const technicalTemplate = {
   id: 'technical-document',
@@ -12,15 +11,31 @@ const technicalTemplate = {
   title: 'Технический шаблон документа',
   technical: true,
   fields: [
-    { key: 'personName', label: 'Имя в исходных документах', multiline: false },
-    { key: 'documentNumber', label: 'Номер документа', multiline: false },
-    { key: 'documentDate', label: 'Дата документа', multiline: false },
+    {
+      key: 'personName',
+      label: 'ФИО полностью',
+      multiline: false,
+      role: 'debtor',
+    },
+    {
+      key: 'documentNumber',
+      label: 'Серия и номер паспорта',
+      multiline: false,
+      valueType: 'passport',
+      role: 'debtor',
+    },
+    {
+      key: 'documentDate',
+      label: 'Дата подписания',
+      multiline: false,
+      valueType: 'date',
+    },
     {
       key: 'observations',
-      label: 'Сведения и визуальные наблюдения',
+      label: 'Дополнительные сведения',
       multiline: true,
     },
-  ],
+  ] as const,
 };
 
 function requireTemplate(version: string) {
@@ -33,7 +48,9 @@ function requireTemplate(version: string) {
 export function technicalBytes(version: string): Uint8Array {
   requireTemplate(version);
   const zip = new PizZip();
-  const date = new Date('2026-01-01T00:00:00Z');
+  // ZIP stores local wall-clock fields. Preserve the timestamp in the
+  // template checksum already recorded by the catalog migration.
+  const date = new Date(2026, 0, 1, 3);
   const files = {
     '[Content_Types].xml':
       '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
@@ -61,13 +78,14 @@ export function technicalBytes(version: string): Uint8Array {
 }
 
 const bytes = technicalBytes('technical-document-v1');
-export const technicalPackage: DocumentPackage = {
+const technicalPackage = documentPackageSchema.parse({
   ...technicalTemplate,
-  fields: fieldDefinitions.filter((field) =>
-    ['personName', 'documentNumber', 'documentDate', 'observations'].includes(
-      field.key,
-    ),
-  ),
+  fields: technicalTemplate.fields.map((field) => ({
+    ...field,
+    kind: 'text',
+    limits: { maxLength: 12000 },
+    columns: [],
+  })),
   documents: [
     {
       id: 'technical-document',
@@ -76,6 +94,20 @@ export const technicalPackage: DocumentPackage = {
       filename: 'technical-document.docx',
       checksum: createHash('sha256').update(bytes).digest('hex'),
       blocks: [],
+      placeholders: technicalTemplate.fields.map(({ key }) => ({
+        tag: key,
+        field: key,
+        placeholder: 'identity',
+      })),
     },
   ],
+});
+export const technicalDescription: PackageDescription = {
+  package: technicalPackage,
+  requirements: {},
+  analysis: { excludedFields: [] },
+  catalogTitles: {
+    package: 'Технический пакет',
+    templates: { [technicalTemplate.version]: 'Технический документ' },
+  },
 };

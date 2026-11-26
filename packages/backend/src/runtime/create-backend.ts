@@ -67,9 +67,7 @@ import {
   runDelivery,
 } from '../modules/processing/infrastructure/run-engine';
 import { createDocumentProcessingStore } from '../modules/processing/infrastructure/store';
-import { hasPackage } from '../modules/templates';
-import { createTemplatePlaceholders } from '../modules/templates/infrastructure/template-placeholders';
-import { createTemplateRequirements } from '../modules/templates/infrastructure/template-requirements';
+import { createRetiredCatalogCleanup } from '../modules/templates/infrastructure/retired-catalog';
 import type { WorksModule } from '../modules/works';
 import {
   createWorkStore,
@@ -80,7 +78,6 @@ import { systemClock } from '../platform/clock';
 import { uuidV7 } from '../platform/ids';
 import type { JobRuntime } from '../platform/jobs';
 import { openTransaction, transactionHandle } from '../platform/transactions';
-import { bflAnalysisPlan } from '../profiles/bfl/analysis-plan';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
 import { createWorkChat, type WorkChat } from '../workflows/work-chat';
@@ -112,6 +109,11 @@ import {
   finishDocumentDeletion,
 } from './documents/unit-of-work';
 import { createJobRegistry } from './jobs';
+import {
+  createProcessingProfiles,
+  type ProcessingProfile,
+} from './processing-profiles';
+import { loadPublishedProcessingProfiles } from './publish-packages';
 import { createUnitOfWork } from './transactions';
 import {
   createResourceAwareIdempotencyStore,
@@ -121,8 +123,8 @@ import {
 import { createWorkProcessing } from './works/processing';
 
 /**
- * Test seams: each one replaces an external client. Production passes nothing, so the
- * defaults are the only clients the process creates.
+ * Test seams for external clients and additional processing profiles.
+ * Production uses the default composition.
  */
 interface BackendDependencies {
   createPool?(url: string): DatabasePool;
@@ -131,6 +133,7 @@ interface BackendDependencies {
   storage?: SourceStorage;
   parser?: DocumentParser;
   agents?: DocumentAgents;
+  processingProfiles?: readonly ProcessingProfile[];
   // Способ записи журнала действий: тест подменяет его, чтобы проверить откат транзакции.
   auditWriter?: AuditWriter;
 }
@@ -138,6 +141,7 @@ interface BackendDependencies {
 export interface BackendOptions<Role extends 'api' | 'worker'> {
   logger: Logger;
   role: Role;
+  packageCatalog?: 'published';
   dependencies?: BackendDependencies;
 }
 
@@ -225,10 +229,29 @@ export function createBackend(
   const databaseEvents = auth
     ? createDatabaseEvents(listenPool ?? pool)
     : undefined;
+  const stepwise = worker?.stepwiseAnalysis ?? false;
+  const additionalProfiles = dependencies.processingProfiles;
+  const publishedCatalog = options.packageCatalog === 'published';
+  let catalog = publishedCatalog
+    ? undefined
+    : createProcessingProfiles(stepwise, additionalProfiles);
+  const currentCatalog = () => {
+    if (!catalog) throw new Error('PACKAGE_CATALOG_NOT_READY');
+    return catalog;
+  };
+  const profiles: Pick<
+    ReturnType<typeof createProcessingProfiles>,
+    'resolve' | 'has' | 'available' | 'requirements'
+  > = {
+    resolve: (version) => currentCatalog().resolve(version),
+    has: (version) => currentCatalog().has(version),
+    available: () => currentCatalog().available(),
+    requirements: (version) => currentCatalog().requirements(version),
+  };
   const storage = dependencies.storage ?? createS3Storage(validated.storage);
   const io = createProcessingIo(db, uuidV7);
   const documents = createDocumentsModule({
-    store: createDocumentUnitOfWork(db),
+    store: createDocumentUnitOfWork(db, profiles.resolve),
     storage,
     artifacts: createArtifactRegistry(db),
     locks,
@@ -255,7 +278,7 @@ export function createBackend(
     storeFor: worksStoreFor,
     io,
     newId: uuidV7,
-    knownPackage: hasPackage,
+    knownPackage: profiles.has,
   });
   const facts = createFactsModule({
     store: createFactsStore(db),
@@ -267,8 +290,7 @@ export function createBackend(
     newId: uuidV7,
   });
   const processingFacade = createWorkProcessing(db, uow);
-  const templatePlaceholders = createTemplatePlaceholders(db);
-  const templateRequirements = createTemplateRequirements(db);
+  const templateRequirements = profiles.requirements;
 
   let agentsDelegate: DocumentAgents | undefined = dependencies.agents;
   const agents = () =>
@@ -311,16 +333,13 @@ export function createBackend(
     validated.works.chatRedisUrl &&
     createChatProgressFeed(validated.works.chatRedisUrl);
   const work: WorkDependencies = {
-    ...(validated.worker?.stepwiseAnalysis && {
-      analysisPlan: bflAnalysisPlan,
-    }),
+    resolvePackage: profiles.resolve,
     ...(chatProgress && { chatProgress }),
     newId: uuidV7,
     uow,
     works,
     facts,
     generation,
-    templatePlaceholders,
     templateRequirements,
     processing: processingFacade,
     connections,
@@ -337,6 +356,11 @@ export function createBackend(
   const ready = async () => {
     await storage.ready?.();
     await db.$queryRaw`SELECT 1`;
+    catalog ??= await loadPublishedProcessingProfiles(
+      db,
+      stepwise,
+      additionalProfiles,
+    );
     if (role === 'worker') await work.agents.model.ready();
   };
   const stop = () =>
@@ -378,13 +402,14 @@ export function createBackend(
       logger,
     });
     const workflows = {
+      resolvePackage: profiles.resolve,
       uow,
       works,
       facts,
       processing: processingFacade,
       connections,
       generation,
-      templatePlaceholders,
+      availablePackages: profiles.available,
       templateRequirements,
       audit,
       storage,
@@ -478,6 +503,7 @@ export function createBackend(
     clock: systemClock,
     sourcesDeleted: documentDeletions.completed,
   });
+  const cleanupRetiredCatalog = createRetiredCatalogCleanup(db);
   const advanceUploads = advanceUploadGroups(work);
   const registry = createJobRegistry({
     processing: jobProcessing,
@@ -506,6 +532,7 @@ export function createBackend(
     execute: createWorkExecution(work, createWorkspaceActorScope(db)),
     maintain: async () => {
       await cleanupWorks();
+      await cleanupRetiredCatalog();
       await advanceUploads();
     },
     documents: {

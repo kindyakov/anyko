@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { createModelGateway } from '@anyko/llm';
 
+import { bflAgentPolicy } from '../../../profiles/bfl/agent-policy';
 import { fieldDefinitions } from '../../../profiles/bfl/fields';
 
 import {
@@ -15,7 +16,10 @@ import {
 
 test('explicit business absence fits the same strict output used by the parser', () => {
   const schema = modelCandidateSchema(
-    modelFields(fieldDefinitions.filter(({ key }) => key === 'businessDebts')),
+    modelFields(
+      fieldDefinitions.filter(({ key }) => key === 'businessDebts'),
+      bflAgentPolicy.modelFields,
+    ),
     false,
   );
   const candidate = {
@@ -45,6 +49,7 @@ test('explicit business absence fits the same strict output used by the parser',
 test('the strict provider and candidate parser use one row and document columns for each bank obligation', async () => {
   const fields = modelFields(
     fieldDefinitions.filter(({ key }) => key === 'debts'),
+    bflAgentPolicy.modelFields,
   );
   const candidate = {
     field: 'debts' as const,

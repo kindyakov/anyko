@@ -129,7 +129,8 @@ test('the statement preview identifies attachment paragraphs omitted from the do
       {
         ...pack.documents[0],
         id: 'statement',
-        version: 'bfl-statement-v10',
+        version: 'bfl-statement-v11',
+        filling: { functionId: 'bfl-v1', layout: 'statement' },
         blocks: [
           {
             kind: 'paragraph',
@@ -249,6 +250,10 @@ test.each([
         {
           ...pack.documents[0],
           id: 'statement',
+          filling: {
+            functionId: 'bfl-v1',
+            layout: 'statement',
+          },
           blocks: [{ kind: 'paragraph', paragraph: paragraph(signature) }],
         },
       ],
@@ -490,7 +495,8 @@ test('the latest statement preview groups creditors and shows only active contra
       {
         ...pack.documents[0],
         id: 'statement',
-        version: 'bfl-statement-v7',
+        version: 'bfl-statement-v11',
+        filling: { functionId: 'bfl-v1', layout: 'statement' },
         blocks: [
           {
             kind: 'paragraph',
@@ -541,7 +547,8 @@ test('the latest statement preview groups creditors and shows only active contra
 test('the approved statement updates the request from the same name and date the lawyer edits', () => {
   const prepared = documentPackageSchema.parse({
     ...pack,
-    version: 'bfl-bankruptcy-v8',
+    version: 'bfl-bankruptcy-v12',
+    defaultDocumentDate: true,
     fields: [
       ...fieldDefinitions.filter(({ key }) => key === 'lastName'),
       ...[
@@ -561,7 +568,8 @@ test('the approved statement updates the request from the same name and date the
       {
         ...pack.documents[0],
         id: 'statement',
-        version: 'bfl-statement-v8',
+        version: 'bfl-statement-v11',
+        filling: { functionId: 'bfl-v1', layout: 'statement' },
         blocks: [
           'Я, {lastName} {firstName} {middleName}',
           'По состоянию на {documentDate}',
@@ -613,12 +621,22 @@ test('the approved statement updates the request from the same name and date the
     paper.getByDisplayValue('Другое объединение управляющих'),
   ).toBeTruthy();
   expect(paper.queryByDisplayValue(/Содружество/)).toBeNull();
+
+  rerender(<PackagePreview {...props} values={initial} />);
+  expect(
+    paper.getByText(
+      'Признать Синтетическую Ирину Ильиничну несостоятельной (банкротом)',
+    ),
+  ).toBeTruthy();
+  expect(paper.getAllByDisplayValue('20.11.2026')).toHaveLength(2);
+  expect(paper.getByDisplayValue(/Содружество/)).toBeTruthy();
 });
 
-test('the v8 preview renders display formats and marks editable template defaults', () => {
+test('the revised statement preview renders display formats and marks editable template defaults', () => {
   const editable = documentPackageSchema.parse({
     ...pack,
-    version: 'bfl-bankruptcy-v8',
+    version: 'bfl-bankruptcy-v12',
+    defaultDocumentDate: true,
     fields: [
       ...fieldDefinitions.filter(({ key }) => key === 'lastName'),
       {
@@ -634,7 +652,8 @@ test('the v8 preview renders display formats and marks editable template default
       {
         ...pack.documents[0],
         id: 'statement',
-        version: 'bfl-statement-v8',
+        version: 'bfl-statement-v11',
+        filling: { functionId: 'bfl-v1', layout: 'statement' },
         blocks: [
           '{lastName}',
           '{liabilityDetails}',

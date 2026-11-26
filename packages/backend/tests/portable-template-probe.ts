@@ -1,17 +1,12 @@
-import { templateBytes } from '../src/modules/templates';
+import { templateBytes } from '../src/runtime/template-assets';
 
 for (const version of [
-  'bfl-statement-v1',
-  'bfl-statement-v2',
-  'bfl-statement-v3',
-  'bfl-statement-v4',
-  'bfl-statement-v5',
-  'bfl-statement-v6',
-  'bfl-statement-v7',
-  'bfl-statement-v8',
-  'bfl-inventory-v1',
-  'bfl-creditors-v1',
-  'bfl-creditors-v2',
+  'bfl-statement-v11',
+  'bfl-statement-v12',
+  'bfl-inventory-v2',
+  'bfl-inventory-v3',
+  'bfl-creditors-v3',
+  'bfl-creditors-v4',
 ]) {
   if (!templateBytes(version).length)
     throw new Error(`Empty template: ${version}`);
