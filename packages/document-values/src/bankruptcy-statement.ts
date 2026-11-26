@@ -79,5 +79,5 @@ export function statementDebtorGender(
 }
 
 export function bankruptcyStatement(version: string | undefined) {
-  return version === 'bfl-statement-v11';
+  return version === 'statement';
 }

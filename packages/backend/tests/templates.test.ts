@@ -12,16 +12,16 @@ import {
 import { diagnoseFailure } from '@anyko/logger';
 
 import { generateDocument } from '../src/modules/generation';
-import {
-  availablePackages,
-  requirePackage,
-  templateBytes,
-} from '../src/modules/templates';
 import { candidateSchema } from '../src/profiles/bfl/candidate';
 import {
   emptyFieldValues,
   fieldValuesSchema,
 } from '../src/profiles/bfl/fields';
+import {
+  availablePackages,
+  requirePackage,
+  templateBytes,
+} from '../src/runtime/template-assets';
 
 import { templateData } from './helpers/template-data';
 

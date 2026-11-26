@@ -130,7 +130,7 @@ test('the statement preview identifies attachment paragraphs omitted from the do
         ...pack.documents[0],
         id: 'statement',
         version: 'bfl-statement-v11',
-        filling: { functionId: 'bfl-v1', contentVersion: 'bfl-statement-v11' },
+        filling: { functionId: 'bfl-v1', layout: 'statement' },
         blocks: [
           {
             kind: 'paragraph',
@@ -252,7 +252,7 @@ test.each([
           id: 'statement',
           filling: {
             functionId: 'bfl-v1',
-            contentVersion: 'bfl-statement-v11',
+            layout: 'statement',
           },
           blocks: [{ kind: 'paragraph', paragraph: paragraph(signature) }],
         },
@@ -496,7 +496,7 @@ test('the latest statement preview groups creditors and shows only active contra
         ...pack.documents[0],
         id: 'statement',
         version: 'bfl-statement-v11',
-        filling: { functionId: 'bfl-v1', contentVersion: 'bfl-statement-v11' },
+        filling: { functionId: 'bfl-v1', layout: 'statement' },
         blocks: [
           {
             kind: 'paragraph',
@@ -548,6 +548,7 @@ test('the approved statement updates the request from the same name and date the
   const prepared = documentPackageSchema.parse({
     ...pack,
     version: 'bfl-bankruptcy-v12',
+    defaultDocumentDate: true,
     fields: [
       ...fieldDefinitions.filter(({ key }) => key === 'lastName'),
       ...[
@@ -568,7 +569,7 @@ test('the approved statement updates the request from the same name and date the
         ...pack.documents[0],
         id: 'statement',
         version: 'bfl-statement-v11',
-        filling: { functionId: 'bfl-v1', contentVersion: 'bfl-statement-v11' },
+        filling: { functionId: 'bfl-v1', layout: 'statement' },
         blocks: [
           'Я, {lastName} {firstName} {middleName}',
           'По состоянию на {documentDate}',
@@ -635,6 +636,7 @@ test('the revised statement preview renders display formats and marks editable t
   const editable = documentPackageSchema.parse({
     ...pack,
     version: 'bfl-bankruptcy-v12',
+    defaultDocumentDate: true,
     fields: [
       ...fieldDefinitions.filter(({ key }) => key === 'lastName'),
       {
@@ -651,7 +653,7 @@ test('the revised statement preview renders display formats and marks editable t
         ...pack.documents[0],
         id: 'statement',
         version: 'bfl-statement-v11',
-        filling: { functionId: 'bfl-v1', contentVersion: 'bfl-statement-v11' },
+        filling: { functionId: 'bfl-v1', layout: 'statement' },
         blocks: [
           '{lastName}',
           '{liabilityDetails}',

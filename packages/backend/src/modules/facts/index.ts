@@ -1,6 +1,7 @@
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
+import type { FactPolicy } from '../../profiles/fact-policy';
 import type {
   FieldDefinition,
   FieldKey,
@@ -101,6 +102,7 @@ export interface FactsPorts {
       workId: string,
       refresh: (evidence: FactEvidence) => FactEvidence | null,
       fields: readonly FieldDefinition[],
+      factPolicy?: FactPolicy,
     ): Promise<WorkFacts>;
   };
 }

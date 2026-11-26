@@ -5,6 +5,7 @@ import {
   packageAttachment,
 } from '@anyko/document-values/attachments';
 
+import type { DocumentPackage } from '../../modules/templates';
 import { WorkError } from '../../modules/works';
 import { AppError, fieldErrors } from '../../platform/errors';
 import type { WorkId } from '../../platform/ids';
@@ -49,17 +50,18 @@ async function validateSubmittedAttachments(
   scope: WorkspaceScope,
   workId: WorkId,
   values: Partial<FieldValues>,
-  fields: readonly FieldDefinition[],
+  pack: DocumentPackage,
 ) {
+  const attachments = pack.attachments ?? [];
   const rows = values.submittedAttachments;
   if (!Array.isArray(rows) || !rows.length) return;
   const seen = new Set<string>();
   if (
-    !hasSubmittedAttachments(fields) ||
+    !hasSubmittedAttachments(pack.fields) ||
     rows.some(({ documentId, description, category, copyKind }) => {
       if (!documentId || seen.has(documentId)) return true;
       seen.add(documentId);
-      const fixed = packageAttachment(documentId);
+      const fixed = packageAttachment(documentId, attachments);
       return (
         !description?.trim() ||
         !attachmentCategory(category) ||
@@ -79,7 +81,11 @@ async function validateSubmittedAttachments(
   const active = new Set(
     documents.filter(({ deleted }) => !deleted).map(({ id }) => id),
   );
-  if ([...seen].some((id) => !active.has(id) && !packageAttachment(id)))
+  if (
+    [...seen].some(
+      (id) => !active.has(id) && !packageAttachment(id, attachments),
+    )
+  )
     throw new WorkError('NOT_FOUND');
 }
 
@@ -87,7 +93,7 @@ function saveWorkEdit(
   deps: EditDeps,
   scope: WorkspaceScope,
   input: EditRequest,
-  apply: (tx: Tx, fields: readonly FieldDefinition[]) => Promise<void>,
+  apply: (tx: Tx, pack: DocumentPackage) => Promise<void>,
 ) {
   return changeWork(
     deps,
@@ -101,7 +107,7 @@ function saveWorkEdit(
     },
     ({ work }) =>
       (tx) =>
-        apply(tx, deps.resolvePackage(work.packageVersion).description.fields),
+        apply(tx, deps.resolvePackage(work.packageVersion).description),
   );
 }
 
@@ -109,7 +115,8 @@ export const editValues =
   (deps: EditDeps) =>
   async (scope: WorkspaceScope, input: EditRequest & { values: unknown }) => {
     scope.require(workCommandPolicy.edit.right);
-    await saveWorkEdit(deps, scope, input, async (tx, fields) => {
+    await saveWorkEdit(deps, scope, input, async (tx, pack) => {
+      const { fields } = pack;
       const values = parseValues(input.values, fields);
       await validateSubmittedAttachments(
         deps,
@@ -117,7 +124,7 @@ export const editValues =
         scope,
         input.workId,
         values,
-        fields,
+        pack,
       );
       await deps.facts
         .in(tx)
@@ -134,7 +141,8 @@ async function saveFieldEdit(
 ) {
   scope.require(workCommandPolicy.edit.right);
   const result: { change?: FieldChange } = {};
-  await saveWorkEdit(deps, scope, input, async (tx, fields) => {
+  await saveWorkEdit(deps, scope, input, async (tx, pack) => {
+    const { fields } = pack;
     const { field, value } = await resolve(tx);
     if (!fields.some(({ key }) => key === field))
       throw new WorkError('INVALID_WORK_INPUT');
@@ -145,7 +153,7 @@ async function saveFieldEdit(
       scope,
       input.workId,
       values,
-      fields,
+      pack,
     );
     const { before, after } = await deps.facts.in(tx).commands.edit(scope, {
       workId: input.workId,

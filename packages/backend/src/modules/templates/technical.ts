@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto';
 
 import PizZip from 'pizzip';
 
-import type { DocumentPackage } from './schemas';
+import type { PackageDescription } from '../../profiles/package-description';
+import { documentPackageSchema } from '../../profiles/template-schema';
 
 const technicalTemplate = {
   id: 'technical-document',
@@ -75,7 +76,7 @@ export function technicalBytes(version: string): Uint8Array {
 }
 
 const bytes = technicalBytes('technical-document-v1');
-export const technicalPackage: DocumentPackage = {
+const technicalPackage = documentPackageSchema.parse({
   ...technicalTemplate,
   fields: technicalTemplate.fields.map((field) => ({
     ...field,
@@ -91,6 +92,20 @@ export const technicalPackage: DocumentPackage = {
       filename: 'technical-document.docx',
       checksum: createHash('sha256').update(bytes).digest('hex'),
       blocks: [],
+      placeholders: technicalTemplate.fields.map(({ key }) => ({
+        tag: key,
+        field: key,
+        placeholder: 'identity',
+      })),
     },
   ],
+});
+export const technicalDescription: PackageDescription = {
+  package: technicalPackage,
+  requirements: {},
+  analysis: { excludedFields: [] },
+  catalogTitles: {
+    package: 'Технический пакет',
+    templates: { [technicalTemplate.version]: 'Технический документ' },
+  },
 };

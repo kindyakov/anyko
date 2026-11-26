@@ -1,8 +1,7 @@
 import { ZodError } from 'zod';
 
 import type { FactSourceText } from '../../../profiles/agent-policy';
-import { debtSourceChecks } from '../../../profiles/bfl/automatic-value';
-import { usesBankObligations } from '../../../profiles/bfl/reconcile-obligations';
+import type { FactPolicy } from '../../../profiles/fact-policy';
 import type { FieldDefinition, FieldKey } from '../../../profiles/fields';
 import {
   combineCandidates,
@@ -12,6 +11,7 @@ import { mergeCandidates } from '../domain/values';
 import type { WorkFacts } from '../schemas';
 
 export interface RunProposals {
+  factPolicy?: FactPolicy | undefined;
   fields: readonly FieldDefinition[];
   packageFields: readonly FieldDefinition[];
   excludedFields?: ReadonlySet<FieldKey> | undefined;
@@ -26,6 +26,7 @@ export interface RunProposals {
 export function projectRunFacts(
   existing: WorkFacts,
   {
+    factPolicy,
     candidates,
     contextCandidates,
     fields,
@@ -66,7 +67,7 @@ export function projectRunFacts(
   }
 
   const sourceChecks = sourceTexts?.length
-    ? debtSourceChecks(sourceTexts)
+    ? factPolicy?.sourceChecks?.(sourceTexts)
     : undefined;
   const next = mergeCandidates(
     existing,
@@ -78,13 +79,14 @@ export function projectRunFacts(
     sourceChecks,
     sourceTexts,
     packageFields,
+    factPolicy,
   );
   if (!contextAccepted) {
     // Необязательная стадия не стирает известные значения без новых кандидатов.
     for (const { key: field } of fields) {
       const saved = existing.values[field] ?? null;
       const stale =
-        usesBankObligations(field, [saved]) &&
+        factPolicy?.obligations?.uses(field, [saved]) &&
         Array.isArray(saved) &&
         saved.some((row) => sourceChecks?.hasNewerBalance(row));
       if (!stale && !selected.some((candidate) => candidate.field === field))

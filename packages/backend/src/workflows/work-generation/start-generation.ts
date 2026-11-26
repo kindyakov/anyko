@@ -2,7 +2,6 @@ import {
   hasSubmittedAttachments,
   submittedAttachmentRows,
 } from '@anyko/document-values/attachments';
-import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
 
 import type { AuditModule } from '../../modules/audit';
 import type { ConnectionsModule } from '../../modules/connections';
@@ -68,13 +67,11 @@ export const startGeneration =
               new Set(
                 documents.filter(({ deleted }) => !deleted).map(({ id }) => id),
               ),
+              pack.attachments ?? [],
             );
           const confirmed = work.confirmedRevision === work.revision;
           let revision = work.revision;
-          if (
-            isDatedBankruptcyPackage(work.packageVersion) &&
-            values.documentDate === null
-          ) {
+          if (pack.defaultDocumentDate && values.documentDate === null) {
             const date = deps.clock
               .now()
               .toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' });

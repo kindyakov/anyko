@@ -3,12 +3,12 @@ import { expect, test } from 'bun:test';
 import { strFromU8, unzipSync } from 'fflate';
 
 import { generateDocument } from '../../packages/backend/src/modules/generation';
+import { readFieldValues } from '../../packages/backend/src/profiles/bfl/fields';
+import { createProcessingProfiles } from '../../packages/backend/src/runtime/processing-profiles';
 import {
   requirePackage,
   templateBytes,
-} from '../../packages/backend/src/modules/templates';
-import { readFieldValues } from '../../packages/backend/src/profiles/bfl/fields';
-import { createProcessingProfiles } from '../../packages/backend/src/runtime/processing-profiles';
+} from '../../packages/backend/src/runtime/template-assets';
 import { prepareTemplate } from '../../packages/document-values/src/template-filling';
 import providerFixtures from '../fixtures/bfl-acceptance/provider-fixtures.json';
 
@@ -126,6 +126,34 @@ function docxTextAndTables(bytes: Uint8Array): string {
     .join('\n');
 }
 
+test('v13 keeps the v12 form text and grid and adds the recorded cadastral number', () => {
+  const profiles = createProcessingProfiles(false);
+  const archived = profiles.resolve('bfl-bankruptcy-v12');
+  const cadastral = profiles.resolve('bfl-bankruptcy-v13');
+  const render = (resolved: typeof archived, id: string) => {
+    const document = resolved.description.documents.find(
+      (item) => item.id === id,
+    );
+    if (!document) throw new Error(`Missing ${id}`);
+    return docxTextAndTables(
+      generateDocument(
+        resolved.templateBytes(document.version),
+        resolved.templateData(facts, document, referenceDate),
+      ),
+    );
+  };
+  for (const id of ['statement', 'creditors'])
+    expect(render(cadastral, id)).toBe(render(archived, id));
+  const inventory = render(archived, 'inventory');
+  expect(inventory).toContain('Квартира в тестовом доме А');
+  expect(render(cadastral, 'inventory')).toBe(
+    inventory.replace(
+      'Квартира в тестовом доме А',
+      'Квартира в тестовом доме А, кадастровый номер 00:00:0000000:87',
+    ),
+  );
+});
+
 for (const version of ['bfl-bankruptcy-v12', 'bfl-bankruptcy-v14']) {
   const resolved = createProcessingProfiles(false).resolve(version);
   const pack = resolved.description;
@@ -135,7 +163,14 @@ for (const version of ['bfl-bankruptcy-v12', 'bfl-bankruptcy-v14']) {
     test(`${version} ${id} keeps the reference DOCX text and tables`, () => {
       const bytes = generateDocument(
         templateBytes(document.version),
-        resolved.templateData(facts, document, referenceDate),
+        // These reference snapshots exercise the shared filling function
+        // with direct substitutions. The acceptance goldens exercise
+        // the full catalog bindings through the worker.
+        resolved.templateData(
+          facts,
+          { ...document, placeholders: [] },
+          referenceDate,
+        ),
       );
       expect(docxTextAndTables(bytes)).toMatchSnapshot();
     });

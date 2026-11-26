@@ -417,6 +417,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       settingsRevision: revision,
       analysisRevision,
       policy,
+      factPolicy: pack.factPolicy,
       readConnection,
       ...(pilotPlan && { pilotPlan }),
       fields,

@@ -15,7 +15,7 @@ import { projectRunFacts } from './project-run-facts';
 export const acceptRunCandidates =
   ({ store }: { store: Pick<FactsStore, 'get' | 'save'> }) =>
   async (input: AcceptRunCandidatesInput): Promise<AcceptedRunCandidates> => {
-    const { workspaceId, workId, fields, packageFields } = input;
+    const { workspaceId, workId, fields, packageFields, factPolicy } = input;
     const existing = await store.get(workspaceId, workId);
     const { next, extractionAccepted, contextAccepted, extraction, context } =
       projectRunFacts(existing, input);
@@ -32,10 +32,12 @@ export const acceptRunCandidates =
           candidates: proposals,
         },
         packageFields,
+        factPolicy,
       );
       const after = markSelectedCandidates(
         { ...next, candidates: proposals },
         packageFields,
+        factPolicy,
       );
       for (const [
         index,
@@ -61,6 +63,6 @@ export const acceptRunCandidates =
       missingFields: fields
         .map(({ key }) => key)
         .filter((key) => next.values[key] == null),
-      discrepancyFields: findFactDiscrepancies(next, fields),
+      discrepancyFields: findFactDiscrepancies(next, fields, factPolicy),
     };
   };

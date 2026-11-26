@@ -1,0 +1,2916 @@
+{
+  "bfl-creditors-v3": {
+    "placeholders": [
+      {
+        "tag": "apartment",
+        "field": "apartment",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "birthDate",
+        "field": "birthDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "birthPlace",
+        "field": "birthPlace",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "building",
+        "field": "building",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts",
+        "field": "businessDebts",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.address",
+        "field": "businessDebts.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.amount",
+        "field": "businessDebts.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.arrears",
+        "field": "businessDebts.arrears",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.basis",
+        "field": "businessDebts.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.name",
+        "field": "businessDebts.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.penalties",
+        "field": "businessDebts.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.rowNumber",
+        "field": "businessDebts.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.type",
+        "field": "businessDebts.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessPayments",
+        "field": "businessPayments",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessPayments.amount",
+        "field": "businessPayments.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessPayments.name",
+        "field": "businessPayments.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessPayments.penalties",
+        "field": "businessPayments.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessPayments.rowNumber",
+        "field": "businessPayments.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables",
+        "field": "businessReceivables",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.address",
+        "field": "businessReceivables.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.amount",
+        "field": "businessReceivables.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.arrears",
+        "field": "businessReceivables.arrears",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.basis",
+        "field": "businessReceivables.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.name",
+        "field": "businessReceivables.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.penalties",
+        "field": "businessReceivables.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.rowNumber",
+        "field": "businessReceivables.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.type",
+        "field": "businessReceivables.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessRefunds",
+        "field": "businessRefunds",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessRefunds.amount",
+        "field": "businessRefunds.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessRefunds.name",
+        "field": "businessRefunds.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessRefunds.penalties",
+        "field": "businessRefunds.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessRefunds.rowNumber",
+        "field": "businessRefunds.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "city",
+        "field": "city",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debtTotal",
+        "field": "debtTotal",
+        "placeholder": "RUB_DECIMAL"
+      },
+      {
+        "tag": "debts",
+        "field": "debts",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.address",
+        "field": "debts.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.amount",
+        "field": "debts.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.arrears",
+        "field": "debts.arrears",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.basis",
+        "field": "debts.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.name",
+        "field": "debts.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.penalties",
+        "field": "debts.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.rowNumber",
+        "field": "debts.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.type",
+        "field": "debts.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "district",
+        "field": "district",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "documentDate",
+        "field": "documentDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "documentNumber",
+        "field": "documentNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "firstName",
+        "field": "firstName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "house",
+        "field": "house",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "inn",
+        "field": "inn",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "lastName",
+        "field": "lastName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "locality",
+        "field": "locality",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "mandatoryPayments",
+        "field": "mandatoryPayments",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "mandatoryPayments.amount",
+        "field": "mandatoryPayments.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "mandatoryPayments.name",
+        "field": "mandatoryPayments.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "mandatoryPayments.penalties",
+        "field": "mandatoryPayments.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "mandatoryPayments.rowNumber",
+        "field": "mandatoryPayments.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "middleName",
+        "field": "middleName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "previousNames",
+        "field": "previousNames",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables",
+        "field": "receivables",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.address",
+        "field": "receivables.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.amount",
+        "field": "receivables.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.arrears",
+        "field": "receivables.arrears",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.basis",
+        "field": "receivables.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.name",
+        "field": "receivables.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.penalties",
+        "field": "receivables.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.rowNumber",
+        "field": "receivables.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.type",
+        "field": "receivables.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "refunds",
+        "field": "refunds",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "refunds.amount",
+        "field": "refunds.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "refunds.name",
+        "field": "refunds.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "refunds.penalties",
+        "field": "refunds.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "refunds.rowNumber",
+        "field": "refunds.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "region",
+        "field": "region",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "snils",
+        "field": "snils",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "street",
+        "field": "street",
+        "placeholder": "identity"
+      }
+    ],
+    "requirements": [
+      {
+        "key": "debt-certificate",
+        "documentKind": "debt-certificate",
+        "label": "Справки о задолженности",
+        "applicability": "usual",
+        "position": 5
+      },
+      {
+        "key": "loan-agreement",
+        "documentKind": "agreement",
+        "label": "Кредитные договоры и договоры займа",
+        "applicability": "conditional",
+        "position": 6
+      }
+    ]
+  },
+  "bfl-creditors-v4": {
+    "placeholders": [
+      {
+        "tag": "apartment",
+        "field": "apartment",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "birthDate",
+        "field": "birthDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "birthPlace",
+        "field": "birthPlace",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "building",
+        "field": "building",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts",
+        "field": "businessDebts",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.address",
+        "field": "businessDebts.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.amount",
+        "field": "businessDebts.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.arrears",
+        "field": "businessDebts.arrears",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.basis",
+        "field": "businessDebts.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.name",
+        "field": "businessDebts.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.penalties",
+        "field": "businessDebts.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.rowNumber",
+        "field": "businessDebts.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessDebts.type",
+        "field": "businessDebts.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessPayments",
+        "field": "businessPayments",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessPayments.amount",
+        "field": "businessPayments.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessPayments.name",
+        "field": "businessPayments.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessPayments.penalties",
+        "field": "businessPayments.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessPayments.rowNumber",
+        "field": "businessPayments.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables",
+        "field": "businessReceivables",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.address",
+        "field": "businessReceivables.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.amount",
+        "field": "businessReceivables.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.arrears",
+        "field": "businessReceivables.arrears",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.basis",
+        "field": "businessReceivables.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.name",
+        "field": "businessReceivables.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.penalties",
+        "field": "businessReceivables.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.rowNumber",
+        "field": "businessReceivables.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessReceivables.type",
+        "field": "businessReceivables.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessRefunds",
+        "field": "businessRefunds",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessRefunds.amount",
+        "field": "businessRefunds.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessRefunds.name",
+        "field": "businessRefunds.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessRefunds.penalties",
+        "field": "businessRefunds.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "businessRefunds.rowNumber",
+        "field": "businessRefunds.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "city",
+        "field": "city",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debtTotal",
+        "field": "debtTotal",
+        "placeholder": "RUB_DECIMAL"
+      },
+      {
+        "tag": "debts",
+        "field": "debts",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.address",
+        "field": "debts.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.amount",
+        "field": "debts.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.arrears",
+        "field": "debts.arrears",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.basis",
+        "field": "debts.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.name",
+        "field": "debts.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.penalties",
+        "field": "debts.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.rowNumber",
+        "field": "debts.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debts.type",
+        "field": "debts.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "district",
+        "field": "district",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "documentDate",
+        "field": "documentDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "documentNumber",
+        "field": "documentNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "firstName",
+        "field": "firstName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "house",
+        "field": "house",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "inn",
+        "field": "inn",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "lastName",
+        "field": "lastName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "locality",
+        "field": "locality",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "mandatoryPayments",
+        "field": "mandatoryPayments",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "mandatoryPayments.amount",
+        "field": "mandatoryPayments.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "mandatoryPayments.name",
+        "field": "mandatoryPayments.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "mandatoryPayments.penalties",
+        "field": "mandatoryPayments.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "mandatoryPayments.rowNumber",
+        "field": "mandatoryPayments.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "middleName",
+        "field": "middleName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "previousNames",
+        "field": "previousNames",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables",
+        "field": "receivables",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.address",
+        "field": "receivables.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.amount",
+        "field": "receivables.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.arrears",
+        "field": "receivables.arrears",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.basis",
+        "field": "receivables.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.name",
+        "field": "receivables.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.penalties",
+        "field": "receivables.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.rowNumber",
+        "field": "receivables.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "receivables.type",
+        "field": "receivables.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "refunds",
+        "field": "refunds",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "refunds.amount",
+        "field": "refunds.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "refunds.name",
+        "field": "refunds.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "refunds.penalties",
+        "field": "refunds.penalties",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "refunds.rowNumber",
+        "field": "refunds.rowNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "region",
+        "field": "region",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "snils",
+        "field": "snils",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "street",
+        "field": "street",
+        "placeholder": "identity"
+      }
+    ],
+    "requirements": [
+      {
+        "key": "debt-certificate",
+        "documentKind": "debt-certificate",
+        "label": "Справки о задолженности",
+        "applicability": "usual",
+        "position": 5
+      },
+      {
+        "key": "loan-agreement",
+        "documentKind": "agreement",
+        "label": "Кредитные договоры и договоры займа",
+        "applicability": "conditional",
+        "position": 6
+      }
+    ]
+  },
+  "bfl-inventory-v2": {
+    "placeholders": [
+      {
+        "tag": "aircraft",
+        "field": "aircraft",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.address",
+        "field": "aircraft.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.amount",
+        "field": "aircraft.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.description",
+        "field": "aircraft.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.identifier",
+        "field": "aircraft.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.ownership",
+        "field": "aircraft.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.pledge",
+        "field": "aircraft.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartment",
+        "field": "apartment",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments",
+        "field": "apartments",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.address",
+        "field": "apartments.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.area",
+        "field": "apartments.area",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.basis",
+        "field": "apartments.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.description",
+        "field": "apartments.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.ownership",
+        "field": "apartments.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.pledge",
+        "field": "apartments.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "art",
+        "field": "art",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "art.address",
+        "field": "art.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "art.amount",
+        "field": "art.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "art.description",
+        "field": "art.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "art.pledge",
+        "field": "art.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "bankAccounts",
+        "field": "bankAccounts",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "bankAccounts.amount",
+        "field": "bankAccounts.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "bankAccounts.name",
+        "field": "bankAccounts.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "bankAccounts.openedAt",
+        "field": "bankAccounts.openedAt",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "bankAccounts.type",
+        "field": "bankAccounts.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "birthDate",
+        "field": "birthDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "birthPlace",
+        "field": "birthPlace",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats",
+        "field": "boats",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.address",
+        "field": "boats.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.amount",
+        "field": "boats.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.description",
+        "field": "boats.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.identifier",
+        "field": "boats.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.ownership",
+        "field": "boats.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.pledge",
+        "field": "boats.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "building",
+        "field": "building",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars",
+        "field": "cars",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.address",
+        "field": "cars.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.amount",
+        "field": "cars.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.description",
+        "field": "cars.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.identifier",
+        "field": "cars.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.ownership",
+        "field": "cars.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.pledge",
+        "field": "cars.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cash",
+        "field": "cash",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cash.address",
+        "field": "cash.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cash.amount",
+        "field": "cash.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cash.pledge",
+        "field": "cash.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "city",
+        "field": "city",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity",
+        "field": "companyEquity",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity.address",
+        "field": "companyEquity.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity.amount",
+        "field": "companyEquity.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity.basis",
+        "field": "companyEquity.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity.name",
+        "field": "companyEquity.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity.share",
+        "field": "companyEquity.share",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "district",
+        "field": "district",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "documentDate",
+        "field": "documentDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "documentNumber",
+        "field": "documentNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles",
+        "field": "farmVehicles",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.address",
+        "field": "farmVehicles.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.amount",
+        "field": "farmVehicles.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.description",
+        "field": "farmVehicles.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.identifier",
+        "field": "farmVehicles.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.ownership",
+        "field": "farmVehicles.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.pledge",
+        "field": "farmVehicles.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "firstName",
+        "field": "firstName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages",
+        "field": "garages",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.address",
+        "field": "garages.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.area",
+        "field": "garages.area",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.basis",
+        "field": "garages.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.description",
+        "field": "garages.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.ownership",
+        "field": "garages.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.pledge",
+        "field": "garages.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "house",
+        "field": "house",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses",
+        "field": "houses",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.address",
+        "field": "houses.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.area",
+        "field": "houses.area",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.basis",
+        "field": "houses.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.description",
+        "field": "houses.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.ownership",
+        "field": "houses.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.pledge",
+        "field": "houses.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "inn",
+        "field": "inn",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "jewellery",
+        "field": "jewellery",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "jewellery.address",
+        "field": "jewellery.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "jewellery.amount",
+        "field": "jewellery.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "jewellery.description",
+        "field": "jewellery.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "jewellery.pledge",
+        "field": "jewellery.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land",
+        "field": "land",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.address",
+        "field": "land.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.area",
+        "field": "land.area",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.basis",
+        "field": "land.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.description",
+        "field": "land.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.ownership",
+        "field": "land.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.pledge",
+        "field": "land.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "lastName",
+        "field": "lastName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "locality",
+        "field": "locality",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "middleName",
+        "field": "middleName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles",
+        "field": "motorcycles",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.address",
+        "field": "motorcycles.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.amount",
+        "field": "motorcycles.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.description",
+        "field": "motorcycles.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.identifier",
+        "field": "motorcycles.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.ownership",
+        "field": "motorcycles.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.pledge",
+        "field": "motorcycles.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate",
+        "field": "otherRealEstate",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.address",
+        "field": "otherRealEstate.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.area",
+        "field": "otherRealEstate.area",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.basis",
+        "field": "otherRealEstate.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.description",
+        "field": "otherRealEstate.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.ownership",
+        "field": "otherRealEstate.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.pledge",
+        "field": "otherRealEstate.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities",
+        "field": "otherSecurities",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities.amount",
+        "field": "otherSecurities.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities.name",
+        "field": "otherSecurities.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities.nominal",
+        "field": "otherSecurities.nominal",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities.quantity",
+        "field": "otherSecurities.quantity",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities.type",
+        "field": "otherSecurities.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherValuables",
+        "field": "otherValuables",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherValuables.address",
+        "field": "otherValuables.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherValuables.amount",
+        "field": "otherValuables.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherValuables.description",
+        "field": "otherValuables.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherValuables.pledge",
+        "field": "otherValuables.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles",
+        "field": "otherVehicles",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.address",
+        "field": "otherVehicles.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.amount",
+        "field": "otherVehicles.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.description",
+        "field": "otherVehicles.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.identifier",
+        "field": "otherVehicles.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.ownership",
+        "field": "otherVehicles.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.pledge",
+        "field": "otherVehicles.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "previousNames",
+        "field": "previousNames",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "professional",
+        "field": "professional",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "professional.address",
+        "field": "professional.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "professional.amount",
+        "field": "professional.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "professional.description",
+        "field": "professional.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "professional.pledge",
+        "field": "professional.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "region",
+        "field": "region",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "snils",
+        "field": "snils",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "street",
+        "field": "street",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks",
+        "field": "trucks",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.address",
+        "field": "trucks.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.amount",
+        "field": "trucks.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.description",
+        "field": "trucks.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.identifier",
+        "field": "trucks.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.ownership",
+        "field": "trucks.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.pledge",
+        "field": "trucks.pledge",
+        "placeholder": "identity"
+      }
+    ],
+    "requirements": []
+  },
+  "bfl-inventory-v3": {
+    "placeholders": [
+      {
+        "tag": "aircraft",
+        "field": "aircraft",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.address",
+        "field": "aircraft.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.amount",
+        "field": "aircraft.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.description",
+        "field": "aircraft.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.identifier",
+        "field": "aircraft.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.ownership",
+        "field": "aircraft.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "aircraft.pledge",
+        "field": "aircraft.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartment",
+        "field": "apartment",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments",
+        "field": "apartments",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.address",
+        "field": "apartments.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.area",
+        "field": "apartments.area",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.basis",
+        "field": "apartments.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.description",
+        "field": "apartments.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.ownership",
+        "field": "apartments.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "apartments.pledge",
+        "field": "apartments.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "art",
+        "field": "art",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "art.address",
+        "field": "art.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "art.amount",
+        "field": "art.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "art.description",
+        "field": "art.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "art.pledge",
+        "field": "art.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "bankAccounts",
+        "field": "bankAccounts",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "bankAccounts.amount",
+        "field": "bankAccounts.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "bankAccounts.name",
+        "field": "bankAccounts.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "bankAccounts.openedAt",
+        "field": "bankAccounts.openedAt",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "bankAccounts.type",
+        "field": "bankAccounts.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "birthDate",
+        "field": "birthDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "birthPlace",
+        "field": "birthPlace",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats",
+        "field": "boats",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.address",
+        "field": "boats.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.amount",
+        "field": "boats.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.description",
+        "field": "boats.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.identifier",
+        "field": "boats.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.ownership",
+        "field": "boats.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "boats.pledge",
+        "field": "boats.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "building",
+        "field": "building",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars",
+        "field": "cars",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.address",
+        "field": "cars.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.amount",
+        "field": "cars.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.description",
+        "field": "cars.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.identifier",
+        "field": "cars.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.ownership",
+        "field": "cars.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cars.pledge",
+        "field": "cars.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cash",
+        "field": "cash",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cash.address",
+        "field": "cash.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cash.amount",
+        "field": "cash.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "cash.pledge",
+        "field": "cash.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "city",
+        "field": "city",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity",
+        "field": "companyEquity",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity.address",
+        "field": "companyEquity.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity.amount",
+        "field": "companyEquity.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity.basis",
+        "field": "companyEquity.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity.name",
+        "field": "companyEquity.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyEquity.share",
+        "field": "companyEquity.share",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "district",
+        "field": "district",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "documentDate",
+        "field": "documentDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "documentNumber",
+        "field": "documentNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles",
+        "field": "farmVehicles",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.address",
+        "field": "farmVehicles.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.amount",
+        "field": "farmVehicles.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.description",
+        "field": "farmVehicles.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.identifier",
+        "field": "farmVehicles.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.ownership",
+        "field": "farmVehicles.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "farmVehicles.pledge",
+        "field": "farmVehicles.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "firstName",
+        "field": "firstName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages",
+        "field": "garages",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.address",
+        "field": "garages.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.area",
+        "field": "garages.area",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.basis",
+        "field": "garages.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.description",
+        "field": "garages.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.ownership",
+        "field": "garages.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "garages.pledge",
+        "field": "garages.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "house",
+        "field": "house",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses",
+        "field": "houses",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.address",
+        "field": "houses.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.area",
+        "field": "houses.area",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.basis",
+        "field": "houses.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.description",
+        "field": "houses.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.ownership",
+        "field": "houses.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "houses.pledge",
+        "field": "houses.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "inn",
+        "field": "inn",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "jewellery",
+        "field": "jewellery",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "jewellery.address",
+        "field": "jewellery.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "jewellery.amount",
+        "field": "jewellery.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "jewellery.description",
+        "field": "jewellery.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "jewellery.pledge",
+        "field": "jewellery.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land",
+        "field": "land",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.address",
+        "field": "land.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.area",
+        "field": "land.area",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.basis",
+        "field": "land.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.description",
+        "field": "land.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.ownership",
+        "field": "land.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "land.pledge",
+        "field": "land.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "lastName",
+        "field": "lastName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "locality",
+        "field": "locality",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "middleName",
+        "field": "middleName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles",
+        "field": "motorcycles",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.address",
+        "field": "motorcycles.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.amount",
+        "field": "motorcycles.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.description",
+        "field": "motorcycles.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.identifier",
+        "field": "motorcycles.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.ownership",
+        "field": "motorcycles.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "motorcycles.pledge",
+        "field": "motorcycles.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate",
+        "field": "otherRealEstate",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.address",
+        "field": "otherRealEstate.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.area",
+        "field": "otherRealEstate.area",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.basis",
+        "field": "otherRealEstate.basis",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.description",
+        "field": "otherRealEstate.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.ownership",
+        "field": "otherRealEstate.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherRealEstate.pledge",
+        "field": "otherRealEstate.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities",
+        "field": "otherSecurities",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities.amount",
+        "field": "otherSecurities.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities.name",
+        "field": "otherSecurities.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities.nominal",
+        "field": "otherSecurities.nominal",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities.quantity",
+        "field": "otherSecurities.quantity",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherSecurities.type",
+        "field": "otherSecurities.type",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherValuables",
+        "field": "otherValuables",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherValuables.address",
+        "field": "otherValuables.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherValuables.amount",
+        "field": "otherValuables.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherValuables.description",
+        "field": "otherValuables.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherValuables.pledge",
+        "field": "otherValuables.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles",
+        "field": "otherVehicles",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.address",
+        "field": "otherVehicles.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.amount",
+        "field": "otherVehicles.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.description",
+        "field": "otherVehicles.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.identifier",
+        "field": "otherVehicles.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.ownership",
+        "field": "otherVehicles.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "otherVehicles.pledge",
+        "field": "otherVehicles.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "previousNames",
+        "field": "previousNames",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "professional",
+        "field": "professional",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "professional.address",
+        "field": "professional.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "professional.amount",
+        "field": "professional.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "professional.description",
+        "field": "professional.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "professional.pledge",
+        "field": "professional.pledge",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "region",
+        "field": "region",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "snils",
+        "field": "snils",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "street",
+        "field": "street",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks",
+        "field": "trucks",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.address",
+        "field": "trucks.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.amount",
+        "field": "trucks.amount",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.description",
+        "field": "trucks.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.identifier",
+        "field": "trucks.identifier",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.ownership",
+        "field": "trucks.ownership",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "trucks.pledge",
+        "field": "trucks.pledge",
+        "placeholder": "identity"
+      }
+    ],
+    "requirements": []
+  },
+  "bfl-statement-v11": {
+    "placeholders": [
+      {
+        "tag": "attachments",
+        "field": "attachments",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "attachments.description",
+        "field": "attachments.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "birthDate",
+        "field": "birthDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "birthPlace",
+        "field": "birthPlace",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyParticipationDetails",
+        "field": "companyParticipationDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "courtAddress",
+        "field": "courtAddress",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "courtName",
+        "field": "courtName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "creditorHeaders",
+        "field": "creditorHeaders",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "creditorHeaders.address",
+        "field": "creditorHeaders.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "creditorHeaders.inn",
+        "field": "creditorHeaders.inn",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "creditorHeaders.name",
+        "field": "creditorHeaders.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "creditorHeaders.ogrn",
+        "field": "creditorHeaders.ogrn",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "criminalCasesDetails",
+        "field": "criminalCasesDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debtTotal",
+        "field": "debtTotal",
+        "placeholder": "RUB_DECIMAL"
+      },
+      {
+        "tag": "debtTotalWords",
+        "field": "debtTotal",
+        "placeholder": "RUB_WORDS"
+      },
+      {
+        "tag": "debtorAddress",
+        "field": "debtorAddress",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debtorCitizenship",
+        "field": "debtorCitizenship",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debtorRegistration",
+        "field": "debtorRegistration",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "documentDate",
+        "field": "documentDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "documentNumber",
+        "field": "documentNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "employmentDetails",
+        "field": "employmentDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "familyDetails",
+        "field": "familyDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "firstName",
+        "field": "firstName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "inn",
+        "field": "inn",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "insolvencyDetails",
+        "field": "insolvencyDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "lastName",
+        "field": "lastName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "liabilityDetails",
+        "field": "liabilityDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "majorTransactionsDetails",
+        "field": "majorTransactionsDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "middleName",
+        "field": "middleName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "passportDepartment",
+        "field": "passportDepartment",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "passportIssuedAt",
+        "field": "passportIssuedAt",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "passportIssuer",
+        "field": "passportIssuer",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "propertyDetails",
+        "field": "propertyDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "requestCitizenship",
+        "field": "requestCitizenship",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "requestDebtorName",
+        "field": "requestDebtorName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "requestFullRegistration",
+        "field": "requestFullRegistration",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "requestInsolvency",
+        "field": "requestInsolvency",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "signerName",
+        "field": "signerName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "snils",
+        "field": "snils",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "sroAddress",
+        "field": "sroAddress",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "sroContacts",
+        "field": "sroContacts",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "sroName",
+        "field": "sroName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "sroPostalAddress",
+        "field": "sroPostalAddress",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "statementAttachmentReferences",
+        "field": "statementAttachmentReferences",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "statementBalanceConclusion",
+        "field": "statementBalanceConclusion",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "statementDebts",
+        "field": "statementDebts",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "statementDebts.description",
+        "field": "statementDebts.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "statementGroundsText",
+        "field": "statementGroundsText",
+        "placeholder": "identity"
+      }
+    ],
+    "requirements": [
+      {
+        "key": "passport",
+        "documentKind": "identity",
+        "label": "Паспорт гражданина",
+        "applicability": "usual",
+        "position": 1
+      },
+      {
+        "key": "snils",
+        "documentKind": "identity",
+        "label": "СНИЛС",
+        "applicability": "usual",
+        "position": 2
+      },
+      {
+        "key": "insurance-account",
+        "documentKind": "insurance-statement",
+        "label": "Выписка о состоянии индивидуального лицевого счёта",
+        "applicability": "usual",
+        "position": 3
+      },
+      {
+        "key": "inn",
+        "documentKind": "tax-registration",
+        "label": "Свидетельство о постановке на налоговый учёт (ИНН)",
+        "applicability": "conditional",
+        "position": 4
+      },
+      {
+        "key": "debt-certificate",
+        "documentKind": "debt-certificate",
+        "label": "Справки о задолженности",
+        "applicability": "usual",
+        "position": 5
+      },
+      {
+        "key": "loan-agreement",
+        "documentKind": "agreement",
+        "label": "Кредитные договоры и договоры займа",
+        "applicability": "conditional",
+        "position": 6
+      },
+      {
+        "key": "bank-statement",
+        "documentKind": "bank-statement",
+        "label": "Выписки по банковским счетам",
+        "applicability": "conditional",
+        "position": 7
+      },
+      {
+        "key": "employment",
+        "documentKind": "employment-history",
+        "label": "Сведения о трудовой деятельности",
+        "applicability": "conditional",
+        "position": 8
+      },
+      {
+        "key": "income",
+        "documentKind": "income-certificate",
+        "label": "Справки о доходах",
+        "applicability": "conditional",
+        "position": 9
+      },
+      {
+        "key": "marriage",
+        "documentKind": "civil-status",
+        "label": "Свидетельство о заключении или расторжении брака",
+        "applicability": "conditional",
+        "position": 10
+      },
+      {
+        "key": "children",
+        "documentKind": "birth-certificate",
+        "label": "Свидетельства о рождении детей",
+        "applicability": "conditional",
+        "position": 11
+      },
+      {
+        "key": "property",
+        "documentKind": "property-register",
+        "label": "Выписки ЕГРН и документы об имуществе",
+        "applicability": "conditional",
+        "position": 12
+      },
+      {
+        "key": "procedure-expenses",
+        "documentKind": "payment-receipt",
+        "label": "Подтверждение оплаты расходов процедуры",
+        "applicability": "conditional",
+        "position": 13
+      }
+    ]
+  },
+  "bfl-statement-v12": {
+    "placeholders": [
+      {
+        "tag": "attachmentHeading",
+        "field": "attachmentHeading",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "attachmentTail.description",
+        "field": "attachmentTail.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "attachments",
+        "field": "attachments",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "attachments.description",
+        "field": "attachments.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "birthDate",
+        "field": "birthDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "birthPlace",
+        "field": "birthPlace",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "companyParticipationDetails",
+        "field": "companyParticipationDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "courtAddress",
+        "field": "courtAddress",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "courtName",
+        "field": "courtName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "creditorHeaders",
+        "field": "creditorHeaders",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "creditorHeaders.address",
+        "field": "creditorHeaders.address",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "creditorHeaders.inn",
+        "field": "creditorHeaders.inn",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "creditorHeaders.name",
+        "field": "creditorHeaders.name",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "creditorHeaders.ogrn",
+        "field": "creditorHeaders.ogrn",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "criminalCasesDetails",
+        "field": "criminalCasesDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debtTotal",
+        "field": "debtTotal",
+        "placeholder": "RUB_DECIMAL"
+      },
+      {
+        "tag": "debtTotalWords",
+        "field": "debtTotal",
+        "placeholder": "RUB_WORDS"
+      },
+      {
+        "tag": "debtorAddress",
+        "field": "debtorAddress",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debtorCitizenship",
+        "field": "debtorCitizenship",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "debtorRegistration",
+        "field": "debtorRegistration",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "documentDate",
+        "field": "documentDate",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "documentNumber",
+        "field": "documentNumber",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "employmentDetails",
+        "field": "employmentDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "familyDetails",
+        "field": "familyDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "firstName",
+        "field": "firstName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "inn",
+        "field": "inn",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "insolvencyDetails",
+        "field": "insolvencyDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "lastName",
+        "field": "lastName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "liabilityDetails",
+        "field": "liabilityDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "majorTransactionsDetails",
+        "field": "majorTransactionsDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "middleName",
+        "field": "middleName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "passportDepartment",
+        "field": "passportDepartment",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "passportIssuedAt",
+        "field": "passportIssuedAt",
+        "placeholder": "DD.MM.YYYY г."
+      },
+      {
+        "tag": "passportIssuer",
+        "field": "passportIssuer",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "propertyDetails",
+        "field": "propertyDetails",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "requestCitizenship",
+        "field": "requestCitizenship",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "requestDebtorName",
+        "field": "requestDebtorName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "requestFullRegistration",
+        "field": "requestFullRegistration",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "requestInsolvency",
+        "field": "requestInsolvency",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "signerName",
+        "field": "signerName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "snils",
+        "field": "snils",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "sroAddress",
+        "field": "sroAddress",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "sroContacts",
+        "field": "sroContacts",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "sroName",
+        "field": "sroName",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "sroPostalAddress",
+        "field": "sroPostalAddress",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "statementAttachmentReferences",
+        "field": "statementAttachmentReferences",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "statementBalanceConclusion",
+        "field": "statementBalanceConclusion",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "statementDebts",
+        "field": "statementDebts",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "statementDebts.description",
+        "field": "statementDebts.description",
+        "placeholder": "identity"
+      },
+      {
+        "tag": "statementGroundsText",
+        "field": "statementGroundsText",
+        "placeholder": "identity"
+      }
+    ],
+    "requirements": [
+      {
+        "key": "passport",
+        "documentKind": "identity",
+        "label": "Паспорт гражданина",
+        "applicability": "usual",
+        "position": 1
+      },
+      {
+        "key": "snils",
+        "documentKind": "identity",
+        "label": "СНИЛС",
+        "applicability": "usual",
+        "position": 2
+      },
+      {
+        "key": "insurance-account",
+        "documentKind": "insurance-statement",
+        "label": "Выписка о состоянии индивидуального лицевого счёта",
+        "applicability": "usual",
+        "position": 3
+      },
+      {
+        "key": "inn",
+        "documentKind": "tax-registration",
+        "label": "Свидетельство о постановке на налоговый учёт (ИНН)",
+        "applicability": "conditional",
+        "position": 4
+      },
+      {
+        "key": "debt-certificate",
+        "documentKind": "debt-certificate",
+        "label": "Справки о задолженности",
+        "applicability": "usual",
+        "position": 5
+      },
+      {
+        "key": "loan-agreement",
+        "documentKind": "agreement",
+        "label": "Кредитные договоры и договоры займа",
+        "applicability": "conditional",
+        "position": 6
+      },
+      {
+        "key": "bank-statement",
+        "documentKind": "bank-statement",
+        "label": "Выписки по банковским счетам",
+        "applicability": "conditional",
+        "position": 7
+      },
+      {
+        "key": "employment",
+        "documentKind": "employment-history",
+        "label": "Сведения о трудовой деятельности",
+        "applicability": "conditional",
+        "position": 8
+      },
+      {
+        "key": "income",
+        "documentKind": "income-certificate",
+        "label": "Справки о доходах",
+        "applicability": "conditional",
+        "position": 9
+      },
+      {
+        "key": "marriage",
+        "documentKind": "civil-status",
+        "label": "Свидетельство о заключении или расторжении брака",
+        "applicability": "conditional",
+        "position": 10
+      },
+      {
+        "key": "children",
+        "documentKind": "birth-certificate",
+        "label": "Свидетельства о рождении детей",
+        "applicability": "conditional",
+        "position": 11
+      },
+      {
+        "key": "property",
+        "documentKind": "property-register",
+        "label": "Выписки ЕГРН и документы об имуществе",
+        "applicability": "conditional",
+        "position": 12
+      },
+      {
+        "key": "procedure-expenses",
+        "documentKind": "payment-receipt",
+        "label": "Подтверждение оплаты расходов процедуры",
+        "applicability": "conditional",
+        "position": 13
+      }
+    ]
+  }
+}

@@ -5,6 +5,7 @@ import { strToU8, zipSync } from 'fflate';
 import type { Database } from '@anyko/database';
 
 import type { ProcessingProfile } from '../../../../packages/backend/src/runtime/processing-profiles';
+import { publishRegisteredPackages } from '../../../../packages/backend/src/runtime/publish-packages';
 
 const title = 'Иск о взыскании долга (тестовый профиль)';
 const packages: ProcessingProfile['packages'][number][] = [];
@@ -48,28 +49,41 @@ for (const [suffix, parties] of [
   );
   assets.set(templateVersion, bytes);
   packages.push({
-    id: 'test-debt-claim',
-    version,
-    title,
-    technical: true,
-    fields: fields.map(([key, label]) => ({
-      key,
-      label,
-      kind: 'text',
-      multiline: false,
-      limits: { maxLength: 200 },
-      columns: [],
-    })),
-    documents: [
-      {
-        id: 'test-debt-claim-template',
-        version: templateVersion,
-        title,
-        filename: 'claim.docx',
-        checksum: createHash('sha256').update(bytes).digest('hex'),
-        blocks: [],
-      },
-    ],
+    analysis: { excludedFields: [] },
+    requirements: {},
+    package: {
+      id: 'test-debt-claim',
+      version,
+      title,
+      technical: true,
+      fields: fields.map(([key, label]) => ({
+        key,
+        label,
+        ...(key.endsWith('Inn') && {
+          valueType: 'inn' as const,
+          role: key === 'plaintiffInn' ? 'plaintiff' : 'defendant',
+        }),
+        kind: 'text',
+        multiline: false,
+        limits: { maxLength: 200 },
+        columns: [],
+      })),
+      documents: [
+        {
+          id: 'test-debt-claim-template',
+          version: templateVersion,
+          title,
+          filename: 'claim.docx',
+          checksum: createHash('sha256').update(bytes).digest('hex'),
+          blocks: [],
+          placeholders: fields.map(([field]) => ({
+            tag: field,
+            field,
+            placeholder: 'identity',
+          })),
+        },
+      ],
+    },
   });
 }
 
@@ -82,32 +96,14 @@ export const debtClaimProfile: ProcessingProfile = {
     if (!bytes) throw new Error('UNKNOWN_FIXTURE_TEMPLATE');
     return bytes;
   },
-  templateData: (values) => values,
 };
 
 export async function registerDebtClaim(db: Database) {
-  await db.$transaction(async (tx) => {
-    for (const pack of packages) {
-      await tx.documentPackageVersion.create({
-        data: { version: pack.version, packageId: pack.id, title },
-      });
-      const document = pack.documents[0];
-      if (!document) throw new Error('MISSING_FIXTURE_TEMPLATE');
-      await tx.documentTemplateVersion.create({
-        data: {
-          version: document.version,
-          templateId: document.id,
-          title,
-          checksum: document.checksum,
-          packages: { create: { packageVersion: pack.version, position: 0 } },
-        },
-      });
-    }
-  });
+  return publishRegisteredPackages(db, [debtClaimProfile], debtClaimProfile.id);
 }
 
 export async function unregisterDebtClaim(db: Database) {
-  const versions = packages.map(({ version }) => version);
+  const versions = packages.map(({ package: { version } }) => version);
   await db.$transaction(async (tx) => {
     await tx.packageDocument.deleteMany({
       where: { packageVersion: { in: versions } },

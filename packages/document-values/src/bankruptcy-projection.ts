@@ -1,4 +1,3 @@
-import { hasSubmittedAttachments } from './attachments';
 import { formatBankruptcyMoney, formatCreditorText } from './bankruptcy-format';
 import {
   bankruptcyStatement,
@@ -21,15 +20,11 @@ type Row = Record<string, string | null>;
 type Value = string | Row[] | null | undefined;
 type Values = Readonly<Record<string, Value>>;
 
-export function usesBankruptcyProjection(
-  version: string | undefined,
-  fields: readonly { key: string }[] = [],
-): boolean {
+export function usesBankruptcyProjection(version: string | undefined): boolean {
   return (
     bankruptcyStatement(version) ||
-    version === 'bfl-inventory-v2' ||
-    version === 'bfl-creditors-v3' ||
-    (!!version && version.startsWith('bfl-') && hasSubmittedAttachments(fields))
+    version === 'inventory' ||
+    version === 'creditors'
   );
 }
 
@@ -37,7 +32,7 @@ export function projectBankruptcyCollections(version: string, values: Values) {
   if (!obligationTemplate(version)) return null;
   const { debts, businessDebts, creditorHeaders, total, totalWords } =
     obligationAmounts(values.debts, values.businessDebts, true);
-  const isCreditorList = version === 'bfl-creditors-v3';
+  const isCreditorList = version === 'creditors';
   const rows = (entries: Row[] | null, other: Row[] | null): Row[] => {
     if (isCreditorList && !entries?.length)
       return [

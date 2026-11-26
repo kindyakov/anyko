@@ -1,7 +1,5 @@
 import { expect, test } from 'bun:test';
 
-import { bflLayoutPackage } from '@anyko/document-values/statement-layout';
-
 import {
   type AnalysisPlan,
   validateAnalysisPlan,
@@ -67,7 +65,7 @@ test('a checkpoint revision changes when the plan is reordered or its instructio
   const {
     analysis: { fields, plan, policy },
     profile,
-  } = createProcessingProfiles(true).resolve(bflLayoutPackage);
+  } = createProcessingProfiles(true).resolve('bfl-bankruptcy-v14');
   const [first, second, ...remaining] = plan?.steps ?? [];
   if (!plan || !first || !second) throw new Error('MISSING_ANALYSIS_PLAN');
 
@@ -114,7 +112,7 @@ test('a checkpoint revision changes when the plan is reordered or its instructio
 test('profile extraction instructions invalidate extraction without changing step checkpoints', () => {
   const profiles = createProcessingProfiles(true);
   const extraction = profiles.resolve('bfl-bankruptcy-v12');
-  const stepwise = profiles.resolve(bflLayoutPackage);
+  const stepwise = profiles.resolve('bfl-bankruptcy-v14');
   const revision = (pack: typeof extraction, instructions?: string) => {
     const { fields, plan, policy } = pack.analysis;
     return workAnalysisRevision(

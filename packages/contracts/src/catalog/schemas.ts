@@ -53,11 +53,7 @@ export const documentTemplateSchema = z.object({
   filling: z
     .object({
       functionId: z.literal('bfl-v1'),
-      contentVersion: z.enum([
-        'bfl-statement-v11',
-        'bfl-inventory-v2',
-        'bfl-creditors-v3',
-      ]),
+      layout: z.enum(['statement', 'inventory', 'creditors']),
       splitAttachments: z.boolean().optional(),
     })
     .optional(),
@@ -83,6 +79,17 @@ export const documentPackageSchema = z.object({
   version: z.string(),
   title: z.string(),
   technical: z.boolean(),
+  defaultDocumentDate: z.boolean().optional(),
+  attachments: z
+    .array(
+      z.object({
+        documentId: z.string().regex(/^package:[a-z-]+$/u),
+        description: z.string().min(1),
+        category: z.string().min(1),
+        originalOnly: z.boolean(),
+      }),
+    )
+    .optional(),
   fields: z.array(
     z.object({
       key: fieldKeySchema,

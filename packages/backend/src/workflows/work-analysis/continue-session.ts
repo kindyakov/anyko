@@ -18,6 +18,7 @@ import { isAppError } from '../../platform/errors';
 import type { AgentPolicy, FactSourceText } from '../../profiles/agent-policy';
 import { missingFieldReasonLabels } from '../../profiles/analysis-discrepancy';
 import type { AnalysisPlan } from '../../profiles/analysis-plan';
+import type { FactPolicy } from '../../profiles/fact-policy';
 import type { FieldKey } from '../../profiles/fields';
 import type { WorkDependencies } from '../work-dependencies';
 import { logWorkFailure } from '../work-execution/failure';
@@ -47,6 +48,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
     settingsRevision: number | null;
     analysisRevision: string;
     policy: AgentPolicy;
+    factPolicy?: FactPolicy | undefined;
     readConnection(): ReturnType<
       WorkDependencies['connections']['internal']['connection']
     >;
@@ -103,7 +105,10 @@ export function createWorkContinuation(deps: WorkDependencies) {
       );
       const submitted = hasSubmittedAttachments(input.fields);
       const candidates = submitted ? attachmentAnalysis(found) : found;
-      const passportIds = passportSourceIds(input.sources);
+      const passportIds = passportSourceIds(
+        input.sources,
+        input.factPolicy?.passportCitation,
+      );
       const normalizeContext = (proposals: WorkFacts['candidates']) => {
         const located = locateEvidence(proposals, input.sources);
         return submitted ? attachmentAnalysis(located, candidates) : located;
@@ -207,6 +212,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
             const plan = input.pilotPlan;
             const pilot = await runStepwiseAnalysis({
               plan,
+              factPolicy: input.factPolicy,
               attempt: workAttempt,
               fingerprint: digest([
                 input.analysisRevision,
@@ -228,6 +234,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
                   contextCandidates: normalizeContext(draft),
                   fields: input.fields,
                   packageFields: input.packageFields,
+                  factPolicy: input.factPolicy,
                   excludedFields: input.excludedFields,
                   confirmed:
                     snapshot.work.confirmedRevision === snapshot.work.revision,
@@ -344,6 +351,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
               workId: run.workId,
               fields: input.fields,
               packageFields: input.packageFields,
+              factPolicy: input.factPolicy,
               excludedFields: input.excludedFields,
               confirmed: work.confirmedRevision === work.revision,
               preserveExisting: run.automaticUpload === true,

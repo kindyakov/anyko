@@ -12,32 +12,6 @@ import { missingTemplateValue } from './template-value';
 type Row = Record<string, string | null>;
 type Values = Partial<Record<string, string | Row[] | null>>;
 
-export const bflLayoutPackage = 'bfl-bankruptcy-v14';
-export const bflLayoutTemplates = {
-  'bfl-statement-v12': 'bfl-statement-v11',
-  'bfl-inventory-v3': 'bfl-inventory-v2',
-  'bfl-creditors-v4': 'bfl-creditors-v3',
-} as const;
-export function bflContentTemplate(version: string): string {
-  return Object.hasOwn(bflLayoutTemplates, version)
-    ? bflLayoutTemplates[version as keyof typeof bflLayoutTemplates]
-    : version;
-}
-
-const revisedStatementTemplate = (version: string | undefined) =>
-  version !== undefined && bankruptcyStatement(bflContentTemplate(version));
-
-export const revisedBankruptcyPackages = [
-  'bfl-bankruptcy-v12',
-  'bfl-bankruptcy-v13',
-] as const;
-const datedPackages = new Set<string>([
-  ...revisedBankruptcyPackages,
-  bflLayoutPackage,
-]);
-export const isDatedBankruptcyPackage = (version: string) =>
-  datedPackages.has(version);
-
 function text(values: Values, field: string) {
   const value = values[field];
   return typeof value === 'string' ? value.trim() : '';
@@ -79,7 +53,7 @@ export function omittedStatementAttachments(
   version: string | undefined,
   values: Values,
 ) {
-  return revisedStatementTemplate(version)
+  return bankruptcyStatement(version)
     ? statementAttachmentClauses(values)
         .filter(({ included }) => !included)
         .map(({ label }) => label)
@@ -87,7 +61,7 @@ export function omittedStatementAttachments(
 }
 
 export function statementLayout(version: string | undefined, values: Values) {
-  if (!revisedStatementTemplate(version)) return {};
+  if (!bankruptcyStatement(version)) return {};
   const feminine = statementDebtorGender(values) === 'female';
   const citizenship = text(values, 'citizenship');
   const russian = /^(?:российская федерация|россии|рф)$/iu.test(citizenship);
@@ -194,7 +168,7 @@ export function statementDebtNarratives(
   version: string | undefined,
   values: Values,
 ) {
-  if (version !== 'bfl-statement-v11') return undefined;
+  if (version !== 'statement') return undefined;
   const { debts, businessDebts } = obligationAmounts(
     values.debts,
     values.businessDebts,

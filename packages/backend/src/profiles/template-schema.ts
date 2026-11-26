@@ -5,7 +5,7 @@ import { inventorySectionKeys } from '@anyko/document-values/inventory-layout';
 import { moneyPlaceholders } from '@anyko/document-values/money';
 import { bflFillingLayouts } from '@anyko/document-values/template-filling';
 
-import { fieldKeySchema, valueTypeSchema } from '../../profiles/fields';
+import { fieldKeySchema, valueTypeSchema } from './fields';
 
 const paragraph = z.object({
   text: z.string(),
@@ -43,7 +43,7 @@ const block = z.discriminatedUnion('kind', [
 const bindingKey = z
   .string()
   .regex(/^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)*$/);
-export const templatePlaceholderSchema = z.discriminatedUnion('placeholder', [
+const templatePlaceholderSchema = z.discriminatedUnion('placeholder', [
   z.object({
     tag: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/),
     field: fieldKeySchema,
@@ -81,7 +81,7 @@ const document = z.object({
   filling: z
     .object({
       functionId: z.literal('bfl-v1'),
-      contentVersion: z.enum(bflFillingLayouts),
+      layout: z.enum(bflFillingLayouts),
       splitAttachments: z.boolean().optional(),
     })
     .optional(),
@@ -91,6 +91,17 @@ export const documentPackageSchema = z.object({
   version: z.string(),
   title: z.string(),
   technical: z.boolean(),
+  defaultDocumentDate: z.boolean().optional(),
+  attachments: z
+    .array(
+      z.object({
+        documentId: z.string().regex(/^package:[a-z-]+$/u),
+        description: z.string().min(1),
+        category: z.string().min(1),
+        originalOnly: z.boolean(),
+      }),
+    )
+    .optional(),
   fields: z.array(
     z.object({
       key: fieldKeySchema,

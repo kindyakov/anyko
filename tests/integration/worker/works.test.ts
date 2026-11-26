@@ -26,7 +26,6 @@ import type {
   SourceStorage,
 } from '../../../packages/backend/src/modules/documents';
 import { createWorkProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/work-store';
-import { requirePackage } from '../../../packages/backend/src/modules/templates';
 import {
   brandDocumentId,
   brandFileId,
@@ -35,6 +34,7 @@ import {
 } from '../../../packages/backend/src/platform/ids';
 import { emptyFieldValues } from '../../../packages/backend/src/profiles/bfl/fields';
 import { createBackend } from '../../../packages/backend/src/runtime';
+import { requirePackage } from '../../../packages/backend/src/runtime/template-assets';
 import { completionStream } from '../../../packages/backend/tests/support/completion-stream';
 import { memberScope } from '../../../packages/backend/tests/support/scope';
 

@@ -14,6 +14,7 @@ import { emptyFacts } from '../../src/modules/facts';
 import { factsStoreFor } from '../../src/modules/facts/infrastructure/store';
 import { createWorkProcessingStore } from '../../src/modules/processing/infrastructure/work-store';
 import { brandWorkId, uuidV7 } from '../../src/platform/ids';
+import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 import { createBackend } from '../../src/runtime';
 import { createUnitOfWork } from '../../src/runtime/transactions';
 import { changeWork } from '../../src/workflows/change-work';
@@ -216,7 +217,11 @@ test.each([
             event: 'facts.changed',
           },
           () => (tx) =>
-            factsStoreFor(tx).save(workspaceId, workId, emptyFacts()),
+            factsStoreFor(tx).save(
+              workspaceId,
+              workId,
+              emptyFacts(fieldDefinitions),
+            ),
         ),
       ),
     ).toMatchObject({ code });
@@ -246,7 +251,7 @@ test('two concurrent changes of the same revision save one effect, one revision 
         event: 'facts.changed',
       },
       () => (tx) => {
-        const facts = emptyFacts();
+        const facts = emptyFacts(fieldDefinitions);
         facts.values.personName = personName;
         return factsStoreFor(tx).save(workspaceId, workId, facts);
       },
@@ -327,7 +332,7 @@ test.each([
         async () => {
           if (!inside) await pause();
           return async (tx) => {
-            const facts = emptyFacts();
+            const facts = emptyFacts(fieldDefinitions);
             facts.values.personName = 'Устаревшее имя';
             await factsStoreFor(tx).save(workspaceId, workId, facts);
             if (inside) await pause();
@@ -354,7 +359,10 @@ test.each([
         await normal.workHttp.review.editValues(scope, {
           workId: id,
           revision,
-          values: { ...emptyFacts().values, personName: 'Сохранённое имя' },
+          values: {
+            ...emptyFacts(fieldDefinitions).values,
+            personName: 'Сохранённое имя',
+          },
         });
       resume.resolve(true);
       const failure = await loser;
@@ -388,7 +396,10 @@ test('an unknown fact table column fails validation and leaves the saved work un
       normal.workHttp.review.editValues(scope, {
         workId: id,
         revision,
-        values: { ...emptyFacts().values, debts: [{ rogue: 'x' }] },
+        values: {
+          ...emptyFacts(fieldDefinitions).values,
+          debts: [{ rogue: 'x' }],
+        },
       }),
     ),
   ).toMatchObject({

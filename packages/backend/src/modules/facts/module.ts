@@ -41,11 +41,12 @@ export function createFactsModule(deps: FactsDeps): FactsModule {
             values: { ...facts.values, documentDate: date },
           });
       },
-      async refreshEvidence(workspaceId, workId, refresh, fields) {
+      async refreshEvidence(workspaceId, workId, refresh, fields, factPolicy) {
         const facts = refreshFactEvidence(
           await store.get(workspaceId, workId),
           refresh,
           fields,
+          factPolicy,
         );
         await store.save(workspaceId, workId, facts);
         return packageFacts(facts, fields);

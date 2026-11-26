@@ -1,6 +1,11 @@
 import { expect, test } from 'bun:test';
 
-import { passportSourceIds } from './identity-sources';
+import { russianPassportCitation } from '../../profiles/bfl/passport-evidence';
+
+import { passportSourceIds as sourceIds } from './identity-sources';
+
+const passportSourceIds = (sources: Parameters<typeof sourceIds>[0]) =>
+  sourceIds(sources, russianPassportCitation);
 
 test('identifies a passport spread without mistaking a certificate containing its details for the passport', () => {
   expect(

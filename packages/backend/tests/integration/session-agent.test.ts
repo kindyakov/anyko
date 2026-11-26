@@ -14,10 +14,14 @@ import { llmError } from '@anyko/llm';
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 import { emptyFacts, markSelectedCandidates } from '../../src/modules/facts';
 import { generateDocument } from '../../src/modules/generation';
-import { requirePackage, templateBytes } from '../../src/modules/templates';
 import { bflAgentPolicy } from '../../src/profiles/bfl/agent-policy';
 import { automaticValue } from '../../src/profiles/bfl/automatic-value';
+import { bflFactPolicy } from '../../src/profiles/bfl/fact-policy';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
+import {
+  requirePackage,
+  templateBytes,
+} from '../../src/runtime/template-assets';
 import { templateData } from '../helpers/template-data';
 import { completionStream } from '../support/completion-stream';
 
@@ -628,7 +632,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
       threadId,
       workRevision: 1,
       previousContext: null,
-      facts: emptyFacts(),
+      facts: emptyFacts(fieldDefinitions),
       candidates: [
         {
           ...extracted,
@@ -807,7 +811,7 @@ test.each([131072, null])(
           },
           modelId: 'fixture',
           fields: [],
-          facts: emptyFacts(),
+          facts: emptyFacts(fieldDefinitions),
           documents: [],
           listSourceImages: () => Promise.resolve([]),
           readSource: () => Promise.reject(new Error('UNEXPECTED_SOURCE_READ')),
@@ -879,7 +883,7 @@ test('provider failures do not leak document or provider bodies through SDK cons
           threadId,
           workRevision: 1,
           previousContext: null,
-          facts: emptyFacts(),
+          facts: emptyFacts(fieldDefinitions),
           candidates: [],
           fields: [],
           documents: [],
@@ -1087,7 +1091,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     workRevision: 1,
     modelId: 'fixture/small',
     previousContext: null,
-    facts: emptyFacts(),
+    facts: emptyFacts(fieldDefinitions),
     candidates: [],
     documents: [oldSource],
     fields,
@@ -1379,7 +1383,7 @@ test('reconciliation finalizes with cited candidates after a parallel batch exha
       threadId,
       workRevision: 1,
       previousContext: null,
-      facts: emptyFacts(),
+      facts: emptyFacts(fieldDefinitions),
       fields: requirePackage('bfl-bankruptcy-v12').fields,
       candidates: [],
       documents: [
@@ -1534,7 +1538,7 @@ test('court lookup uses only the territory and sends verified address alternativ
       threadId,
       workRevision: 1,
       previousContext: null,
-      facts: emptyFacts(),
+      facts: emptyFacts(fieldDefinitions),
       fields: pack.fields,
       candidates: [
         {
@@ -1591,7 +1595,7 @@ test('court lookup uses only the territory and sends verified address alternativ
     const statement = pack.documents.find(({ id }) => id === 'statement');
     if (!statement) throw new Error('EXPECTED_STATEMENT');
     const values = {
-      ...emptyFacts().values,
+      ...emptyFacts(fieldDefinitions).values,
       courtName:
         result.candidates.find(({ field }) => field === 'courtName')?.value ??
         null,
@@ -1701,7 +1705,7 @@ test('official creditor details stay a proposal until selecting them for the lin
       id === documentId ? quote : (source?.text ?? source?.quote ?? ''),
     );
   };
-  const facts = emptyFacts();
+  const facts = emptyFacts(fieldDefinitions);
   facts.values.debts = [
     row,
     { name: 'АО «Другой кредитор»', basis: 'договор М-6', amount: '10.00' },
@@ -1851,7 +1855,10 @@ test('official creditor details stay a proposal until selecting them for the lin
       values: { ...facts.values, debts: facts.values.debts.slice(0, 2) },
       candidates: [ground, proposal],
     };
-    expect(markSelectedCandidates(reviewed)[1]?.selected).toBe(false);
+    expect(
+      markSelectedCandidates(reviewed, fieldDefinitions, bflFactPolicy)[1]
+        ?.selected,
+    ).toBe(false);
     const patched = applyCreditorRegistryCandidate(
       reviewed.values.debts,
       proposal.value,
@@ -1861,10 +1868,14 @@ test('official creditor details stay a proposal until selecting them for the lin
       { name: 'АО «Другой кредитор»', amount: '10.00' },
     ]);
     expect(
-      markSelectedCandidates({
-        ...reviewed,
-        values: { ...reviewed.values, debts: patched ?? null },
-      })[1]?.selected,
+      markSelectedCandidates(
+        {
+          ...reviewed,
+          values: { ...reviewed.values, debts: patched ?? null },
+        },
+        fieldDefinitions,
+        bflFactPolicy,
+      )[1]?.selected,
     ).toBe(true);
     const data = templateData(
       { ...reviewed.values, debts: patched ?? null },

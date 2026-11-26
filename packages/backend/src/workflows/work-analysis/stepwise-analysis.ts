@@ -9,6 +9,7 @@ import { markSelectedCandidates } from '../../modules/facts';
 import type { AnalysisCheckpoint, WorkAttempt } from '../../modules/processing';
 import { isAppError } from '../../platform/errors';
 import type { AnalysisPlan } from '../../profiles/analysis-plan';
+import type { FactPolicy } from '../../profiles/fact-policy';
 
 import { addUsage } from './model-call';
 
@@ -43,6 +44,7 @@ function proposalResult(
   proposals: Parameters<AnalysisStepInput['proposeFacts']>[1],
   facts: WorkFacts,
   definitions: TurnInput['fields'],
+  factPolicy: FactPolicy | undefined,
 ): Awaited<ReturnType<AnalysisStepInput['proposeFacts']>> {
   const selected = markSelectedCandidates(
     {
@@ -50,6 +52,7 @@ function proposalResult(
       candidates: proposals.map(({ candidate }) => candidate),
     },
     definitions,
+    factPolicy,
   );
   const byPosition = new Map(
     proposals.map(({ index }, i) => [index, selected[i]]),
@@ -90,6 +93,7 @@ function proposalResult(
 
 export async function runStepwiseAnalysis(input: {
   plan: AnalysisPlan;
+  factPolicy?: FactPolicy | undefined;
   attempt: WorkAttempt;
   fingerprint: string;
   model: ModelStep;
@@ -315,6 +319,7 @@ export async function runStepwiseAnalysis(input: {
                   proposals,
                   factsBefore(),
                   turn.fields,
+                  input.factPolicy,
                 );
               const proposedFacts = input.projectFacts(
                 appendProposals(completed, pendingCandidates),
@@ -337,6 +342,7 @@ export async function runStepwiseAnalysis(input: {
                   proposals,
                   factsBefore(),
                   turn.fields,
+                  input.factPolicy,
                 );
               const publication = proposalResult(
                 result,
@@ -344,6 +350,7 @@ export async function runStepwiseAnalysis(input: {
                 proposals,
                 proposedFacts,
                 turn.fields,
+                input.factPolicy,
               );
               await save({
                 ...checkpoint,

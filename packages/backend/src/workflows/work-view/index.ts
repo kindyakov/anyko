@@ -1,5 +1,3 @@
-import { inOperation } from '@anyko/logger';
-
 import type { AgentsModule } from '../../modules/agents';
 import type { ConnectionsModule } from '../../modules/connections';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
@@ -7,8 +5,7 @@ import type { FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
 import {
-  availablePackages,
-  type ReadTemplatePlaceholders,
+  type DocumentPackage,
   type ReadTemplateRequirements,
 } from '../../modules/templates';
 import type { WorksModule } from '../../modules/works';
@@ -27,7 +24,7 @@ export interface WorkViewDeps {
   processing: ProcessingModule;
   connections: ConnectionsModule;
   generation: GenerationModule;
-  templatePlaceholders: ReadTemplatePlaceholders;
+  availablePackages: () => DocumentPackage[];
   templateRequirements: ReadTemplateRequirements;
   documents: DocumentsModule;
   agents: AgentsModule;
@@ -37,10 +34,7 @@ export interface WorkViewDeps {
 // Процесс «просмотр работы»: представление, исходники, результаты распознавания и каталог пакетов для создания работы.
 export function createWorkView(deps: WorkViewDeps) {
   return {
-    packages: () =>
-      inOperation('catalog.listDocumentPackages', () =>
-        Promise.all(availablePackages().map(deps.templatePlaceholders)),
-      ),
+    packages: () => Promise.resolve(deps.availablePackages()),
     get: getWork(deps),
     ...agentHistoryQueries(deps),
     source: getSource(deps),

@@ -12,8 +12,8 @@ import {
 } from '@anyko/document-values/bankruptcy-projection';
 
 import { generateDocument } from '../src/modules/generation';
-import { requirePackage, templateBytes } from '../src/modules/templates';
 import { emptyFieldValues } from '../src/profiles/bfl/fields';
+import { requirePackage, templateBytes } from '../src/runtime/template-assets';
 
 import { templateData } from './helpers/template-data';
 
@@ -23,10 +23,10 @@ test('keeps unknown debt visible while showing a dash for confirmed absence', ()
     businessDebts: null,
   };
   expect(
-    projectBankruptcyCollections('bfl-creditors-v3', values)?.businessDebts,
+    projectBankruptcyCollections('creditors', values)?.businessDebts,
   ).toMatchObject([{ rowNumber: '-', name: '-', type: '[не заполнено]' }]);
   expect(
-    projectBankruptcyCollections('bfl-creditors-v3', {
+    projectBankruptcyCollections('creditors', {
       ...values,
       businessDebts: [],
     })?.businessDebts,

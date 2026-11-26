@@ -10,10 +10,7 @@ import type {
 import type { FactsModule } from '../modules/facts';
 import type { GenerationModule } from '../modules/generation';
 import type { ProcessingIo, ProcessingModule } from '../modules/processing';
-import type {
-  ReadTemplatePlaceholders,
-  ReadTemplateRequirements,
-} from '../modules/templates';
+import type { ReadTemplateRequirements } from '../modules/templates';
 import type { WorksModule } from '../modules/works';
 import type { UnitOfWork } from '../platform/transactions';
 
@@ -29,7 +26,6 @@ export interface WorkDependencies {
   works: WorksModule;
   facts: FactsModule;
   generation: GenerationModule;
-  templatePlaceholders: ReadTemplatePlaceholders;
   templateRequirements: ReadTemplateRequirements;
   processing: ProcessingModule;
   connections: ConnectionsModule;

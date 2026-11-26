@@ -68,8 +68,6 @@ import {
 } from '../modules/processing/infrastructure/run-engine';
 import { createDocumentProcessingStore } from '../modules/processing/infrastructure/store';
 import { createRetiredCatalogCleanup } from '../modules/templates/infrastructure/retired-catalog';
-import { createTemplatePlaceholders } from '../modules/templates/infrastructure/template-placeholders';
-import { createTemplateRequirements } from '../modules/templates/infrastructure/template-requirements';
 import type { WorksModule } from '../modules/works';
 import {
   createWorkStore,
@@ -115,6 +113,7 @@ import {
   createProcessingProfiles,
   type ProcessingProfile,
 } from './processing-profiles';
+import { availablePackages } from './template-assets';
 import { createUnitOfWork } from './transactions';
 import {
   createResourceAwareIdempotencyStore,
@@ -275,8 +274,7 @@ export function createBackend(
     newId: uuidV7,
   });
   const processingFacade = createWorkProcessing(db, uow);
-  const templatePlaceholders = createTemplatePlaceholders(db);
-  const templateRequirements = createTemplateRequirements(db);
+  const templateRequirements = profiles.requirements;
 
   let agentsDelegate: DocumentAgents | undefined = dependencies.agents;
   const agents = () =>
@@ -326,7 +324,6 @@ export function createBackend(
     works,
     facts,
     generation,
-    templatePlaceholders,
     templateRequirements,
     processing: processingFacade,
     connections,
@@ -391,7 +388,7 @@ export function createBackend(
       processing: processingFacade,
       connections,
       generation,
-      templatePlaceholders,
+      availablePackages,
       templateRequirements,
       audit,
       storage,

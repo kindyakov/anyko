@@ -1,5 +1,3 @@
-import { bflLayoutPackage } from '@anyko/document-values/statement-layout';
-
 import { type AnalysisPlan, validateAnalysisPlan } from '../analysis-plan';
 
 import { attachmentInstructions } from './attachment-instructions';
@@ -18,11 +16,8 @@ const manualFields = new Set([
 ]);
 
 export function bflAnalysisPlan(
-  version: string,
   fields: readonly FieldDefinition[],
-): AnalysisPlan | undefined {
-  if (version !== 'bfl-bankruptcy-v13' && version !== bflLayoutPackage)
-    return undefined;
+): AnalysisPlan {
   const definitions = fields.filter(({ key }) => !manualFields.has(key));
   const forKeys = (keys: readonly string[]) =>
     definitions.filter(({ key }) => keys.includes(key));

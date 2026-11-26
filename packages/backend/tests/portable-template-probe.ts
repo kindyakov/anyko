@@ -1,4 +1,4 @@
-import { templateBytes } from '../src/modules/templates';
+import { templateBytes } from '../src/runtime/template-assets';
 
 for (const version of [
   'bfl-statement-v11',

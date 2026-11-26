@@ -1,11 +1,9 @@
 import { prepareTemplate } from '@anyko/document-values/template-filling';
 
-import {
-  type DocumentPackage,
-  knownPackages,
-} from '../../src/modules/templates';
+import type { DocumentPackage } from '../../src/modules/templates';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 import type { FieldValues } from '../../src/profiles/fields';
+import { knownPackages } from '../../src/runtime/template-assets';
 
 export function templateData(
   values: FieldValues,

@@ -3,12 +3,12 @@ import { expect, test } from 'bun:test';
 import PizZip from 'pizzip';
 
 import { generateDocument } from '../src/modules/generation';
+import { emptyFieldValues } from '../src/profiles/bfl/fields';
 import {
   availablePackages,
   requirePackage,
   templateBytes,
-} from '../src/modules/templates';
-import { emptyFieldValues } from '../src/profiles/bfl/fields';
+} from '../src/runtime/template-assets';
 
 import { templateData } from './helpers/template-data';
 

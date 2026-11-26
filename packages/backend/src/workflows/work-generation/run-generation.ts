@@ -48,7 +48,7 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
         operation: 'work.generation.load',
       });
     const resolved = deps.resolvePackage(record.packageVersion);
-    const pack = await deps.templatePlaceholders(resolved.description);
+    const pack = resolved.description;
     let completed = 0;
     await step({ stage: 'generation', status: 'running' });
     for (const file of record.files) {

@@ -130,7 +130,7 @@ export function PackagePreview(props: Props) {
   const zoomClass = zooms[zoomIndex]?.className ?? '';
   const focusedField = pack.fields.find(({ key }) => key === focusKey);
   const prepared = prepareTemplate(
-    { ...document, fields: pack.fields },
+    { ...document, fields: pack.fields, attachments: pack.attachments },
     values,
     { referenceDate: new Date().toISOString().slice(0, 10), needsReview },
   );

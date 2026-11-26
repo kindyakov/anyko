@@ -3,16 +3,7 @@ import { readFileSync } from 'node:fs';
 
 import { DiagnosticError } from '@anyko/logger';
 
-import { fieldDefinitions } from '../../profiles/bfl/fields';
-
-import manifest from './assets/package.json';
-import { bflPackages } from './bfl-catalog';
-import type { DocumentPackage } from './schemas';
-import { technicalBytes, technicalPackage } from './technical';
-export type { DocumentPackage } from './schemas';
-export type ReadTemplatePlaceholders = (
-  pack: DocumentPackage,
-) => Promise<DocumentPackage>;
+export type { DocumentPackage } from '../../profiles/template-schema';
 export type ReadTemplateRequirements = (packageVersion: string) => Promise<
   {
     key: string;
@@ -22,43 +13,13 @@ export type ReadTemplateRequirements = (packageVersion: string) => Promise<
   }[]
 >;
 
-const { layoutPackage, revisedPackages } = bflPackages(fieldDefinitions);
+export { technicalBytes, technicalDescription } from './technical';
+export { validatePackageDescription } from './validate-package-description';
 
-export function availablePackages(): DocumentPackage[] {
-  return [layoutPackage];
-}
-export const knownPackages = [
-  layoutPackage,
-  ...revisedPackages,
-  technicalPackage,
-];
-export function requirePackage(version: string): DocumentPackage {
-  const pack = knownPackages.find((entry) => entry.version === version);
-  if (!pack)
-    throw new DiagnosticError({
-      code: 'PACKAGE_NOT_FOUND',
-      message: 'Версия пакета документов отсутствует в каталоге.',
-      operation: 'templates.requirePackage',
-    });
-  return pack;
-}
-export function templateBytes(version: string): Uint8Array {
-  if (version === technicalPackage.version) return technicalBytes(version);
-  const template = manifest.find((item) => item.version === version);
-  if (!template)
-    throw new DiagnosticError({
-      code: 'TEMPLATE_NOT_FOUND',
-      message: 'Версия шаблона отсутствует в каталоге.',
-      operation: 'templates.readAsset',
-    });
+export function readTemplateAsset(file: string, checksum: string): Uint8Array {
   let bytes: Uint8Array;
   try {
-    bytes = readFileSync(
-      new URL(
-        `./assets/${template.version.replace(/^bfl-/, '')}.docx`,
-        import.meta.url,
-      ),
-    );
+    bytes = readFileSync(new URL(`./assets/${file}`, import.meta.url));
   } catch (cause) {
     throw new DiagnosticError(
       {
@@ -69,7 +30,7 @@ export function templateBytes(version: string): Uint8Array {
       { cause },
     );
   }
-  if (createHash('sha256').update(bytes).digest('hex') !== template.checksum)
+  if (createHash('sha256').update(bytes).digest('hex') !== checksum)
     throw new DiagnosticError({
       code: 'TEMPLATE_CHECKSUM_MISMATCH',
       message: 'Контрольная сумма файла шаблона отличается от утверждённой.',

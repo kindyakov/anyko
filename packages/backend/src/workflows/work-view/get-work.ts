@@ -1,5 +1,3 @@
-import { inOperation } from '@anyko/logger';
-
 import type { AgentsModule } from '../../modules/agents';
 import type { ConnectionsModule } from '../../modules/connections';
 import type { DocumentsModule, ResourceLocks } from '../../modules/documents';
@@ -11,10 +9,7 @@ import {
 } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
-import {
-  type ReadTemplatePlaceholders,
-  type ReadTemplateRequirements,
-} from '../../modules/templates';
+import { type ReadTemplateRequirements } from '../../modules/templates';
 import { projectChecklist, type WorksModule } from '../../modules/works';
 import type { WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
@@ -34,7 +29,6 @@ export const getWork =
     processing: ProcessingModule;
     connections: ConnectionsModule;
     generation: GenerationModule;
-    templatePlaceholders: ReadTemplatePlaceholders;
     templateRequirements: ReadTemplateRequirements;
     documents: DocumentsModule;
     agents: AgentsModule;
@@ -67,7 +61,9 @@ export const getWork =
               throw error;
           }
         }
-      const { description: pack } = deps.resolvePackage(work.packageVersion);
+      const { description: pack, factPolicy } = deps.resolvePackage(
+        work.packageVersion,
+      );
       const facts = cleanupPending
         ? emptyFacts(pack.fields)
         : await deps.facts.queries.get(scope, workId, pack.fields);
@@ -92,17 +88,23 @@ export const getWork =
         session: cleanupPending
           ? null
           : await deps.agents.internal.get(scope.workspaceId, workId),
-        package: await inOperation('works.getDetails', () =>
-          deps.templatePlaceholders(pack),
-        ),
+        package: pack,
         documents,
-        checklist: checklistWithContracts(checklist, facts),
+        checklist: checklistWithContracts(
+          checklist,
+          facts,
+          factPolicy?.obligations,
+        ),
         canEditChecklist: scope.has('works.edit') && !cleanupPending,
         facts: {
           ...facts,
-          candidates: markSelectedCandidates(facts, pack.fields),
+          candidates: markSelectedCandidates(facts, pack.fields, factPolicy),
         },
-        discrepancyFields: findFactDiscrepancies(facts, pack.fields),
+        discrepancyFields: findFactDiscrepancies(
+          facts,
+          pack.fields,
+          factPolicy,
+        ),
         runs: cleanupPending
           ? []
           : await deps.processing.queries.runs(scope, workId),

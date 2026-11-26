@@ -862,7 +862,7 @@ test('employment review exposes the calculation inputs and the statement uses on
       {
         ...pack.documents[0],
         id: 'statement',
-        filling: { functionId: 'bfl-v1', contentVersion: 'bfl-statement-v11' },
+        filling: { functionId: 'bfl-v1', layout: 'statement' },
         blocks: [
           { kind: 'paragraph', paragraph: paragraph('{employmentDetails}') },
         ],

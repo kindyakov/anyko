@@ -1,4 +1,4 @@
-import { attachmentDescriptions } from './attachments';
+import { attachmentDescriptions, type PackageAttachment } from './attachments';
 import {
   formatBankruptcyMoney,
   formatBankruptcyScalar,
@@ -33,19 +33,20 @@ type Values = Readonly<Partial<Record<string, string | Row[] | null>>>;
 type FillingField = { key: string; columns: readonly { key: string }[] };
 
 export const bflFillingLayouts = [
-  'bfl-statement-v11',
-  'bfl-inventory-v2',
-  'bfl-creditors-v3',
+  'statement',
+  'inventory',
+  'creditors',
 ] as const;
 type BflFilling = {
   functionId: 'bfl-v1';
-  contentVersion: (typeof bflFillingLayouts)[number];
+  layout: (typeof bflFillingLayouts)[number];
   splitAttachments?: boolean | undefined;
 };
 
 type Definition = {
   filling?: BflFilling | undefined;
   fields: readonly FillingField[];
+  attachments?: readonly PackageAttachment[] | undefined;
   placeholders?:
     readonly { tag: string; field: string; placeholder: string }[] | undefined;
 };
@@ -117,16 +118,21 @@ function collectionSlots(
 }
 
 export function prepareTemplate(
-  { filling, fields, placeholders = [] }: Definition,
+  {
+    filling,
+    fields,
+    attachments: packageAttachments,
+    placeholders = [],
+  }: Definition,
   input: Values,
   context: {
     referenceDate: string;
     needsReview?: readonly string[] | undefined;
   },
 ) {
-  const layout = filling?.contentVersion;
+  const layout = filling?.layout;
   const statement = bankruptcyStatement(layout);
-  const modern = usesBankruptcyProjection(layout, fields);
+  const modern = usesBankruptcyProjection(layout);
   const values = { ...input };
   const defaults: Record<string, string> = statement
     ? statementDefaults(values)
@@ -144,7 +150,7 @@ export function prepareTemplate(
     : undefined;
   if (employmentDetails !== undefined)
     values.employmentDetails = employmentDetails;
-  if (layout === 'bfl-inventory-v2' || layout === 'bfl-creditors-v3') {
+  if (layout === 'inventory' || layout === 'creditors') {
     if (typeof values.previousNames === 'string')
       values.previousNames = formatPreviousNames(values.previousNames);
   }
@@ -182,7 +188,7 @@ export function prepareTemplate(
         fields,
         values,
         modern,
-        layout === 'bfl-creditors-v3' ? '-' : '—',
+        layout === 'creditors' ? '-' : '—',
       )
     : new Map(
         fields
@@ -238,9 +244,12 @@ export function prepareTemplate(
     );
   }
   if (statement) {
-    const attachments = attachmentDescriptions(input.submittedAttachments).map(
-      ({ description }) => ({ description: withFilingDateSuffix(description) }),
-    );
+    const attachments = attachmentDescriptions(
+      input.submittedAttachments,
+      packageAttachments,
+    ).map(({ description }) => ({
+      description: withFilingDateSuffix(description),
+    }));
     if (filling?.splitAttachments) {
       const tail = attachments.splice(-1);
       computed.set('attachmentTail', tail);

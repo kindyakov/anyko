@@ -286,6 +286,7 @@ test('BFL retirement retries generated file deletion and keeps retained packages
     expect(
       await db.documentPackageVersion.findUnique({
         where: { version: 'bfl-bankruptcy-v11' },
+        select: { version: true },
       }),
     ).not.toBeNull();
 
@@ -319,6 +320,7 @@ test('BFL retirement retries generated file deletion and keeps retained packages
         await db.documentPackageVersion.findMany({
           where: { packageId: 'bfl-bankruptcy' },
           orderBy: { version: 'asc' },
+          select: { version: true },
         })
       ).map(({ version }) => version),
     ).toEqual(['bfl-bankruptcy-v110', ...retained]);
@@ -334,6 +336,7 @@ test('BFL retirement retries generated file deletion and keeps retained packages
         await db.documentTemplateVersion.findMany({
           where: { version: { startsWith: 'bfl-' } },
           orderBy: { version: 'asc' },
+          select: { version: true },
         })
       ).map(({ version }) => version),
     ).toEqual([...retainedTemplates, 'bfl-statement-v10'].sort());

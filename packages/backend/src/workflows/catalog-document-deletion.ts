@@ -123,12 +123,14 @@ export async function deleteCatalogDocument(
     for (const { id, revision, confirmedRevision, packageVersion } of works) {
       const {
         description: { fields },
+        factPolicy,
       } = ports.resolvePackage(packageVersion);
       const updated = await ports.facts.refreshEvidence(
         workspaceId,
         id,
         (entry) => (entry.documentId === documentId ? null : entry),
         fields,
+        factPolicy,
       );
       await ports.facts.removeSubmittedAttachment(
         workspaceId,

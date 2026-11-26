@@ -13,6 +13,7 @@ import {
 import { memberScope } from '../../../../tests/support/scope';
 import { brandWorkId } from '../../../platform/ids';
 import { openTransaction } from '../../../platform/transactions';
+import { bflFactPolicy } from '../../../profiles/bfl/fact-policy';
 import { fieldDefinitions } from '../../../profiles/bfl/fields';
 import type { FieldDefinition } from '../../../profiles/fields';
 import { createFactsModule } from '../module';
@@ -52,7 +53,7 @@ function tableCandidate(basis: string, amount: string): Candidate {
 }
 
 function runFacts(
-  initial = emptyFacts(),
+  initial = emptyFacts(fieldDefinitions),
   packageFields: readonly FieldDefinition[] = fieldDefinitions,
 ) {
   let saved = initial;
@@ -93,6 +94,7 @@ function runFacts(
           return field;
         }),
         packageFields,
+        factPolicy: bflFactPolicy,
       }),
     saved: (fields = packageFields) => facts.queries.forAnalysis(ref, fields),
     confirm: (fields: readonly FieldDefinition[]) =>
@@ -222,7 +224,7 @@ test('uses passport spelling and keeps all sources for equivalent text', async (
   });
   expect(result.discrepancyFields).toEqual(['middleName']);
   expect(
-    markSelectedCandidates(saved)
+    markSelectedCandidates(saved, fieldDefinitions, bflFactPolicy)
       .filter(({ field, selected }) => field === 'lastName' && selected)
       .map(({ evidence }) => evidence[0]?.documentId),
   ).toEqual([otherDocumentId, documentId]);
@@ -370,7 +372,7 @@ test.each([
 );
 
 test('a later passport updates equivalent automatic spelling while preserving lawyer choices', async () => {
-  const initial = emptyFacts();
+  const initial = emptyFacts(fieldDefinitions);
   initial.values.lastName = 'Иванов';
   initial.values.firstName = 'Иван';
   initial.values.middleName = 'Иванович';
@@ -433,9 +435,9 @@ test('citizenship requires a passport citation and keeps other proposals for rev
   }
   const saved = await accept(passport);
   expect(saved.values.citizenship).toBe('Российская Федерация');
-  expect(markSelectedCandidates(saved)).toEqual([
-    { ...passport, selected: true },
-  ]);
+  expect(
+    markSelectedCandidates(saved, fieldDefinitions, bflFactPolicy),
+  ).toEqual([{ ...passport, selected: true }]);
 });
 
 test('bank debt accepts only a proposed contract type supported by its citations', async () => {
@@ -544,9 +546,9 @@ test('one calendar day from different sources fills one fact and preserves both 
   expect(result.discrepancyFields).toEqual([]);
   expect(result.missingFields).toEqual([]);
   expect(saved.values.birthDate).toBe('30.08.2003');
-  expect(markSelectedCandidates(saved)).toEqual(
-    candidates.map((candidate) => ({ ...candidate, selected: true })),
-  );
+  expect(
+    markSelectedCandidates(saved, fieldDefinitions, bflFactPolicy),
+  ).toEqual(candidates.map((candidate) => ({ ...candidate, selected: true })));
 });
 
 test('money keeps original citations for equivalent words and numbers and detects one kopeck', async () => {
@@ -578,7 +580,7 @@ test('money keeps original citations for equivalent words and numbers and detect
 });
 
 test('a new group keeps its saved facts, adds support and fills unconfirmed gaps', async () => {
-  const initial = emptyFacts();
+  const initial = emptyFacts(fieldDefinitions);
   const oldName = textCandidate('personName', 'Анна');
   const number = textCandidate('documentNumber', '42');
   const corroboratingNumber = textCandidate(
@@ -621,7 +623,7 @@ test('a new group keeps its saved facts, adds support and fills unconfirmed gaps
 });
 
 test('overflowing additions leave the previously saved sources and value intact', async () => {
-  const initial = emptyFacts();
+  const initial = emptyFacts(fieldDefinitions);
   initial.values.personName = 'Анна';
   initial.candidates = Array.from({ length: 500 }, (_, index) => ({
     field: 'personName',
@@ -664,7 +666,9 @@ test('a different calendar day is a discrepancy, an impossible date remains an u
   expect(result.discrepancyFields).toEqual(['birthDate']);
   expect(saved.values.birthDate).toBeNull();
   expect(saved.values.passportIssuedAt).toBeNull();
-  expect(markSelectedCandidates(saved)).toContainEqual({
+  expect(
+    markSelectedCandidates(saved, fieldDefinitions, bflFactPolicy),
+  ).toContainEqual({
     ...invalid,
     selected: false,
   });
@@ -686,9 +690,11 @@ test('the command merges different obligations and returns a discrepancy for inc
     { name: 'Тестовый банк', basis: 'Договор А', amount: '100.00' },
     { name: 'Тестовый банк', basis: 'Договор Б', amount: '200.00' },
   ]);
-  expect(markSelectedCandidates(saved).map(({ selected }) => selected)).toEqual(
-    [true, true],
-  );
+  expect(
+    markSelectedCandidates(saved, fieldDefinitions, bflFactPolicy).map(
+      ({ selected }) => selected,
+    ),
+  ).toEqual([true, true]);
 
   const conflict = await facts.accept({
     fields: ['debts'],
@@ -701,7 +707,9 @@ test('the command merges different obligations and returns a discrepancy for inc
   expect(unresolved.values.debts).toBeNull();
   expect(unresolved.candidates).toHaveLength(3);
   expect(
-    markSelectedCandidates(unresolved).map(({ selected }) => selected),
+    markSelectedCandidates(unresolved, fieldDefinitions, bflFactPolicy).map(
+      ({ selected }) => selected,
+    ),
   ).toEqual([false, false, false]);
 
   const cleared = runFacts({
@@ -752,13 +760,15 @@ test('keeps inferred scalar and table values for review while saving direct evid
   expect(saved.values.documentDate).toBeNull();
   expect(saved.values.debts).toBeNull();
   expect(saved.candidates).toEqual([quoted, ...proposals]);
-  expect(markSelectedCandidates(saved).map(({ selected }) => selected)).toEqual(
-    [true, false, false],
-  );
+  expect(
+    markSelectedCandidates(saved, fieldDefinitions, bflFactPolicy).map(
+      ({ selected }) => selected,
+    ),
+  ).toEqual([true, false, false]);
 });
 
 test('only a partial stage keeps an unproposed field from the run', async () => {
-  const initial = emptyFacts();
+  const initial = emptyFacts(fieldDefinitions);
   initial.values.firstName = 'Мария';
   initial.values.documentNumber = '42';
   const fields = ['firstName', 'lastName', 'personName'] as const;
@@ -821,7 +831,7 @@ test('history credits the applied document proposal separately from matching pro
 test.each(['previous', 'context'] as const)(
   'rejects overflowing %s proposals and saves the valid extraction',
   async (source) => {
-    const initial = emptyFacts();
+    const initial = emptyFacts(fieldDefinitions);
     initial.values.firstName = 'Мария';
     const optional = textCandidate('documentNumber', '42');
     if (source === 'previous') initial.candidates = [optional];
@@ -854,7 +864,7 @@ test.each(['previous', 'context'] as const)(
 );
 
 test('confirmed work keeps saved values while accepting and reporting new candidates', async () => {
-  const initial = emptyFacts();
+  const initial = emptyFacts(fieldDefinitions);
   initial.values.personName = 'Мария';
   initial.confirmed = ['personName'];
   const facts = runFacts(initial);
@@ -1212,7 +1222,7 @@ test('a newer certificate blocks an old balance even when its extraction produce
     { candidate: earlier, status: 'review' },
   ]);
 
-  const initial = emptyFacts();
+  const initial = emptyFacts(fieldDefinitions);
   initial.values.debts = earlier.value;
   const existing = runFacts(initial);
   await existing.accept({ ...input, candidates: [] });
