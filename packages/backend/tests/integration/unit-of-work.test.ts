@@ -68,7 +68,7 @@ const normal = createBackend(config, {
 });
 const owned: string[] = [];
 
-async function workspaceWithWork() {
+async function workspaceWithWork(packageVersion = 'technical-document-v1') {
   const workspaceId = crypto.randomUUID();
   owned.push(workspaceId);
   await db.anykoWorkspace.create({
@@ -77,7 +77,7 @@ async function workspaceWithWork() {
   const scope = memberScope(workspaceId, 'fixture');
   const workId = await normal.workHttp.intake.createWork(scope, {
     title: 'Синтетическая работа',
-    packageVersion: 'technical-document-v1',
+    packageVersion,
   });
   const view = await normal.workHttp.views.get(scope, workId);
   return { workspaceId, workId, revision: view.work.revision };
@@ -377,7 +377,8 @@ test.each([
 );
 
 test('an unknown fact table column fails validation and leaves the saved work untouched', async () => {
-  const { workspaceId, workId, revision } = await workspaceWithWork();
+  const { workspaceId, workId, revision } =
+    await workspaceWithWork('bfl-bankruptcy-v14');
   const scope = memberScope(workspaceId);
   const id = brandWorkId(workId);
   const before = await normal.workHttp.views.get(scope, id);
