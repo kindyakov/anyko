@@ -81,9 +81,9 @@ import { systemClock } from '../platform/clock';
 import { uuidV7 } from '../platform/ids';
 import type { JobRuntime } from '../platform/jobs';
 import { openTransaction, transactionHandle } from '../platform/transactions';
-import { bflAnalysisPlan } from '../profiles/bfl/analysis-plan';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
+import { resolveWorkAnalysis } from '../workflows/work-analysis/definition';
 import { createWorkChat, type WorkChat } from '../workflows/work-chat';
 import type { WorkDependencies } from '../workflows/work-dependencies';
 import { createWorkExecution } from '../workflows/work-execution';
@@ -312,9 +312,8 @@ export function createBackend(
     validated.works.chatRedisUrl &&
     createChatProgressFeed(validated.works.chatRedisUrl);
   const work: WorkDependencies = {
-    ...(validated.worker?.stepwiseAnalysis && {
-      analysisPlan: bflAnalysisPlan,
-    }),
+    resolveAnalysis: (version) =>
+      resolveWorkAnalysis(version, validated.worker?.stepwiseAnalysis ?? false),
     ...(chatProgress && { chatProgress }),
     newId: uuidV7,
     uow,

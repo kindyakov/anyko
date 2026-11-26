@@ -1044,15 +1044,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/index.ts": {
-    "mtime": 1795431842.4734888,
-    "seen": 1795432194.9234746,
-    "ast_hash": "9d2334f914f501e1e9ec63849d33b3c9",
+    "mtime": 1795692064.1200228,
+    "seen": 1795693068.846457,
+    "ast_hash": "f2346a24adeeb098fed589bbe8b80c82",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/infrastructure/mastra.ts": {
-    "mtime": 1795430235.278931,
-    "seen": 1795430739.241657,
-    "ast_hash": "7f162d0dc8ef7df90f7fe9b81ca268c6",
+    "mtime": 1795692064.1194904,
+    "seen": 1795693068.8464718,
+    "ast_hash": "2a7dc39a8f632e3e8dea1f492bc72ab8",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/facts.test.ts": {
@@ -1092,15 +1092,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/work-ports.ts": {
-    "mtime": 1795347595.7357256,
-    "seen": 1795348125.1427686,
-    "ast_hash": "157f57e4d5ca65d67b994882ffd4697f",
+    "mtime": 1795692798.3912742,
+    "seen": 1795693068.8464768,
+    "ast_hash": "bcd96e6a0ed46d76a19fb5bbee006aa1",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/infrastructure/work-store.ts": {
-    "mtime": 1795309155.2154162,
-    "seen": 1795309751.9810271,
-    "ast_hash": "5100e43f802884d8ca8531a05b6a2062",
+    "mtime": 1795692798.395275,
+    "seen": 1795693068.8464792,
+    "ast_hash": "c23923e4e141dc093b9eff0126452c8f",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/index.ts": {
@@ -1554,9 +1554,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/runtime/create-backend.ts": {
-    "mtime": 1795430358.4359727,
-    "seen": 1795430739.242146,
-    "ast_hash": "bd1246b5f7be6766727575892f6a6e9d",
+    "mtime": 1795692442.8625305,
+    "seen": 1795693068.846482,
+    "ast_hash": "4e22ab7bf4d770e72b6414ea463d4cf2",
     "semantic_hash": ""
   },
   "packages/backend/tests/integration/composition.test.ts": {
@@ -2934,15 +2934,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/continue-session.ts": {
-    "mtime": 1795429492.4077253,
-    "seen": 1795429649.2913854,
-    "ast_hash": "585ff795e039b38e3a29ebf9ec5210e9",
+    "mtime": 1795692798.4008768,
+    "seen": 1795693068.8464844,
+    "ast_hash": "c99b09dc25b463fd99db97df1519b9f6",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/index.ts": {
-    "mtime": 1795432013.1927063,
-    "seen": 1795432194.9239802,
-    "ast_hash": "480f957de2e5b40470d5ec813a4de3c7",
+    "mtime": 1795692798.3987768,
+    "seen": 1795693068.8464885,
+    "ast_hash": "352fb8ba3dbbf799c21f3e2ab2ba6621",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-analysis/model-call.ts": {
@@ -2952,9 +2952,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-dependencies.ts": {
-    "mtime": 1795309155.2583525,
-    "seen": 1795309751.981147,
-    "ast_hash": "3d44005a4901562917c53a1a215bfbc7",
+    "mtime": 1795692442.8510072,
+    "seen": 1795693068.8464925,
+    "ast_hash": "7e11f913d2bb0e6666cbfba69547fd25",
     "semantic_hash": ""
   },
   "packages/backend/src/workflows/work-execution/index.ts": {
@@ -3564,9 +3564,9 @@
     "semantic_hash": ""
   },
   "tests/integration/worker/works.test.ts": {
-    "mtime": 1795668095.653502,
-    "seen": 1795668135.1787074,
-    "ast_hash": "5e11440d0e57508bc697c2ea1f970491",
+    "mtime": 1795692798.4018815,
+    "seen": 1795693068.8464997,
+    "ast_hash": "55a2ce04332f860bdde59adcfa3647bc",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/io.ts": {
@@ -4608,9 +4608,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/processing/application/work-attempt.ts": {
-    "mtime": 1795309568.1259303,
-    "seen": 1795309751.981016,
-    "ast_hash": "d799604ac638aa62fc580f751a1c60a1",
+    "mtime": 1795692799.0093446,
+    "seen": 1795693068.8464744,
+    "ast_hash": "a22d20fd5f3d68f09268646a06d17a22",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/works/application/notify-document-changed.ts": {
@@ -5808,9 +5808,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/agents/infrastructure/analysis-step.ts": {
-    "mtime": 1795430607.3828275,
-    "seen": 1795430739.241628,
-    "ast_hash": "b5318c8abeb938ee82019942973b6c14",
+    "mtime": 1795692442.8605242,
+    "seen": 1795693068.8464692,
+    "ast_hash": "8c6100defcefdf01bcdb6305fc9cf374",
     "semantic_hash": ""
   },
   "packages/backend/src/profiles/analysis-plan.ts": {
@@ -5844,9 +5844,9 @@
     "semantic_hash": ""
   },
   "packages/backend/tests/analysis-plan.test.ts": {
-    "mtime": 1795309846.4781678,
-    "seen": 1795310026.0587506,
-    "ast_hash": "d16b4ee828bc2bb79d3fbeff597b6391",
+    "mtime": 1795692442.8505037,
+    "seen": 1795693068.846495,
+    "ast_hash": "b5fdb0877ada39a7d3e906c513d42465",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/facts/application/project-run-facts.ts": {
@@ -6171,6 +6171,30 @@
     "mtime": 1795379254.038918,
     "seen": 1795434110.6425984,
     "ast_hash": "4d9f2819c4fb832516950aca80998a99",
+    "semantic_hash": ""
+  },
+  "packages/backend/src/modules/agents/infrastructure/analysis-policy.ts": {
+    "mtime": 1795692442.8359828,
+    "seen": 1795693068.8464644,
+    "ast_hash": "bd62f04d3a578e8f74e1bab841d32291",
+    "semantic_hash": ""
+  },
+  "packages/backend/src/workflows/work-analysis/definition.ts": {
+    "mtime": 1795692442.8445034,
+    "seen": 1795693068.8464863,
+    "ast_hash": "b5e78445aca9489610c8b3ee4881a443",
+    "semantic_hash": ""
+  },
+  "packages/backend/src/workflows/work-analysis/revision.ts": {
+    "mtime": 1795692442.8445034,
+    "seen": 1795693068.8464904,
+    "ast_hash": "8a95e1572eea593885d663e9b043c3a7",
+    "semantic_hash": ""
+  },
+  "tests/integration/bfl-reference.test.ts": {
+    "mtime": 1795692819.825207,
+    "seen": 1795693068.8464966,
+    "ast_hash": "ad33ca68cb5a3a57df87cf75beb093e2",
     "semantic_hash": ""
   }
 }

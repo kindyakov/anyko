@@ -31,6 +31,7 @@ import {
 import { passportSourceIds } from './identity-sources';
 import { locateEvidence } from './locate-evidence';
 import { callModel } from './model-call';
+import { digest } from './revision';
 import { runStepwiseAnalysis } from './stepwise-analysis';
 
 export interface ContinuationSource extends ChecklistAnalysisSource {
@@ -43,6 +44,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
   return async (input: {
     attempt: WorkAttempt;
     settingsRevision: number | null;
+    analysisRevision: string;
     readConnection(): ReturnType<
       WorkDependencies['connections']['internal']['connection']
     >;
@@ -200,16 +202,17 @@ export function createWorkContinuation(deps: WorkDependencies) {
             const pilot = await runStepwiseAnalysis({
               plan,
               attempt: workAttempt,
-              fingerprint: JSON.stringify([
-                input.pilotPlan.revision,
+              fingerprint: digest([
+                input.analysisRevision,
                 settingsRevision,
                 run.inputRevision,
                 snapshot.session.revision,
                 analysisContextRevision(snapshot.work),
-                input.sources.map(({ id, ocrRevision, digest }) => [
-                  id,
-                  ocrRevision,
-                  digest,
+                input.sources.map((source) => [
+                  source.id,
+                  source.ocrRevision,
+                  source.digest,
+                  source.visuals,
                 ]),
               ]),
               model,
