@@ -1,14 +1,9 @@
-import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layout';
 import { LlmError } from '@anyko/llm';
 
-import {
-  extractionPromptRevision,
-  visionPromptRevision,
-} from '../../modules/agents';
+import { visionPromptRevision } from '../../modules/agents';
 import { DocumentError } from '../../modules/documents';
 import type { WorkFacts } from '../../modules/facts';
 import { stepOutputSchema, type WorkAttempt } from '../../modules/processing';
-import { requirePackage } from '../../modules/templates';
 import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
 import { logWorkFailure } from '../work-execution/failure';
@@ -20,6 +15,7 @@ import {
 } from './continue-session';
 import { locateEvidence } from './locate-evidence';
 import { addUsage, callModel } from './model-call';
+import { digest, workAnalysisRevision } from './revision';
 
 const delay = (signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
@@ -125,18 +121,12 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       await current();
       await readConnection();
     };
-    const pack = requirePackage((await current()).packageVersion);
-    const excludedFields = isDatedBankruptcyPackage(pack.version)
-      ? new Set(
-          pack.fields
-            .filter(
-              ({ key }) => key === 'documentDate' || key.startsWith('sro'),
-            )
-            .map(({ key }) => key),
-        )
-      : undefined;
-    const fields = pack.fields.filter(({ key }) => !excludedFields?.has(key));
-    const pilotPlan = deps.analysisPlan?.(pack.version, fields);
+    const {
+      fields,
+      excludedFields,
+      plan: pilotPlan,
+    } = deps.resolveAnalysis((await current()).packageVersion);
+    const analysisRevision = workAnalysisRevision(fields, pilotPlan);
     const candidates: WorkFacts['candidates'] = [];
     const sources: ContinuationSource[] = [];
     const sourceTexts: { documentId: string; text: string }[] = [];
@@ -151,16 +141,15 @@ export function createWorkAnalysis(deps: WorkDependencies) {
         await current();
         const source = await parse(documentId);
         sourceTexts.push({ documentId, text: source.text });
-        // The extraction cache depends on the visual instructions as well as the OCR result.
-        const cacheSourceDigest = source.images.length
+        // The persisted vision key is also read by chat and older workers.
+        const visionDigest = source.images.length
           ? `vision-${String(visionPromptRevision)}:${source.sourceDigest}`
           : source.sourceDigest;
         stage = 'vision';
-        let output = await attempt.cached(
-          documentId,
-          'vision',
-          cacheSourceDigest,
-        );
+        let output = await attempt.cached(documentId, {
+          stage,
+          sourceDigest: visionDigest,
+        });
         if (!output) {
           await step({ stage, documentId, status: 'running' });
           const visuals = [];
@@ -232,7 +221,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           }
           output = {
             version: 1,
-            sourceDigest: cacheSourceDigest,
+            sourceDigest: visionDigest,
             visuals,
             candidates: [],
           };
@@ -268,12 +257,12 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           completed++;
           continue;
         }
-        const extractionDigest = `extraction-${String(extractionPromptRevision)}:${cacheSourceDigest}`;
-        let extracted = await attempt.cached(
-          documentId,
+        const extractionRevision = digest([analysisRevision, output.visuals]);
+        let extracted = await attempt.cached(documentId, {
           stage,
-          extractionDigest,
-        );
+          sourceDigest: source.sourceDigest,
+          stageRevision: extractionRevision,
+        });
         if (!extracted) {
           await step({ stage, documentId, status: 'running' });
           const found: WorkFacts['candidates'] = [];
@@ -353,7 +342,8 @@ export function createWorkAnalysis(deps: WorkDependencies) {
           }
           extracted = stepOutputSchema.parse({
             version: 1,
-            sourceDigest: extractionDigest,
+            sourceDigest: source.sourceDigest,
+            stageRevision: extractionRevision,
             visuals: output.visuals,
             candidates: found,
           });
@@ -422,6 +412,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
     await continueSession({
       attempt,
       settingsRevision: revision,
+      analysisRevision,
       readConnection,
       ...(pilotPlan && { pilotPlan }),
       fields,

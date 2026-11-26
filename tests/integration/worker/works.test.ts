@@ -26,6 +26,7 @@ import type {
   SourceStorage,
 } from '../../../packages/backend/src/modules/documents';
 import { createWorkProcessingStore } from '../../../packages/backend/src/modules/processing/infrastructure/work-store';
+import { requirePackage } from '../../../packages/backend/src/modules/templates';
 import {
   brandDocumentId,
   brandFileId,
@@ -1801,6 +1802,8 @@ test('persistent pipeline extracts facts, caches successful files, generates sav
     select: { settingsRevision: true },
   });
   expect(generationRun.settingsRevision).toBe(1);
+  expect(generated.session?.revision).toBe(reopened.session?.revision);
+  expect(extractionCount).toBe(count);
 
   // Запуск генерации пишет событие журнала в той же транзакции, что и постановку.
   expect(
@@ -4342,57 +4345,67 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
   }
 });
 
-test('rerunning analysis refreshes changed vision and extraction prompts independently', async () => {
+test('changed extraction declarations invalidate only extraction, and unversioned rows miss', async () => {
   const input = await create();
   const resource = `${input.workspaceId}:${input.workId}`;
-  imageFixture = [
+  const pack = requirePackage('technical-document-v1');
+  const field = pack.fields.find(({ key }) => key === 'personName');
+  const [template] = pack.documents;
+  if (!field || !template) throw new Error('MISSING_PACKAGE_FIXTURE');
+  const label = field.label;
+  const checksum = template.checksum;
+  let recognitions = 0;
+  const images = [
     {
       path: 'images/picture.png',
       contentType: 'image/png',
       bytes: fixtureImage,
     },
   ];
+  parseFixture = () => {
+    recognitions++;
+    return Promise.resolve({
+      markdown: 'Имя: Анна. Номер: 42.',
+      processorVersion: 'fixture',
+      images,
+    });
+  };
   try {
     const source = await upload(input);
     const first = await until(input, terminal);
     const run = first.runs[0];
     expect(run?.status).toBe('succeeded');
     if (!run) throw new Error('MISSING_ANALYSIS');
-    // Older runs used the OCR digest alone as the cache key.
-    expect(
-      await db.$executeRaw`
-        UPDATE "RunStep"
-        SET output = jsonb_set(output, '{sourceDigest}', to_jsonb(regexp_replace(output->>'sourceDigest', '^(extraction-[0-9]+:)?vision-[0-9]+:', '')))
-        WHERE "runId" = ${run.id} AND stage IN ('vision', 'extraction')
-          AND output->>'sourceDigest' ~ '^(extraction-[0-9]+:)?vision-[0-9]+:'
-      `,
-    ).toBe(2);
     expect(descriptionsByResource.get(resource)).toBe(1);
     expect(extractionDocuments.get(resource)).toEqual([source.id]);
 
+    // A deployment changes the declaration the agent receives for this field.
+    field.label = 'Имя заявителя';
     await analyze(input);
     const refreshed = await until(
       input,
       (view) => terminal(view) && view.runs[0]?.id !== run.id,
     );
     expect(refreshed.runs[0]?.status).toBe('succeeded');
-    expect(descriptionsByResource.get(resource)).toBe(2);
     expect(extractionDocuments.get(resource)).toEqual([source.id, source.id]);
+    expect(descriptionsByResource.get(resource)).toBe(1);
 
+    // A new DOCX checksum does not alter the model inputs.
+    template.checksum = '1'.repeat(64);
     await analyze(input);
     const cached = await until(
       input,
       (view) => terminal(view) && view.runs[0]?.id !== refreshed.runs[0]?.id,
     );
     expect(cached.runs[0]?.status).toBe('succeeded');
-    expect(descriptionsByResource.get(resource)).toBe(2);
+    expect(descriptionsByResource.get(resource)).toBe(1);
     expect(extractionDocuments.get(resource)).toEqual([source.id, source.id]);
 
     const refreshedRun = refreshed.runs[0];
     if (!refreshedRun) throw new Error('MISSING_REFRESHED_ANALYSIS');
     const downgraded = await db.$executeRaw`
       UPDATE "RunStep"
-      SET output = jsonb_set(output, '{sourceDigest}', to_jsonb(regexp_replace(output->>'sourceDigest', '^extraction-[0-9]+:', '')))
+      SET output = output - 'stageRevision'
       WHERE "runId" = ${refreshedRun.id} AND stage = 'extraction'
     `;
     expect(downgraded).toBe(1);
@@ -4402,14 +4415,17 @@ test('rerunning analysis refreshes changed vision and extraction prompts indepen
       (view) => terminal(view) && view.runs[0]?.id !== cached.runs[0]?.id,
     );
     expect(extractedAgain.runs[0]?.status).toBe('succeeded');
-    expect(descriptionsByResource.get(resource)).toBe(2);
+    expect(descriptionsByResource.get(resource)).toBe(1);
     expect(extractionDocuments.get(resource)).toEqual([
       source.id,
       source.id,
       source.id,
     ]);
+    expect(recognitions).toBe(1);
   } finally {
-    imageFixture = [];
+    field.label = label;
+    template.checksum = checksum;
+    parseFixture = undefined;
   }
 });
 

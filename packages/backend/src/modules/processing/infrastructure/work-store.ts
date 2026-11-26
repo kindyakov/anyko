@@ -217,16 +217,22 @@ export function createWorkProcessingStore(
         });
       });
     },
-    async cached(run, documentId, stage, sourceDigest) {
+    async cached(run, documentId, key) {
       const row = await db.runStep.findFirst({
         where: {
           workspaceId: run.workspaceId,
           documentId,
-          stage,
+          stage: key.stage,
           status: { in: ['succeeded', 'skipped'] },
-          output: { path: ['sourceDigest'], equals: sourceDigest },
+          output: { path: ['sourceDigest'], equals: key.sourceDigest },
+          ...(key.stage === 'extraction' && {
+            AND: {
+              output: { path: ['stageRevision'], equals: key.stageRevision },
+            },
+          }),
           run: {
             workId: run.workId,
+            kind: 'work.analysis',
             settingsRevision: run.settingsRevision,
           },
         },

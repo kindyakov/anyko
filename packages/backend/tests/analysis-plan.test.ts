@@ -1,9 +1,13 @@
 import { expect, test } from 'bun:test';
 
+import { bflLayoutPackage } from '@anyko/document-values/statement-layout';
+
 import {
   type AnalysisPlan,
   validateAnalysisPlan,
 } from '../src/profiles/analysis-plan';
+import { resolveWorkAnalysis } from '../src/workflows/work-analysis/definition';
+import { workAnalysisRevision } from '../src/workflows/work-analysis/revision';
 
 test('a package must assign each automatic field to a writable step', () => {
   const fields = ['plaintiffInn', 'defendantInn'];
@@ -35,4 +39,29 @@ test('a package must assign each automatic field to a writable step', () => {
       fields,
     ),
   ).toThrow('INVALID_ANALYSIS_PLAN');
+});
+
+test('a checkpoint revision changes when the plan is reordered or its instructions change', () => {
+  const { fields, plan } = resolveWorkAnalysis(bflLayoutPackage, true);
+  const [first, second, ...remaining] = plan?.steps ?? [];
+  if (!plan || !first || !second) throw new Error('MISSING_ANALYSIS_PLAN');
+
+  const revision = workAnalysisRevision(fields, plan);
+  expect(workAnalysisRevision(fields, structuredClone(plan))).toBe(revision);
+  expect(
+    workAnalysisRevision(fields, {
+      ...plan,
+      steps: [second, first, ...remaining],
+    }),
+  ).not.toBe(revision);
+  expect(
+    workAnalysisRevision(fields, {
+      ...plan,
+      steps: [
+        { ...first, instructions: 'Уточни дату выдачи.' },
+        second,
+        ...remaining,
+      ],
+    }),
+  ).not.toBe(revision);
 });
