@@ -437,7 +437,7 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
       enableReasoning,
       resource: crypto.randomUUID(),
       threadId,
-      fields: requirePackage('bfl-bankruptcy-v3').fields,
+      fields: requirePackage('bfl-bankruptcy-v12').fields,
       document: { id: documentId, text, visuals: [] },
       signal: AbortSignal.timeout(10000),
     });
@@ -1143,7 +1143,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
       threadId: nextThreadId,
       modelId: 'fixture/large',
       workRevision: 2,
-      fields: requirePackage('bfl-bankruptcy-v6').fields,
+      fields: requirePackage('bfl-bankruptcy-v12').fields,
       previousContext: {
         version: 1,
         workRevision: 1,
@@ -1188,7 +1188,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
         ...input,
         threadId: oversizedThreadId,
         modelId: 'fixture/oversized-input',
-        fields: requirePackage('bfl-bankruptcy-v6').fields,
+        fields: requirePackage('bfl-bankruptcy-v12').fields,
         documents: [oldSource, newSource, ...otherSources],
         previousContext: {
           version: 1,
@@ -1217,7 +1217,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
         .reconcile({
           ...input,
           ...attempt,
-          fields: requirePackage('bfl-bankruptcy-v6').fields,
+          fields: requirePackage('bfl-bankruptcy-v12').fields,
           documents: [oldSource, newSource, ...otherSources].map((source) => ({
             ...source,
             filename: 'Документы о составе имущества.pdf',
@@ -1375,7 +1375,7 @@ test('reconciliation finalizes with cited candidates after a parallel batch exha
       workRevision: 1,
       previousContext: null,
       facts: emptyFacts(),
-      fields: requirePackage('bfl-bankruptcy-v6').fields,
+      fields: requirePackage('bfl-bankruptcy-v12').fields,
       candidates: [],
       documents: [
         {
@@ -1513,7 +1513,7 @@ test('court lookup uses only the territory and sends verified address alternativ
       { preconnect: fetch.preconnect },
     ),
   });
-  const pack = requirePackage('bfl-bankruptcy-v6');
+  const pack = requirePackage('bfl-bankruptcy-v12');
   try {
     await agents.ready();
     const result = await agents.reconcile({
@@ -1791,7 +1791,7 @@ test('official creditor details stay a proposal until selecting them for the lin
       { preconnect: fetch.preconnect },
     ),
   });
-  const pack = requirePackage('bfl-bankruptcy-v7');
+  const pack = requirePackage('bfl-bankruptcy-v12');
   const reconcile = () =>
     agents.reconcile({
       connection: {
@@ -1861,7 +1861,7 @@ test('official creditor details stay a proposal until selecting them for the lin
     ).toBe(true);
     const data = templateData(
       { ...reviewed.values, debts: patched ?? null },
-      'bfl-statement-v7',
+      'bfl-statement-v11',
     );
     expect(data.creditorHeaders?.[0]).toMatchObject({
       name: fullName,
@@ -1871,7 +1871,7 @@ test('official creditor details stay a proposal until selecting them for the lin
     expect(
       templateData(
         { ...reviewed.values, debts: patched ?? null },
-        'bfl-creditors-v2',
+        'bfl-creditors-v3',
       ).debts,
     ).toMatchObject([
       { name: fullName, address, amount: '720,50' },

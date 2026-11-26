@@ -27,7 +27,6 @@ import {
   bflContentTemplate,
   filingMoneyWords,
   isDatedBankruptcyPackage,
-  revisedStatementTemplate,
   statementDebtNarratives,
   statementLayout,
   withFilingDateSuffix,
@@ -42,9 +41,6 @@ export function previewStatementValues(
 ): FieldValues {
   if (documentId !== 'statement') return values;
   const modern = isDatedBankruptcyPackage(pack.version);
-  const statementVersion = pack.documents.find(
-    ({ id }) => id === documentId,
-  )?.version;
   const employment = hasEmploymentFields(pack.fields)
     ? assessEmployment(values, undefined, needsReview)
     : undefined;
@@ -53,11 +49,7 @@ export function previewStatementValues(
     ...(modern && statementSroValues(values)),
     ...(employment && {
       employmentDetails: modern
-        ? employmentStatement(
-            values,
-            employment,
-            revisedStatementTemplate(statementVersion),
-          )
+        ? employmentStatement(values, employment)
         : employment.statement,
     }),
   };
@@ -70,10 +62,9 @@ export function previewDocumentValues(
 ) {
   const version = bflContentTemplate(assetVersion);
   const modern = usesBankruptcyProjection(version, fields);
-  const obligations = projectBankruptcyCollections(version, values, modern);
+  const obligations = projectBankruptcyCollections(version, values);
   if (!modern && !obligations) return null;
   const statement = bankruptcyStatement(version);
-  const revised = revisedStatementTemplate(version);
   const narratives = statementDebtNarratives(version, values);
   const rows: FieldValues = {
     ...(obligations && {
@@ -84,9 +75,7 @@ export function previewDocumentValues(
     ...(statement && {
       attachments: attachmentDescriptions(values.submittedAttachments).map(
         ({ description }) => ({
-          description: revised
-            ? withFilingDateSuffix(description)
-            : description,
+          description: withFilingDateSuffix(description),
         }),
       ),
     }),
@@ -121,7 +110,7 @@ export function previewDocumentValues(
       if (obligations && key === 'debtTotal')
         return obligations.total ?? missingTemplateValue;
       if (obligations && key === 'debtTotalWords')
-        return revised && obligations.total
+        return statement && obligations.total
           ? filingMoneyWords(obligations.total)
           : (obligations.totalWords ?? missingTemplateValue);
       return Object.hasOwn(request, key) ? request[key] : undefined;

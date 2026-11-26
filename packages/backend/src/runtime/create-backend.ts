@@ -68,6 +68,7 @@ import {
 } from '../modules/processing/infrastructure/run-engine';
 import { createDocumentProcessingStore } from '../modules/processing/infrastructure/store';
 import { hasPackage } from '../modules/templates';
+import { createRetiredCatalogCleanup } from '../modules/templates/infrastructure/retired-catalog';
 import { createTemplatePlaceholders } from '../modules/templates/infrastructure/template-placeholders';
 import { createTemplateRequirements } from '../modules/templates/infrastructure/template-requirements';
 import type { WorksModule } from '../modules/works';
@@ -478,6 +479,7 @@ export function createBackend(
     clock: systemClock,
     sourcesDeleted: documentDeletions.completed,
   });
+  const cleanupRetiredCatalog = createRetiredCatalogCleanup(db);
   const advanceUploads = advanceUploadGroups(work);
   const registry = createJobRegistry({
     processing: jobProcessing,
@@ -506,6 +508,7 @@ export function createBackend(
     execute: createWorkExecution(work, createWorkspaceActorScope(db)),
     maintain: async () => {
       await cleanupWorks();
+      await cleanupRetiredCatalog();
       await advanceUploads();
     },
     documents: {

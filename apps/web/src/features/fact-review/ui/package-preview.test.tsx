@@ -129,7 +129,7 @@ test('the statement preview identifies attachment paragraphs omitted from the do
       {
         ...pack.documents[0],
         id: 'statement',
-        version: 'bfl-statement-v10',
+        version: 'bfl-statement-v11',
         blocks: [
           {
             kind: 'paragraph',
@@ -490,7 +490,7 @@ test('the latest statement preview groups creditors and shows only active contra
       {
         ...pack.documents[0],
         id: 'statement',
-        version: 'bfl-statement-v7',
+        version: 'bfl-statement-v11',
         blocks: [
           {
             kind: 'paragraph',
@@ -541,7 +541,7 @@ test('the latest statement preview groups creditors and shows only active contra
 test('the approved statement updates the request from the same name and date the lawyer edits', () => {
   const prepared = documentPackageSchema.parse({
     ...pack,
-    version: 'bfl-bankruptcy-v8',
+    version: 'bfl-bankruptcy-v12',
     fields: [
       ...fieldDefinitions.filter(({ key }) => key === 'lastName'),
       ...[
@@ -561,7 +561,7 @@ test('the approved statement updates the request from the same name and date the
       {
         ...pack.documents[0],
         id: 'statement',
-        version: 'bfl-statement-v8',
+        version: 'bfl-statement-v11',
         blocks: [
           'Я, {lastName} {firstName} {middleName}',
           'По состоянию на {documentDate}',
@@ -615,10 +615,10 @@ test('the approved statement updates the request from the same name and date the
   expect(paper.queryByDisplayValue(/Содружество/)).toBeNull();
 });
 
-test('the v8 preview renders display formats and marks editable template defaults', () => {
+test('the revised statement preview renders display formats and marks editable template defaults', () => {
   const editable = documentPackageSchema.parse({
     ...pack,
-    version: 'bfl-bankruptcy-v8',
+    version: 'bfl-bankruptcy-v12',
     fields: [
       ...fieldDefinitions.filter(({ key }) => key === 'lastName'),
       {
@@ -634,7 +634,7 @@ test('the v8 preview renders display formats and marks editable template default
       {
         ...pack.documents[0],
         id: 'statement',
-        version: 'bfl-statement-v8',
+        version: 'bfl-statement-v11',
         blocks: [
           '{lastName}',
           '{liabilityDetails}',

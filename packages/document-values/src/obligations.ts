@@ -33,13 +33,7 @@ const registryKeys = [
 ];
 
 export const obligationTemplate = (version: string | undefined) =>
-  version === 'bfl-statement-v7' ||
-  version === 'bfl-statement-v8' ||
-  version === 'bfl-statement-v9' ||
-  version === 'bfl-statement-v10' ||
-  version === 'bfl-statement-v11' ||
-  version === 'bfl-creditors-v2' ||
-  version === 'bfl-creditors-v3';
+  version === 'bfl-statement-v11' || version === 'bfl-creditors-v3';
 
 export function isBankObligation(row: DebtRow) {
   return Object.keys(obligationColumns).some((column) => row[column]?.trim());

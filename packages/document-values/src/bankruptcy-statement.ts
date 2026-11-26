@@ -3,9 +3,6 @@ import { incline } from 'lvovich';
 import { normalizedPersonName } from './bankruptcy-format';
 import { missingTemplateValue } from './template-value';
 
-export const datedBankruptcyPackage = 'bfl-bankruptcy-v8';
-export const approvedStatementTemplate = 'bfl-statement-v8';
-
 const defaultSro = {
   sroName: '«МСК СРО ПАУ «Содружество»',
   sroAddress: '355035, г. Ставрополь, пр. Кулакова, 9 б',
@@ -82,10 +79,5 @@ export function statementDebtorGender(
 }
 
 export function bankruptcyStatement(version: string | undefined) {
-  return [
-    'bfl-statement-v8',
-    'bfl-statement-v9',
-    'bfl-statement-v10',
-    'bfl-statement-v11',
-  ].some((supported) => version === supported);
+  return version === 'bfl-statement-v11';
 }

@@ -25,7 +25,6 @@ import { obligationFields } from '@anyko/document-values/obligations';
 import {
   bflContentTemplate,
   filingMoneyWords,
-  revisedStatementTemplate,
   statementDebtNarratives,
   statementLayout,
   withFilingDateSuffix,
@@ -66,7 +65,6 @@ export function templateData(
   )
     values.previousNames = formatPreviousNames(values.previousNames);
   const statement = bankruptcyStatement(templateVersion);
-  const revised = revisedStatementTemplate(templateVersion);
   const modern = usesBankruptcyProjection(templateVersion, context?.fields);
   const emptyCell = templateVersion === 'bfl-creditors-v3' ? '-' : '—';
   const defaults: Record<string, string> = statement
@@ -78,16 +76,16 @@ export function templateData(
     values.attachments = attachmentDescriptions(
       values.submittedAttachments,
     ).map(({ description }) => ({
-      description: revised ? withFilingDateSuffix(description) : description,
+      description: withFilingDateSuffix(description),
     }));
   if (context && hasEmploymentFields(context.fields)) {
     const employment = assessEmployment(values, context.referenceDate);
     values.employmentDetails = statement
-      ? employmentStatement(values, employment, revised)
+      ? employmentStatement(values, employment)
       : employment.statement;
   }
   const obligations = templateVersion
-    ? projectBankruptcyCollections(templateVersion, values, modern)
+    ? projectBankruptcyCollections(templateVersion, values)
     : null;
   if (obligations) {
     for (const field of obligationFields) values[field] = obligations[field];
@@ -95,11 +93,7 @@ export function templateData(
   for (const field of fieldDefinitions) {
     const value = values[field.key] ?? defaults[field.key] ?? null;
     if (
-      (templateVersion === 'bfl-statement-v4' ||
-        templateVersion === 'bfl-statement-v5' ||
-        templateVersion === 'bfl-statement-v6' ||
-        obligations ||
-        (statement && field.key === 'attachments')) &&
+      (obligations || (statement && field.key === 'attachments')) &&
       Array.isArray(value) &&
       !value.length &&
       ['debts', 'businessDebts', 'attachments'].includes(field.key)
@@ -164,7 +158,7 @@ export function templateData(
   if (obligations) {
     output.debtTotal = obligations.total ?? missingTemplateValue;
     output.debtTotalWords =
-      revised && obligations.total
+      statement && obligations.total
         ? filingMoneyWords(obligations.total)
         : (obligations.totalWords ?? missingTemplateValue);
   }

@@ -151,8 +151,6 @@ test('the revised statement uses lowercase passport label and terminates each at
   const statement = pack.documents.find(({ id }) => id === 'statement');
   if (!statement) throw new Error('Missing statement');
   expect(statement.version).toBe('bfl-statement-v11');
-  const archived = requirePackage('bfl-bankruptcy-v11');
-  expect(archived.documents[0]?.version).toBe('bfl-statement-v10');
 
   const values = {
     ...emptyFieldValues(),

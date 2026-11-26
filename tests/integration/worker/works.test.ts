@@ -263,7 +263,7 @@ const terminal = (view: WorkView) =>
   view.runs.every((run) => !['queued', 'running'].includes(run.status));
 
 test('the source checklist preserves scoped manual decisions when the work is analysed again', async () => {
-  const input = await create('bfl-bankruptcy-v7');
+  const input = await create('bfl-bankruptcy-v12');
   const { workspaceId, workId } = input;
   const scope = memberScope(workspaceId);
   const app = fixtureApp(workspaceId);
@@ -451,7 +451,7 @@ test('the source checklist preserves scoped manual decisions when the work is an
 });
 
 test('a bankruptcy statement can be formed, downloaded and the work confirmed without source files', async () => {
-  const input = await create('bfl-bankruptcy-v7');
+  const input = await create('bfl-bankruptcy-v12');
   const scope = memberScope(input.workspaceId);
   const { generation, review, views } = apiBackend.workHttp;
   const { workId } = input;
@@ -471,7 +471,7 @@ test('a bankruptcy statement can be formed, downloaded and the work confirmed wi
     ({ status }) => status === 'succeeded',
   );
   const statement = result?.files.find(
-    ({ templateVersion }) => templateVersion === 'bfl-statement-v7',
+    ({ templateVersion }) => templateVersion === 'bfl-statement-v11',
   );
   if (!result || !statement) throw new Error('MISSING_BLANK_STATEMENT');
   const { bytes } = await generation.downloadResult(scope, {
@@ -489,7 +489,7 @@ test('a bankruptcy statement can be formed, downloaded and the work confirmed wi
 });
 
 test('one persisted package date reaches all four printed positions and previous downloads stay intact', async () => {
-  const input = await create('bfl-bankruptcy-v8');
+  const input = await create('bfl-bankruptcy-v12');
   const scope = memberScope(input.workspaceId);
   const { workId } = input;
   const { views, review, generation } = apiBackend.workHttp;
@@ -537,11 +537,11 @@ test('one persisted package date reaches all four printed positions and previous
         .map((match) => match[1])
         .join('');
       expect(printed.split(date)).toHaveLength(
-        file.templateVersion === 'bfl-statement-v8' ? 3 : 2,
+        file.templateVersion === 'bfl-statement-v11' ? 3 : 2,
       );
       contents.set(file.templateVersion, printed);
     }
-    return contents.get('bfl-statement-v8');
+    return contents.get('bfl-statement-v11');
   };
   const first = await generate();
   const chosenDate = first.facts.values.documentDate;
@@ -1016,7 +1016,7 @@ test('chat shares the work session, waits for the current turn and retains read-
 });
 
 test('chat links and unlinks a checklist source, records both changes, and rejects an unavailable source', async () => {
-  const input = await create('bfl-bankruptcy-v7');
+  const input = await create('bfl-bankruptcy-v12');
   const { workspaceId, workId } = input;
   const userId = await createChatActor(workspaceId);
   const app = fixtureApp(workspaceId, userId);
@@ -1517,7 +1517,7 @@ test('chat tool edits one field, records its history, and restores through the w
 });
 
 test('chat recovery cannot acknowledge a checklist confirmation superseded by a manual rejection', async () => {
-  const input = await create('bfl-bankruptcy-v7');
+  const input = await create('bfl-bankruptcy-v12');
   const { workspaceId, workId } = input;
   const userId = await createChatActor(workspaceId);
   const scope = memberScope(workspaceId, userId);
@@ -2439,7 +2439,7 @@ test('a package generates three individually scoped DOCX files from one snapshot
   const legacy = await create();
   const createdId = await apiBackend.workHttp.intake.createWork(
     memberScope(legacy.workspaceId, 'fixture'),
-    { packageVersion: 'bfl-bankruptcy-v3', title: 'Синтетический комплект' },
+    { packageVersion: 'bfl-bankruptcy-v12', title: 'Синтетический комплект' },
   );
   const created = await apiBackend.workHttp.views.get(
     memberScope(legacy.workspaceId),
@@ -4500,7 +4500,7 @@ test('failed context continuation preserves previous facts and marks its old sum
 });
 
 test('invalid reconciliation preserves direct passport facts and a rerun keeps lawyer choices and citations', async () => {
-  const input = await create('bfl-bankruptcy-v8');
+  const input = await create('bfl-bankruptcy-v12');
   const scope = memberScope(input.workspaceId);
   const workId = brandWorkId(input.workId);
   const heading = 'Паспорт гражданина Российской Федерации';
@@ -5041,7 +5041,7 @@ test('bank certificates retain evidence and a manual contract decision, and both
   const { workspaceId } = await create();
   const scope = memberScope(workspaceId, 'fixture');
   const workId = await apiBackend.workHttp.intake.createWork(scope, {
-    packageVersion: 'bfl-bankruptcy-v7',
+    packageVersion: 'bfl-bankruptcy-v12',
     title: 'Синтетические банковские справки',
   });
   const input = { workspaceId, workId };
@@ -5246,7 +5246,7 @@ test('bank certificates retain evidence and a manual contract decision, and both
     if (!generation) throw new Error('GENERATION_MISSING');
 
     const files = generation.files.filter(({ templateVersion }) =>
-      ['bfl-statement-v7', 'bfl-creditors-v2'].includes(templateVersion),
+      ['bfl-statement-v11', 'bfl-creditors-v3'].includes(templateVersion),
     );
     expect(files).toHaveLength(2);
     for (const { id, templateVersion } of files) {
@@ -5266,7 +5266,7 @@ test('bank certificates retain evidence and a manual contract decision, and both
       expect(xml).toContain('200,06');
       expect(xml.match(/BANK-01/g)).toHaveLength(1);
       expect(xml).not.toMatch(/BANK-03|BANK-04|7000,10|2222,10|8,15/);
-      if (templateVersion === 'bfl-statement-v7') {
+      if (templateVersion === 'bfl-statement-v11') {
         const header = xml.slice(0, xml.indexOf('</w:tbl>'));
         expect(header.match(/Синтетический Банк/g)).toHaveLength(1);
       }
@@ -5281,7 +5281,7 @@ test('employment records and income certificates reach review and the downloaded
   const { workspaceId } = await create();
   const scope = memberScope(workspaceId, 'fixture');
   const workId = await apiBackend.workHttp.intake.createWork(scope, {
-    packageVersion: 'bfl-bankruptcy-v7',
+    packageVersion: 'bfl-bankruptcy-v12',
     title: 'Синтетическая трудовая и справки о доходах',
   });
   const input = { workspaceId, workId };
@@ -5630,7 +5630,7 @@ test('each EGRN cadastral number follows its property into the facts and the inv
 test('an EGRN source fills inventory and only confirmed supported files enter the statement', async () => {
   const { workspaceId } = await create();
   const scope = memberScope(workspaceId, 'fixture');
-  const packageVersion = 'bfl-bankruptcy-v8';
+  const packageVersion = 'bfl-bankruptcy-v12';
   const workId = await apiBackend.workHttp.intake.createWork(scope, {
     packageVersion,
     title: 'Синтетические приложения к заявлению',
