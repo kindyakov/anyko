@@ -112,6 +112,50 @@ test('publication rejects a duplicate field key and a date binding to an INN', (
   );
 });
 
+test('publication allows a raw money alias but rejects an unregistered computed alias', () => {
+  const profiles = createProcessingProfiles(false);
+  const original = profiles.publications.find(
+    ({ package: pack }) => pack.version === 'bfl-bankruptcy-v12',
+  );
+  if (!original) throw new Error('Missing BFL v12');
+  const description = structuredClone(original);
+  const document = description.package.documents.find(
+    ({ id }) => id === 'statement',
+  );
+  if (!document) throw new Error('Missing statement');
+  const { templateBytes } = profiles.resolve(original.package.version);
+  const zip = new PizZip(templateBytes(document.version));
+  const xml = zip.file('word/document.xml')?.asText();
+  if (!xml) throw new Error('Missing Word document');
+  zip.file(
+    'word/document.xml',
+    xml.replace(
+      /<w:body(?:\s[^>]*)?>/u,
+      '$&<w:p><w:r><w:t>{newTotalAlias}</w:t></w:r></w:p>',
+    ),
+  );
+  const bytes = zip.generate({ type: 'uint8array' });
+  document.checksum = new Bun.CryptoHasher('sha256')
+    .update(bytes)
+    .digest('hex');
+  const readBytes = (version: string) =>
+    version === document.version ? bytes : templateBytes(version);
+  const binding = {
+    tag: 'newTotalAlias',
+    field: 'cashOnHand',
+    placeholder: 'RUB_DECIMAL' as const,
+  };
+  document.placeholders = [...(document.placeholders ?? []), binding];
+  expect(validatePackageDescription(description, readBytes)).toMatch(
+    /^[0-9a-f]{64}$/u,
+  );
+
+  binding.field = 'debtTotal';
+  expect(() => validatePackageDescription(description, readBytes)).toThrow(
+    'Invalid DOCX binding newTotalAlias',
+  );
+});
+
 test('a changed file is rejected before tag inspection', () => {
   const profiles = createProcessingProfiles(false);
   const publication = profiles.publications[0];
@@ -176,8 +220,10 @@ test('publication and stored facts use the same column key grammar', () => {
 
 test('publication requires a preview with valid scalar and repeating references', () => {
   const profiles = createProcessingProfiles(false);
-  const original = profiles.publications[0];
-  if (!original) throw new Error('Missing test package');
+  const original = profiles.publications.find(
+    ({ package: pack }) => pack.version === 'bfl-bankruptcy-v12',
+  );
+  if (!original) throw new Error('Missing BFL v12');
   const { templateBytes } = profiles.resolve(original.package.version);
   const description = structuredClone(original);
   const document = description.package.documents[0];
@@ -189,6 +235,12 @@ test('publication requires a preview with valid scalar and repeating references'
   );
   const paragraph = blocks.find((block) => block.kind === 'paragraph');
   if (!paragraph) throw new Error('Missing preview paragraph');
+  document.blocks = [
+    { ...paragraph, paragraph: { ...paragraph.paragraph, text: 'Заявление' } },
+  ];
+  expect(() => validatePackageDescription(description, templateBytes)).toThrow(
+    'Preview has no DOCX value references',
+  );
   document.blocks = [
     {
       ...paragraph,

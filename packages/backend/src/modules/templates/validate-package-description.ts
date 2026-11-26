@@ -155,15 +155,16 @@ function validatePreview(
   technical: boolean,
   scalars: ReadonlySet<string>,
   repeats: ReadonlyMap<string, readonly string[]>,
+  bindings: ReturnType<typeof docxBindings>,
 ) {
-  let hasContent = false;
-  const columns = (key: string) => {
-    const keys = repeats.get(key);
-    if (!keys)
+  const preview = { hasContent: false, hasDocxValue: false };
+  const repeater = (key: string) => {
+    const columns = repeats.get(key);
+    if (!columns)
       throw new Error(`Invalid preview repeater ${key} in ${document.version}`);
-    return keys;
+    return { key, columns };
   };
-  const paragraph = (text: string, row?: readonly string[]) => {
+  const paragraph = (text: string, row?: ReturnType<typeof repeater>) => {
     const markers = [...text.matchAll(/\{([#/])([^{}]+)\}/gu)];
     if (markers.length) {
       const [start, end] = markers;
@@ -176,29 +177,38 @@ function validatePreview(
         !start[2]
       )
         throw new Error(`Invalid preview loop in ${document.version}`);
-      row = columns(start[2]);
+      row = repeater(start[2]);
     }
     for (const [, key = ''] of text.matchAll(/\{([^{}#/]+)\}/gu)) {
-      if (!(row ? row.includes(key) : scalars.has(key)))
+      if (!(row ? row.columns.includes(key) : scalars.has(key)))
         throw new Error(`Invalid preview slot ${key} in ${document.version}`);
+      if (
+        row
+          ? bindings.get(`${row.key}.${key}`) === 'cell'
+          : bindings.get(key) === 'scalar'
+      )
+        preview.hasDocxValue = true;
     }
-    return !!text.replace(/\{[#/][^{}]+\}/gu, '').trim();
+    if (text.replace(/\{[#/][^{}]+\}/gu, '').trim()) preview.hasContent = true;
   };
   for (const block of document.blocks) {
     if (block.kind === 'paragraph') {
-      hasContent = paragraph(block.paragraph.text) || hasContent;
+      paragraph(block.paragraph.text);
       continue;
     }
     for (const row of block.rows) {
-      const keys = row.repeat === null ? undefined : columns(row.repeat);
+      const repeat = row.repeat === null ? undefined : repeater(row.repeat);
       for (const cell of row.cells)
         for (const item of cell.paragraphs)
-          if (cell.merge !== 'continue')
-            hasContent = paragraph(item.text, keys) || hasContent;
+          if (cell.merge !== 'continue') paragraph(item.text, repeat);
     }
   }
-  if (!technical && !hasContent)
+  if (!technical && !preview.hasContent)
     throw new Error(`Missing preview in ${document.version}`);
+  if (!technical && bindings.size > 0 && !preview.hasDocxValue)
+    throw new Error(
+      `Preview has no DOCX value references in ${document.version}`,
+    );
 }
 
 export function validatePackageDescription(
@@ -301,7 +311,7 @@ export function validatePackageDescription(
       version + ' placeholders',
     );
     const computed = templateFillingOutputs(filling, pack.fields);
-    const scalars = new Set(computed?.scalars.keys());
+    const scalars = new Set(computed?.scalars);
     const repeats = new Map(computed?.repeats);
     for (const { key, columns } of fields.values()) {
       if (
@@ -323,10 +333,13 @@ export function validatePackageDescription(
       const definition = fields.get(key);
       let valid: boolean;
       if (placeholder !== 'identity') {
-        const valueType = definition?.valueType ?? computed?.scalars.get(key);
+        const builtIn = computed?.builtInFormats.get(tag);
         valid =
-          !repeats.has(tag) &&
-          valueType === (placeholder.startsWith('RUB_') ? 'money' : 'date');
+          computed?.scalars.has(key) || computed?.scalars.has(tag)
+            ? builtIn?.field === field && builtIn.placeholder === placeholder
+            : !repeats.has(tag) &&
+              definition?.valueType ===
+                (placeholder.startsWith('RUB_') ? 'money' : 'date');
         if (valid) {
           if (fields.has(tag) && (tag !== field || definition?.kind !== 'text'))
             throw new Error(`Output collides with field ${tag} in ${version}`);
@@ -355,7 +368,7 @@ export function validatePackageDescription(
       )
         throw new Error(`Undeclared DOCX tag ${tag} in ${version}`);
     }
-    validatePreview(document, pack.technical, scalars, repeats);
+    validatePreview(document, pack.technical, scalars, repeats, bindings);
   }
   return contentHash(description);
 }

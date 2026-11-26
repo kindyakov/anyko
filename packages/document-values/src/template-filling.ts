@@ -64,14 +64,25 @@ const templateFillers = {
     },
     outputs(filling: TemplateFilling, fields: readonly FillingField[]) {
       const { layout, splitAttachments } = filling;
-      const scalars = new Map<string, 'money' | undefined>([
-        ['signerName', undefined],
-      ]);
+      const scalars = new Set(['signerName']);
+      const builtInFormats = new Map<
+        string,
+        { field: string; placeholder: string }
+      >();
       const repeats = new Map<string, readonly string[]>();
       const ownFields = new Set<string>();
       if (obligationTemplate(layout)) {
-        scalars.set('debtTotal', 'money');
-        scalars.set('debtTotalWords', undefined);
+        scalars.add('debtTotal');
+        scalars.add('debtTotalWords');
+        // These catalog bindings describe outputs formatted by the filler.
+        builtInFormats.set('debtTotal', {
+          field: 'debtTotal',
+          placeholder: 'RUB_DECIMAL',
+        });
+        builtInFormats.set('debtTotalWords', {
+          field: 'debtTotal',
+          placeholder: 'RUB_WORDS',
+        });
         repeats.set('creditorHeaders', creditorHeaderColumns);
         for (const key of obligationFields) {
           const columns =
@@ -84,13 +95,12 @@ const templateFillers = {
         }
       }
       if (bankruptcyStatement(layout)) {
-        if (hasEmploymentFields(fields))
-          scalars.set('employmentDetails', undefined);
+        if (hasEmploymentFields(fields)) scalars.add('employmentDetails');
         for (const key of Object.keys({
           ...statementRequestValues({}),
           ...statementLayout(layout, {}),
         }))
-          scalars.set(key, undefined);
+          scalars.add(key);
         repeats.set('attachments', descriptionColumns);
         repeats.set('statementDebts', descriptionColumns);
         const attachments = fields.find(({ key }) => key === 'attachments');
@@ -104,7 +114,7 @@ const templateFillers = {
           ownFields.add('attachments');
         if (splitAttachments) {
           repeats.set('attachmentTail', descriptionColumns);
-          scalars.set('attachmentHeading', undefined);
+          scalars.add('attachmentHeading');
         }
       }
       for (const [key, rows] of Object.entries(
@@ -113,6 +123,7 @@ const templateFillers = {
         repeats.set(key, Object.keys(rows[0] ?? {}));
       return {
         scalars,
+        builtInFormats,
         repeats,
         ownFields,
         sourceRowColumns({ key, columns }: FillingField) {

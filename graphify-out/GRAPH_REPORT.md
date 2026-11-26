@@ -1,7 +1,7 @@
-# Graph Report - spec84-final-fixes  (2026-11-26)
+# Graph Report - spec84-final-validation  (2026-11-26)
 
 ## Corpus Check
-- 993 files · ~499,771 words
+- 993 files · ~500,035 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 27 file(s) not represented in the graph (top: (none) 7, .ttf 5, .example 4)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ef6988fc`
+- Built from commit: `77df1f3a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -91,7 +91,7 @@
 - catalog-deletion.ts
 - processing-profiles.ts
 - bfl/agent-policy.ts
-- facts/index.ts
+- values.ts
 - boundaries.test.ts
 - automatic-value.ts
 - stage-windows-migrator.mjs
@@ -109,26 +109,26 @@
 - Codebase Design
 - stage-windows-mineru.mjs
 - ref_bun_test
-- routes/documents/index.ts
+- documents/endpoints.ts
 - api-proxy.ts
 - money.ts
 - preview-paper.tsx
 - analysis-step.ts
 - work-list.tsx
-- WorkStore
+- modules/works/index.ts
 - http/route.ts
 - Button
 - continue-session.ts
 - database/src/index.ts
-- app.ts
+- tests/route.test.ts
 - llm/tsconfig.json
 - transactions/index.ts
-- facts-draft.ts
+- facts-form.ts
 - Решение
 - logger/src/index.ts
-- connections/module.ts
+- audit/index.ts
 - Anyko — брендбук
-- routes/works/index.ts
+- works/schemas.ts
 - Issue tracker: GitHub
 - Примеры v2
 - obligations.ts
@@ -138,7 +138,7 @@
 - processing/index.ts
 - deep-sky.ts
 - HTML Report Format
-- processing/index.ts
+- facts/index.ts
 - routes/works/index.ts
 - AGENTS.md
 - web/ARCHITECTURE.md
@@ -164,7 +164,7 @@
 - writing-for-agents/SKILL.md
 - apps/api
 - support/scope.ts
-- documents/application/commands.test.ts
+- DocumentStore
 - Проверка тестов, написанных агентом
 - Размещение основы в Dokploy
 - start.ts
@@ -173,7 +173,7 @@
 - pdf_ocr.py
 - bfl/fields.ts
 - wayfinder/SKILL.md
-- worker/src/bootstrap/config.ts
+- start-worker.ts
 - diagnostic-worker.test.ts
 - bootstrap.mjs
 - session-gate.ts
@@ -201,7 +201,7 @@
 - llm/src/index.ts
 - documents.test.ts
 - stage-windows-web.mjs
-- smoke-windows-components.mjs
+- smoke-windows-mineru.mjs
 - dependencies
 - FakeEventSource
 - Sections
@@ -231,7 +231,7 @@
 - Process
 - bfl-creditor-registry.md
 - [file]/route.ts
-- call.ts
+- @tanstack/react-query
 - DeliveryPort
 - processor.py
 - PdfTableOrigins
@@ -563,7 +563,7 @@ Nodes (42): generateDocument(), readTemplateAsset(), RegisteredPublication, byte
 Cohesion: 0.08
 Nodes (30): validateAnalysisPlan(), bflAgentPolicy, court, creditor, bflAnalysisPlan(), manualFields, attachmentInstructions(), businessAbsenceInstructions() (+22 more)
 
-### Community 80 - "facts/index.ts"
+### Community 80 - "values.ts"
 Cohesion: 0.09
 Nodes (43): acceptRunCandidates(), Candidate, ref, confirmValues(), editValues(), readAnalysisFacts(), readFacts(), ambiguousIncome() (+35 more)
 
@@ -635,7 +635,7 @@ Nodes (7): cache, env, installDir, modelHome, output, pyRelative, rejectLinks()
 Cohesion: 0.09
 Nodes (36): renderWork(), source, result, deletionImpactToken, renderWorkspace(), Status, FactsScreen(), fieldNamed() (+28 more)
 
-### Community 98 - "routes/documents/index.ts"
+### Community 98 - "documents/endpoints.ts"
 Cohesion: 0.08
 Nodes (33): deletionBatches(), RecognitionAction, requestBulkDeletion(), runForDocuments(), useRecognitionAction(), waitForBulkDeletion(), waitForDeletion(), createDocumentDeletions (+25 more)
 
@@ -659,7 +659,7 @@ Nodes (46): analysisProposalsSchema(), documentExtractionPolicy(), stepwiseAnaly
 Cohesion: 0.12
 Nodes (24): WorkListPage(), documentPackageKeys, workKeys, documentPackagesQueryOptions(), workDeletionQueryOptions(), worksQueryOptions(), readWorkListParams(), workListHref() (+16 more)
 
-### Community 104 - "WorkStore"
+### Community 104 - "modules/works/index.ts"
 Cohesion: 0.04
 Nodes (29): Receive, activeDocument(), attachDocuments(), createWork(), findWork(), listEvents(), listWorks(), notifyDocumentChanged() (+21 more)
 
@@ -679,7 +679,7 @@ Nodes (39): WorkspaceActorScope, AnalysisStepInput, DocumentAnalysis, projectRun
 Cohesion: 0.03
 Nodes (71): BackendConfig, BackendConfigError, BackendConfigErrorCode, backendConfigSchema, encryptionKey, httpUrl, postgresUrl, redisUrl (+63 more)
 
-### Community 109 - "app.ts"
+### Community 109 - "tests/route.test.ts"
 Cohesion: 0.15
 Nodes (15): statusByKind, requestContext(), workspaceScopeGuard(), attachRequestState(), requestState, states, access, authed (+7 more)
 
@@ -691,7 +691,7 @@ Nodes (3): extends, include, @anyko/typescript-config/server.json
 Cohesion: 0.04
 Nodes (68): claimDocumentAttempt(), DocumentAttempt, documentOcrPolicy, isActive(), listRuns(), DocumentAttemptStore, DocumentRunOutcome, DocumentRunSnapshot (+60 more)
 
-### Community 112 - "facts-draft.ts"
+### Community 112 - "facts-form.ts"
 Cohesion: 0.23
 Nodes (18): draftForSave(), FactsDraft, FactsDraftEvent, FactsDraftTransition, FactsFormChange, FactsRevision, hasFactsDraftEdits(), resolveEditConflict() (+10 more)
 
@@ -703,7 +703,7 @@ Nodes (31): reset(), fields(), Архитектура web-приложения: 
 Cohesion: 0.12
 Nodes (21): parseBackendEnv(), schema, parseApiConfig(), schema, startApi(), describe(), diagnoseFailure(), DiagnosticError (+13 more)
 
-### Community 115 - "connections/module.ts"
+### Community 115 - "audit/index.ts"
 Cohesion: 0.13
 Nodes (18): AuditContext, AuditEvent, AuditRecord, AuditTarget, ADR-0009, AuditCommands, AuditModule, AuditConnection (+10 more)
 
@@ -711,7 +711,7 @@ Nodes (18): AuditContext, AuditEvent, AuditRecord, AuditTarget, ADR-0009, AuditC
 Cohesion: 0.14
 Nodes (14): 10. Дальнейшее развитие, 1. Основа бренда, 2. Преемственность, 3. Логотип, 4. Маскот, 5. Цветовая система, 6. Типографика и композиция, 7. Голос и тексты (+6 more)
 
-### Community 117 - "routes/works/index.ts"
+### Community 117 - "works/schemas.ts"
 Cohesion: 0.05
 Nodes (41): fieldKeySchema, fieldValueSchema, fieldValuesSchema, pageResponseSchema(), agentHistoryEvent, count, tokens, usage (+33 more)
 
@@ -747,7 +747,7 @@ Nodes (36): DeepSkyBackdrop(), bandDistance(), Cloud, clouds, createGalaxies(), 
 Cohesion: 0.10
 Nodes (18): Call-graph collapse, Candidate card, Cross-section (good for layered shallowness), Diagram patterns, Hand-built boxes-and-arrows (when Mermaid's layout fights you), Header, HTML Report Format, Mass diagram (good for "interface as wide as implementation") (+10 more)
 
-### Community 127 - "processing/index.ts"
+### Community 127 - "facts/index.ts"
 Cohesion: 0.15
 Nodes (29): Как добавлять, AgentsModule, LlmSettingsInput, ConnectionErrors, ConnectionsModule, ResourceLocks, DocumentsModule, emptyFacts() (+21 more)
 
@@ -883,7 +883,7 @@ Nodes (22): candidateSchema, bankObligationColumns, bflField(), collectionLabels
 Cohesion: 0.17
 Nodes (11): Chart the map, Fog of war, Invocation, Out of scope, Plan, don't do, Refer by name, The Map, The map body (+3 more)
 
-### Community 162 - "worker/src/bootstrap/config.ts"
+### Community 162 - "start-worker.ts"
 Cohesion: 0.23
 Nodes (11): analysisStepwiseSchema, minModelContextSchema, parseBackendEnv(), schema, parseWorkerConfig(), schema, startWorker(), backendEnv (+3 more)
 
@@ -991,7 +991,7 @@ Nodes (23): SourceStorage, createSourceCleanup(), runFacts(), workspaceWithWork(
 Cohesion: 0.50
 Nodes (4): copyTree(), destination, links, within()
 
-### Community 190 - "smoke-windows-components.mjs"
+### Community 190 - "smoke-windows-mineru.mjs"
 Cohesion: 0.14
 Nodes (8): components, env, metadata, python, pythonRelative, root, source, root
 
@@ -1075,7 +1075,7 @@ Nodes (5): 1. Scope the procedure, 2. Map each stage's journey, 4. Verify and ha
 Cohesion: 0.33
 Nodes (4): assetTypes, GET(), LlmSettings, Подключение модели
 
-### Community 229 - "call.ts"
+### Community 229 - "@tanstack/react-query"
 Cohesion: 0.07
 Nodes (45): fileChecksum(), findUploadMatches(), dateTime, statusText, UploadMatchDialog(), Choice, useUploadMatchChoice(), decide() (+37 more)
 
