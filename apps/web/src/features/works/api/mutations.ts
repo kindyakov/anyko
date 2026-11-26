@@ -13,6 +13,7 @@ import {
   createWork,
   deleteWork,
   editWork,
+  editWorkTitle,
 } from '@anyko/contracts/works';
 
 import { invalidateDocumentCatalog } from '@/features/document-recognition';
@@ -107,6 +108,18 @@ export function useDeleteWork(workspaceId: string) {
         invalidateDocumentCatalog(client, workspaceId),
       ]);
     },
+  });
+}
+
+export function useRenameWork(workspaceId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ workId, title }: { workId: string; title: string }) =>
+      callApi(editWorkTitle, {
+        params: { workspaceId, workId },
+        body: { title },
+      }),
+    onSuccess: (_, { workId }) => invalidateWork(client, workspaceId, workId),
   });
 }
 

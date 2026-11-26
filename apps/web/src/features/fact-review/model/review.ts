@@ -154,3 +154,9 @@ export function reviewFields(
   ).length;
   return { attention, visible, quick, total, complete };
 }
+
+/** Краткая сводка проверки для шагов работы: заполнено, всего и сколько полей требуют внимания. */
+export function reviewSummary(view: WorkView, values: FieldValues) {
+  const { attention, total, complete } = reviewFields(view, values, 'all');
+  return { attention: attention.length, total, complete };
+}

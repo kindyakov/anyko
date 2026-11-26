@@ -83,6 +83,68 @@ test('ordinary and review steps accept independent read limits', () => {
     ).toThrow('ANYKO_ANALYSIS_MAX_READS');
 });
 
+test('stepwise analysis defaults to false and requires a lowercase boolean', () => {
+  expect(parseBackendEnv(backendEnv, worker).worker.stepwiseAnalysis).toBe(
+    false,
+  );
+  for (const value of ['true', 'false']) {
+    expect(
+      parseBackendEnv({ ...backendEnv, ANYKO_ANALYSIS_STEPWISE: value }, worker)
+        .worker.stepwiseAnalysis,
+    ).toBe(value === 'true');
+  }
+  for (const value of ['TRUE', '1', '']) {
+    const env = { ...backendEnv, ANYKO_ANALYSIS_STEPWISE: value };
+    expect(() => parseBackendEnv(env, worker)).toThrow(
+      'ANYKO_ANALYSIS_STEPWISE',
+    );
+    expect(() =>
+      parseWorkerConfig({ ...env, REDIS_URL: worker.redisUrl }),
+    ).toThrow('ANYKO_ANALYSIS_STEPWISE');
+  }
+});
+
+test('model context minimum has a default and accepts only positive integers', () => {
+  expect(parseBackendEnv(backendEnv, worker).worker.minModelContextTokens).toBe(
+    131072,
+  );
+  expect(
+    parseBackendEnv(
+      { ...backendEnv, ANYKO_MIN_MODEL_CONTEXT_TOKENS: '262144' },
+      worker,
+    ).worker.minModelContextTokens,
+  ).toBe(262144);
+  for (const value of ['0', '-1', '1.5', '']) {
+    const env = { ...backendEnv, ANYKO_MIN_MODEL_CONTEXT_TOKENS: value };
+    expect(() => parseBackendEnv(env, worker)).toThrow(
+      'ANYKO_MIN_MODEL_CONTEXT_TOKENS',
+    );
+    expect(() =>
+      parseWorkerConfig({ ...env, REDIS_URL: worker.redisUrl }),
+    ).toThrow('ANYKO_MIN_MODEL_CONTEXT_TOKENS');
+  }
+});
+
+test.each([
+  ['ANYKO_CHAT_MAX_MODEL_CALLS', 'chatMaxModelCalls', 64],
+  ['ANYKO_RECONCILE_MAX_MODEL_CALLS', 'reconcileMaxModelCalls', 64],
+  ['ANYKO_RECONCILE_MAX_READS', 'reconcileMaxReads', 256],
+  ['ANYKO_VISION_MAX_OUTPUT_TOKENS', 'visionMaxOutputTokens', 16384],
+] as const)('%s accepts only integers within its limits', (key, field, max) => {
+  for (const value of [1, max]) {
+    expect(
+      parseBackendEnv({ ...backendEnv, [key]: String(value) }, worker).worker[
+        field
+      ],
+    ).toBe(value);
+  }
+  for (const value of ['0', '1.5', String(max + 1), 'invalid']) {
+    expect(() =>
+      parseBackendEnv({ ...backendEnv, [key]: value }, worker),
+    ).toThrow(key);
+  }
+});
+
 test('worker requires Redis and accepts explicit process configuration', () => {
   expect(() => parseWorkerConfig({})).toThrow('REDIS_URL');
   expect(

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export interface ModelContextLimits {
-  context: number;
+  context: number | null;
   prompt: number;
   completion: number | null;
 }
@@ -43,7 +43,7 @@ function limitsFrom(
     null;
   if (context == null && prompt == null && completion == null) return null;
   return {
-    context: context ?? 16384,
+    context: context ?? null,
     prompt: prompt ?? context ?? 12288,
     completion,
   };
@@ -72,7 +72,10 @@ async function lookup(
       // The router can fall back to another endpoint for the same model.
       limits = limits
         ? {
-            context: Math.min(limits.context, next.context),
+            context:
+              limits.context === null
+                ? next.context
+                : Math.min(limits.context, next.context ?? limits.context),
             prompt: Math.min(limits.prompt, next.prompt),
             completion:
               next.completion === null

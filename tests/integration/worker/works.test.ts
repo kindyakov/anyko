@@ -1893,7 +1893,10 @@ test('a shared source pins the latest ready OCR in each work and survives unlink
   try {
     documentId = brandDocumentId((await upload(input)).id);
     await ocr.entered();
-    const catalog = await documents.queries.list(scope, { limit: 20 });
+    const catalog = await documents.queries.list(scope, {
+      page: 1,
+      pageSize: 20,
+    });
     expect(
       catalog.items.find(({ id }) => id === documentId)?.readyRevision,
     ).toBeNull();
@@ -1921,7 +1924,9 @@ test('a shared source pins the latest ready OCR in each work and survives unlink
   try {
     await documents.commands.retry(scope, documentId, crypto.randomUUID());
     await waiting.entered();
-    const [ready] = (await documents.queries.list(scope, { limit: 20 })).items;
+    const [ready] = (
+      await documents.queries.list(scope, { page: 1, pageSize: 20 })
+    ).items;
     expect(ready).toMatchObject({
       id: documentId,
       status: 'running',
@@ -3888,6 +3893,46 @@ test('rotation followed by revocation stops a run pinned to the old revision bef
   }
 });
 
+test.each([1, 2])(
+  'vision respects verified native tables with PDF processor revision %i',
+  async (revision) => {
+    const input = await create();
+    const native = 'images/page_0_table_1.png';
+    const unknown = 'images/page_0_table_2.png';
+    parseFixture = () =>
+      Promise.resolve({
+        markdown: 'Имя: Анна. Номер: 42.',
+        processorVersion: `mineru-4.2.3+cyrillic-pdf.${String(revision)}`,
+        pdfOcr: { version: 1, pages: [] },
+        images: [native, unknown].map((path) => ({
+          path,
+          contentType: 'image/png',
+          bytes: fixtureImage,
+        })),
+        ...(revision === 2 && {
+          tableImages: [
+            { imagePath: native, origin: 'native', page: 1 },
+            { imagePath: unknown, origin: 'unknown', page: 1 },
+          ],
+        }),
+      });
+    try {
+      await upload(input);
+      const result = await until(input, terminal);
+      const run = result.runs[0];
+      expect(run?.status).toBe('succeeded');
+      const vision = run?.steps.find((step) => step.stage === 'vision');
+      const expected = revision === 1 ? [native, unknown] : [unknown];
+      expect(vision?.visuals.map(({ path }) => path)).toEqual(expected);
+      expect(
+        descriptionsByResource.get(`${input.workspaceId}:${input.workId}`),
+      ).toBe(expected.length);
+    } finally {
+      parseFixture = undefined;
+    }
+  },
+);
+
 test('deletion during the first visual prevents a second provider request', async () => {
   const input = await create();
   let release: () => void = () => {},
@@ -3967,8 +4012,8 @@ test('Mastra sends the extraction text directly, keeps reconciliation tools, and
         new URL(request.url).pathname === '/v1/models/fixture'
       )
         return Response.json({
-          context_length: 32768,
-          max_completion_tokens: 8192,
+          context_length: 131072,
+          max_completion_tokens: 64000,
         });
       providerCalls++;
       const value: unknown = await request.json();
@@ -4370,6 +4415,7 @@ test('rerunning analysis refreshes changed vision and extraction prompts indepen
 
 test('logical session survives reopening, extends context with a new source, and keeps extraction cached', async () => {
   const input = await create();
+  const resource = `${input.workspaceId}:${input.workId}`;
   const first = await upload(input);
   const initial = await until(input, terminal);
   const sessionId = initial.session?.id;
@@ -4392,7 +4438,7 @@ test('logical session survives reopening, extends context with a new source, and
   } finally {
     await reopened.stop();
   }
-  const previousCalls = extractionCount;
+  expect(extractionDocuments.get(resource)).toEqual([first.id]);
   const second = await upload(input);
   reconcileHook = async (request) => {
     expect(request.sessionId).toBe(sessionId);
@@ -4427,7 +4473,7 @@ test('logical session survives reopening, extends context with a new source, and
     expect(next.facts.candidates.some((c) => c.origin === 'context')).toBe(
       true,
     );
-    expect(extractionCount - previousCalls).toBe(1);
+    expect(extractionDocuments.get(resource)).toEqual([first.id, second.id]);
     expect(
       await db.workAgentTurn.count({ where: { workId: input.workId } }),
     ).toBe(2);
@@ -4711,12 +4757,12 @@ test('statement and creditor list keep a newer documented balance after reconcil
         expect(text).toContain(`${totalLabel} ${total}`);
         expect(text).toMatch(/QA-VT-51[^;]{0,140}145 006,47/u);
         expect(text).not.toContain('151 000');
-        if (total === '[не заполнено]')
+        if (total === '______________')
           expect(text).not.toContain('172 500,25');
       }
       return output;
     };
-    const incomplete = await verifyDocuments(draft, '[не заполнено]');
+    const incomplete = await verifyDocuments(draft, '______________');
     await apiBackend.workHttp.review.editValues(scope, {
       workId,
       revision: incomplete.work.revision,

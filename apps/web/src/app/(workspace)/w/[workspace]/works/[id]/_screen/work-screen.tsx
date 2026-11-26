@@ -1,11 +1,11 @@
 'use client';
 import { Tabs } from '@base-ui/react/tabs';
-import { ArrowLeft, RotateCw } from 'lucide-react';
+import { RotateCw } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
 import { type WorkView } from '@anyko/contracts/works';
-import { Button, Notice, Skeleton, StatusPill } from '@anyko/ui';
+import { Button, Notice, Skeleton, useWideLayout } from '@anyko/ui';
 import { EventHorizon } from '@anyko/ui/brand';
 
 import {
@@ -14,12 +14,12 @@ import {
   type ViewedDocument,
 } from '@/features/document-recognition';
 import {
+  reviewSummary,
   UnsavedFactsBar,
   useFactsForm,
   WorkReview,
 } from '@/features/fact-review';
-import { WorkAgentHistory } from '@/features/work-agent-history';
-import { WorkChat } from '@/features/work-chat';
+import { type AgentTab, WorkAgentPanel } from '@/features/work-chat';
 import { WorkResults } from '@/features/work-generation';
 import { WorkPipeline } from '@/features/work-processing';
 import { WorkChecklist, WorkSources } from '@/features/work-sources';
@@ -35,8 +35,9 @@ import { useWorkspaceId } from '@/lib/api/workspace';
 import { routes } from '@/lib/routes';
 import { UnsavedNavigation } from '@/lib/unsaved-navigation';
 
-import { Hero } from './hero';
+import { NextStep } from './next-step';
 import { Stepper } from './stepper';
+import { WorkHeader } from './work-header';
 
 type Document = WorkView['documents'][number];
 
@@ -112,6 +113,10 @@ function WorkBody({
   const workspaceId = useWorkspaceId();
   const [step, setStep] = useState<StepKey>();
   const [viewing, setViewing] = useState<ViewedDocument>();
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentTab, setAgentTab] = useState<AgentTab>('chat');
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const wide = useWideLayout();
   const previousStage = useRef<WorkStage['kind']>(undefined);
   const facts = useFactsForm(view);
   const commands = useWorkCommands(workspaceId, view, facts.saving);
@@ -150,59 +155,37 @@ function WorkBody({
   const current = step ?? stepOf(stage);
   const openedSource = view.documents.find(({ id }) => id === viewing?.id);
   const openedRevision = openedSource?.processingRevision;
+  const docked = wide && agentOpen;
   return (
     <>
       <div
         className={
-          view.checklist?.length
-            ? 'grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_16.5rem] 2xl:grid-cols-[minmax(0,1fr)_18rem]'
-            : undefined
+          docked
+            ? 'grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_26rem] 2xl:grid-cols-[minmax(0,1fr)_28rem]'
+            : view.checklist?.length
+              ? 'grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_16.5rem] 2xl:grid-cols-[minmax(0,1fr)_18rem]'
+              : undefined
         }
       >
         <div className="min-w-0">
-          <div className="animate-rise">
-            <Link
-              href={routes.works(workspaceId)}
-              className="text-muted hover:text-ink group inline-flex items-center gap-1.5 text-sm transition-colors"
-            >
-              <ArrowLeft
-                size={15}
-                className="transition-transform group-hover:-translate-x-0.5"
-              />
-              Все работы
-            </Link>
-            <div className="mt-4 mb-6 flex flex-wrap items-end justify-between gap-4">
-              <div className="min-w-0">
-                <h1 className="font-heading text-2xl font-bold tracking-tight wrap-anywhere sm:text-3xl">
-                  {view.work.title}
-                </h1>
-                <p className="text-muted mt-2 text-sm">{view.package.title}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <WorkAgentHistory workspaceId={workspaceId} view={view} />
-                <WorkChat workspaceId={workspaceId} view={view} />
-                {view.work.confirmedRevision === view.work.revision ? (
-                  <StatusPill tone="success">Подтверждена</StatusPill>
-                ) : (
-                  <StatusPill tone="brand">В работе</StatusPill>
-                )}
-                <span
-                  role="status"
-                  className="text-muted flex items-center gap-2 rounded-full border border-white/[0.07] px-2.5 py-1 text-xs"
-                >
-                  <span
-                    className={`size-1.5 rounded-full ${live === 'live' ? 'animate-blink bg-emerald-400 shadow-[0_0_6px_#34d399]' : 'bg-amber-400'}`}
-                  />
-                  {live === 'live'
-                    ? 'Обновляется автоматически'
-                    : live === 'connecting'
-                      ? 'Подключаемся'
-                      : 'Переподключаемся — данные сохранены'}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 gap-4">
+          <WorkHeader
+            workspaceId={workspaceId}
+            view={view}
+            live={live}
+            agentOpen={agentOpen}
+            agentBusy={stage.kind === 'processing'}
+            onAgent={() => {
+              setAgentOpen((open) => !open);
+            }}
+            onChecklist={
+              view.checklist?.length && (!wide || docked)
+                ? () => {
+                    setChecklistOpen(true);
+                  }
+                : undefined
+            }
+          />
+          <div className="mb-4 grid grid-cols-1 gap-3 empty:hidden">
             {(commands.error || loadError) && (
               <Notice tone="danger" role="alert">
                 {commands.error || loadError}
@@ -227,14 +210,6 @@ function WorkBody({
                 сохраняется в каталоге.
               </Notice>
             )}
-            <Hero
-              stage={stage}
-              step={current}
-              busy={commands.pending}
-              generateDisabled={commands.disabled.generate}
-              onStep={setStep}
-              onGenerate={generate}
-            />
           </div>
           <Tabs.Root
             value={current}
@@ -247,10 +222,26 @@ function WorkBody({
               )
                 setStep(value);
             }}
-            className="mt-6"
           >
-            <Stepper current={stepOf(stage)} />
-            <div className="mt-8">
+            <Stepper
+              current={stepOf(stage)}
+              view={view}
+              stage={stage}
+              review={reviewSummary(view, facts.values)}
+            />
+            <div className="mt-3 empty:hidden">
+              <NextStep
+                stage={stage}
+                step={current}
+                busy={commands.pending}
+                analyzeDisabled={commands.disabled.analyze}
+                generateDisabled={commands.disabled.generate}
+                onStep={setStep}
+                onAnalyze={analyze}
+                onGenerate={generate}
+              />
+            </div>
+            <div className="mt-6">
               <Tabs.Panel
                 value="files"
                 keepMounted
@@ -309,7 +300,21 @@ function WorkBody({
             </div>
           </Tabs.Root>
         </div>
-        <WorkChecklist view={view} onOpen={openDocument} />
+        <WorkAgentPanel
+          workspaceId={workspaceId}
+          view={view}
+          open={agentOpen && !view.cleanupPending}
+          tab={agentTab}
+          onOpenChange={setAgentOpen}
+          onTab={setAgentTab}
+        />
+        <WorkChecklist
+          view={view}
+          docked={wide && !docked}
+          open={checklistOpen}
+          onOpenChange={setChecklistOpen}
+          onOpen={openDocument}
+        />
       </div>
       <UnsavedNavigation dirty={facts.hasEdits} />
       {commands.uploadMatchDialog}

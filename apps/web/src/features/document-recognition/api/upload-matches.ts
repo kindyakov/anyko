@@ -6,16 +6,20 @@ export async function findUploadMatches(
   workspaceId: string,
   checksum: string,
   signal: AbortSignal,
-  after?: string,
+  page = 1,
 ) {
-  const page = await callApi(listDocuments, {
+  const result = await callApi(listDocuments, {
     params: { workspaceId },
-    query: { checksum, limit: 12, after },
+    query: { checksum, page, pageSize: uploadMatchPageSize },
     signal,
   });
   // A previous backend version ignores unknown filters. Its response cannot identify matches.
-  return page.checksum === checksum ? page : { items: [], nextCursor: null };
+  return result.checksum === checksum
+    ? result
+    : { items: [], page: 1, pageSize: uploadMatchPageSize, total: 0 };
 }
+
+const uploadMatchPageSize = 12;
 
 export async function fileChecksum(file: File) {
   const digest = await crypto.subtle.digest(

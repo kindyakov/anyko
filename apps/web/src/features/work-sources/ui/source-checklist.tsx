@@ -1,5 +1,6 @@
 'use client';
 
+import { Collapsible } from '@base-ui/react/collapsible';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Check,
@@ -7,31 +8,21 @@ import {
   ChevronDown,
   Circle,
   CircleHelp,
-  Eye,
-  Unlink,
 } from 'lucide-react';
 
-import {
-  editWorkChecklistLink,
-  type WorkChecklistItem,
-  type WorkView,
-} from '@anyko/contracts/works';
-import { Button, StatusPill, type Tone } from '@anyko/ui';
+import { editWorkChecklistLink, type WorkView } from '@anyko/contracts/works';
+import { StatusPill } from '@anyko/ui';
 
 import { describeWorkCommandError, invalidateWork } from '@/features/works';
 import { callApi } from '@/lib/api/call';
 import { useWorkspaceId } from '@/lib/api/workspace';
 
+import { ChecklistContracts } from './checklist-contracts';
 import { ChecklistLinkForm } from './checklist-link-form';
+import { ChecklistSource } from './checklist-source';
+import { statuses } from './checklist-status';
 
 type Document = WorkView['documents'][number];
-const statuses: Record<WorkChecklistItem['status'], [string, Tone]> = {
-  confirmed: ['Подтверждено', 'success'],
-  found: ['Найдено', 'success'],
-  review: ['На проверке', 'progress'],
-  missing: ['Не найдено', 'neutral'],
-  clarify: ['Уточнить', 'neutral'],
-};
 const groups = [
   { applicability: 'usual', title: 'Обычно нужны' },
   { applicability: 'conditional', title: 'По обстоятельствам' },
@@ -81,6 +72,23 @@ export function SourceChecklist({
 
   return (
     <div className="grid min-w-0 gap-3">
+      <p
+        aria-hidden
+        className="text-muted flex flex-wrap gap-x-3 gap-y-1 px-1 text-[11px]"
+      >
+        <span className="inline-flex items-center gap-1">
+          <Check size={12} className="text-emerald-300" />
+          найдено
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <CircleHelp size={12} className="text-amber-300" />
+          проверить
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Circle size={12} />
+          нет
+        </span>
+      </p>
       {mutation.isError && (
         <p role="alert" className="text-sm text-red-200">
           {describeWorkCommandError(mutation.error)}
@@ -91,15 +99,23 @@ export function SourceChecklist({
           (item) => item.applicability === applicability,
         );
         if (!items?.length) return null;
+        const ready = items.filter(
+          ({ status }) => status === 'confirmed' || status === 'found',
+        ).length;
         return (
           <div key={applicability}>
-            <h3 className="text-muted px-1 text-xs font-medium">{title}</h3>
+            <h3 className="text-muted flex items-center justify-between gap-2 px-1 text-xs font-medium">
+              {title}
+              <span className="tabular-nums">
+                {ready} из {items.length}
+              </span>
+            </h3>
             <ul
               aria-label={title}
               className="mt-1 divide-y divide-white/[0.06]"
             >
               {items.map((item) => {
-                const [label] = statuses[item.status];
+                const [label, tone] = statuses[item.status];
                 const Status = statusIcons[item.status];
                 const remaining = view.documents.filter(
                   (document) =>
@@ -109,9 +125,9 @@ export function SourceChecklist({
                 );
                 return (
                   <li key={item.key}>
-                    <details className="group">
-                      <summary
-                        className="focus-visible:outline-brand-hot flex min-h-9 cursor-pointer list-none items-center gap-2 rounded-md px-1 py-1.5 text-sm leading-tight hover:bg-white/[0.04] focus-visible:outline-2 [&::-webkit-details-marker]:hidden"
+                    <Collapsible.Root>
+                      <Collapsible.Trigger
+                        className="group focus-visible:outline-brand-hot flex min-h-9 w-full items-center gap-2 rounded-md px-1 py-1.5 text-left text-sm leading-tight hover:bg-white/[0.04] focus-visible:outline-2"
                         title={label}
                       >
                         <Status
@@ -124,62 +140,20 @@ export function SourceChecklist({
                         <ChevronDown
                           size={13}
                           aria-hidden
-                          className="text-muted shrink-0 group-open:rotate-180"
+                          className="text-muted shrink-0 transition-transform group-data-[panel-open]:rotate-180"
                         />
-                      </summary>
-                      <div className="grid min-w-0 gap-2 pb-2 pl-2">
-                        <p className="text-muted text-xs">{label}</p>
-                        {!!item.contracts?.length && (
-                          <ul
-                            aria-label="Справки по договорам"
-                            className="grid gap-2"
-                          >
-                            {item.contracts.map((contract) => (
-                              <li
-                                key={JSON.stringify([
-                                  contract.creditor,
-                                  contract.contractNumber,
-                                  contract.contractDate,
-                                ])}
-                                className="flex flex-wrap items-center gap-2 border-l border-white/10 pl-3"
-                              >
-                                <span className="text-sm wrap-anywhere">
-                                  {contract.creditor} · Договор №{' '}
-                                  {contract.contractNumber}
-                                  {contract.contractDate &&
-                                    ` от ${contract.contractDate}`}
-                                </span>
-                                <StatusPill tone={statuses[contract.status][1]}>
-                                  {statuses[contract.status][0]}
-                                </StatusPill>
-                                {contract.documentIds.map((id) => {
-                                  const document = byId.get(id);
-                                  const source = item.sources.find(
-                                    ({ documentId }) => documentId === id,
-                                  );
-                                  return (
-                                    document && (
-                                      <Button
-                                        key={id}
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => {
-                                          onOpen(
-                                            document,
-                                            source?.page ?? undefined,
-                                          );
-                                        }}
-                                      >
-                                        <Eye size={15} aria-hidden />
-                                        {document.filename}
-                                      </Button>
-                                    )
-                                  );
-                                })}
-                              </li>
-                            ))}
-                          </ul>
+                      </Collapsible.Trigger>
+                      <Collapsible.Panel className="grid min-w-0 gap-2 pt-1 pb-3 pl-6">
+                        {item.sources.length === 0 && (
+                          <div>
+                            <StatusPill tone={tone}>{label}</StatusPill>
+                          </div>
                         )}
+                        <ChecklistContracts
+                          item={item}
+                          documents={byId}
+                          onOpen={onOpen}
+                        />
                         {item.sources.length > 0 && (
                           <ul
                             aria-label={`Источники для «${item.label}»`}
@@ -188,76 +162,33 @@ export function SourceChecklist({
                             {item.sources.map((source) => {
                               const document = byId.get(source.documentId);
                               if (!document) return null;
-                              const [sourceLabel, sourceTone] =
-                                statuses[source.status];
+                              const decide = (
+                                decision: 'confirmed' | 'rejected',
+                              ) => {
+                                mutation.mutate({
+                                  requirementKey: item.key,
+                                  document,
+                                  decision,
+                                });
+                              };
                               return (
-                                <li
+                                <ChecklistSource
                                   key={source.documentId}
-                                  className="border-l border-white/10 pl-3"
-                                >
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => {
-                                        onOpen(
-                                          document,
-                                          source.page ?? undefined,
-                                        );
-                                      }}
-                                    >
-                                      <Eye size={15} aria-hidden />
-                                      {document.filename}
-                                    </Button>
-                                    <StatusPill tone={sourceTone}>
-                                      {sourceLabel}
-                                    </StatusPill>
-                                    {source.page && (
-                                      <span className="text-muted text-xs">
-                                        Стр. {source.page}
-                                      </span>
-                                    )}
-                                    {view.canEditChecklist &&
-                                      source.status !== 'confirmed' && (
-                                        <Button
-                                          variant="secondary"
-                                          size="sm"
-                                          disabled={mutation.isPending}
-                                          onClick={() => {
-                                            mutation.mutate({
-                                              requirementKey: item.key,
-                                              document,
-                                              decision: 'confirmed',
-                                            });
-                                          }}
-                                        >
-                                          Подтвердить
-                                        </Button>
-                                      )}
-                                    {view.canEditChecklist && (
-                                      <Button
-                                        variant="ghost"
-                                        size="icon-sm"
-                                        disabled={mutation.isPending}
-                                        aria-label={`Отвязать «${document.filename}» от «${item.label}»`}
-                                        onClick={() => {
-                                          mutation.mutate({
-                                            requirementKey: item.key,
-                                            document,
-                                            decision: 'rejected',
-                                          });
-                                        }}
-                                      >
-                                        <Unlink size={15} aria-hidden />
-                                      </Button>
-                                    )}
-                                  </div>
-                                  {source.quote && (
-                                    <p className="text-muted text-xs wrap-anywhere">
-                                      {source.quote}
-                                    </p>
-                                  )}
-                                </li>
+                                  itemLabel={item.label}
+                                  document={document}
+                                  source={source}
+                                  canEdit={view.canEditChecklist === true}
+                                  pending={mutation.isPending}
+                                  onOpen={() => {
+                                    onOpen(document, source.page ?? undefined);
+                                  }}
+                                  onConfirm={() => {
+                                    decide('confirmed');
+                                  }}
+                                  onUnlink={() => {
+                                    decide('rejected');
+                                  }}
+                                />
                               );
                             })}
                           </ul>
@@ -276,8 +207,8 @@ export function SourceChecklist({
                             }}
                           />
                         )}
-                      </div>
-                    </details>
+                      </Collapsible.Panel>
+                    </Collapsible.Root>
                   </li>
                 );
               })}

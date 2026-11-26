@@ -20,6 +20,7 @@ import {
 } from '@/features/works/model/work-list';
 import { CreateWorkDialog } from '@/features/works/ui/list/create-work-dialog';
 import { Journey } from '@/features/works/ui/list/journey';
+import { RenameWorkDialog } from '@/features/works/ui/list/rename-work-dialog';
 import { WorkCard } from '@/features/works/ui/list/work-card';
 import { WorkDeletionDialog } from '@/features/works/ui/list/work-deletion-dialog';
 import { WorkListControls } from '@/features/works/ui/list/work-list-controls';
@@ -30,6 +31,7 @@ import { useCan, useWorkspaceId } from '@/lib/api/workspace';
 export function WorkList() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<WorkPage['items'][number]>();
+  const [renaming, setRenaming] = useState<WorkPage['items'][number]>();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { page, pageSize, q, status, view } = readWorkListParams(searchParams);
@@ -38,6 +40,7 @@ export function WorkList() {
   // Право только для отображения: без него создание не предлагается, а отказ даёт API.
   const canCreate = useCan('works.create');
   const canDelete = useCan('works.delete');
+  const canEdit = useCan('works.edit');
   const list = useQuery({
     ...worksQueryOptions(workspaceId, { page, pageSize, q, status }),
     refetchOnMount: 'always',
@@ -111,6 +114,15 @@ export function WorkList() {
           pending={list.data?.deletions ?? []}
           onClose={() => {
             setDeleting(undefined);
+          }}
+        />
+      )}
+      {renaming && (
+        <RenameWorkDialog
+          workspaceId={workspaceId}
+          work={renaming}
+          onClose={() => {
+            setRenaming(undefined);
           }}
         />
       )}
@@ -220,6 +232,13 @@ export function WorkList() {
               packages={packages}
               workspaceId={workspaceId}
               view={view}
+              onRename={
+                canEdit
+                  ? () => {
+                      setRenaming(work);
+                    }
+                  : undefined
+              }
               onDelete={
                 canDelete
                   ? () => {

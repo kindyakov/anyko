@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { cursorResponseSchema } from '../common';
+import { pageResponseSchema } from '../common';
 
 export const sourceFormatSchema = z.enum([
   'pdf',
@@ -32,7 +32,9 @@ export const sourceChecksumSchema = z
   .string()
   .regex(/^[a-f0-9]{64}$/)
   .describe('SHA-256 оригинала в hex');
-export const documentsResponseSchema = cursorResponseSchema(documentSchema, {
+/** Размер страницы каталога: экран каталога, выбор из каталога и совпадения при загрузке. */
+export const documentPageSizeSchema = z.number().int().min(1).max(48);
+export const documentsResponseSchema = pageResponseSchema(documentSchema, {
   checksum: sourceChecksumSchema.optional(),
   pendingDeletions: z.array(
     z.object({

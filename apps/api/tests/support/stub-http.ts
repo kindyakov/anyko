@@ -39,6 +39,7 @@ export function stubHttpOptions(): {
       source: unused,
       image: unused,
       deletion: unused,
+      deletions: unused,
       deletionImpact: unused,
     },
     internal: {
@@ -85,6 +86,7 @@ export function stubHttpOptions(): {
     },
     commands: {
       create: unused,
+      rename: unused,
       attachDocuments: unused,
     },
     queries: {

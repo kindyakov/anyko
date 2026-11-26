@@ -16,7 +16,7 @@ import {
 
 import type { FactsForm } from './facts-form';
 import { PackagePreview } from './package-preview';
-import { AttachmentReview } from './review/attachment-review';
+import { AttachmentReview } from './review/attachments/attachment-review';
 import { CandidateList } from './review/candidate-list';
 import { EditConflicts } from './review/edit-conflicts';
 import { EmploymentReview } from './review/employment-review';
@@ -54,7 +54,7 @@ export function WorkReview({
     <div className="grid min-w-0 grid-cols-1 gap-5">
       <div
         ref={reviewBar}
-        className="glass flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 p-3"
+        className="glass sticky top-3 z-20 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-white/10 p-2 shadow-[0_18px_40px_-24px_#000]"
       >
         <SegmentedControl
           label="Раздел проверки"
@@ -68,42 +68,54 @@ export function WorkReview({
             { value: 'drafts', label: 'Черновики документов' },
           ]}
         />
-        {hasSubmittedAttachments(view.package.fields) && (
-          <AttachmentReview
-            documents={view.documents}
-            candidates={view.facts.candidates}
-            value={values.submittedAttachments}
-            disabled={busy}
-            onChange={(value) => {
-              facts.change({ submittedAttachments: value });
-            }}
-            onOpen={onOpen}
+        {panel === 'facts' && total > 0 && (
+          <SegmentedControl
+            label="Какие сведения показать"
+            size="sm"
+            value={filter}
+            onValueChange={setFilter}
+            items={[
+              {
+                value: 'attention',
+                label: `Требуют внимания · ${String(attention.length)}`,
+              },
+              { value: 'all', label: `Все поля · ${String(total)}` },
+            ]}
           />
         )}
-        <div className="flex w-full flex-col gap-1.5 rounded-xl border border-[#ff3b62]/25 bg-[#db143c]/[0.08] px-3.5 py-2.5 sm:w-auto sm:min-w-48">
-          <p className="flex items-baseline justify-between gap-3 text-sm font-medium text-white/85">
-            Заполнено
-            <span className="whitespace-nowrap text-white/75 tabular-nums">
-              <strong className="text-lg leading-none font-bold text-[#ff8da4]">
-                {complete}
-              </strong>{' '}
-              из {total}
-            </span>
-          </p>
+        <div className="ml-auto flex flex-wrap items-center gap-3">
           {total > 0 && (
-            <div
-              role="progressbar"
-              aria-label="Заполнено полей комплекта"
-              aria-valuenow={complete}
-              aria-valuemax={total}
-              aria-valuetext={`${String(complete)} из ${String(total)}`}
-              className="h-1 overflow-hidden rounded-full bg-white/10"
-            >
+            <div className="flex items-center gap-2.5 px-1">
               <div
-                className="h-full rounded-full bg-linear-to-r from-[#db143c] to-[#ff8da4] motion-safe:transition-[width] motion-safe:duration-300"
-                style={{ width: `${String((complete / total) * 100)}%` }}
-              />
+                role="progressbar"
+                aria-label="Заполнено полей комплекта"
+                aria-valuenow={complete}
+                aria-valuemax={total}
+                aria-valuetext={`${String(complete)} из ${String(total)}`}
+                className="h-1.5 w-20 overflow-hidden rounded-full bg-white/10 sm:w-28"
+              >
+                <div
+                  className="h-full rounded-full bg-linear-to-r from-[#db143c] to-[#ff8da4] motion-safe:transition-[width] motion-safe:duration-300"
+                  style={{ width: `${String((complete / total) * 100)}%` }}
+                />
+              </div>
+              <p className="text-muted text-xs whitespace-nowrap tabular-nums">
+                <span className="text-ink font-semibold">{complete}</span> из{' '}
+                {total} заполнено
+              </p>
             </div>
+          )}
+          {hasSubmittedAttachments(view.package.fields) && (
+            <AttachmentReview
+              documents={view.documents}
+              candidates={view.facts.candidates}
+              value={values.submittedAttachments}
+              disabled={busy}
+              onChange={(value) => {
+                facts.change({ submittedAttachments: value });
+              }}
+              onOpen={onOpen}
+            />
           )}
         </div>
       </div>
@@ -113,34 +125,17 @@ export function WorkReview({
         hidden={panel !== 'facts'}
         className="w-full max-w-5xl justify-self-center"
       >
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <h2
-              id="facts-title"
-              className="font-heading text-xl font-bold tracking-tight"
-            >
-              Найденные сведения
-            </h2>
-            <p className="text-muted mt-1 text-sm">
-              Проверьте, что подставится в документы. Фрагменты из файлов
-              помогут сверить значения.
-            </p>
-          </div>
-          {total > 0 && (
-            <SegmentedControl
-              label="Какие сведения показать"
-              size="sm"
-              value={filter}
-              onValueChange={setFilter}
-              items={[
-                {
-                  value: 'attention',
-                  label: `Требуют внимания · ${String(attention.length)}`,
-                },
-                { value: 'all', label: `Все поля · ${String(total)}` },
-              ]}
-            />
-          )}
+        <div className="mb-4">
+          <h2
+            id="facts-title"
+            className="font-heading text-xl font-bold tracking-tight"
+          >
+            Найденные сведения
+          </h2>
+          <p className="text-muted mt-1 text-sm">
+            Проверьте, что подставится в документы. Фрагменты из файлов помогут
+            сверить значения.
+          </p>
         </div>
         {hasEmploymentFields(view.package.fields) && (
           <EmploymentReview

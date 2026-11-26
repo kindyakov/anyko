@@ -31,6 +31,7 @@ export function createChatAgent(options: {
   mastra: Mastra;
   gateway: ReturnType<typeof createModelGateway>;
   timeoutMs: number;
+  maxModelCalls: number;
   lookupCourt: typeof findArbitrationCourt;
   lookupCreditor: typeof findCreditor;
 }): DocumentAgents['chat'] {
@@ -156,7 +157,7 @@ export function createChatAgent(options: {
       ];
       const settings = {
         abortSignal: signal,
-        maxSteps: 8,
+        maxSteps: options.maxModelCalls,
         prepareStep: async () => {
           await input.assertCurrent();
         },

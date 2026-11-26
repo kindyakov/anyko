@@ -19,6 +19,7 @@ import {
   templateBytes,
   templateData,
 } from '../../src/modules/templates';
+import { automaticValue } from '../../src/profiles/bfl/automatic-value';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 import { completionStream } from '../support/completion-stream';
 
@@ -96,7 +97,10 @@ test('real extraction preserves candidates with valid citations when other field
   });
   const threads: string[] = [];
   const fields = requirePackage('bfl-bankruptcy-v13').fields;
-  const extract = (text: string) => {
+  const extract = (
+    text: string,
+    visuals: { path: string; description: string }[] = [],
+  ) => {
     const threadId = crypto.randomUUID();
     threads.push(threadId);
     return agents.extract({
@@ -118,15 +122,21 @@ test('real extraction preserves candidates with valid citations when other field
       onRejectedEvidence: (rejected) => {
         rejections.push(...rejected);
       },
-      document: { id: documentId, text, visuals: [] },
+      document: { id: documentId, text, visuals },
       signal: AbortSignal.timeout(10000),
     });
   };
-  const expectInvalid = async (text: string) => {
+  const expectInvalid = async (
+    text: string,
+    expected: { code: string; diagnosticMessage?: string } = {
+      code: 'LLM_INVALID_RESPONSE',
+    },
+    visuals?: Parameters<typeof extract>[1],
+  ) => {
     try {
-      await extract(text);
+      await extract(text, visuals);
     } catch (error) {
-      expect(error).toMatchObject({ code: 'LLM_INVALID_RESPONSE' });
+      expect(error).toMatchObject(expected);
       return;
     }
     throw new Error('EXPECTED_INVALID_EXTRACTION');
@@ -149,6 +159,15 @@ test('real extraction preserves candidates with valid citations when other field
     expect(file).toContain(`extraction-${documentId}-1-`);
     const trace = await readFile(join(traces, file), 'utf8');
     expect(trace).not.toContain(apiKey);
+    expect(trace).toContain(
+      'Цитируй содержимое одной ячейки как оно записано в тексте.',
+    );
+    expect(trace).toContain(
+      'Не переноси разметку из описания картинки в текстовую цитату.',
+    );
+    expect(trace).toContain(
+      'Если полный номер есть в тексте, процитируй его из текста (imagePath=null).',
+    );
     expect(trace).toContain(JSON.stringify(source).slice(1, -1));
     const record: unknown = JSON.parse(trace);
     const wireSchema = z
@@ -219,7 +238,9 @@ test('real extraction preserves candidates with valid citations when other field
       { ...candidate, origin: 'document' },
     ]);
     returnedCandidates = [forged];
-    await expectInvalid('Регистрация: г. Тула, ул. Мира');
+    await expectInvalid('Регистрация: г. Тула, ул. Мира', {
+      code: 'LLM_EVIDENCE_NOT_FOUND',
+    });
     returnedCandidates = [extra];
     await expectInvalid('Регистрация: г. Тула, ул. Мира');
     returnedCandidates = [
@@ -241,6 +262,59 @@ test('real extraction preserves candidates with valid citations when other field
       { ...candidate, origin: 'document' },
     ]);
     expect(await readFile(blockedDirectory, 'utf8')).toBe('occupied');
+
+    // Synthetic test number with valid check digits.
+    const inn = '999900000097';
+    const table = `<table><tr><td>2</td><td>ИНН</td><td>${inn}</td></tr></table>`;
+    const visual = {
+      path: 'images/page_0_table_2.jpg',
+      description: `2 | ИНН | ${inn}`,
+    };
+    const pipeCitation = {
+      documentId,
+      imagePath: null,
+      quote: visual.description,
+    };
+    const innCandidate = {
+      field: 'inn' as const,
+      value: inn,
+      evidence: [pipeCitation],
+    };
+    returnedCandidates = [innCandidate];
+    await expectInvalid(
+      table,
+      {
+        code: 'LLM_EVIDENCE_NOT_FOUND',
+        diagnosticMessage: 'Цитаты модели не найдены в источнике.',
+      },
+      [visual],
+    );
+    expect(rejections.at(-1)).toEqual({ field: 'inn', count: 1 });
+
+    const cellCitation = { ...pipeCitation, quote: inn };
+    returnedCandidates = [{ ...innCandidate, evidence: [cellCitation] }];
+    for (const text of [
+      table,
+      `| Поле | Номер |\n| --- | --- |\n| ИНН | ${inn} |`,
+    ]) {
+      const textual = await extract(text, [visual]);
+      expect(textual.candidates).toEqual([
+        { ...innCandidate, origin: 'document', evidence: [cellCitation] },
+      ]);
+      expect(textual.candidates.map((entry) => automaticValue(entry))).toEqual([
+        inn,
+      ]);
+    }
+
+    const imageCitation = { ...pipeCitation, imagePath: visual.path };
+    returnedCandidates = [{ ...innCandidate, evidence: [imageCitation] }];
+    const visualOnly = await extract('Выписка.', [visual]);
+    expect(visualOnly.candidates).toEqual([
+      { ...innCandidate, origin: 'document', evidence: [imageCitation] },
+    ]);
+    expect(visualOnly.candidates.map((entry) => automaticValue(entry))).toEqual(
+      [null],
+    );
   } finally {
     for (const threadId of threads) await agents.eraseThread(threadId);
     await agents.stop();
@@ -447,6 +521,10 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
   let firstOutputLimit: number | undefined;
   let origin: 'document' | 'inference' = 'document';
   let returnMixedCandidates = false;
+  let responseFormats: ((body: string) => string)[] = [];
+  let calls = 0;
+  let source =
+    'Имя: Анна. В другом фрагменте: Анна Мария. Место рождения: Тула.';
   let quote = 'Анна',
     referencedId = documentId,
     valid = true,
@@ -469,6 +547,9 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
           .object({ max_tokens: z.number() })
           .parse(await request.json());
         firstOutputLimit ??= max_tokens;
+        calls++;
+        const formatResponse =
+          responseFormats.shift() ?? ((body: string) => body);
         return completionStream({
           id: 'fixture',
           object: 'chat.completion',
@@ -479,41 +560,43 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
               index: 0,
               message: {
                 role: 'assistant',
-                content: JSON.stringify({
-                  summary: 'Сопоставлены сведения',
-                  candidates: [
-                    {
-                      origin,
-                      field: 'personName',
-                      value: 'Анна',
-                      explanation: null,
-                      evidence: [
-                        {
-                          documentId: referencedId,
-                          imagePath: null,
-                          quote,
-                        },
-                      ],
-                    },
-                    ...(returnMixedCandidates
-                      ? [
+                content: formatResponse(
+                  JSON.stringify({
+                    summary: 'Сопоставлены сведения',
+                    candidates: [
+                      {
+                        origin,
+                        field: 'personName',
+                        value: 'Анна',
+                        explanation: null,
+                        evidence: [
                           {
-                            origin: 'inference',
-                            field: 'postalCode',
-                            value: null,
-                            explanation: 'Индекс неизвестен',
-                            evidence: [
-                              {
-                                documentId,
-                                imagePath: null,
-                                quote: 'Анна',
-                              },
-                            ],
+                            documentId: referencedId,
+                            imagePath: null,
+                            quote,
                           },
-                        ]
-                      : []),
-                  ],
-                }),
+                        ],
+                      },
+                      ...(returnMixedCandidates
+                        ? [
+                            {
+                              origin: 'inference',
+                              field: 'postalCode',
+                              value: null,
+                              explanation: 'Индекс неизвестен',
+                              evidence: [
+                                {
+                                  documentId,
+                                  imagePath: null,
+                                  quote: 'Анна',
+                                },
+                              ],
+                            },
+                          ]
+                        : []),
+                    ],
+                  }),
+                ),
               },
               finish_reason: 'stop',
             },
@@ -602,9 +685,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
       },
       readSource: (id, image) =>
         id === documentId && image === null
-          ? Promise.resolve(
-              'Имя: Анна. В другом фрагменте: Анна Мария. Место рождения: Тула.',
-            )
+          ? Promise.resolve(source)
           : Promise.reject(new Error('SOURCE_NOT_ALLOWED')),
     });
   };
@@ -615,7 +696,9 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
     );
   try {
     await agents.ready();
+    responseFormats = [(body) => '```json\n' + body + '\n```'];
     const result = await invoke();
+    expect(calls).toBe(1);
     expect(result).not.toHaveProperty('checklistSuggestions');
     expect(firstOutputLimit).toBe(131072);
     const initial = z
@@ -629,6 +712,28 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
       alternative,
     ]);
     expect(result.candidates[0]?.origin).toBe('document');
+    for (const table of [
+      '<table><tr><td>Имя</td><td>Анна</td></tr></table>',
+      '| Поле | Значение |\n| --- | --- |\n| Имя | Анна |',
+    ]) {
+      source = table;
+      expect((await invoke()).candidates).toEqual([
+        { ...extracted, evidence: [...extracted.evidence] },
+      ]);
+    }
+    source = 'Имя: Анна. В другом фрагменте: Анна Мария. Место рождения: Тула.';
+    const beforeRetry = calls;
+    responseFormats = [() => '{"summary":', (body) => '```\n' + body + '\n```'];
+    const repaired = await invoke();
+    expect(calls - beforeRetry).toBe(2);
+    expect(repaired.candidates).toEqual([
+      { ...extracted, evidence: [...extracted.evidence] },
+    ]);
+    expect(repaired.usage).toEqual({ inputTokens: 20, outputTokens: 10 });
+    const beforeExhausted = calls;
+    responseFormats = [() => 'no JSON', () => 'still no JSON'];
+    expect(await failure(invoke())).toBe('LLM_INVALID_RESPONSE');
+    expect(calls - beforeExhausted).toBe(2);
     expect(checks).toBeGreaterThan(0);
     returnMixedCandidates = true;
     expect((await invoke()).candidates).toEqual(result.candidates);
@@ -825,15 +930,17 @@ test('Mastra compacts a long tool history and continues from the accepted contex
   const requests: z.infer<typeof requestSchema>[] = [];
   const history: (string | null)[] = [];
   const toolHistory: (string | null)[] = [];
-  const tinyThreadId = crypto.randomUUID();
+  const oversizedThreadId = crypto.randomUUID();
   const mixedAttempts = [
     'fixture/mixed-all-full',
     'fixture/mixed-short-first',
     'fixture/mixed-full-first',
   ].map((modelId) => ({ modelId, threadId: crypto.randomUUID() }));
+  const contextWindow = 131072;
+  const answerLimit = 64000;
   // Fit the mandatory input and a short tool result, but not a full source page.
-  const mixedSummary = 'Q\u0308!/д'.repeat(350);
-  const mixedText = '@!?.:,'.repeat(1166) + '!!!!!г. Тула';
+  const mixedSummary = 'Q\u0308!/д'.repeat(24000);
+  const mixedText = '@!?.:,'.repeat(3000) + '!!!!!г. Тула';
   const oldText = 'Строка большого первичного документа. '.repeat(1000);
   const oldSource = {
     id: oldId,
@@ -871,14 +978,12 @@ test('Mastra compacts a long tool history and continues from the accepted contex
       async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
         const request = new Request(url, init);
         if (request.url.endsWith('/endpoints')) {
-          const smaller = request.url.endsWith('/small/endpoints');
-          const tiny = request.url.endsWith('/tiny/endpoints');
           return Response.json({
             data: {
               endpoints: [
                 {
-                  context_length: tiny ? 2048 : smaller ? 12288 : 8192,
-                  max_completion_tokens: tiny ? 1024 : smaller ? 1500 : 1800,
+                  context_length: contextWindow,
+                  max_completion_tokens: answerLimit,
                 },
               ],
             },
@@ -895,7 +1000,10 @@ test('Mastra compacts a long tool history and continues from the accepted contex
           read('full-page', 'readSource', { documentId: oldId, offset: 0 }),
           read('short-tail', 'readSource', {
             documentId: oldId,
-            offset: body.model === 'fixture/mixed-all-full' ? 10 : 7000,
+            offset:
+              body.model === 'fixture/mixed-all-full'
+                ? 10
+                : mixedText.length - 12,
           }),
         ];
         if (body.model === 'fixture/mixed-short-first') mixedReads.reverse();
@@ -1004,7 +1112,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     );
     expect(smallRequests).toHaveLength(6);
     for (const request of smallRequests) {
-      expect(request.max_tokens).toBe(1500);
+      expect(request.max_tokens).toBe(answerLimit);
       expect(JSON.stringify(request.messages)).toContain('documents.analyzed');
       expect(
         request.messages.flatMap(
@@ -1053,7 +1161,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
       ({ model }) => model === 'fixture/large',
     );
     expect(largeRequests).toHaveLength(3);
-    expect(largeRequests[0]?.max_tokens).toBe(1800);
+    expect(largeRequests[0]?.max_tokens).toBe(answerLimit);
     expect(JSON.stringify(largeRequests[0]?.messages)).toContain(first.summary);
     expect(JSON.stringify(largeRequests[0]?.messages)).toContain(
       'missingFields',
@@ -1075,20 +1183,33 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     expect(next.candidates).toEqual([candidate]);
     expect(history[1]).toContain('old-1-0');
 
-    const tinyResult = await agents
+    const oversizedResult = await agents
       .reconcile({
         ...input,
-        threadId: tinyThreadId,
-        modelId: 'fixture/tiny',
+        threadId: oversizedThreadId,
+        modelId: 'fixture/oversized-input',
         fields: requirePackage('bfl-bankruptcy-v6').fields,
         documents: [oldSource, newSource, ...otherSources],
+        previousContext: {
+          version: 1,
+          workRevision: 1,
+          inputRevision: 1,
+          settingsRevision: 1,
+          promptVersion: 'work-context-v1',
+          summary: mixedSummary.repeat(2),
+          documents: [],
+          missingFields: [],
+          conflictFields: [],
+        },
       })
       .then(
         () => null,
         (error: unknown) => llmError(error).code,
       );
-    expect(tinyResult).toBe('LLM_REQUEST_REJECTED');
-    expect(requests.some(({ model }) => model === 'fixture/tiny')).toBe(false);
+    expect(oversizedResult).toBe('LLM_REQUEST_REJECTED');
+    expect(
+      requests.some(({ model }) => model === 'fixture/oversized-input'),
+    ).toBe(false);
 
     for (const attempt of mixedAttempts) {
       const previousToolCount = toolHistory.length;
@@ -1140,7 +1261,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
   } finally {
     await agents.eraseThread(threadId);
     await agents.eraseThread(nextThreadId);
-    await agents.eraseThread(tinyThreadId);
+    await agents.eraseThread(oversizedThreadId);
     for (const { threadId } of mixedAttempts)
       await agents.eraseThread(threadId);
     await agents.stop();
@@ -1185,7 +1306,7 @@ test('reconciliation finalizes with cited candidates after a parallel batch exha
           return Response.json({
             data: {
               endpoints: [
-                { context_length: 32768, max_completion_tokens: 8192 },
+                { context_length: 131072, max_completion_tokens: 64000 },
               ],
             },
           });
@@ -1345,7 +1466,7 @@ test('court lookup uses only the territory and sends verified address alternativ
             Response.json({
               data: {
                 endpoints: [
-                  { context_length: 32768, max_completion_tokens: 8192 },
+                  { context_length: 131072, max_completion_tokens: 64000 },
                 ],
               },
             }),
@@ -1612,7 +1733,7 @@ test('official creditor details stay a proposal until selecting them for the lin
             ? Response.json({
                 data: {
                   endpoints: [
-                    { context_length: 32768, max_completion_tokens: 8192 },
+                    { context_length: 131072, max_completion_tokens: 64000 },
                   ],
                 },
               })

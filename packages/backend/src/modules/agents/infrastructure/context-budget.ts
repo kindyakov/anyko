@@ -7,11 +7,11 @@ import {
 
 import { LlmError, type ModelContextLimits } from '@anyko/llm';
 
-const fallback: ModelContextLimits = {
+const fallback = {
   context: 16384,
   prompt: 12288,
   completion: null,
-};
+} satisfies ModelContextLimits;
 const schemaReserveTokens = 2048;
 const minimumEstimatedPromptTokens = 1024;
 const promptEstimateMargin = 0.85;
@@ -46,7 +46,8 @@ export function createWorkContextBudget(
   limits: ModelContextLimits | null,
   options: { preserveSourceWithoutMetadata?: boolean } = {},
 ) {
-  const { context, prompt, completion } = limits ?? fallback;
+  const { prompt, completion } = limits ?? fallback;
+  const context = limits?.context ?? fallback.context;
   const maxOutputTokens = completion ?? 64000;
   // Tool schemas and structured output are sent outside the message list.
   // If reserving the full ceiling would leave no usable prompt, the provider

@@ -159,6 +159,50 @@ test('preserves the Cyrillic PDF version and primary OCR coordinates without con
   }
 });
 
+test('validates optional table origins against the images actually exported', async () => {
+  const imagePath = 'images/table.png';
+  const png = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]);
+  const table = { imagePath, origin: 'native', page: 1 };
+  let sidecar: unknown = [table];
+  const server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: () =>
+      new Response(
+        zipSync({
+          'markdown.md': strToU8('| Item | 42 |'),
+          'pdf-ocr.json': strToU8('{"version":1,"pages":[]}'),
+          'pdf-table-images.json': strToU8(JSON.stringify(sidecar)),
+          [imagePath]: png,
+        }),
+        { headers: { 'x-mineru-version': '4.2.3+cyrillic-pdf.2' } },
+      ),
+  });
+  try {
+    const parser = createMineruParser({
+      baseUrl: `http://127.0.0.1:${String(server.port)}`,
+      timeoutMs: 1000,
+    });
+    expect(await parser.parseDocument(pdf, 'pdf', identity)).toMatchObject({
+      processorVersion: 'mineru-4.2.3+cyrillic-pdf.2',
+      tableImages: [table],
+      images: [{ path: imagePath }],
+    });
+    for (const invalid of [
+      [{ ...table, imagePath: 'images/unexported.png' }],
+      [table, table],
+      [{ ...table, origin: 'ocr' }],
+    ]) {
+      sidecar = invalid;
+      const document = await parser.parseDocument(pdf, 'pdf', identity);
+      expect(document.tableImages).toBeUndefined();
+      expect(document.images?.map(({ path }) => path)).toEqual([imagePath]);
+    }
+  } finally {
+    await server.stop(true);
+  }
+});
+
 test('visual input preparation never calls the local OCR route on an older processor', async () => {
   const paths: string[] = [];
   const server = Bun.serve({

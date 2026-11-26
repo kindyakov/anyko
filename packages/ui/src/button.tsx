@@ -3,7 +3,7 @@ import { Button as Primitive } from '@base-ui/react/button';
 
 import { Spinner } from './spinner';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
 type Size = 'xs' | 'sm' | 'md' | 'lg' | 'icon' | 'icon-sm';
 
 const variants: Record<Variant, string> = {
@@ -15,6 +15,9 @@ const variants: Record<Variant, string> = {
     'border-transparent bg-transparent text-muted hover:bg-white/[0.06] hover:text-ink aria-pressed:text-ink',
   danger:
     'border-red-400/20 bg-red-500/[0.06] text-red-300 hover:border-red-400/50 hover:bg-red-500/15 hover:text-red-200',
+  // Подтверждение найденного: прозрачный зелёный, тише основной кнопки.
+  success:
+    'border-emerald-400/25 bg-emerald-400/[0.08] text-emerald-200 hover:border-emerald-300/50 hover:bg-emerald-400/15 hover:text-emerald-100',
 };
 const sizes: Record<Size, string> = {
   xs: 'min-h-7 gap-1 rounded-md px-2 text-xs',

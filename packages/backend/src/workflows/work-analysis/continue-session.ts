@@ -420,7 +420,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
             if (validOutput && settingsRevision !== null) {
               const context: AgentSessionContext = {
                 version: 1,
-                promptVersion: 'work-context-v1',
+                promptVersion: 'work-context-v2',
                 workRevision: work.revision + 1,
                 inputRevision: run.inputRevision,
                 settingsRevision,

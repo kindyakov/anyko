@@ -275,9 +275,14 @@ export function createBackend(
     (agentsDelegate ??= createDocumentAgents({
       pool,
       traceDirectory: validated.worker?.llmTraceDirectory,
+      minModelContextTokens: validated.worker?.minModelContextTokens,
       analysisMaxModelCalls: validated.worker?.analysisMaxModelCalls,
       analysisMaxReads: validated.worker?.analysisMaxReads,
       analysisReviewMaxReads: validated.worker?.analysisReviewMaxReads,
+      chatMaxModelCalls: validated.worker?.chatMaxModelCalls,
+      reconcileMaxModelCalls: validated.worker?.reconcileMaxModelCalls,
+      reconcileMaxReads: validated.worker?.reconcileMaxReads,
+      visionMaxOutputTokens: validated.worker?.visionMaxOutputTokens,
     }));
   // Внешние вызовы модели доступны только вне транзакционного фасада.
   const model: DocumentAgents = {

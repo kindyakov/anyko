@@ -3,14 +3,7 @@ import { Eye, GitMerge, Minus, Plus, RotateCw } from 'lucide-react';
 import { useState } from 'react';
 
 import type { WorkView } from '@anyko/contracts/works';
-import {
-  Button,
-  Disclosure,
-  FileIcon,
-  Modal,
-  Notice,
-  stagger,
-} from '@anyko/ui';
+import { Button, Disclosure, FileIcon, Modal, Notice } from '@anyko/ui';
 
 import {
   groupSteps,
@@ -43,22 +36,70 @@ export function RunView({
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const groups = groupSteps(run.steps);
   const failures = run.steps.filter((step) => step.errorCode);
+  // Одна причина на много файлов — одна сводка, а не плашка на каждый этап.
+  const failureGroups = (steps: Run['steps']) => {
+    const byReason = new Map<
+      string,
+      {
+        key: string;
+        step: Run['steps'][number];
+        count: number;
+        files: string[];
+      }
+    >();
+    for (const step of steps) {
+      const key = `${step.stage}:${step.errorCode ?? ''}`;
+      const group = byReason.get(key) ?? { key, step, count: 0, files: [] };
+      group.count++;
+      const filename = documents.find(
+        ({ id }) => id === step.documentId,
+      )?.filename;
+      if (filename) group.files.push(filename);
+      byReason.set(key, group);
+    }
+    return [...byReason.values()];
+  };
   const historical =
     run.inputRevision !== undefined && run.inputRevision !== inputRevision;
   return (
-    <div className="grid gap-3">
+    <div className="grid grid-cols-1 gap-3">
       {historical && (
         <Notice tone="neutral">
           Источники изменились после этого запуска.
         </Notice>
       )}
+      {run.errorCode === 'CONNECTION_REVOKED' &&
+        !failures.some((step) => step.errorCode === run.errorCode) && (
+          <Notice tone="warning" role="status">
+            {errorText(run.errorCode)}
+          </Notice>
+        )}
+      {failureGroups(failures).map(({ key, step, count, files }) => (
+        <Notice
+          key={key}
+          tone="warning"
+          title={`${stageLabels[step.stage]}: ${stepStatusLabels[step.status].toLowerCase()}${count > 1 ? ` · этапов: ${String(count)}` : ''}`}
+        >
+          <p>{errorText(step.errorCode ?? '')}</p>
+          {files.length > 0 && (
+            <p className="mt-1 text-xs wrap-anywhere opacity-80">
+              {files.slice(0, 3).join(', ')}
+              {files.length > 3 && ` и ещё ${String(files.length - 3)}`}
+            </p>
+          )}
+        </Notice>
+      ))}
       {[...groups].map(([documentId, steps], index) => {
         const doc = documents.find((item) => item.id === documentId);
         const visuals = visionVisuals(steps, documentId);
+        // Карточки проявляются друг за другом, этапы внутри — слева направо.
+        const card = Math.min(index, 8) * 70;
+        const stepDelay = (i: number) => card + 180 + i * 170;
         return (
           <div
             key={documentId ?? 'work'}
-            className={`animate-rise glass rounded-2xl border border-white/[0.07] p-4 ${stagger(index)}`}
+            style={{ animationDelay: `${String(card)}ms` }}
+            className="animate-surface glass rounded-2xl border border-white/[0.07] p-4"
           >
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
               <div className="flex min-w-0 items-center gap-3 lg:w-72">
@@ -99,9 +140,13 @@ export function RunView({
                     className="flex min-w-0 flex-1 basis-40 items-center gap-3"
                   >
                     {i > 0 && (
-                      <Connector lit={steps[i - 1]?.status === 'succeeded'} />
+                      <Connector
+                        from={steps[i - 1]?.status}
+                        to={step.status}
+                        delay={stepDelay(i) - 110}
+                      />
                     )}
-                    <StepNode step={step} />
+                    <StepNode step={step} delay={stepDelay(i)} />
                   </div>
                 ))}
               </div>
@@ -157,27 +202,6 @@ export function RunView({
               </Disclosure>
             )}
           </div>
-        );
-      })}
-      {run.errorCode === 'CONNECTION_REVOKED' &&
-        !failures.some((step) => step.errorCode === run.errorCode) && (
-          <Notice tone="warning" role="status">
-            {errorText(run.errorCode)}
-          </Notice>
-        )}
-      {failures.map((step) => {
-        const filename = documents.find(
-          ({ id }) => id === step.documentId,
-        )?.filename;
-        const title = `${stageLabels[step.stage]}: ${stepStatusLabels[step.status].toLowerCase()}`;
-        return (
-          <Notice
-            key={step.id}
-            tone="warning"
-            title={filename ? `${filename} · ${title}` : title}
-          >
-            {errorText(step.errorCode ?? '')}
-          </Notice>
         );
       })}
       <Modal

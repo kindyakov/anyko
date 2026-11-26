@@ -68,6 +68,7 @@ export interface DocumentImage {
 export interface DocumentAnalysis {
   text: string;
   pdfOcr?: DocumentResult['pdfOcr'];
+  tableImages?: DocumentResult['tableImages'];
   images: { path: string; bytes: Uint8Array; contentType: string }[];
   sourceDigest: string;
 }
@@ -146,6 +147,10 @@ export interface DocumentsQueries {
     scope: WorkspaceScope,
     documentId: DocumentId,
   ): Promise<{ status: DocumentDeletionStatus }>;
+  deletions(
+    scope: WorkspaceScope,
+    documentIds: DocumentId[],
+  ): Promise<{ documentId: string; status: DocumentDeletionStatus }[]>;
 }
 
 export interface DocumentsInternal {

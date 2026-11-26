@@ -6,6 +6,7 @@ import type { DocumentResult } from '../application/ports';
 import {
   hasPdfOcrProcessorVersion,
   pdfOcrSchema,
+  pdfTableImagesSchema,
 } from '../application/result-schema';
 import {
   matchesSourceFormat,
@@ -26,13 +27,37 @@ const archiveLimitErrors = new Set([
   'MINERU_TOO_MANY_IMAGES',
   'MINERU_RESULT_TOO_LARGE',
 ]);
+const tableImagesEntry = 'pdf-table-images.json';
+const tableImagesLimit = 128 * 1024;
+
+function readTableImages(
+  bytes: Uint8Array | undefined,
+  images: NonNullable<DocumentResult['images']>,
+): DocumentResult['tableImages'] {
+  if (!bytes || bytes.length > tableImagesLimit) return;
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    const parsed = pdfTableImagesSchema.safeParse(JSON.parse(text));
+    const paths = new Set(images.map(({ path }) => path));
+    if (
+      parsed.success &&
+      parsed.data.every(({ imagePath }) => paths.has(imagePath))
+    )
+      return parsed.data;
+  } catch {
+    // Without verifiable metadata, vision still reads all table crops.
+    return;
+  }
+}
 
 function decodeArchive(
   archive: Uint8Array,
   processorVersion: string,
+  format: SourceFormat,
 ): DocumentResult {
   let markdownBytes: Uint8Array | undefined;
   let pdfOcr: DocumentResult['pdfOcr'];
+  let tableImages: DocumentResult['tableImages'];
   const images: NonNullable<DocumentResult['images']> = [];
   try {
     let expandedSize = 0;
@@ -53,6 +78,8 @@ function decodeArchive(
             throw new Error('MINERU_RESULT_TOO_LARGE');
           return true;
         }
+        if (entry.name === tableImagesEntry)
+          return format === 'pdf' && entry.originalSize <= tableImagesLimit;
         if (
           !/^images\/[a-zA-Z0-9_.-]+\.(?:jpg|jpeg|png|webp)$/i.test(entry.name)
         )
@@ -79,7 +106,12 @@ function decodeArchive(
     }
     let actualSize = 0;
     for (const [path, bytes] of Object.entries(entries)) {
-      if (path === 'markdown.md' || path === 'pdf-ocr.json') continue;
+      if (
+        path === 'markdown.md' ||
+        path === 'pdf-ocr.json' ||
+        path === tableImagesEntry
+      )
+        continue;
       actualSize += bytes.length;
       if (bytes.length > 3 * 1024 * 1024 || actualSize > 8 * 1024 * 1024)
         throw new Error('MINERU_RESULT_TOO_LARGE');
@@ -96,6 +128,7 @@ function decodeArchive(
         bytes,
       });
     }
+    tableImages = readTableImages(entries[tableImagesEntry], images);
   } catch (error) {
     if (error instanceof Error && archiveLimitErrors.has(error.message))
       throw error;
@@ -113,6 +146,7 @@ function decodeArchive(
         ? processorVersion + '+eslav.1'
         : processorVersion,
     ...(pdfOcr && { pdfOcr }),
+    ...(tableImages && { tableImages }),
     images,
   };
 }
@@ -207,7 +241,7 @@ export function createMineruParser(options: {
           archive.set(chunk, offset);
           offset += chunk.length;
         }
-        const result = decodeArchive(archive, 'mineru-' + version);
+        const result = decodeArchive(archive, 'mineru-' + version, format);
         if (format === 'pdf' && !result.pdfOcr)
           throw new Error('MINERU_PDF_OCR_OUTDATED');
         return result;

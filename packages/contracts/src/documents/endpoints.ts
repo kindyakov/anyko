@@ -1,17 +1,18 @@
 import { z } from 'zod';
 
 import {
-  cursorQuery,
   endpoint,
   fileDownload,
   json,
   multipart,
+  pageQuery,
   workspaceParams,
 } from '../common';
 
 import {
   deletingStatusSchema,
   documentDeletionSchema,
+  documentPageSizeSchema,
   documentResponseSchema,
   documentResultSchema,
   documentsResponseSchema,
@@ -23,6 +24,32 @@ import {
 // Распознавание вне работы (термин глоссария). Неизвестный или не-UUID идентификатор даёт NOT_FOUND.
 const documentParams = workspaceParams.extend({ documentId: z.uuid() });
 const recognitionsPath = '/workspaces/:workspaceId/recognitions';
+const recognitionDeletionsPath =
+  '/workspaces/:workspaceId/recognition-deletions';
+export const documentDeletionBatchLimit = 100;
+const deletionImpactToken = z.string().regex(/^[a-f0-9]{64}$/u);
+const deletionImpact = z.object({
+  token: deletionImpactToken,
+  canDelete: z.boolean(),
+  works: z.array(
+    z.object({ id: z.uuid(), title: z.string(), busy: z.boolean() }),
+  ),
+});
+const deletionBatchQuery = z.object({
+  documentIds: z
+    .string()
+    .max(documentDeletionBatchLimit * 37 - 1)
+    .transform((value) => value.split(','))
+    .pipe(z.array(z.uuid()).min(1).max(documentDeletionBatchLimit))
+    .refine((ids) => new Set(ids).size === ids.length),
+});
+export const documentDeletionRejection = z.enum([
+  'FORBIDDEN',
+  'NOT_FOUND',
+  'DOCUMENT_IN_USE',
+  'REVISION_CONFLICT',
+  'WORK_BUSY',
+]);
 const resultRevisionQuery = z.object({
   revision: z.coerce.number<string | number>().int().positive().optional(),
 });
@@ -43,7 +70,7 @@ export const listDocuments = endpoint({
   method: 'GET',
   path: recognitionsPath,
   params: workspaceParams,
-  query: cursorQuery({
+  query: pageQuery(documentPageSizeSchema, 24, {
     checksum: sourceChecksumSchema.optional(),
     q: z
       .string()
@@ -145,10 +172,7 @@ export const deleteDocument = endpoint({
   path: '/workspaces/:workspaceId/recognitions/:documentId',
   params: documentParams,
   query: z.object({
-    impact: z
-      .string()
-      .regex(/^[a-f0-9]{64}$/u)
-      .optional(),
+    impact: deletionImpactToken.optional(),
   }),
   response: json(deletingStatusSchema),
   status: 202,
@@ -170,18 +194,85 @@ export const getDocumentDeletionImpact = endpoint({
   method: 'GET',
   path: '/workspaces/:workspaceId/recognitions/:documentId/deletion-impact',
   params: documentParams,
-  response: json(
-    z.object({
-      token: z.string().regex(/^[a-f0-9]{64}$/u),
-      canDelete: z.boolean(),
-      works: z.array(
-        z.object({ id: z.uuid(), title: z.string(), busy: z.boolean() }),
-      ),
-    }),
-  ),
+  response: json(deletionImpact),
   status: 200,
   errors: ['FORBIDDEN', 'NOT_FOUND'],
   invalid: 'NOT_FOUND',
+});
+
+export const getDocumentDeletionImpacts = endpoint({
+  summary: 'Показывает, какие работы затронет удаление выбранных распознаваний',
+  method: 'GET',
+  path: `${recognitionDeletionsPath}/deletion-impact`,
+  params: workspaceParams,
+  query: deletionBatchQuery,
+  response: json(
+    z.object({
+      impacts: z.array(deletionImpact.extend({ documentId: z.uuid() })),
+    }),
+  ),
+  status: 200,
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_DOCUMENT'],
+  invalid: 'INVALID_DOCUMENT',
+});
+
+export const createDocumentDeletions = endpoint({
+  summary: 'Принимает пакет запросов на удаление выбранных распознаваний',
+  method: 'POST',
+  path: recognitionDeletionsPath,
+  params: workspaceParams,
+  body: json(
+    z.object({
+      documents: z
+        .array(
+          z.object({
+            documentId: z.uuid(),
+            impact: deletionImpactToken,
+          }),
+        )
+        .min(1)
+        .max(documentDeletionBatchLimit)
+        .refine(
+          (documents) =>
+            new Set(documents.map(({ documentId }) => documentId)).size ===
+            documents.length,
+        ),
+    }),
+  ),
+  response: json(
+    z.object({
+      results: z.array(
+        z.discriminatedUnion('status', [
+          deletingStatusSchema.extend({ documentId: z.uuid() }),
+          z.object({
+            documentId: z.uuid(),
+            status: z.literal('rejected'),
+            code: documentDeletionRejection,
+          }),
+        ]),
+      ),
+    }),
+  ),
+  status: 202,
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_DOCUMENT'],
+  invalid: 'INVALID_DOCUMENT',
+  idempotency: 'natural',
+});
+
+export const getDocumentDeletions = endpoint({
+  summary: 'Возвращает состояние удаления выбранных распознаваний',
+  method: 'GET',
+  path: recognitionDeletionsPath,
+  params: workspaceParams,
+  query: deletionBatchQuery,
+  response: json(
+    z.object({
+      results: z.array(documentDeletionSchema.extend({ documentId: z.uuid() })),
+    }),
+  ),
+  status: 200,
+  errors: ['FORBIDDEN', 'NOT_FOUND', 'INVALID_DOCUMENT'],
+  invalid: 'INVALID_DOCUMENT',
 });
 
 export const retryDocument = endpoint({

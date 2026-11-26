@@ -7,18 +7,21 @@ export function CourtChoices({
   field,
   choices,
   busy,
+  primary = false,
   onApply,
 }: {
   field: FieldKey;
   choices: ReturnType<typeof courtOptions>;
   busy: boolean;
+  /** Поле пустое: подстановка — главное действие карточки. */
+  primary?: boolean;
   onApply: (patch: Partial<FieldValues>) => void;
 }) {
   return choices.map((choice) => (
     <Button
       key={JSON.stringify(choice)}
       size="sm"
-      variant="secondary"
+      variant={primary ? 'primary' : 'secondary'}
       disabled={busy}
       onClick={(event) => {
         event.currentTarget

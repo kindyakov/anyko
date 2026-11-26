@@ -6,6 +6,7 @@ import type {
   PreviewParagraph,
 } from '@anyko/contracts/catalog';
 import { formatBankruptcyScalar } from '@anyko/document-values/bankruptcy-format';
+import { missingTemplateValue } from '@anyko/document-values/template-value';
 
 export function signerName(values: FieldValues, modern = false): string {
   const surname =
@@ -25,7 +26,7 @@ export function signerName(values: FieldValues, modern = false): string {
     .join('');
   return surname
     ? `${surname}${initials ? ` ${initials}` : ''}`
-    : '[не заполнено]';
+    : missingTemplateValue;
 }
 
 export function paperMargins(

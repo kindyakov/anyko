@@ -92,6 +92,7 @@ export interface WorkDeletionStore {
 export interface WorkStore extends WorkDeletionStore {
   list(workspaceId: string, input: WorkSearch): Promise<WorkListPage>;
   get(workspaceId: string, workId: string): Promise<WorkSummary | null>;
+  rename(workspaceId: string, workId: string, title: string): Promise<boolean>;
   create(input: {
     id: string;
     workspaceId: string;
@@ -214,6 +215,10 @@ export interface WorkListPage {
 }
 
 export interface WorksCommands {
+  rename(
+    scope: WorkspaceScope,
+    input: { workId: WorkId; title: string },
+  ): Promise<void>;
   create(
     scope: WorkspaceScope,
     input: { title: string; packageVersion: string },

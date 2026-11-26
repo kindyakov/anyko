@@ -7,6 +7,7 @@ import {
 import { formatCalendarDate } from './calendar-date';
 import { canonicalMoneyAmount, formatMoneyAmount } from './money';
 import { groupCreditorObligations, obligationAmounts } from './obligations';
+import { missingTemplateValue } from './template-value';
 
 type Row = Record<string, string | null>;
 type Values = Partial<Record<string, string | Row[] | null>>;
@@ -17,8 +18,20 @@ const statementTemplates = new Set([
   'bfl-statement-v11',
 ]);
 
+export const bflLayoutPackage = 'bfl-bankruptcy-v14';
+export const bflLayoutTemplates = {
+  'bfl-statement-v12': 'bfl-statement-v11',
+  'bfl-inventory-v3': 'bfl-inventory-v2',
+  'bfl-creditors-v4': 'bfl-creditors-v3',
+} as const;
+export function bflContentTemplate(version: string): string {
+  return Object.hasOwn(bflLayoutTemplates, version)
+    ? bflLayoutTemplates[version as keyof typeof bflLayoutTemplates]
+    : version;
+}
+
 export const revisedStatementTemplate = (version: string | undefined) =>
-  version !== undefined && statementTemplates.has(version);
+  version !== undefined && statementTemplates.has(bflContentTemplate(version));
 
 export const revisedBankruptcyPackages = [
   'bfl-bankruptcy-v9',
@@ -30,6 +43,7 @@ export const revisedBankruptcyPackages = [
 const datedPackages = new Set<string>([
   datedBankruptcyPackage,
   ...revisedBankruptcyPackages,
+  bflLayoutPackage,
 ]);
 export const isDatedBankruptcyPackage = (version: string) =>
   datedPackages.has(version);
@@ -100,13 +114,13 @@ export function statementLayout(version: string | undefined, values: Values) {
     .filter(Boolean)
     .join(', ');
   return {
-    debtorAddress: debtorAddress || '[не заполнено]',
+    debtorAddress: debtorAddress || missingTemplateValue,
     debtorCitizenship: russian
       ? 'гражданин Российской Федерации'
-      : 'гражданство: ' + (citizenship || '[не заполнено]'),
+      : 'гражданство: ' + (citizenship || missingTemplateValue),
     requestCitizenship: russian
       ? 'гражданина Российской Федерации'
-      : 'гражданство: ' + (citizenship || '[не заполнено]'),
+      : 'гражданство: ' + (citizenship || missingTemplateValue),
     debtorRegistration: feminine
       ? 'зарегистрирована и проживаю по адресу'
       : 'зарегистрирован и проживаю по адресу',
@@ -161,7 +175,9 @@ export function contractNarrative(
   const details = number
     ? [`№ ${number}`, date && `от ${date}`].filter(Boolean).join(' ')
     : row.basis && withFilingDateSuffix(row.basis);
-  const amountText = amount ? contractAmount(amount, style) : '[не заполнено]';
+  const amountText = amount
+    ? contractAmount(amount, style)
+    : missingTemplateValue;
   const proof = row.proof?.trim().replace(/[.;]+$/u, '');
   const basis = proof
     ?.replace(/^справка(?=\s|$)/iu, 'справки')
@@ -169,8 +185,8 @@ export function contractNarrative(
   const confirmation =
     basis && basis !== proof
       ? `, исходя из ${withFilingDateSuffix(basis)}`
-      : `, подтверждение: ${withFilingDateSuffix(proof || '[не заполнено]')}`;
-  return `${contract} ${details || '[не заполнено]'} в размере ${amountText}${confirmation}`;
+      : `, подтверждение: ${withFilingDateSuffix(proof || missingTemplateValue)}`;
+  return `${contract} ${details || missingTemplateValue} в размере ${amountText}${confirmation}`;
 }
 
 function contractAmount(amount: string, style: 'statement' | 'creditors') {
@@ -203,7 +219,7 @@ export function statementDebtNarratives(
     first
       ? [
           {
-            description: `Неспособность удовлетворить требования кредитора ${formatCreditorText(first.creditorShortName || first.name || '[не заполнено]')} ${[first, ...other].map((row) => contractNarrative(row)).join('; ')};`,
+            description: `Неспособность удовлетворить требования кредитора ${formatCreditorText(first.creditorShortName || first.name || missingTemplateValue)} ${[first, ...other].map((row) => contractNarrative(row)).join('; ')};`,
           },
         ]
       : [],

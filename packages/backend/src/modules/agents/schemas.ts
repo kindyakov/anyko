@@ -22,7 +22,7 @@ export const agentSessionContextSchema = z
     workRevision: z.number().int().nonnegative(),
     inputRevision: z.number().int().nonnegative(),
     settingsRevision: z.number().int().positive(),
-    promptVersion: z.literal('work-context-v1'),
+    promptVersion: z.enum(['work-context-v1', 'work-context-v2']),
     summary: z.string().max(4000),
     documents: z
       .array(z.object({ id: z.uuid(), digest: z.string().max(128) }).strict())

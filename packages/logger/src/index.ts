@@ -32,6 +32,7 @@ export interface LogEvent {
   inputTokens?: number;
   outputTokens?: number;
   field?: string;
+  templateVersion?: string;
   rejectedCount?: number;
 }
 export interface Logger {
@@ -62,6 +63,7 @@ const fields = [
   'inputTokens',
   'outputTokens',
   'field',
+  'templateVersion',
   'rejectedCount',
 ] as const;
 /** Never serialize arbitrary request objects or Error messages. */

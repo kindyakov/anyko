@@ -25,3 +25,4 @@ export {
 export { WorkList } from '@/features/works/ui/work-list';
 export { AddRecognitionsToWork } from './ui/list/add-recognitions-to-work';
 export { useChatProgress } from './api/events';
+export { RenameWorkDialog } from './ui/list/rename-work-dialog';

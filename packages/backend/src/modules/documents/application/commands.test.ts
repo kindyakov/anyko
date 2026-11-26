@@ -37,6 +37,7 @@ function store(overrides: Partial<DocumentStore>): DocumentStore {
     readyResult: unused,
     remove: unused,
     deletion: unused,
+    deletions: unused,
     deletionImpact: unused,
     image: unused,
     assertUploadAllowed: unused,
@@ -46,14 +47,18 @@ function store(overrides: Partial<DocumentStore>): DocumentStore {
 }
 
 test('the catalogue only loads work links for the visible page and users allowed to read works', async () => {
-  const next = { ...queued, id: '0190f0a0-0000-7000-8000-000000000003' };
   const work = {
     id: '0190f0a0-0000-7000-8000-000000000004',
     title: 'Тестовая работа',
   };
+  const inputs: unknown[] = [];
+  const page = { items: [queued], page: 2, total: 3 };
   const list = listDocuments({
     store: store({
-      list: () => Promise.resolve([queued, next]),
+      list: (workspaceId, input) => {
+        inputs.push({ workspaceId, ...input });
+        return Promise.resolve(page);
+      },
       linkedWorks: (workspaceId, ids) => {
         expect(workspaceId).toBe(WORKSPACE);
         expect(ids).toEqual([queued.id]);
@@ -61,21 +66,29 @@ test('the catalogue only loads work links for the visible page and users allowed
       },
     }),
   });
-  const page = await list(
-    memberScope(WORKSPACE, 'reader', ['recognitions.use', 'works.read']),
-    { limit: 1 },
-  );
-  expect(page.items).toEqual([{ ...queued, linkedWorks: [work] }]);
-  expect(page.nextCursor).toBe(`${queued.createdAt}~${queued.id}`);
+  expect(
+    await list(
+      memberScope(WORKSPACE, 'reader', ['recognitions.use', 'works.read']),
+      { page: 5, pageSize: 2, q: 'счёт' },
+    ),
+  ).toEqual({
+    items: [{ ...queued, linkedWorks: [work] }],
+    page: 2,
+    pageSize: 2,
+    total: 3,
+  });
+  expect(inputs).toEqual([
+    { workspaceId: WORKSPACE, page: 5, pageSize: 2, q: 'счёт' },
+  ]);
 
   const restricted = listDocuments({
-    store: store({ list: () => Promise.resolve([queued, next]) }),
+    store: store({ list: () => Promise.resolve(page) }),
   });
   expect(
     (
       await restricted(
         memberScope(WORKSPACE, 'recognition-only', ['recognitions.use']),
-        { limit: 1 },
+        { page: 2, pageSize: 2 },
       )
     ).items,
   ).toEqual([queued]);

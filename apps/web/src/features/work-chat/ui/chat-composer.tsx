@@ -1,6 +1,6 @@
 import { Field } from '@base-ui/react/field';
 import { ArrowUp } from 'lucide-react';
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
 import { Button, Notice } from '@anyko/ui';
 import { InputGroup, InputGroupTextarea } from '@anyko/ui/chat';
@@ -12,23 +12,31 @@ import { createIdempotencyKey } from '@/lib/api/idempotency';
 import { useSendChatMessage } from '../api/chat';
 
 export function ChatComposer({
+  initialText,
   workspaceId,
   workId,
   canSend,
   unavailableText,
 }: {
+  /** Текст подсказки, выбранной в пустом чате; новый текст передаётся с новым `key`. */
+  initialText?: string | undefined;
   workspaceId: string;
   workId: string;
   canSend: boolean;
   unavailableText: string | undefined;
 }) {
   const send = useSendChatMessage(workspaceId, workId);
+  const input = useRef<HTMLTextAreaElement>(null);
+  // Выбранную подсказку можно сразу дополнить и отправить.
+  useEffect(() => {
+    if (initialText !== undefined) input.current?.focus();
+  }, [initialText]);
   const attempt = useRef<{
     text: string;
     key: ReturnType<typeof createIdempotencyKey>;
   }>(null);
   const form = useAppForm({
-    defaultValues: { message: '' },
+    defaultValues: { message: initialText ?? '' },
     async onSubmit({ value, formApi }) {
       const userText = value.message.trim();
       if (!canSend || send.isPending || !userText) return;
@@ -51,7 +59,7 @@ export function ChatComposer({
   );
   const error = send.error;
   return (
-    <footer className="bg-canvas/90 shrink-0 border-t border-white/8 px-4 pt-3 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:px-7">
+    <footer className="shrink-0 border-t border-white/[0.07] px-3 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
       {error && (
         <div className="mb-3">
           <Notice tone="danger" role="alert">
@@ -73,6 +81,7 @@ export function ChatComposer({
                 <Field.Label className="sr-only">Сообщение агенту</Field.Label>
                 <Field.Control
                   render={<InputGroupTextarea rows={1} />}
+                  ref={input}
                   value={field.state.value}
                   readOnly={submitting}
                   placeholder="Напишите агенту…"
@@ -103,13 +112,15 @@ export function ChatComposer({
             loading={submitting}
             disabled={!canSend || !ready}
             aria-label="Отправить"
-            title="Отправить"
           >
             <ArrowUp size={20} aria-hidden />
           </Button>
         </InputGroup>
       </FormRoot>
-      <p role="status" className="text-muted mt-2 min-h-4 px-1 text-xs">
+      <p
+        role="status"
+        className="mt-1.5 min-h-4 px-1 text-[11px] text-zinc-500"
+      >
         {submitting
           ? 'Отправляем сообщение…'
           : (unavailableText ?? (

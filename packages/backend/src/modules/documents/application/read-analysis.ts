@@ -55,6 +55,7 @@ export const readAnalysis = (deps: Pick<DocumentDeps, 'store' | 'storage'>) => {
     return {
       text: result.markdown,
       ...(result.pdfOcr && { pdfOcr: result.pdfOcr }),
+      ...(result.tableImages && { tableImages: result.tableImages }),
       images,
       sourceDigest: await sourceDigest(result),
     };

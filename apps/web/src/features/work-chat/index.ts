@@ -1,1 +1,1 @@
-export { WorkChat } from './ui/work-chat';
+export { type AgentTab, WorkAgentPanel } from './ui/agent-panel';

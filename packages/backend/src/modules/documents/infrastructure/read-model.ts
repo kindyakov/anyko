@@ -130,6 +130,43 @@ export function createDocumentReadModel(
           : ('deleting' as const),
       }));
     },
+    async deletions(workspaceId: string, documentIds: string[]) {
+      const rows = await db.documentDeletion.findMany({
+        where: { workspaceId, id: { in: documentIds } },
+        select: { id: true, requestKey: true, completedAt: true },
+      });
+      const pending = rows.filter(({ completedAt }) => !completedAt);
+      const uncertain = pending.length
+        ? await db.processingIo.findMany({
+            where: {
+              workspaceId,
+              kind: 'document',
+              uncertain: true,
+              OR: [
+                { documentId: { in: pending.map(({ id }) => id) } },
+                {
+                  requestKey: {
+                    in: pending.map(({ requestKey }) => requestKey),
+                  },
+                },
+              ],
+            },
+            select: { documentId: true, requestKey: true },
+          })
+        : [];
+      const blockedIds = new Set(uncertain.map(({ documentId }) => documentId));
+      const blockedKeys = new Set(
+        uncertain.map(({ requestKey }) => requestKey),
+      );
+      return rows.map(({ id, completedAt, requestKey }) => ({
+        documentId: id,
+        status: completedAt
+          ? ('deleted' as const)
+          : blockedIds.has(id) || blockedKeys.has(requestKey)
+            ? ('needs-recovery' as const)
+            : ('deleting' as const),
+      }));
+    },
     async deletion(workspaceId: string, documentId: string) {
       const row = await db.documentDeletion.findFirst({
         where: { id: documentId, workspaceId },
@@ -175,8 +212,8 @@ export function createDocumentReadModel(
     async list(
       workspaceId: string,
       {
-        limit,
-        after,
+        page,
+        pageSize,
         q,
         formats,
         checksum,
@@ -185,16 +222,20 @@ export function createDocumentReadModel(
       const namePattern = q ? `%${q.replace(/[\\%_]/g, '\\$&')}%` : null;
       // Формат в ключе хранения нормализован после проверки байтов при загрузке.
       const requestedFormats = formats?.length ? formats.join(',') : null;
+      // Один запрос — один снимок: число, номер страницы и строки не расходятся.
+      // Строка meta возвращается и для пустой страницы, поэтому d.id может быть NULL.
       const rows = await db.$queryRaw<
-        (SourceSummary &
-          Omit<RunSummary, 'status'> & {
+        ({ [K in keyof SourceSummary]: SourceSummary[K] | null } & Omit<
+          RunSummary,
+          'status'
+        > & {
             status: string | null;
             readyRevision: number | null;
+            total: number;
+            page: number;
           })[]
       >`
-        SELECT d.*, r.status, r."errorCode", r.revision, r."processorVersion",
-          ready.revision AS "readyRevision"
-        FROM (
+        WITH filtered AS (
           SELECT id, filename, "sourceKey", "createdAt"
           FROM "SourceDocument"
           WHERE "workspaceId" = ${workspaceId} AND "deletedAt" IS NULL
@@ -204,11 +245,20 @@ export function createDocumentReadModel(
                 LIKE casefold(${namePattern}::text COLLATE pg_catalog.pg_unicode_fast))
             AND (${requestedFormats}::text IS NULL OR
               split_part("sourceKey", '.', -1) = ANY(string_to_array(${requestedFormats}::text, ',')))
-            AND (${after?.id ?? null}::text IS NULL OR
-              ("createdAt", id) < (${after?.createdAt ?? null}::timestamp, ${after?.id ?? null}::text))
+        ), meta AS (
+          SELECT count(*)::int AS total,
+            LEAST(${page}::int, GREATEST(1, CEIL(count(*)::numeric / ${pageSize}::int)))::int AS page
+          FROM filtered
+        ), paged AS (
+          SELECT * FROM filtered
           ORDER BY "createdAt" DESC, id DESC
-          LIMIT ${limit}
-        ) d
+          OFFSET (SELECT (page - 1) * ${pageSize}::int FROM meta)
+          LIMIT ${pageSize}::int
+        )
+        SELECT meta.total, meta.page, d.*, r.status, r."errorCode", r.revision,
+          r."processorVersion", ready.revision AS "readyRevision"
+        FROM meta
+        LEFT JOIN paged d ON TRUE
         LEFT JOIN LATERAL (
           SELECT status, "errorCode", revision, "processorVersion"
           FROM "Run"
@@ -223,12 +273,29 @@ export function createDocumentReadModel(
         ) ready ON TRUE
         ORDER BY d."createdAt" DESC, d.id DESC
       `;
-      return rows.map((row) =>
-        view({
-          ...row,
-          runs: row.status === null ? [] : [{ ...row, status: row.status }],
-        }),
-      );
+      const meta = rows[0] ?? { total: 0, page: 1 };
+      return {
+        total: meta.total,
+        page: meta.page,
+        items: rows.flatMap(({ id, filename, sourceKey, createdAt, ...row }) =>
+          id === null ||
+          filename === null ||
+          sourceKey === null ||
+          createdAt === null
+            ? []
+            : [
+                view({
+                  ...row,
+                  id,
+                  filename,
+                  sourceKey,
+                  createdAt,
+                  runs:
+                    row.status === null ? [] : [{ ...row, status: row.status }],
+                }),
+              ],
+        ),
+      };
     },
     async get(
       workspaceId: string,

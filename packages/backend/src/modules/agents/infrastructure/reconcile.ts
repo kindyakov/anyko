@@ -3,7 +3,7 @@ import type { Mastra } from '@mastra/core/mastra';
 import type { Memory } from '@mastra/memory';
 import { z } from 'zod';
 
-import { createModelGateway, LlmError, llmError } from '@anyko/llm';
+import { createModelGateway, llmError } from '@anyko/llm';
 
 import type { DocumentAgents } from '..';
 import { literalSourceQuote } from '../../../platform/source-quote';
@@ -34,9 +34,8 @@ import {
   modelFieldValueInstructions,
   modelQuoteInstructions,
 } from './model-field-value';
+import { generateModelJson } from './model-json';
 import { createWorkReadTools } from './work-read-tools';
-
-const maxReconciliationSteps = 12;
 
 const checklistSuggestionsSchema = z.array(checklistSuggestionSchema).max(150);
 const observedResponseSchema = reconciliationSchema.extend({
@@ -49,6 +48,8 @@ export function createReconciliationAgent(options: {
   mastra: Mastra;
   gateway: ReturnType<typeof createModelGateway>;
   streamIdleTimeoutMs: number;
+  maxModelCalls: number;
+  maxReads: number | undefined;
   lookupCourt: typeof findArbitrationCourt;
   lookupCreditor: typeof findCreditor;
 }): DocumentAgents['reconcile'] {
@@ -67,6 +68,7 @@ export function createReconciliationAgent(options: {
       encodeValue: encodeModelFieldValue,
       signal,
       pageCharacters: budget.pageCharacters,
+      maxReads: options.maxReads,
       listSourceMetadata: input.documents.length > 0,
     });
     const court = createCourtLookupTool({
@@ -174,72 +176,87 @@ export function createReconciliationAgent(options: {
 Для кредитора сохраняй точное название юридического лица из справки или договора. Если в источнике рядом с названием указан ИНН или ОГРН кредитора, добавь этот реквизит в строку обязательства и его цитату в evidence. Сведения заемщика к кредитору не относятся. Реквизиты из реестра сервер проверяет отдельно.
 Для каждой значимой сущности, названной в источниках, проверь, какие пустые поля можно дополнить её однозначно известными свойствами и связями, включая принадлежность к более общей сущности. Верни каждый обоснованный вывод в candidates. Для этого можно использовать устойчивые общие знания без внешнего поиска. Проверь, что исходный факт относится к нужному человеку, объекту, событию и периоду. Например, место одного события само по себе ничего не говорит о месте другого события.
 Когда доступны поля суда и адрес места жительства заявителя, вызови lookupArbitrationCourt для каждого обоснованного субъекта РФ. Если источники расходятся, проверь все варианты. Передавай только наименование субъекта РФ. Если субъект выводится из названия населённого пункта, верни подтверждённый инструментом вариант courtName с объяснением связи населённого пункта и субъекта, а в evidence укажи точную цитату исходного кандидата region, registrationAddress, city или locality. Реквизиты суда вне официального поиска возвращай только при прямом указании в исходном документе.
-${modelFieldValueInstructions} В evidence каждого предложения указывай documentId и imagePath. ${modelQuoteInstructions} Для origin="document" цитата содержит само значение. Для origin="inference" цитата подтверждает исходный факт, а explanation описывает, как из него получено значение. Поля пакета: ${JSON.stringify(fieldLabels)}. ${obligationInstructions(available)} ${employmentInstructions(available)} ${attachmentInstructions(available)} Если нужны тип, ограничения или колонки поля, уточни их через readField. В summary пиши простым языком без внутренних ID, названий API и технических полей.${profileInstructions ? ` ${profileInstructions}` : ''}${checklistInstructions}`,
+${modelFieldValueInstructions} В evidence каждого предложения указывай documentId. ${modelQuoteInstructions} Для origin="document" цитата содержит само значение. Для origin="inference" цитата подтверждает исходный факт, а explanation описывает, как из него получено значение. Поля пакета: ${JSON.stringify(fieldLabels)}. ${obligationInstructions(available)} ${employmentInstructions(available)} ${attachmentInstructions(available)} Если нужны тип, ограничения или колонки поля, уточни их через readField. В summary пиши простым языком без внутренних ID, названий API и технических полей.${profileInstructions ? ` ${profileInstructions}` : ''}${checklistInstructions}`,
     });
     try {
-      const stream = await agent.stream(
-        JSON.stringify({
-          event: 'documents.analyzed',
-          ...(withChecklist && {
-            checklistRequirements: input.checklistRequirements,
-          }),
-          previousContext: input.previousContext && {
-            summary: input.previousContext.summary,
-            missingFields: input.previousContext.missingFields,
-            conflictFields: input.previousContext.conflictFields,
-          },
-          documents: input.documents.map(({ id, digest, images }) => ({
-            id,
-            hasImages: images.length > 0,
-            changed: !input.previousContext?.documents.some(
-              (previous) => previous.id === id && previous.digest === digest,
-            ),
-          })),
-          fields: {
-            known: input.fields
-              .filter(({ key }) => input.facts.values[key] != null)
-              .map(({ key }) => key),
-            manual: input.facts.manual,
-            confirmed: input.facts.confirmed,
-            withCandidates: [
-              ...new Set(input.candidates.map(({ field }) => field)),
-            ],
-            extracted,
-          },
+      const prompt = JSON.stringify({
+        event: 'documents.analyzed',
+        ...(withChecklist && {
+          checklistRequirements: input.checklistRequirements,
         }),
+        previousContext: input.previousContext && {
+          summary: input.previousContext.summary,
+          missingFields: input.previousContext.missingFields,
+          conflictFields: input.previousContext.conflictFields,
+        },
+        documents: input.documents.map(({ id, digest, images }) => ({
+          id,
+          hasImages: images.length > 0,
+          changed: !input.previousContext?.documents.some(
+            (previous) => previous.id === id && previous.digest === digest,
+          ),
+        })),
+        fields: {
+          known: input.fields
+            .filter(({ key }) => input.facts.values[key] != null)
+            .map(({ key }) => key),
+          manual: input.facts.manual,
+          confirmed: input.facts.confirmed,
+          withCandidates: [
+            ...new Set(input.candidates.map(({ field }) => field)),
+          ],
+          extracted,
+        },
+      });
+      let replay: Parameters<Agent['stream']>[0] | undefined;
+      const result = await generateModelJson(
+        async () => {
+          const stream = await agent.stream(replay ?? prompt, {
+            ...(!replay && {
+              memory: { thread: input.threadId, resource: input.resource },
+            }),
+            abortSignal: signal,
+            maxSteps: replay ? 1 : options.maxModelCalls,
+            prepareStep: async ({ stepNumber }) => {
+              await input.assertCurrent();
+              if (
+                replay ||
+                stepNumber === options.maxModelCalls - 1 ||
+                readLimitReached()
+              )
+                return { toolChoice: 'none', activeTools: [] };
+            },
+            providerOptions: {
+              [input.connection.id]: { strictJsonSchema: true },
+            },
+            modelSettings: {
+              maxOutputTokens: budget.maxOutputTokens,
+              maxRetries: 1,
+            },
+            structuredOutput: {
+              schema: responseSchema,
+              errorStrategy: 'warn',
+            },
+          });
+          const output = await stream.getFullOutput();
+          budget.assertFits();
+          return output;
+        },
         {
-          memory: { thread: input.threadId, resource: input.resource },
-          abortSignal: signal,
-          maxSteps: maxReconciliationSteps,
-          prepareStep: async ({ stepNumber }) => {
-            await input.assertCurrent();
-            if (stepNumber === maxReconciliationSteps - 1 || readLimitReached())
-              return { toolChoice: 'none', activeTools: [] };
-          },
-          providerOptions: {
-            [input.connection.id]: { strictJsonSchema: true },
-          },
-          modelSettings: {
-            maxOutputTokens: budget.maxOutputTokens,
-            maxRetries: 1,
-          },
-          structuredOutput: {
-            schema: responseSchema,
-            errorStrategy: 'warn',
+          canRetry(first) {
+            if (first.steps.length >= options.maxModelCalls) return false;
+            // Reuse the conversation up to the failed answer and only repeat generation.
+            const messages = first.messages.filter(
+              ({ role }) => role !== 'system',
+            );
+            if (messages.at(-1)?.role === 'assistant') messages.pop();
+            if (!messages.some(({ role }) => role === 'user')) return false;
+            replay = messages;
+            return true;
           },
         },
       );
-      const result = await stream.getFullOutput();
-      budget.assertFits();
-      if (result.error) throw result.error;
-      const finalStep = result.steps.at(-1);
-      if (finalStep?.finishReason === 'length')
-        throw new LlmError('LLM_COMPLETION_LIMIT');
-      const observed: unknown =
-        finalStep?.finishReason === 'stop'
-          ? JSON.parse(finalStep.text)
-          : undefined;
-      const output = observedResponseSchema.parse(observed);
+      const output = observedResponseSchema.parse(result.value);
       const candidates: z.infer<typeof candidateSchema>[] = [];
       const bindEvidence = async (candidate: Candidate) => {
         const evidence: Candidate['evidence'] = [];
@@ -365,10 +382,7 @@ ${modelFieldValueInstructions} В evidence каждого предложения
           : output.summary,
         candidates: accepted,
         ...(checklistSuggestions !== undefined && { checklistSuggestions }),
-        usage: {
-          inputTokens: result.usage.inputTokens ?? null,
-          outputTokens: result.usage.outputTokens ?? null,
-        },
+        usage: result.usage,
       };
     } catch (error) {
       if (trace) await trace.failed();

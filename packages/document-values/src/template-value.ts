@@ -1,6 +1,8 @@
 import { formatCalendarDate } from './calendar-date';
 import { formatMoneyAmount } from './money';
 
+export const missingTemplateValue = '[не заполнено]';
+
 export function formatTemplateValue(
   value: string,
   placeholder: string,

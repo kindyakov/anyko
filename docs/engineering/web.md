@@ -1,6 +1,6 @@
 # Web-приложение
 
-Правила `apps/web`. Причины решений — [ADR 0004](../adr/0004-code-organization.md) и [ADR 0008](../adr/0008-web-application-architecture.md). Оформление, Base UI и Tailwind описаны в [apps/web/AGENTS.md](../../apps/web/AGENTS.md); общие правила типов и ошибок — в [code-rules.md](code-rules.md).
+Правила `apps/web`. Причины решений — [ADR 0004](../adr/0004-code-organization.md) и [ADR 0008](../adr/0008-web-application-architecture.md). Оформление, Base UI и Tailwind описаны в [apps/web/ARCHITECTURE.md](../../apps/web/ARCHITECTURE.md); общие правила типов и ошибок — в [code-rules.md](code-rules.md).
 
 ## Структура
 

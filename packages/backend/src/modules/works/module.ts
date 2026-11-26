@@ -10,7 +10,13 @@ import { notifyDocumentChanged } from './application/notify-document-changed';
 import { readCursor } from './application/read-cursor';
 import { readSources } from './application/read-sources';
 
-import type { WorkIoPort, WorksModule, WorksPorts, WorkStore } from './index';
+import {
+  WorkError,
+  type WorkIoPort,
+  type WorksModule,
+  type WorksPorts,
+  type WorkStore,
+} from './index';
 
 export interface WorksDeps {
   store: WorkStore;
@@ -25,6 +31,14 @@ export function createWorksModule(deps: WorksDeps): WorksModule {
   const bind = (store: WorkStore): WorksPorts => ({
     internal: { ...store, notifyDocumentChanged: notifyDocumentChanged(store) },
     commands: {
+      rename: async (scope, { workId, title }) => {
+        scope.require('works.edit');
+        const normalized = title.trim();
+        if (!normalized || normalized.length > 200)
+          throw new WorkError('INVALID_WORK_INPUT');
+        if (!(await store.rename(scope.workspaceId, workId, normalized)))
+          throw new WorkError('NOT_FOUND');
+      },
       create: createWork({
         store,
         newId: deps.newId,

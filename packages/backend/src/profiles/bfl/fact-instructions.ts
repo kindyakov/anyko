@@ -5,7 +5,10 @@ import {
   isRublesColumn,
 } from './fields';
 
-export function factInstructions(fields: readonly FieldDefinition[]) {
+export function factInstructions(
+  fields: readonly FieldDefinition[],
+  { extraction = false }: { extraction?: boolean } = {},
+) {
   const keys = new Set(fields.map(({ key }) => key));
   const hasInn =
     keys.has('inn') ||
@@ -24,6 +27,9 @@ export function factInstructions(fields: readonly FieldDefinition[]) {
     businessAbsenceInstructions(keys),
     hasInn &&
       'ИНН в value или в ячейке inn — строка из цифр без подписи реквизита, с ведущими нулями. У физлица 12 цифр, у организации 10. Номер должен полностью присутствовать в цитате.',
+    extraction &&
+      hasInn &&
+      'Если полный номер есть в тексте, процитируй его из текста (imagePath=null). Если номер есть только в описании изображения, процитируй описание с точным imagePath и предложи значение для проверки юристом.',
     keys.has('snils') &&
       'СНИЛС в value — строка из 11 цифр с ведущими нулями, допустимы пробелы и дефисы между цифрами. Подпись реквизита оставь только в цитате. При неполном номере не восстанавливай цифры.',
     (keys.has('inn') ||

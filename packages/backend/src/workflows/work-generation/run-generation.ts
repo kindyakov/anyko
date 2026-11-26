@@ -89,6 +89,12 @@ export function createWorkGenerationRun(deps: WorkDependencies) {
             fields: pack.fields,
             referenceDate: record.createdAt.toISOString().slice(0, 10),
           }),
+          {
+            logger: deps.logger,
+            templateVersion: template.version,
+            jobId: run.id,
+            correlationId: run.correlationId,
+          },
         );
       } catch (error) {
         await write(async (tx) => {

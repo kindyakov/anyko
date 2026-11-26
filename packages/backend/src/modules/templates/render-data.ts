@@ -23,13 +23,17 @@ import {
 import { inventorySections } from '@anyko/document-values/inventory-layout';
 import { obligationFields } from '@anyko/document-values/obligations';
 import {
+  bflContentTemplate,
   filingMoneyWords,
   revisedStatementTemplate,
   statementDebtNarratives,
   statementLayout,
   withFilingDateSuffix,
 } from '@anyko/document-values/statement-layout';
-import { formatTemplateValue } from '@anyko/document-values/template-value';
+import {
+  formatTemplateValue,
+  missingTemplateValue,
+} from '@anyko/document-values/template-value';
 
 import {
   emptyFieldValues,
@@ -43,7 +47,7 @@ import type { TemplatePlaceholder } from './schemas';
 /** Projection only: unknown values stay visibly unknown; no legal or financial inference. */
 export function templateData(
   input: FieldValues,
-  templateVersion?: string,
+  assetVersion?: string,
   placeholders: readonly TemplatePlaceholder[] = [],
   context?: {
     fields: readonly { key: string; columns?: readonly { key: string }[] }[];
@@ -53,6 +57,7 @@ export function templateData(
   signerName: string;
   creditorHeaders?: FieldValues['debts'];
 } {
+  const templateVersion = assetVersion && bflContentTemplate(assetVersion);
   const values = readFieldValues(input);
   if (
     (templateVersion === 'bfl-creditors-v3' ||
@@ -108,7 +113,7 @@ export function templateData(
           ? modern
             ? formatBankruptcyScalar(field.key, value)
             : value
-          : '[не заполнено]';
+          : missingTemplateValue;
       continue;
     }
     const rows =
@@ -120,7 +125,7 @@ export function templateData(
                 key,
                 i === 0
                   ? value === null
-                    ? '[не заполнено]'
+                    ? missingTemplateValue
                     : 'Отсутствует'
                   : emptyCell,
               ]),
@@ -153,15 +158,15 @@ export function templateData(
           ? modern && placeholder === 'RUB_DECIMAL'
             ? formatBankruptcyMoney(value)
             : formatTemplateValue(value, placeholder)
-          : '[не заполнено]',
+          : missingTemplateValue,
     });
   }
   if (obligations) {
-    output.debtTotal = obligations.total ?? '[не заполнено]';
+    output.debtTotal = obligations.total ?? missingTemplateValue;
     output.debtTotalWords =
       revised && obligations.total
         ? filingMoneyWords(obligations.total)
-        : (obligations.totalWords ?? '[не заполнено]');
+        : (obligations.totalWords ?? missingTemplateValue);
   }
   const surname =
     typeof values.lastName === 'string'
@@ -179,8 +184,16 @@ export function templateData(
     .flatMap((initial) => (initial ? [`${initial.toUpperCase()}.`] : []))
     .join('');
   const narratives = statementDebtNarratives(templateVersion, input);
+  const attachmentTail =
+    assetVersion === 'bfl-statement-v12' && Array.isArray(output.attachments)
+      ? output.attachments.splice(-1)
+      : [];
   return {
     ...output,
+    ...(assetVersion === 'bfl-statement-v12' && {
+      attachmentTail,
+      attachmentHeading: attachmentTail.length ? 'Приложения:' : '',
+    }),
     ...(statement && statementRequestValues(values)),
     ...statementLayout(templateVersion, input),
     ...(narratives && { statementDebts: narratives }),
@@ -190,13 +203,13 @@ export function templateData(
         Object.fromEntries(
           ['name', 'inn', 'ogrn', 'address'].map((key) => [
             key,
-            row[key] ?? '[не заполнено]',
+            row[key] ?? missingTemplateValue,
           ]),
         ),
       ),
     }),
     signerName: surname
       ? `${surname}${initials ? ` ${initials}` : ''}`
-      : '[не заполнено]',
+      : missingTemplateValue,
   };
 }

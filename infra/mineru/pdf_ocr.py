@@ -5,6 +5,7 @@ import hashlib
 from importlib import import_module
 from inspect import Parameter, signature
 import json
+import logging
 from pathlib import Path
 import re
 import unicodedata
@@ -20,6 +21,7 @@ MIN_SCORE = 0.82
 RECOVERY_SCORE = 0.88
 # A dot followed by a space can terminate a sentence after a number.
 NUMBER = re.compile(r'(?:[+\-−]\s*)?(?:(?<!\d)[.,]\s*)?\d+(?:(?:\.|\s+\.\s*|\s*[,:/\-−]\s*)\d+)*')
+logger = logging.getLogger('uvicorn.error')
 
 
 def model_path(home):
@@ -46,8 +48,8 @@ def require_signature(module, name, *parameters):
 
 
 def configure_primary_ocr(sdk_version):
-    if sdk_version != '4.1.7':
-        raise RuntimeError(f'Cyrillic OCR requires MinerU 4.1.7, found {sdk_version}')
+    if sdk_version != '4.2.3':
+        raise RuntimeError(f'Cyrillic OCR requires MinerU 4.2.3, found {sdk_version}')
     hybrid = import_module('mineru.model.runtime.hybrid')
     positional = Parameter.POSITIONAL_OR_KEYWORD
     require_signature(hybrid, 'atom_model_init', ('model_name', positional), ('kwargs', Parameter.VAR_KEYWORD))
@@ -62,7 +64,8 @@ def configure_primary_ocr(sdk_version):
             or not isinstance(getattr(repo, 'paths', None), dict)):
         raise RuntimeError('Incompatible MinerU OCR binding: MINERU_4_MODELS_ONNX')
     require_signature(repo, 'local_dir')
-    if hybrid.resolve_small_model_backend() != 'onnx':
+    device = import_module('mineru.model.runtime.device_state')
+    if device.resolve_model_backend() != 'onnx':
         raise RuntimeError('Cyrillic OCR requires the ONNX small-model backend')
     model = repo.local_dir() / OCR_MODEL_PATH
     dictionary = model.with_suffix('.txt')
@@ -348,6 +351,88 @@ def export_page_evidence(recovered, confirmed):
     return json.dumps({'version': 1, 'pages': sorted(pages, key=lambda page: page['page'])}, ensure_ascii=False)
 
 
+def continued_table_pages(pages):
+    # A continuation can consume the previous page's last table at render time.
+    return {
+        number
+        for page in pages
+        if any(block.type == 'table' and block.continues_prev for block in page.blocks)
+        for number in (page.page_idx - 1, page.page_idx)
+    }
+
+
+def verify_table_text(body, page, native):
+    from lxml import html
+    from pypdfium2.raw import FPDF_PAGEOBJ_IMAGE
+
+    if not body.bbox or not body.content.strip().lower().startswith('<table') or page.get_rotation():
+        return False
+    table = html.fromstring(body.content)
+    if table.tag != 'table' or table.xpath('.//table | .//img | .//svg | .//math | .//script | .//style'):
+        return False
+    cells = [' '.join(cell.text_content().split()) for cell in table.xpath('.//td | .//th')]
+    expected = ' '.join(cell for cell in cells if cell)
+    if not expected:
+        return False
+    left, bottom, right, top = page.get_bbox()
+    x0, y0, x1, y1 = body.bbox
+    if not (0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1):
+        return False
+    bounds = (
+        left + x0 * (right - left), top - y1 * (top - bottom),
+        left + x1 * (right - left), top - y0 * (top - bottom),
+    )
+    bounded = native.get_text_bounded(*bounds, errors='strict')
+    # Requiring equality accounts for every occurrence, including repeated cells,
+    # and avoids treating text in a larger value as proof for a shorter one.
+    if ' '.join(bounded.split()) != expected:
+        return False
+    # A scan can carry a hidden OCR layer. Only trust standalone native tables.
+    x0, y0, x1, y1 = bounds
+    for image in page.get_objects(filter=[FPDF_PAGEOBJ_IMAGE]):
+        if image.level:
+            return False
+        left, bottom, right, top = image.get_bounds()
+        if left < x1 and x0 < right and bottom < y1 and y0 < top:
+            return False
+    return True
+
+
+def record_table_origins(records, single_page, page, markdown, assets, continued, render):
+    parsed = single_page.pages[0]
+    for block in parsed.blocks:
+        if block.type != 'table':
+            continue
+        bodies = [body for body in block.content if body.type == 'table_body']
+        for body in bodies:
+            path = body.image_path
+            if not path or path not in assets:
+                continue
+            if path in records:
+                records[path]['origin'] = 'unknown'
+                continue
+            record = {'imagePath': path, 'page': parsed.page_idx + 1, 'origin': 'unknown'}
+            records[path] = record
+            if continued or len(bodies) != 1:
+                continue
+            try:
+                with closing(page.get_textpage()) as native:
+                    if not native.count_chars() or not verify_table_text(body, page, native):
+                        continue
+                table = block.model_copy(update={'content': [body]})
+                fragment_page = parsed.model_copy(update={'blocks': [table]})
+                fragment = render(single_page.model_copy(update={'pages': [fragment_page]})).strip()
+                content = f'\n\n{markdown.strip()}\n\n'
+                needle = f'\n\n{fragment}\n\n'
+                first = content.find(needle)
+                if fragment.startswith(('<table', '|')) and first >= 0 and content.find(needle, first + 1) < 0:
+                    record['origin'] = 'native'
+            except Exception as error:
+                # Provenance is optional. Keep the crop available without logging document text.
+                logger.warning('pdf_table_origin_unverified page=%s error_type=%s',
+                               record['page'], type(error).__name__)
+
+
 def save_pdf(path, middle_json, writer, model):
     import pypdfium2 as pdfium
     from docvortex.export import materialize_middle, validate_materialized_assets
@@ -358,6 +443,8 @@ def save_pdf(path, middle_json, writer, model):
     recovered = []
     confirmed = []
     sections = []
+    table_origins = {}
+    continued = continued_table_pages(middle.pages)
     readable = False
     with pdfium.PdfDocument(path) as pdf:
         if len(pdf) != len(middle.pages):
@@ -411,6 +498,10 @@ def save_pdf(path, middle_json, writer, model):
                         'page': number, 'omittedLines': max(len(lines), len(selected)) - limit,
                         'lines': selected[:limit],
                     })
+                record_table_origins(
+                    table_origins, single_page, page, markdown, assets,
+                    parsed_page.page_idx in continued, render_markdown,
+                )
             readable |= bool(normalized(markdown_text(markdown)))
             if len(pdf) > 1 or selected:
                 markdown = f'## Страница {number}\n\n{markdown}'
@@ -423,3 +514,5 @@ def save_pdf(path, middle_json, writer, model):
     writer.write_string('pdf-ocr.json', export_page_evidence(recovered, confirmed))
     for name, payload in sorted(assets.items()):
         writer.write(name, payload)
+    if table_origins:
+        writer.write_string('pdf-table-images.json', json.dumps(list(table_origins.values())))

@@ -152,7 +152,7 @@ afterAll(async () => {
   await pool.end();
 });
 
-test('recognition cursor survives deletion of the previous page boundary with equal timestamps', async () => {
+test('recognition pages order equal timestamps by id and clamp a page past the end', async () => {
   const id = await workspace();
   const createdAt = new Date();
   const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()]
@@ -172,21 +172,30 @@ test('recognition cursor survives deletion of the previous page boundary with eq
     })),
   });
   const scope = memberScope(id);
-  const first = await recognition.queries.list(scope, { limit: 1 });
-  expect(first.items.map((item) => item.id)).toEqual(ids.slice(0, 1));
-  if (!first.nextCursor) throw new Error('Expected continuation cursor');
-  const boundary = first.items[0];
-  if (!boundary) throw new Error('Expected page boundary');
+  const pageIds = (page: { items: { id: string }[] }) =>
+    page.items.map((item) => item.id);
+  const first = await recognition.queries.list(scope, { page: 1, pageSize: 2 });
+  expect(pageIds(first)).toEqual(ids.slice(0, 2));
+  expect(first).toMatchObject({ page: 1, pageSize: 2, total: 3 });
+  const second = await recognition.queries.list(scope, {
+    page: 2,
+    pageSize: 2,
+  });
+  expect(pageIds(second)).toEqual(ids.slice(2));
+  expect(second).toMatchObject({ page: 2, total: 3 });
+  // Последний файл удалён — вторая страница исчезла, список отдаёт последнюю существующую.
+  const last = ids[2];
+  if (!last) throw new Error('Expected three documents');
   await db.sourceDocument.update({
-    where: { id: boundary.id },
+    where: { id: last },
     data: { deletedAt: new Date() },
   });
-  const second = await recognition.queries.list(scope, {
-    limit: 2,
-    after: first.nextCursor,
+  const clamped = await recognition.queries.list(scope, {
+    page: 2,
+    pageSize: 2,
   });
-  expect(second.items.map((item) => item.id)).toEqual(ids.slice(1));
-  expect(second.nextCursor).toBeNull();
+  expect(pageIds(clamped)).toEqual(ids.slice(0, 2));
+  expect(clamped).toMatchObject({ page: 1, pageSize: 2, total: 2 });
 });
 
 test('recognition searches the workspace before paging and filters by verified file formats', async () => {
@@ -227,27 +236,32 @@ test('recognition searches the workspace before paging and filters by verified f
       ${own} || '/' || n || '.pdf', 'synthetic', n::text, 1, 'synthetic-actor', TIMESTAMP '2026-02-01'
     FROM generate_series(1, 25000) n
   `;
-  const unfiltered = await recognition.queries.list(scope, { limit: 50 });
-  expect(unfiltered.items).toHaveLength(50);
+  const unfiltered = await recognition.queries.list(scope, {
+    page: 1,
+    pageSize: 48,
+  });
+  expect(unfiltered.items).toHaveLength(48);
+  expect(unfiltered.total).toBe(25003);
   expect(unfiltered.items.some(({ id }) => id === pdfId || id === heic)).toBe(
     false,
   );
   const filters = {
     q: 'чЁт-aBCd_100%',
     formats: ['pdf', 'heif'] as const,
-    limit: 1,
+    page: 1,
+    pageSize: 1,
   };
   const first = await recognition.queries.list(scope, filters);
   expect(first.items).toHaveLength(1);
-  if (!first.nextCursor) throw new Error('Expected another matching document');
+  expect(first.total).toBe(2);
   const second = await recognition.queries.list(scope, {
     ...filters,
-    after: first.nextCursor,
+    page: 2,
   });
   expect([...first.items, ...second.items].map(({ id }) => id)).toEqual(
     [pdfId, heic].sort().reverse(),
   );
-  expect(second.nextCursor).toBeNull();
+  expect(second).toMatchObject({ page: 2, total: 2 });
   const otherPage = await recognition.queries.list(memberScope(other), filters);
   expect(otherPage.items.map(({ id }) => id)).toEqual([foreign]);
   const pngPage = await recognition.queries.list(scope, {
@@ -278,17 +292,22 @@ test('content matches include only live originals in the selected workspace', as
   expect(impact.canDelete).toBe(true);
   await recognition.commands.remove(member, deletedId, impact.token);
   const checksum = Bun.CryptoHasher.hash('sha256', pdf, 'hex');
-  const page = await recognition.queries.list(scope, { limit: 1, checksum });
-  expect(page.items.map(({ id }) => id)).toEqual([copy.id]);
-  const second = await recognition.queries.list(scope, {
-    limit: 1,
+  const page = await recognition.queries.list(scope, {
+    page: 1,
+    pageSize: 1,
     checksum,
-    after: page.nextCursor ?? '',
+  });
+  expect(page.items.map(({ id }) => id)).toEqual([copy.id]);
+  expect(page.total).toBe(2);
+  const second = await recognition.queries.list(scope, {
+    page: 2,
+    pageSize: 1,
+    checksum,
   });
   expect(second.items.map(({ id }) => id)).toEqual([first.id]);
-  expect(second.nextCursor).toBeNull();
   const otherPage = await recognition.queries.list(memberScope(other), {
-    limit: 20,
+    page: 1,
+    pageSize: 20,
     checksum,
   });
   expect(otherPage.items.map(({ id }) => id)).toEqual([foreign.id]);
@@ -307,8 +326,11 @@ test('upload atomically persists metadata, run and outbox; foreign workspace can
   expect(await db.runOutbox.count({ where: { workspaceId: own } })).toBe(1);
   expect(await db.sourceUpload.count({ where: { workspaceId: own } })).toBe(0);
   expect(
-    await recognition.queries.list(memberScope(foreign), { limit: 50 }),
-  ).toEqual({ items: [], nextCursor: null });
+    await recognition.queries.list(memberScope(foreign), {
+      page: 1,
+      pageSize: 48,
+    }),
+  ).toEqual({ items: [], page: 1, pageSize: 48, total: 0 });
   await expectRejected(
     recognition.queries.get(memberScope(foreign), brandDocumentId(document.id)),
     'NOT_FOUND',
@@ -451,7 +473,7 @@ test('a retained document without run history is readable and can be recognized 
     errorCode: 'OCR_RETRY_REQUIRED',
   });
   expect(
-    (await recognition.queries.list(scope, { limit: 50 })).items,
+    (await recognition.queries.list(scope, { page: 1, pageSize: 48 })).items,
   ).toHaveLength(1);
   await expectRejected(
     recognition.queries.result(scope, documentId),

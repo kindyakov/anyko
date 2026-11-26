@@ -1,6 +1,5 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   type Dispatch,
   type SetStateAction,
@@ -10,7 +9,7 @@ import {
 
 import type { DocumentSummary } from '@anyko/contracts/documents';
 import { workSourceLimit } from '@anyko/contracts/works';
-import { Button, FileIcon, Notice, StatusPill } from '@anyko/ui';
+import { FileIcon, Notice, Pager, StatusPill } from '@anyko/ui';
 import { HorizonLoader } from '@anyko/ui/brand';
 
 import { useWorkspaceEvents } from '@/lib/api/live-events';
@@ -23,6 +22,8 @@ import {
 import { SelectionCheckbox } from '../document-row';
 
 import { DocumentSearch } from './document-search';
+
+const selectionPageSize = 12;
 
 function unavailableReason(document: DocumentSummary) {
   if (document.status === 'running' || document.status === 'queued')
@@ -50,16 +51,17 @@ export function CatalogSelection({
     q: '',
     formats: [],
   });
-  const [cursors, setCursors] = useState<string[]>([]);
+  const [page, setPage] = useState(1);
   const query = useQuery(
-    documentsQueryOptions(workspaceId, filters, cursors.at(-1)),
+    documentsQueryOptions(workspaceId, filters, page, selectionPageSize),
   );
   const remaining = Math.max(0, workSourceLimit - (attached?.size ?? 0));
-  const next = query.data?.nextCursor;
   const rows = query.data?.items ?? [];
+  // Сервер сводит номер за последней страницей к последней.
+  const shownPage = (!query.isPlaceholderData && query.data?.page) || page;
   const changeFilters = useCallback((value: DocumentFilters) => {
     setFilters(value);
-    setCursors([]);
+    setPage(1);
   }, []);
   return (
     <div className="grid gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
@@ -67,7 +69,7 @@ export function CatalogSelection({
         filters={filters}
         onChange={changeFilters}
         catalog
-        empty={query.isSuccess && rows.length === 0 && !cursors.length}
+        empty={query.isSuccess && query.data.total === 0}
       />
       {query.error && (
         <Notice role="alert" tone="danger" title="Каталог недоступен">
@@ -125,32 +127,13 @@ export function CatalogSelection({
           })}
         </ul>
       )}
-      {(cursors.length > 0 || !!next) && (
-        <nav className="flex items-center gap-2" aria-label="Страницы каталога">
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!cursors.length}
-            onClick={() => {
-              setCursors((previous) => previous.slice(0, -1));
-            }}
-          >
-            <ChevronLeft size={15} aria-hidden /> Назад
-          </Button>
-          <span className="text-muted text-sm" aria-live="polite">
-            Страница {cursors.length + 1}
-          </span>
-          <Button
-            variant="secondary"
-            size="sm"
-            disabled={!next}
-            onClick={() => {
-              if (next) setCursors([...cursors, next]);
-            }}
-          >
-            Далее <ChevronRight size={15} aria-hidden />
-          </Button>
-        </nav>
+      {query.data && (
+        <Pager
+          label="Страницы каталога"
+          page={shownPage}
+          pages={Math.ceil(query.data.total / query.data.pageSize)}
+          onPage={setPage}
+        />
       )}
       <p className="text-muted text-xs" role="status">
         Свободных мест для файлов: {Math.max(0, remaining - selected.size)}

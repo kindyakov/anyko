@@ -166,7 +166,10 @@ function serveWorkList(
       return Promise.resolve(json(creation.status, creation.body));
     if (url === documentPackagesAddress)
       return Promise.resolve(json(200, { packages }));
-    if (catalogFile && url === '/api/v1/workspaces/workspace-1/recognitions')
+    if (
+      catalogFile &&
+      url.split('?')[0] === '/api/v1/workspaces/workspace-1/recognitions'
+    )
       return Promise.resolve(
         json(200, {
           items: [
@@ -178,7 +181,9 @@ function serveWorkList(
               readyRevision: 1,
             },
           ],
-          nextCursor: null,
+          page: 1,
+          pageSize: 12,
+          total: 1,
           pendingDeletions: [],
         }),
       );
@@ -222,6 +227,45 @@ async function openCreateDialog() {
   await user.click(await screen.findByRole('button', { name: 'Новая работа' }));
   return user;
 }
+
+test('renames a work and reloads the list; empty names cannot be submitted', async () => {
+  let title = existingWork.title;
+  const requests = serveApi(({ method, url, body }) => {
+    if (method === 'PATCH') {
+      title = (body as { title: string }).title;
+      return json(200, { status: 'updated' });
+    }
+    if (url === documentPackagesAddress) return json(200, { packages });
+    if (url === worksFirstPage)
+      return json(200, {
+        items: [{ ...existingWork, title }],
+        page: 1,
+        pageSize: 24,
+        total: 1,
+        deletions: [],
+      });
+    return json(404, {});
+  });
+  renderWorkList(['works.read', 'works.edit']);
+  const user = userEvent.setup();
+  await user.click(
+    await screen.findByRole('button', { name: 'Действия с работой «Иванов»' }),
+  );
+  await user.click(screen.getByRole('menuitem', { name: 'Переименовать' }));
+  const input = screen.getByRole('textbox', { name: 'Название работы' });
+  await user.clear(input);
+  expect(
+    screen.getByRole<HTMLButtonElement>('button', { name: 'Сохранить' })
+      .disabled,
+  ).toBe(true);
+  await user.type(input, 'Петров');
+  await user.click(screen.getByRole('button', { name: 'Сохранить' }));
+  expect(await screen.findByRole('heading', { name: 'Петров' })).toBeTruthy();
+  expect(requests.find(({ method }) => method === 'PATCH')).toMatchObject({
+    url: `${worksAddress}/${workId}`,
+    body: { title: 'Петров' },
+  });
+});
 
 // Без права создания действие не предлагается ни в шапке, ни в пустом списке; список при этом виден.
 test('without the create right no creation button is offered, the list still shows', async () => {

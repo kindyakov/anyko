@@ -18,6 +18,7 @@ packages/
   logger/                  общий серверный формат событий и безопасные поля
   llm/                     серверный gateway готового OpenAI-совместимого SDK
   contracts/               безопасные для браузера HTTP-схемы и DTO
+  document-values/         разбор и форматирование значений для DOCX и предпросмотра
   database/                Prisma schema, миграции, клиент и механизм транзакций
   ui/                      компоненты и токены интерфейса Anyko
   eslint-config/           @anyko/eslint-config: общие и средовые правила
@@ -58,6 +59,7 @@ packages/backend/src/
     facts/                 кандидаты, подтверждения, конфликты и редакции
     templates/             готовые версии шаблонов и их требования к данным
     generation/            снимки входных данных и сформированные результаты
+    idempotency/           повтор команд по Idempotency-Key
   workflows/               сценарии, связывающие публичные API модулей
   profiles/
     bfl/                   конкретные правила извлечения и проверки для БФЛ
@@ -163,7 +165,7 @@ Dependency-cruiser разрешает workspace-алиасы через `package
 ```text
 apps/web/src/
   app/                     маршруты рабочей области /w/[workspace], layouts, экраны
-  features/
+  features/                возможности; актуальный список — каталог apps/web/src/features
     works/                 данные работы, список и создание
     work-sources/          исходники работы и их загрузка
     fact-review/           проверка сведений и источников

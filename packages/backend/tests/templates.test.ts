@@ -28,7 +28,7 @@ test('the selectable package contains three real versioned templates; archived s
   const packages = availablePackages();
   expect(packages).toHaveLength(1);
   expect(packages[0]?.technical).toBe(false);
-  expect(packages[0]?.version).toBe('bfl-bankruptcy-v13');
+  expect(packages[0]?.version).toBe('bfl-bankruptcy-v14');
   expect(requirePackage('bfl-bankruptcy-v6').documents[0]?.version).toBe(
     'bfl-statement-v6',
   );
@@ -347,7 +347,8 @@ test('unknown collections do not become absence, and an empty package never cont
     )
       .file('word/document.xml')
       ?.asText() ?? '';
-  expect(unknown).toContain('[не заполнено]');
+  expect(unknown).toContain('_____');
+  expect(unknown).not.toContain('[не заполнено]');
   expect(unknown).not.toContain('Отсутствует');
   values.realEstate = [];
   const absent =

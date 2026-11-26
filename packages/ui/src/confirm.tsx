@@ -49,7 +49,7 @@ export function Confirm({
             {children}
           </AlertDialog.Description>
           {details}
-          <div className="mt-7 flex flex-wrap justify-end gap-3">
+          <div className="mt-6 flex flex-col-reverse gap-3 border-t border-white/[0.06] pt-5 sm:flex-row sm:items-center sm:justify-end [&>*]:w-full sm:[&>*]:w-auto">
             <Button variant="secondary" disabled={pending} onClick={onCancel}>
               {cancelLabel}
             </Button>

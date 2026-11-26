@@ -161,3 +161,14 @@ test('review, confirmation and a generation for the current revision lead to doc
   expect(workStage(fresh)).toEqual({ kind: 'generated', files: 1 });
   expect(stepOf(workStage(fresh))).toBe('documents');
 });
+
+test('a failed last extraction is its own stage on the Extraction step, not a review', () => {
+  const stage = workStage(
+    view({
+      documents: [doc('2026-11-01T10:01:00.000Z')],
+      runs: [run('analysis', 'failed', '2026-11-01T10:05:00.000Z')],
+    }),
+  );
+  expect(stage.kind).toBe('failed');
+  expect(stepOf(stage)).toBe('extraction');
+});

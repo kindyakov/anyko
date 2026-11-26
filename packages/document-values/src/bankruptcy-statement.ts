@@ -1,6 +1,7 @@
 import { incline } from 'lvovich';
 
 import { normalizedPersonName } from './bankruptcy-format';
+import { missingTemplateValue } from './template-value';
 
 export const datedBankruptcyPackage = 'bfl-bankruptcy-v8';
 export const approvedStatementTemplate = 'bfl-statement-v8';
@@ -42,7 +43,7 @@ export function statementRequestValues(values: {
   );
   return {
     requestDebtorName:
-      [last, first, middle].filter(Boolean).join(' ') || '[не заполнено]',
+      [last, first, middle].filter(Boolean).join(' ') || missingTemplateValue,
     requestRegistration:
       gender === 'female'
         ? 'зарегистрированную по адресу'

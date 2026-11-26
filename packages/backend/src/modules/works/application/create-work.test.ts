@@ -16,6 +16,7 @@ function store(calls: string[]): WorkStore {
   return {
     list: unused,
     get: unused,
+    rename: unused,
     documents: unused,
     checklistLinks: unused,
     saveChecklistLink: unused,

@@ -148,7 +148,7 @@ test('invalid content and unsupported document formats produce actionable client
   }
 });
 
-test('recognition listing validates filters and forwards them with the cursor', async () => {
+test('recognition listing validates filters and forwards them with the page', async () => {
   const { documentHttp } = stubHttpOptions();
   const inputs: unknown[] = [];
   const app = createApp({
@@ -162,7 +162,12 @@ test('recognition listing validates filters and forwards them with the cursor', 
           ...documentHttp.documents.queries,
           list(scope, input) {
             inputs.push({ workspaceId: scope.workspaceId, ...input });
-            return Promise.resolve({ items: [], nextCursor: null });
+            return Promise.resolve({
+              items: [],
+              page: 1,
+              pageSize: input.pageSize,
+              total: 0,
+            });
           },
           pendingDeletions: () => Promise.resolve([]),
         },
@@ -182,8 +187,8 @@ test('recognition listing validates filters and forwards them with the cursor', 
     checksum: 'a'.repeat(64),
     q: '  Счёт_100%  ',
     formats: 'pdf,heif',
-    after: 'cursor',
-    limit: '20',
+    page: '3',
+    pageSize: '12',
   });
   const listing = await request(valid.toString());
   expect(listing.status).toBe(200);
@@ -194,11 +199,13 @@ test('recognition listing validates filters and forwards them with the cursor', 
       checksum: 'a'.repeat(64),
       q: 'Счёт_100%',
       formats: ['pdf', 'heif'],
-      after: 'cursor',
-      limit: 20,
+      page: 3,
+      pageSize: 12,
     },
   ]);
   for (const query of [
+    'page=0',
+    'pageSize=49',
     'formats=pdf,exe',
     'formats=pdf,',
     'q=%00',
@@ -211,6 +218,104 @@ test('recognition listing validates filters and forwards them with the cursor', 
     });
   }
   expect(inputs).toHaveLength(1);
+});
+
+test('catalog accepts 60 deletion confirmations in one request and reports a conflict per file', async () => {
+  const { documentHttp } = stubHttpOptions();
+  const blocked = crypto.randomUUID();
+  const ids = [
+    ...Array.from({ length: 30 }, () => crypto.randomUUID()),
+    blocked,
+    ...Array.from({ length: 29 }, () => crypto.randomUUID()),
+  ];
+  const impact = 'a'.repeat(64);
+  const received: string[] = [];
+  const app = createApp({
+    environment: 'test',
+    documentHttp: {
+      ...documentHttp,
+      access: memberAccess,
+      documents: {
+        ...documentHttp.documents,
+        commands: {
+          ...documentHttp.documents.commands,
+          async remove(scope, id, token) {
+            expect(String(scope.workspaceId)).toBe('local');
+            expect(token).toBe(impact);
+            received.push(id);
+            await Promise.resolve();
+            if (id === blocked) throw new DocumentError('REVISION_CONFLICT');
+          },
+        },
+        queries: {
+          ...documentHttp.documents.queries,
+          deletionImpact: () =>
+            Promise.resolve({ token: impact, canDelete: true, works: [] }),
+          deletions: (scope, documentIds) => {
+            expect(String(scope.workspaceId)).toBe('local');
+            return Promise.resolve(
+              documentIds.map((documentId) => ({
+                documentId,
+                status: 'deleted' as const,
+              })),
+            );
+          },
+        },
+      },
+    },
+  });
+  const documents = ids.map((documentId) => ({ documentId, impact }));
+  const address =
+    'http://localhost/api/v1/workspaces/local/recognition-deletions';
+  const read = (suffix: string, documentIds: string[]) =>
+    app.handle(
+      new Request(
+        `${address}${suffix}?documentIds=${encodeURIComponent(documentIds.join(','))}`,
+        { headers: { cookie: 'session=ok' } },
+      ),
+    );
+  const submit = (selection: typeof documents) =>
+    app.handle(
+      new Request(address, {
+        method: 'POST',
+        headers: {
+          cookie: 'session=ok',
+          origin: documentHttp.origin,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ documents: selection }),
+      }),
+    );
+
+  const preview = await read('/deletion-impact', ids);
+  expect(preview.status).toBe(200);
+  expect(await preview.json()).toEqual({
+    impacts: ids.map((documentId) => ({
+      documentId,
+      token: impact,
+      canDelete: true,
+      works: [],
+    })),
+  });
+  const response = await submit(documents);
+  expect(response.status).toBe(202);
+  expect(received).toEqual(ids);
+  expect(await response.json()).toEqual({
+    results: ids.map((documentId) =>
+      documentId === blocked
+        ? { documentId, status: 'rejected', code: 'REVISION_CONFLICT' }
+        : { documentId, status: 'deleting' },
+    ),
+  });
+  const accepted = ids.filter((id) => id !== blocked);
+  const status = await read('', accepted);
+  expect(status.status).toBe(200);
+  expect(await status.json()).toEqual({
+    results: accepted.map((documentId) => ({ documentId, status: 'deleted' })),
+  });
+  const duplicate = { documentId: blocked, impact };
+  expect((await submit([duplicate, duplicate])).status).toBe(400);
+  expect(received).toEqual(ids);
 });
 
 test('every error kind maps to one HTTP status and keeps the declared code', async () => {

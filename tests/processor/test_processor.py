@@ -335,10 +335,10 @@ class Result:
 class OcrStartupReview(unittest.IsolatedAsyncioTestCase):
     async def test_incompatible_sdk_is_rejected_before_service_starts(self):
         incompatible = (
-            ('4.1.8', None, 'requires MinerU 4.1.7'),
-            ('4.1.7', SimpleNamespace(), 'atom_model_init'),
-            ('4.1.7', SimpleNamespace(atom_model_init=lambda name: None), 'atom_model_init'),
-            ('4.1.7', SimpleNamespace(atom_model_init=lambda model_name, **kwargs: None), '_select'),
+            ('4.1.7', None, 'requires MinerU 4.2.3'),
+            ('4.2.3', SimpleNamespace(), 'atom_model_init'),
+            ('4.2.3', SimpleNamespace(atom_model_init=lambda name: None), 'atom_model_init'),
+            ('4.2.3', SimpleNamespace(atom_model_init=lambda model_name, **kwargs: None), '_select'),
         )
         for sdk_version, hybrid, diagnostic in incompatible:
             with self.subTest(sdk_version=sdk_version, hybrid=hybrid), tempfile.TemporaryDirectory() as root:

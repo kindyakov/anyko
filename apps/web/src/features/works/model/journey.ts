@@ -1,5 +1,7 @@
 import { type WorkView } from '@anyko/contracts/works';
 
+import { sharedCodeTexts } from '@/lib/api/errors';
+
 import { connectionRevokedText } from './command-errors';
 
 export type StepKey = 'files' | 'extraction' | 'review' | 'documents';
@@ -21,6 +23,7 @@ export type WorkStage =
   | { kind: 'empty' }
   | { kind: 'ready'; pending: number; first: boolean }
   | { kind: 'processing'; run: Run; done: number; total: number }
+  | { kind: 'failed'; run: Run }
   | { kind: 'review'; run: Run; fields: number; conflicts: number }
   | { kind: 'confirmed' }
   | { kind: 'generating' }
@@ -73,6 +76,7 @@ export function workStage(view: WorkView): WorkStage {
     };
   if (view.work.confirmedRevision === view.work.revision)
     return { kind: 'confirmed' };
+  if (last.status === 'failed') return { kind: 'failed', run: last };
   return {
     kind: 'review',
     run: last,
@@ -87,6 +91,7 @@ export function stepOf(stage: WorkStage): StepKey {
     case 'ready':
       return 'files';
     case 'processing':
+    case 'failed':
       return 'extraction';
     case 'review':
       return 'review';
@@ -128,6 +133,7 @@ const errors: Record<string, string> = {
   STRUCTURED_OUTPUT_SCHEMA_VALIDATION_FAILED:
     'Модель вернула ответ в неверном формате.',
   LLM_INVALID_RESPONSE: 'Модель вернула ответ в неверном формате.',
+  LLM_EVIDENCE_NOT_FOUND: 'Цитаты модели не найдены в источнике.',
   LLM_COMPLETION_LIMIT:
     'Модель не завершила разбор файла. Достигнут лимит ответа.',
   LLM_STEP_LIMIT: 'Достигнут предел обращений к модели на шаге анализа.',
@@ -145,6 +151,7 @@ const errors: Record<string, string> = {
   DOCUMENT_GENERATION_FAILED: 'Не удалось сформировать документ.',
   GENERATION_INTERRUPTED: 'Формирование было прервано.',
   WORK_PROCESSING_FAILED: 'Обработка завершилась с ошибкой.',
+  LLM_CONTEXT_TOO_SMALL: sharedCodeTexts.LLM_CONTEXT_TOO_SMALL,
 };
 export function errorText(code: string) {
   return errors[code] ?? `Этап завершился с ошибкой (${code}).`;
