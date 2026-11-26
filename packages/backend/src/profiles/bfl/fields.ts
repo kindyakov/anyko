@@ -252,7 +252,7 @@ const collectionLabels = {
     identity: ['documentId'],
   },
 } as const;
-export const fieldKeySchema = z.enum([
+const fieldKeySchema = z.enum([
   'personName',
   'documentNumber',
   'documentDate',
@@ -351,7 +351,7 @@ const fieldRowSchema = z.record(
   z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/),
   z.string().max(4000).nullable(),
 );
-export const fieldValueSchema = z
+const fieldValueSchema = z
   .union([z.string().max(12000), z.array(fieldRowSchema).max(100)])
   .nullable();
 export type FieldRow = z.infer<typeof fieldRowSchema>;
