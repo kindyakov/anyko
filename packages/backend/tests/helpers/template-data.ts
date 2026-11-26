@@ -1,14 +1,18 @@
 import { prepareTemplate } from '@anyko/document-values/template-filling';
 
-import { knownPackages } from '../../src/modules/templates';
-import type { TemplatePlaceholder } from '../../src/modules/templates/schemas';
+import {
+  type DocumentPackage,
+  knownPackages,
+} from '../../src/modules/templates';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 import type { FieldValues } from '../../src/profiles/fields';
 
 export function templateData(
   values: FieldValues,
   version = 'bfl-statement-v11',
-  placeholders: readonly TemplatePlaceholder[] = [],
+  placeholders: Readonly<
+    NonNullable<DocumentPackage['documents'][number]['placeholders']>
+  > = [],
   context?: {
     fields: readonly { key: string; columns?: readonly { key: string }[] }[];
     referenceDate: string;

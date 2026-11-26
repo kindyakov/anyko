@@ -1104,9 +1104,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/index.ts": {
-    "mtime": 1795697890.8052616,
-    "seen": 1795698184.6507323,
-    "ast_hash": "c1e5cac5fb854e34b9c3657ba5fe4432",
+    "mtime": 1795698414.1869822,
+    "seen": 1795698488.7409463,
+    "ast_hash": "c98e94b0e69055a436241d16808b59f5",
     "semantic_hash": ""
   },
   "packages/backend/src/modules/works/index.ts": {
@@ -2658,9 +2658,9 @@
     "semantic_hash": ""
   },
   "packages/backend/tests/integration/unit-of-work.test.ts": {
-    "mtime": 1795696799.474955,
-    "seen": 1795698184.6510623,
-    "ast_hash": "8740ef0213f15d365165172f0577f43a",
+    "mtime": 1795698450.720719,
+    "seen": 1795698488.7411766,
+    "ast_hash": "00a1eb3584db234605e202a07e7ce28d",
     "semantic_hash": ""
   },
   "apps/api/tests/work-document-result.test.ts": {
@@ -3306,9 +3306,9 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/schemas.ts": {
-    "mtime": 1795697890.7899568,
-    "seen": 1795698184.6507416,
-    "ast_hash": "d2f61e6cf12d1f1d0657f6fbea42d44a",
+    "mtime": 1795698426.5849383,
+    "seen": 1795698488.7409525,
+    "ast_hash": "0d02bf8ed600b2f98b035cb0f1874cfc",
     "semantic_hash": ""
   },
   "packages/backend/src/profiles/bfl/candidate.ts": {
@@ -6246,15 +6246,15 @@
     "semantic_hash": ""
   },
   "packages/backend/src/modules/templates/bfl-catalog.ts": {
-    "mtime": 1795697890.7952962,
-    "seen": 1795698184.6507297,
-    "ast_hash": "a7985ce819f731bd8283388a76466cfb",
+    "mtime": 1795698414.1869822,
+    "seen": 1795698488.7409441,
+    "ast_hash": "153d03d32ac2aa46c927ce80c180a81d",
     "semantic_hash": ""
   },
   "packages/backend/tests/helpers/template-data.ts": {
-    "mtime": 1795697890.816536,
-    "seen": 1795698184.6510453,
-    "ast_hash": "51ffac66c2310d774dc887fa961cbf71",
+    "mtime": 1795698414.1901984,
+    "seen": 1795698488.7411633,
+    "ast_hash": "0c713634c22b82553e91f97a252ecb9a",
     "semantic_hash": ""
   },
   "packages/document-values/src/template-filling.ts": {

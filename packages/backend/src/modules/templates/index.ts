@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 
 import { DiagnosticError } from '@anyko/logger';
 
+import { fieldDefinitions } from '../../profiles/bfl/fields';
+
 import manifest from './assets/package.json';
-import { layoutPackage, revisedPackages } from './bfl-catalog';
+import { bflPackages } from './bfl-catalog';
 import type { DocumentPackage } from './schemas';
 import { technicalBytes, technicalPackage } from './technical';
 export type { DocumentPackage } from './schemas';
@@ -19,6 +21,8 @@ export type ReadTemplateRequirements = (packageVersion: string) => Promise<
     applicability: 'usual' | 'conditional';
   }[]
 >;
+
+const { layoutPackage, revisedPackages } = bflPackages(fieldDefinitions);
 
 export function availablePackages(): DocumentPackage[] {
   return [layoutPackage];

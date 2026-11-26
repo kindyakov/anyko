@@ -6,7 +6,7 @@ import {
 } from '@anyko/document-values/statement-layout';
 import { bflFillingLayouts } from '@anyko/document-values/template-filling';
 
-import { fieldDefinitions } from '../../profiles/bfl/fields';
+import type { FieldDefinition } from '../../profiles/fields';
 
 import manifest from './assets/package.json';
 import { documentPackageSchema } from './schemas';
@@ -41,45 +41,48 @@ function withFilling(version: string) {
   };
 }
 
-export const revisedPackages = revisedBankruptcyPackages.map((version) =>
-  documentPackageSchema.parse({
-    id: 'bfl-bankruptcy',
-    version,
-    title: 'Банкротство гражданина',
-    technical: false,
-    fields: [
-      ...fieldDefinitions
-        .filter(
-          ({ key }) =>
-            !computedOrTechnicalFields.includes(key) &&
-            !finalFields.includes(key),
-        )
-        .map((field) => ({
-          ...field,
-          label:
-            field.key === 'documentDate'
-              ? 'Дата заполнения комплекта'
-              : field.label,
-          columns: field.columns.filter(({ key }) => {
-            if (key === 'category') return propertyFields.includes(field.key);
-            if (key === 'identifier' && field.key === 'realEstate')
-              return version === cadastralPackage;
-            return true;
-          }),
-        })),
-      ...finalFields.map((key) =>
-        fieldDefinitions.find((field) => field.key === key),
-      ),
-    ],
-    documents: [
-      'bfl-statement-v11',
-      'bfl-inventory-v2',
-      'bfl-creditors-v3',
-    ].map(withFilling),
-  }),
-);
-export const layoutPackage = documentPackageSchema.parse({
-  ...revisedPackages.find(({ version }) => version === cadastralPackage),
-  version: bflLayoutPackage,
-  documents: Object.keys(bflLayoutTemplates).map(withFilling),
-});
+export function bflPackages(fieldDefinitions: readonly FieldDefinition[]) {
+  const revisedPackages = revisedBankruptcyPackages.map((version) =>
+    documentPackageSchema.parse({
+      id: 'bfl-bankruptcy',
+      version,
+      title: 'Банкротство гражданина',
+      technical: false,
+      fields: [
+        ...fieldDefinitions
+          .filter(
+            ({ key }) =>
+              !computedOrTechnicalFields.includes(key) &&
+              !finalFields.includes(key),
+          )
+          .map((field) => ({
+            ...field,
+            label:
+              field.key === 'documentDate'
+                ? 'Дата заполнения комплекта'
+                : field.label,
+            columns: field.columns.filter(({ key }) => {
+              if (key === 'category') return propertyFields.includes(field.key);
+              if (key === 'identifier' && field.key === 'realEstate')
+                return version === cadastralPackage;
+              return true;
+            }),
+          })),
+        ...finalFields.map((key) =>
+          fieldDefinitions.find((field) => field.key === key),
+        ),
+      ],
+      documents: [
+        'bfl-statement-v11',
+        'bfl-inventory-v2',
+        'bfl-creditors-v3',
+      ].map(withFilling),
+    }),
+  );
+  const layoutPackage = documentPackageSchema.parse({
+    ...revisedPackages.find(({ version }) => version === cadastralPackage),
+    version: bflLayoutPackage,
+    documents: Object.keys(bflLayoutTemplates).map(withFilling),
+  });
+  return { layoutPackage, revisedPackages };
+}

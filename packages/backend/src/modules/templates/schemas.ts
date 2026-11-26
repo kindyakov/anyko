@@ -62,7 +62,6 @@ export const templatePlaceholderSchema = z.discriminatedUnion('placeholder', [
     })
     .refine(({ tag, field }) => tag === field),
 ]);
-export type TemplatePlaceholder = z.infer<typeof templatePlaceholderSchema>;
 const document = z.object({
   id: z.string(),
   version: z.string(),

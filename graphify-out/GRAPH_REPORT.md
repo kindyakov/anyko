@@ -1,17 +1,17 @@
 # Graph Report - spec84-91  (2026-11-26)
 
 ## Corpus Check
-- 981 files · ~487,270 words
+- 981 files · ~487,284 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 31 file(s) not represented in the graph (top: (none) 7, .ttf 5, .example 4)
+- Unclassified: 32 file(s) not represented in the graph (top: (none) 7, .log 5, .ttf 5)
 
 ## Summary
-- 5644 nodes · 15604 edges · 276 communities (224 shown, 52 thin omitted)
-- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 324 edges (avg confidence: 0.9)
+- 5643 nodes · 15603 edges · 276 communities (225 shown, 51 thin omitted)
+- Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 323 edges (avg confidence: 0.9)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `bb7270f1`
+- Built from commit: `06323892`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -21,7 +21,7 @@
 - run-local.test.mjs
 - values.ts
 - MVP: автоматизация подготовки заявления о банкротстве физического лица
-- callApi
+- calendar-date.ts
 - Правила написания кода
 - pull_request_template.md
 - Архитектура Anyko
@@ -60,14 +60,14 @@
 - backend/package.json
 - backend/tsconfig.json
 - logger/tsconfig.json
-- document-deletion.test.ts
+- database/src/index.ts
 - database/package.json
 - stage-windows-release.mjs
 - contracts/package.json
 - money.ts
 - api-design.test.ts
 - llm/package.json
-- stub-http.ts
+- defineJob
 - http/route.ts
 - modules/documents/index.ts
 - Первая вертикаль обработки документов
@@ -86,16 +86,16 @@
 - work-pipeline.tsx
 - integration/idempotency.test.ts
 - create-work-form.tsx
-- createLogger
+- logger/src/index.ts
 - access/index.ts
 - catalog-deletion.ts
 - 202611050001_document_vertical/migration.sql
 - generation/index.ts
-- application/chat-progress.ts
+- application/chat.ts
 - boundaries.test.ts
 - automatic-value.ts
 - stage-windows-migrator.mjs
-- render.ts
+- connection-settings.test.tsx
 - dev.mjs
 - devDependencies
 - app-shell.tsx
@@ -110,23 +110,23 @@
 - stage-windows-mineru.mjs
 - ref_bun_test
 - routes/documents/index.ts
-- workspace-states.tsx
+- logger.ts
 - 202611050007_work_pipeline/migration.sql
 - work-screen.tsx
 - reconcile.ts
 - ui/src/index.ts
 - WorkStore
 - exports
-- Button
+- EventHorizon
 - processing/index.ts
 - documents.test.ts
 - app.ts
 - llm/tsconfig.json
 - job-host.test.ts
-- common/index.ts
+- openapi.ts
 - Серверная часть
 - facts-form.ts
-- architecture.md
+- assets/README.md
 - Anyko — брендбук
 - routes/works/index.ts
 - call.ts
@@ -144,39 +144,39 @@
 - facts/index.ts
 - template.sh
 - works.test.ts
-- Приёмочный комплект БФЛ
+- ExecutionScope
 - Ask Matt
-- Tx
+- WorkProcessingStore
 - Diagnosing Bugs
 - ui/package.json
 - Язык Anyko
 - DocumentAgents
 - render.ts
 - 202611170017_unified_processing/migration.sql
-- WorkDeletionStore
+- unit-of-work.test.ts
 - Test-Driven Development
 - catalog-document-deletion.ts
 - check-project.mjs
-- endpoint
+- connections/api/mutations.ts
 - Process
 - eslint.config.mjs
 - attachments.ts
 - writing-for-agents/SKILL.md
 - Principles
-- audit/index.ts
+- clock.ts
 - DocumentStore
-- build-windows-portable.mjs
+- errorReference
 - Размещение основы в Dokploy
 - start.ts
 - "AnykoWorkspace"
 - Проверка тестов, написанных агентом
 - pdf_ocr.py
-- apps/api
+- works/infrastructure/store.ts
 - wayfinder/SKILL.md
 - WorkspaceScope
 - arbitration-court.ts
 - packages/document-values
-- finding-sources.tsx
+- ProcessingIo
 - to-spec/SKILL.md
 - black-hole-renderer.ts
 - catalog/schemas.ts
@@ -207,8 +207,8 @@
 - Sections
 - agent-github.mjs
 - obligations.ts
-- result-preview.tsx
-- Бланки пакета банкротства
+- workspace-states.tsx
+- journey.test.ts
 - ProcessorReview
 - docx_media.py
 - bfl-acceptance.test.ts
@@ -218,7 +218,7 @@
 - GLOSSARY.md Format
 - implement-spec/SKILL.md
 - CREDITS.md
-- Anyko
+- Задания
 - Решение
 - startBlackHole
 - Направления развития Anyko
@@ -230,32 +230,32 @@
 - works/checklist.ts
 - journeys.spec.ts
 - bfl-creditor-registry.md
-- fingerprintInput
+- bootstrap.mjs
 - packages/contracts
 - "IdempotencyKey"
-- [file]/route.ts
+- Runtime и диагностика
 - processor.py
 - PdfTableOrigins
 - ref_node_path
 - scripts
-- Единая агентская сессия от исходников до чата
+- idempotency/jobs.ts
 - smoke-windows-mineru.mjs
-- server/session.test.ts
+- RunDefinition
 - bfl/fields.ts
 - "WorkDeletion"
-- Профили обработки и описания пакетов
-- chat-model.ts
+- apps/worker
+- FieldValue
 - packages/logger
 - DeliveryPort
 - packages/eslint-config
-- devDependencies
-- session-agent.test.ts
+- Работа агентов и независимая проверка
+- database/README.md
 - 202611220073_bfl_form_pagination/migration.sql
 - Process
 - Заполнение заявления о банкротстве гражданина
 - .dependency-cruiser.cjs
 - Feature-based web и модульный backend с ports/adapters
-- routes.ts
+- server/session.ts
 - Каталог HTTP API
 - Issue tracker: GitHub
 - packages/backend
@@ -288,31 +288,31 @@
 ## Import Cycles
 - None detected.
 
-## Communities (276 total, 52 thin omitted)
+## Communities (276 total, 51 thin omitted)
 
 ### Community 0 - "web/package.json"
-Cohesion: 0.08
-Nodes (24): @anyko/contracts, @anyko/document-values, @anyko/logger, @anyko/typescript-config, @base-ui/react, lucide-react, react, @tanstack/react-form (+16 more)
+Cohesion: 0.06
+Nodes (33): @anyko/contracts, @anyko/document-values, @anyko/logger, @anyko/typescript-config, @base-ui/react, lucide-react, react, @tanstack/react-form (+25 more)
 
 ### Community 1 - "package.json"
 Cohesion: 0.06
-Nodes (32): @anyko/backend, @anyko/contracts, @anyko/database, @anyko/llm, @anyko/logger, @anyko/typescript-config, @aws-sdk/client-s3, better-auth (+24 more)
+Nodes (33): @anyko/backend, @anyko/contracts, @anyko/database, @anyko/llm, @anyko/logger, @anyko/typescript-config, @aws-sdk/client-s3, better-auth (+25 more)
 
 ### Community 2 - "run-local.test.mjs"
-Cohesion: 0.17
-Nodes (13): createLogWriter(), main(), stop(), tee(), parseLaunchArgs(), root, createTerminalLog(), consume() (+5 more)
+Cohesion: 0.13
+Nodes (15): hook, root, createLogWriter(), main(), stop(), tee(), parseLaunchArgs(), root (+7 more)
 
 ### Community 3 - "values.ts"
-Cohesion: 0.15
-Nodes (37): ambiguousIncome(), Candidate, comparableFactValue(), comparableRow(), comparableScalar(), editFacts(), emptyFacts(), findFactDiscrepancies() (+29 more)
+Cohesion: 0.17
+Nodes (35): ambiguousIncome(), Candidate, comparableFactValue(), comparableRow(), comparableScalar(), editFacts(), findFactDiscrepancies(), includesFactValue() (+27 more)
 
 ### Community 4 - "MVP: автоматизация подготовки заявления о банкротстве физического лица"
 Cohesion: 0.11
 Nodes (18): 10. Крупные задачи разработки, 11. Критерии готовности MVP, 12. Что остаётся определить и что отложено, 13. Технические ориентиры, 1. Цель и границы продукта, 2. Принятые решения, 3. Пользовательский сценарий, 4. Архитектура (+10 more)
 
-### Community 5 - "callApi"
-Cohesion: 0.10
-Nodes (47): requestRetry(), useRetryDocument(), agentHistoryQuery(), agentHistoryRunKey(), analysisRunsQuery(), useRestoreField(), chatKey(), chatMessagesQuery() (+39 more)
+### Community 5 - "calendar-date.ts"
+Cohesion: 0.06
+Nodes (35): bflPackages(), computedOrTechnicalFields, finalFields, propertyFields, withFilling(), bindingKey, block, cell (+27 more)
 
 ### Community 6 - "Правила написания кода"
 Cohesion: 0.33
@@ -336,7 +336,7 @@ Nodes (8): InvalidQuery, journal_command(), main(), parse_time(), read_journal()
 
 ### Community 11 - "document-viewer.tsx"
 Cohesion: 0.10
-Nodes (30): DocumentOwner, documentResultQueryOptions(), documentSourceQueryOptions(), recognitionRetryText, documentKind(), DocumentOriginal(), documentLinks(), DocumentViewer() (+22 more)
+Nodes (33): DocumentFilters, DocumentOwner, documentResultQueryOptions(), documentSourceQueryOptions(), recognitionRetryText, documentKind(), DocumentOriginal(), documentLinks() (+25 more)
 
 ### Community 12 - "api/package.json"
 Cohesion: 0.08
@@ -367,8 +367,8 @@ Cohesion: 0.06
 Nodes (30): Before exploring, read these, Domain Docs, File structure, Flag ADR conflicts, Use the glossary's vocabulary, Conventions, Issue tracker: GitHub, Pull requests as a triage surface (+22 more)
 
 ### Community 21 - ".require"
-Cohesion: 0.09
-Nodes (52): WorkDeletion, WorkError, WorkEventKind, WorkListPage, WorkSourceRow, WorkSources, WorksPorts, WorkSummary (+44 more)
+Cohesion: 0.10
+Nodes (47): Контекст, WorkDeletion, WorkError, WorkEventKind, WorkListPage, WorkSourceRow, WorkSources, WorksPorts (+39 more)
 
 ### Community 22 - "exports"
 Cohesion: 0.25
@@ -379,8 +379,8 @@ Cohesion: 0.22
 Nodes (8): compilerOptions, paths, plugins, types, exclude, extends, include, @anyko/typescript-config/next.json
 
 ### Community 24 - "template-filling.ts"
-Cohesion: 0.07
-Nodes (72): computedOrTechnicalFields, finalFields, layoutPackage, propertyFields, revisedPackages, withFilling(), hasRussianPassportCitizenship(), russianPassportCitation() (+64 more)
+Cohesion: 0.08
+Nodes (64): Бланки пакета банкротства, Подготовка следующей версии, Что сейчас меняется в коде, hasRussianPassportCitizenship(), russianPassportCitation(), capitals(), formatBankruptcyMoney(), formatBankruptcyScalar() (+56 more)
 
 ### Community 25 - "Проверка качества"
 Cohesion: 0.25
@@ -392,7 +392,7 @@ Nodes (25): 1. State the question, 2. Isolate the logic in a portable module, 3.
 
 ### Community 27 - "idempotency/index.ts"
 Cohesion: 0.12
-Nodes (26): KeyedResponse, memoryIdempotency(), Row, AcquireInput, AcquireOutcome, CommandResponse, CreatedResource, IdempotencyKeyRef (+18 more)
+Nodes (26): KeyedResponse, RouteEnv, Row, AcquireInput, AcquireOutcome, CommandResponse, CreatedResource, IdempotencyKeyRef (+18 more)
 
 ### Community 29 - "logger/package.json"
 Cohesion: 0.10
@@ -400,7 +400,7 @@ Nodes (19): dependencies, pino, devDependencies, @anyko/typescript-config, @type
 
 ### Community 30 - "src/catalog/index.ts"
 Cohesion: 0.18
-Nodes (19): mentions(), PackagePreview(), Props, zooms, CollectionNote(), paperMargins(), paragraphStyle(), PreviewPaper() (+11 more)
+Nodes (18): mentions(), PackagePreview(), zooms, CollectionNote(), paperMargins(), paragraphStyle(), PreviewPaper(), PreviewTable() (+10 more)
 
 ### Community 31 - "knip.json"
 Cohesion: 0.15
@@ -420,19 +420,19 @@ Nodes (3): extends, include, @anyko/typescript-config/server.json
 
 ### Community 37 - "creditor-registry.ts"
 Cohesion: 0.12
-Nodes (30): authorisedCreditorQuery(), Candidate, supportedQuery(), verifiedQuery(), CreditorLookup, creditorLookupInput, creditorNameKey(), creditorNameSchema (+22 more)
+Nodes (28): Candidate, supportedQuery(), CreditorLookup, creditorLookupInput, creditorNameKey(), creditorNameSchema, CreditorOrganisation, CreditorQuery (+20 more)
 
 ### Community 38 - "create-backend.ts"
 Cohesion: 0.06
-Nodes (50): createAgentsModule(), createAuditModule(), Connection, connectionsStoreFor(), createConnectionsStore(), createArtifactRegistry(), createDeletionStore(), createMineruParser() (+42 more)
+Nodes (46): agentSessionStoreFor(), createAgentsModule(), createAuditModule(), Connection, connectionsStoreFor(), createConnectionsStore(), createArtifactRegistry(), createDeletionStore() (+38 more)
 
 ### Community 40 - "smoke-windows-migrator.mjs"
 Cohesion: 0.14
 Nodes (10): appdata, bin, data, env, identity, infra, migrator, migratorSource (+2 more)
 
 ### Community 41 - "StatusPill"
-Cohesion: 0.06
-Nodes (82): documentSummary(), deletionBatches(), readDeletionImpacts(), RecognitionAction, requestBulkDeletion(), runForDocuments(), useRecognitionAction(), useUploadDocument() (+74 more)
+Cohesion: 0.05
+Nodes (88): deletionBatches(), readDeletionImpacts(), RecognitionAction, requestBulkDeletion(), requestRetry(), runForDocuments(), useRecognitionAction(), useUploadDocument() (+80 more)
 
 ### Community 42 - "dependencies"
 Cohesion: 0.09
@@ -443,8 +443,8 @@ Cohesion: 0.50
 Nodes (3): extends, include, ../../packages/typescript-config/server.json
 
 ### Community 44 - "backend/package.json"
-Cohesion: 0.10
-Nodes (19): @anyko/database, @anyko/document-values, @anyko/llm, @anyko/logger, @anyko/typescript-config, @aws-sdk/client-s3, better-auth, @better-auth/prisma-adapter (+11 more)
+Cohesion: 0.08
+Nodes (24): devDependencies, @anyko/typescript-config, @types/bun, typescript, @typescript/native, @anyko/database, @anyko/document-values, @anyko/llm (+16 more)
 
 ### Community 45 - "backend/tsconfig.json"
 Cohesion: 0.50
@@ -454,9 +454,9 @@ Nodes (3): extends, include, @anyko/typescript-config/server.json
 Cohesion: 0.50
 Nodes (3): extends, include, @anyko/typescript-config/server.json
 
-### Community 47 - "document-deletion.test.ts"
-Cohesion: 0.07
-Nodes (20): documentLockKey(), ArtifactRegistry, DocumentParser, documentResultSchema, StorageWriteOutcomeUnknown, createDocumentDeletionWorkflow(), createDocumentOcrWorkflow(), failureCodes (+12 more)
+### Community 47 - "database/src/index.ts"
+Cohesion: 0.05
+Nodes (36): AccessOptions, buildAuth(), grantMembership(), provisionLocalAccess(), BackendDependencies, createDatabaseEvents(), signalSchema, countingSeams() (+28 more)
 
 ### Community 48 - "database/package.json"
 Cohesion: 0.06
@@ -471,36 +471,36 @@ Cohesion: 0.08
 Nodes (24): dependencies, zod, devDependencies, @anyko/typescript-config, @types/bun, typescript, @typescript/native, exports (+16 more)
 
 ### Community 51 - "money.ts"
-Cohesion: 0.04
-Nodes (65): EmploymentReview(), rubles(), bindingKey, block, cell, document, documentPackageSchema, paragraph (+57 more)
+Cohesion: 0.08
+Nodes (36): EmploymentReview(), rubles(), assessEmployment(), decimal(), employerKey(), employmentEvents, employmentFields, employmentMonth() (+28 more)
 
 ### Community 52 - "api-design.test.ts"
-Cohesion: 0.08
-Nodes (28): actions, address(), boundedDirectories, collections, declaredOverlaps, entries, Entry, globals (+20 more)
+Cohesion: 0.06
+Nodes (37): actions, address(), boundedDirectories, collections, declaredOverlaps, entries, Entry, globals (+29 more)
 
 ### Community 53 - "llm/package.json"
 Cohesion: 0.09
 Nodes (21): dependencies, @ai-sdk/openai-compatible, zod, devDependencies, @anyko/typescript-config, @types/bun, typescript, @typescript/native (+13 more)
 
-### Community 54 - "stub-http.ts"
-Cohesion: 0.19
-Nodes (10): WorkHttpOptions, Receive, SubscribeDatabaseEvents, ApiBackend, WorkChat, WorkGeneration, WorkIntake, WorkDeletionApi (+2 more)
+### Community 54 - "defineJob"
+Cohesion: 0.26
+Nodes (12): documentLockKey(), idempotencyCleanupJob(), DocumentArtifacts, defineJob(), RunPolicy, createJobRegistry(), documentMaintenanceJob(), documentOcrJob() (+4 more)
 
 ### Community 55 - "http/route.ts"
-Cohesion: 0.11
-Nodes (26): BodyOf, checkedJson(), FileResult, idempotencyKeyOf(), inputCode(), isFileResult(), ParsedPart, parseWith() (+18 more)
+Cohesion: 0.05
+Nodes (52): BodyOf, checkedJson(), createRoute(), FileResult, idempotencyKeyOf(), inputCode(), isFileResult(), ParsedPart (+44 more)
 
 ### Community 56 - "modules/documents/index.ts"
-Cohesion: 0.05
-Nodes (76): deleteDocument(), documents, failed, queued, store(), unused(), listDocuments(), listPendingDeletions() (+68 more)
+Cohesion: 0.04
+Nodes (83): deleteDocument(), documents, failed, queued, store(), unused(), listDocuments(), listPendingDeletions() (+75 more)
 
 ### Community 57 - "Первая вертикаль обработки документов"
-Cohesion: 0.15
-Nodes (11): HTTP и `/api/v1`, MinerU и RouterAI: граница совместимости, Вывод, Два разных контракта, Практический вариант для Anyko, Что проверено, Контракт процессора, Локальный stateless MinerU (+3 more)
+Cohesion: 0.11
+Nodes (16): Артефакт и изображения, Запуск, Первая вертикаль обработки документов, Проверка, Удаление, HTTP и `/api/v1`, MinerU и RouterAI: граница совместимости, Вывод (+8 more)
 
 ### Community 58 - "src/works/index.ts"
-Cohesion: 0.06
-Nodes (52): AnalysisJournal(), dateFormat, HistoryRun, runStatuses, HistoryError(), checklistAction(), Event, number (+44 more)
+Cohesion: 0.05
+Nodes (71): agentHistoryQuery(), agentHistoryRunKey(), analysisRunsQuery(), useRestoreField(), describeFieldRestoreError(), AnalysisJournal(), dateFormat, HistoryRun (+63 more)
 
 ### Community 59 - "facts-form.test.tsx"
 Cohesion: 0.14
@@ -527,56 +527,56 @@ Cohesion: 0.19
 Nodes (9): configure_primary_ocr(), matches_sha256(), model_path(), require_signature(), valid_model(), install(), install_dictionary(), install_weights() (+1 more)
 
 ### Community 65 - "ref_zod"
-Cohesion: 0.06
-Nodes (34): AgentChatStore, ChecklistSuggestion, checklistSuggestionSchema, AgentSessionStore, Reconciliation, reconciliationSchema, AgentDocument, AgentsPorts (+26 more)
+Cohesion: 0.08
+Nodes (27): Reconciliation, WorkReadContext, AgentSession, agentSessionContextSchema, WorkFacts, AnalysisCheckpoint, analysisCheckpointSchema, AnalysisRecovery (+19 more)
 
 ### Community 66 - "api/errors.ts"
-Cohesion: 0.08
-Nodes (33): Интерфейс, revokeConnection(), conflictSummary(), describeFactsSaveError(), factsSaveTexts, fieldsWord(), FactsForm, codes (+25 more)
+Cohesion: 0.06
+Nodes (64): Интерфейс, invalidateDocumentCatalog(), useRetryDocument(), conflictSummary(), describeFactsSaveError(), factsSaveTexts, fieldsWord(), FactsForm (+56 more)
 
 ### Community 67 - "transactions/index.ts"
 Cohesion: 0.11
-Nodes (36): Ошибки, Как добавлять, AgentsModule, AuditModule, ConnectionErrors, ConnectionsModule, ConnectionsPorts, ResourceLocks (+28 more)
+Nodes (34): AgentsModule, ConnectionErrors, ConnectionsModule, ResourceLocks, SourceStorage, DocumentsModule, FactsModule, GenerationFile (+26 more)
 
 ### Community 71 - "devDependencies"
 Cohesion: 0.13
 Nodes (15): devDependencies, @anyko/typescript-config, happy-dom, @happy-dom/global-registrator, tailwindcss, @tailwindcss/postcss, @testing-library/dom, @testing-library/react (+7 more)
 
 ### Community 72 - "work-pipeline.tsx"
-Cohesion: 0.12
-Nodes (25): analysisRuns(), groupSteps(), Run, runProgress(), Step, Run, Step, visionVisuals() (+17 more)
+Cohesion: 0.07
+Nodes (42): analysisRuns(), groupSteps(), Run, runProgress(), Step, Run, Step, visionVisuals() (+34 more)
 
 ### Community 73 - "integration/idempotency.test.ts"
-Cohesion: 0.09
-Nodes (26): lockLiveDocumentForResponse(), createIdempotencyStore(), idempotencyStoreFor(), redactResourceResponses(), workSummarySchema, createChecklistStore(), createWorkDeletionStore(), lockLiveWorkForResponse() (+18 more)
+Cohesion: 0.13
+Nodes (17): createIdempotencyStore(), idempotencyStoreFor(), redactResourceResponses(), lockLiveWorkForResponse(), lockLiveWorkUploadForResponse(), createResourceAwareIdempotencyStore(), redactDeletedDocumentResponses(), redactDeletedWorkResponses() (+9 more)
 
 ### Community 74 - "create-work-form.tsx"
-Cohesion: 0.05
-Nodes (54): ConnectionsPage(), clientReady(), emailSchema, passwordSchema, serverReady(), SignIn(), subscribe(), connectionKeys (+46 more)
+Cohesion: 0.06
+Nodes (60): RecognitionPage(), ConnectionsPage(), clientReady(), emailSchema, passwordSchema, serverReady(), SignIn(), subscribe() (+52 more)
 
-### Community 75 - "createLogger"
-Cohesion: 0.10
-Nodes (20): createApp(), authRoutes(), remove(), Analyze, appWith(), run(), withServer(), contractModules (+12 more)
+### Community 75 - "logger/src/index.ts"
+Cohesion: 0.06
+Nodes (44): parseBackendEnv(), schema, parseApiConfig(), schema, startApi(), createApp(), errorHandling(), statusByKind (+36 more)
 
 ### Community 76 - "access/index.ts"
-Cohesion: 0.12
-Nodes (21): workEventStream(), openEventStream(), workspaceEventStream(), access, member, memberSession, ownerOnlyRights, rightsForRole() (+13 more)
+Cohesion: 0.09
+Nodes (24): workEventStream(), openEventStream(), workspaceEventStream(), access, member, Receive, Область и права, ownerOnlyRights (+16 more)
 
 ### Community 77 - "catalog-deletion.ts"
-Cohesion: 0.10
-Nodes (33): createAgentChatStore(), createAgentHistoryStore(), agentSessionStoreFor(), Connection, createAgentSessionStore(), agentSessionSchema, hasPdfOcrProcessorVersion(), Connection (+25 more)
+Cohesion: 0.14
+Nodes (24): Connection, createDocumentCommands(), lockLiveDocumentForResponse(), Registration, createDocumentReadModel(), legacyPdf(), view(), RunSummary (+16 more)
 
 ### Community 78 - "202611050001_document_vertical/migration.sql"
 Cohesion: 0.13
 Nodes (25): "Account", Account_userId_idx, "Membership", Membership_userId_idx, "ProcessingOutbox", ProcessingOutbox_deliveredAt_leaseUntil_idx, ProcessingOutbox_runId_key, ProcessingOutbox_workspaceId_runId_key (+17 more)
 
 ### Community 79 - "generation/index.ts"
-Cohesion: 0.13
-Nodes (11): createGeneration(), listGenerations(), readGeneration(), GenerationFile, GenerationPorts, GenerationQueries, GenerationStore, GenerationTemplate (+3 more)
+Cohesion: 0.12
+Nodes (10): 3. Author the wizard, createGeneration(), listGenerations(), readGeneration(), GenerationStore, GenerationTemplate, createGenerationModule(), GenerationDeps (+2 more)
 
-### Community 80 - "application/chat-progress.ts"
-Cohesion: 0.18
-Nodes (8): AgentTimelineEntry, ChatDelta, ChatProgress, ChatProgressFeed, chatProgressSchema, ProgressRow, createChatProgressWriter(), checkpoint()
+### Community 80 - "application/chat.ts"
+Cohesion: 0.07
+Nodes (26): Поток обновлений работы, Полное удаление и восстановление, AgentChatMessage, AgentChatStore, ChatRef, ChatSessionRef, checklistChangeSchema, checklistDecision (+18 more)
 
 ### Community 81 - "boundaries.test.ts"
 Cohesion: 0.08
@@ -590,9 +590,9 @@ Nodes (38): attestedAmount(), attestedDate(), attestedIdentifier(), balanceDates
 Cohesion: 0.22
 Nodes (8): cache, checkModules(), install, modules, output, prepare, prismaCache, root
 
-### Community 84 - "render.ts"
-Cohesion: 0.25
-Nodes (8): cellLines(), blankSlots(), inlineLine, paragraphLine, RenderLog, technicalValues, FailureDiagnostic, LogEvent
+### Community 84 - "connection-settings.test.tsx"
+Cohesion: 0.17
+Nodes (11): configured, json(), renderSettings(), serveSaveAnswer(), serveSettings(), sessionWith(), Settings, deletionImpactToken (+3 more)
 
 ### Community 85 - "dev.mjs"
 Cohesion: 0.36
@@ -603,16 +603,16 @@ Cohesion: 0.06
 Nodes (31): devDependencies, @anyko/backend, @anyko/contracts, @anyko/database, @anyko/eslint-config, @anyko/llm, @anyko/logger, @anyko/typescript-config (+23 more)
 
 ### Community 87 - "app-shell.tsx"
-Cohesion: 0.14
-Nodes (21): WorkspaceLayout(), AppShell(), ShellFrame(), renderShell(), user, RenderBoundary, session, WorkspaceSwitcher() (+13 more)
+Cohesion: 0.18
+Nodes (16): WorkspaceLayout(), AppShell(), renderShell(), user, session, session, sessionKeys, sessionQueryOptions() (+8 more)
 
 ### Community 88 - "audit.test.ts"
-Cohesion: 0.07
-Nodes (28): AccessOptions, buildAuth(), grantMembership(), provisionLocalAccess(), AuditContext, AuditEvent, AuditRecord, AuditTarget (+20 more)
+Cohesion: 0.11
+Nodes (17): AuditContext, AuditEvent, AuditRecord, AuditTarget, ADR-0009, AuditCommands, AuditConnection, AuditWriter (+9 more)
 
 ### Community 89 - "candidate-list.tsx"
-Cohesion: 0.22
-Nodes (19): Candidate, courtOptions(), CourtSource, FactValues, sameFieldValue(), sameRow(), candidateSelection(), invalidReviewValue() (+11 more)
+Cohesion: 0.16
+Nodes (28): courtOptions(), sameFieldValue(), candidateSelection(), invalidReviewValue(), normalizedReviewValue(), reviewCandidateValue(), ReviewField, reviewFields() (+20 more)
 
 ### Community 90 - "teach/SKILL.md"
 Cohesion: 0.07
@@ -623,12 +623,12 @@ Cohesion: 0.42
 Nodes (3): reader(), line(), LogReaderTests
 
 ### Community 92 - "work-list.tsx"
-Cohesion: 0.12
-Nodes (24): WorkListPage(), documentPackageKeys, workKeys, documentPackagesQueryOptions(), workDeletionQueryOptions(), worksQueryOptions(), readWorkListParams(), workListHref() (+16 more)
+Cohesion: 0.09
+Nodes (32): LogoLink(), NoWorkspacePage(), SignInScreen(), SignInPage(), ShellFrame(), WorkspaceSwitcher(), Live, WorkHeader() (+24 more)
 
 ### Community 93 - "work-review/edit-values.ts"
-Cohesion: 0.10
-Nodes (30): revision(), createWork(), brandWorkId(), ChatInput, prepareChatWriter(), queueWrite(), writeChecklist(), writeField() (+22 more)
+Cohesion: 0.19
+Nodes (15): confirmFacts(), ChecklistChange, ChecklistDeps, editChecklistLink(), EditDeps, EditRequest, editValues(), FieldChange (+7 more)
 
 ### Community 94 - "smoke-windows-release.py"
 Cohesion: 0.10
@@ -643,16 +643,16 @@ Cohesion: 0.22
 Nodes (7): cache, env, installDir, modelHome, output, pyRelative, rejectLinks()
 
 ### Community 97 - "ref_bun_test"
-Cohesion: 0.20
-Nodes (18): renderWork(), source, result, deletionImpactToken, Status, serveWork(), serveWork(), installEventSource() (+10 more)
+Cohesion: 0.23
+Nodes (16): renderWork(), source, result, serveWork(), serveWork(), installEventSource(), json(), networkError (+8 more)
 
 ### Community 98 - "routes/documents/index.ts"
-Cohesion: 0.07
-Nodes (42): imageHeaders(), imageIndex(), sourceFileHeaders(), documentRoutes(), presentDocumentResult(), presentWork(), worksRoutes(), Область и права (+34 more)
+Cohesion: 0.09
+Nodes (30): createDocumentDeletions, deleteDocument, deletionBatchQuery, deletionImpact, deletionImpactToken, documentDeletionBatchLimit, documentDeletionRejection, documentParams (+22 more)
 
-### Community 99 - "workspace-states.tsx"
-Cohesion: 0.11
-Nodes (21): dynamic, relay(), WorkspaceLoading(), WorkspaceUnavailable(), RootError(), GlobalError(), RecognitionError(), Loading() (+13 more)
+### Community 99 - "logger.ts"
+Cohesion: 0.20
+Nodes (10): dynamic, relay(), onRequestError(), register(), proxyApiRequest(), readServerConfig(), schema, serverLogger() (+2 more)
 
 ### Community 100 - "202611050007_work_pipeline/migration.sql"
 Cohesion: 0.14
@@ -660,39 +660,39 @@ Nodes (25): "Work", Work_workspaceId_id_key, Work_workspaceId_updatedAt_idx, "Wo
 
 ### Community 101 - "work-screen.tsx"
 Cohesion: 0.08
-Nodes (37): WorkPage(), Content, NextStep(), Tone, tones, captionTones, Meta, stepMeta() (+29 more)
+Nodes (36): WorkPage(), Content, NextStep(), Tone, tones, captionTones, Meta, stepMeta() (+28 more)
 
 ### Community 102 - "reconcile.ts"
 Cohesion: 0.08
-Nodes (50): analysisPolicyRevisionInput(), analysisProposalsSchema(), documentExtractionPolicy(), createAnalysisStepAgent(), createChatAgent(), createWorkContextBudget(), fallback, Prompt (+42 more)
+Nodes (57): analysisPolicyRevisionInput(), analysisProposalsSchema(), documentExtractionPolicy(), stepwiseAnalysisInstructions, Candidate, createAnalysisStepAgent(), evidenceBinder(), createChatAgent() (+49 more)
 
 ### Community 103 - "ui/src/index.ts"
-Cohesion: 0.05
-Nodes (57): AttachmentSuggestion, attachmentSuggestions(), categories, copyKinds, Document, DocumentAttachment(), AttachmentReview(), Document (+49 more)
+Cohesion: 0.06
+Nodes (48): Affected, consequences, labels, CurrentCandidateValue(), ConflictValue(), EditConflicts(), FieldCardHeader(), SourceFragments() (+40 more)
 
 ### Community 104 - "WorkStore"
-Cohesion: 0.07
-Nodes (14): activeDocument(), attachDocuments(), findWork(), listEvents(), listWorks(), notifyDocumentChanged(), readCursor(), readSources() (+6 more)
+Cohesion: 0.05
+Nodes (24): activeDocument(), attachDocuments(), createWork(), failureOf(), findWork(), listEvents(), listWorks(), notifyDocumentChanged() (+16 more)
 
 ### Community 105 - "exports"
 Cohesion: 0.15
 Nodes (13): exports, ./access, ./connections, ./documents, ./errors, ./idempotency, ./ids, ./jobs (+5 more)
 
-### Community 106 - "Button"
-Cohesion: 0.09
-Nodes (51): RecognitionPage(), WorkNotFound(), invalidateDocumentCatalog(), unavailableCatalogFiles(), SelectedCatalogFiles(), DocumentWorkspace(), DocumentRetryButton(), FieldCardHeader() (+43 more)
+### Community 106 - "EventHorizon"
+Cohesion: 0.17
+Nodes (14): WorkNotFound(), Files(), Generation, generationTones, WorkResults(), DropZone(), take(), filePlural (+6 more)
 
 ### Community 107 - "processing/index.ts"
-Cohesion: 0.12
-Nodes (35): WorkspaceActorScope, DocumentAnalysis, WorkAttempt, failureOf(), isAppError(), AnalysisGoal, AnalysisPlan, validateAnalysisPlan() (+27 more)
+Cohesion: 0.08
+Nodes (53): WorkspaceActorScope, checklistWriteTool, fieldWriteTool, AnalysisStepInput, DocumentAnalysis, WorkAttempt, isAppError(), assertUuid() (+45 more)
 
 ### Community 108 - "documents.test.ts"
-Cohesion: 0.04
-Nodes (58): apps/worker, Как добавлять, Правила, Устройство, SourceStorage, createS3Storage(), BackendConfig, BackendConfigErrorCode (+50 more)
+Cohesion: 0.05
+Nodes (38): createS3Storage(), runDelivery(), BackendConfig, BackendConfigErrorCode, backendConfigSchema, encryptionKey, httpUrl, postgresUrl (+30 more)
 
 ### Community 109 - "app.ts"
-Cohesion: 0.10
-Nodes (37): ApiInput, AppOptions, registerScopedRoutes(), versionedRoutes(), transportErrorCodes, errorHandling(), statusByKind, noStore() (+29 more)
+Cohesion: 0.08
+Nodes (41): ApiInput, AppOptions, registerScopedRoutes(), versionedRoutes(), transportErrorCodes, noStore(), originGuard(), safeMethods (+33 more)
 
 ### Community 110 - "llm/tsconfig.json"
 Cohesion: 0.50
@@ -700,23 +700,23 @@ Nodes (3): extends, include, @anyko/typescript-config/server.json
 
 ### Community 111 - "job-host.test.ts"
 Cohesion: 0.09
-Nodes (33): claimDocumentAttempt(), documentOcrPolicy, start(), activeAttempt(), claimRun(), finishRun(), NotifyDocumentRun, recoverRuns() (+25 more)
+Nodes (34): documentOcrPolicy, ClaimedWorkRun, stepOutputSchema, workRunSchema, start(), activeAttempt(), claimRun(), finishRun() (+26 more)
 
-### Community 112 - "common/index.ts"
-Cohesion: 0.06
-Nodes (36): buildOpenApi(), Json, jsonSchema(), operation(), parameters(), requestBody(), successResponse(), HTTP (+28 more)
+### Community 112 - "openapi.ts"
+Cohesion: 0.30
+Nodes (10): buildOpenApi(), Json, jsonSchema(), operation(), parameters(), requestBody(), successResponse(), errorCodeSchema (+2 more)
 
 ### Community 113 - "Серверная часть"
 Cohesion: 0.06
-Nodes (36): fields(), HTTP по endpoint-описаниям, Архитектура серверной части: модули, доверенный scope, HTTP по контрактам и реестр заданий, Композиция процесса, Контекст, Контракты, Модуль: фасад команд и запросов, Отвергнуто (+28 more)
+Nodes (39): apps/api, Как добавлять, Правила, Устройство, GET(), encodeBody(), formData(), HTTP по endpoint-описаниям (+31 more)
 
 ### Community 114 - "facts-form.ts"
-Cohesion: 0.19
-Nodes (23): applyRevision(), draftForSave(), FactsDraft, FactsDraftEvent, FactsDraftTransition, FactsFormChange, FactsRevision, hasFactsDraftEdits() (+15 more)
+Cohesion: 0.16
+Nodes (21): applyRevision(), draftForSave(), FactsDraftEvent, FactsDraftTransition, hasFactsDraftEdits(), rebaseFacts(), resolveEditConflict(), startFactsDraft() (+13 more)
 
-### Community 115 - "architecture.md"
-Cohesion: 0.14
-Nodes (7): Один модульный монолит с отдельными процессами, Рабочая область является границей владения данными, PostgreSQL хранит намерение обработки, очередь доставляет работу, Работы по шаблону и готовый агентский runtime, Работа по пакету документов, Постоянная сессия работы и отдельные потоки попыток, Выводы агента, продолжение анализа и форматы подстановки
+### Community 115 - "assets/README.md"
+Cohesion: 0.09
+Nodes (17): Постоянная сессия работы и отдельные потоки попыток, Выводы агента, продолжение анализа и форматы подстановки, Контекст, Отвергнуто, Последствия, Профили обработки и описания пакетов, Решение, Единая агентская сессия от исходников до чата (+9 more)
 
 ### Community 116 - "Anyko — брендбук"
 Cohesion: 0.08
@@ -724,19 +724,19 @@ Nodes (22): This is NOT the Next.js you know, apps/web, Устройство и 
 
 ### Community 117 - "routes/works/index.ts"
 Cohesion: 0.04
-Nodes (66): logger, Sent, session, fieldKeySchema, fieldValueSchema, fieldValuesSchema, pageResponseSchema(), agentHistoryEvent (+58 more)
+Nodes (77): imageHeaders(), imageIndex(), sourceFileHeaders(), documentRoutes(), presentDocumentResult(), documentSummary(), presentWork(), worksRoutes() (+69 more)
 
 ### Community 118 - "call.ts"
-Cohesion: 0.07
-Nodes (45): chatProgressKey(), useChatProgress(), useWorkEvents(), WorkLive, BodyField, CallArgs, callFileApi(), CallOptions (+37 more)
+Cohesion: 0.08
+Nodes (41): chatProgressKey(), useChatProgress(), useWorkEvents(), WorkLive, BodyField, CallArgs, callFileApi(), CallOptions (+33 more)
 
 ### Community 119 - "Примеры v2"
 Cohesion: 0.15
 Nodes (12): C1, C2, C3, C4, C5, C6, C7, C8 (+4 more)
 
 ### Community 120 - "start-worker.ts"
-Cohesion: 0.06
-Nodes (40): parseBackendEnv(), schema, parseApiConfig(), schema, startApi(), analysisStepwiseSchema, minModelContextSchema, parseBackendEnv() (+32 more)
+Cohesion: 0.10
+Nodes (21): analysisStepwiseSchema, minModelContextSchema, parseBackendEnv(), schema, parseWorkerConfig(), schema, startWorker(), resultSchema (+13 more)
 
 ### Community 121 - "During the session"
 Cohesion: 0.09
@@ -759,20 +759,20 @@ Cohesion: 0.10
 Nodes (18): Call-graph collapse, Candidate card, Cross-section (good for layered shallowness), Diagram patterns, Hand-built boxes-and-arrows (when Mermaid's layout fights you), Header, HTML Report Format, Mass diagram (good for "interface as wide as implementation") (+10 more)
 
 ### Community 127 - "work-list.test.tsx"
-Cohesion: 0.09
-Nodes (20): configured, json(), renderSettings(), serveSaveAnswer(), serveSettings(), sessionWith(), Settings, run() (+12 more)
+Cohesion: 0.21
+Nodes (8): createdWorkView, existingWork, json(), packages, serveWorkList(), template, expectFocused(), @testing-library/user-event
 
 ### Community 128 - "Размещение и эксплуатация"
 Cohesion: 0.29
 Nodes (7): Восстановление и данные, Начальная топология, Порядок выпуска, Процесс и наблюдаемость, Размещение и эксплуатация, Рост без смены модели, Удаление работ на пакетах БФЛ v1–v11
 
 ### Community 129 - "AGENTS.md"
-Cohesion: 0.14
-Nodes (8): graphify, Автор изменения, Изменение правил и инструкции, Проверяющий агент, Работа агентов и независимая проверка, TypeScript 7 и программный API, Версии и совместимость инструментов, Database client generation
+Cohesion: 0.16
+Nodes (6): graphify, Один модульный монолит с отдельными процессами, Рабочая область является границей владения данными, PostgreSQL хранит намерение обработки, очередь доставляет работу, Работы по шаблону и готовый агентский runtime, Работа по пакету документов
 
 ### Community 130 - "facts/index.ts"
 Cohesion: 0.09
-Nodes (37): acceptRunCandidates(), Candidate, ref, runFacts(), confirmValues(), editValues(), projectRunFacts(), RunProposals (+29 more)
+Nodes (34): acceptRunCandidates(), Candidate, ref, runFacts(), confirmValues(), editValues(), projectRunFacts(), RunProposals (+26 more)
 
 ### Community 131 - "template.sh"
 Cohesion: 0.22
@@ -780,19 +780,19 @@ Nodes (18): ask(), ask_secret(), banner(), _clear(), _existing(), finish(), note
 
 ### Community 132 - "works.test.ts"
 Cohesion: 0.05
-Nodes (33): assets, debtClaimProfile, packages, registerDebtClaim(), unregisterDebtClaim(), actualPool, agents, apiBackend (+25 more)
+Nodes (40): workspaceWithWork(), memberScope(), getWorkAgentHistory, upload(), waitFor(), assets, debtClaimProfile, packages (+32 more)
 
-### Community 133 - "Приёмочный комплект БФЛ"
-Cohesion: 0.40
-Nodes (4): Локальная сверка, Приёмочный комплект БФЛ, Сверка с живым провайдером, Эталон заполнения для #87
+### Community 133 - "ExecutionScope"
+Cohesion: 0.17
+Nodes (9): createJobProcessing(), JobRunReader, SavedJobRun, run, JobEnvelope, JobRegistry, ExecutionScope, issueExecutionScope() (+1 more)
 
 ### Community 134 - "Ask Matt"
 Cohesion: 0.12
 Nodes (14): Phase boundaries, Primary and secondary sources, The five options, The tree, These are judgement calls, Ask Matt, Codebase health, Context hygiene (+6 more)
 
-### Community 135 - "Tx"
-Cohesion: 0.05
-Nodes (33): Единый механизм запусков, Выкат #22 в окно обслуживания, Выкат заданий и очередей, Выкат общего каталога (#44), DocumentAttempt, IoSubject, ProcessingIo, isActive() (+25 more)
+### Community 135 - "WorkProcessingStore"
+Cohesion: 0.15
+Nodes (6): isActive(), listRuns(), startRun(), WorkProcessingStore, createProcessingModule(), ProcessingDeps
 
 ### Community 136 - "Diagnosing Bugs"
 Cohesion: 0.13
@@ -808,31 +808,35 @@ Nodes (5): Документы и сведения, Заявление о бан�
 
 ### Community 139 - "DocumentAgents"
 Cohesion: 0.06
-Nodes (40): AgentChatMessage, AgentChecklistChange, AgentChecklistWrite, AgentFieldChange, AgentFieldWrite, AgentWriteReceipt, ChatRef, ChatSessionRef (+32 more)
+Nodes (37): AgentChecklistChange, AgentChecklistWrite, AgentFieldChange, AgentFieldWrite, AgentTimelineEntry, AgentWriteReceipt, ChatDelta, ChatProgress (+29 more)
 
 ### Community 140 - "render.ts"
-Cohesion: 0.27
-Nodes (10): attribute(), Cell, fontSize(), padding(), paragraphFonts(), Part, positive(), rowCellCounts() (+2 more)
+Cohesion: 0.15
+Nodes (18): attribute(), Cell, cellLines(), fontSize(), padding(), paragraphFonts(), Part, positive() (+10 more)
 
 ### Community 141 - "202611170017_unified_processing/migration.sql"
 Cohesion: 0.17
 Nodes (22): "ProcessingIo", ProcessingIo_workspaceId_documentId_idx, ProcessingIo_workspaceId_requestKey_idx, ProcessingIo_workspaceId_workId_idx, "Run", run_one_active_work, Run_resultKey_key, Run_status_leaseUntil_idx (+14 more)
+
+### Community 142 - "unit-of-work.test.ts"
+Cohesion: 0.14
+Nodes (13): changeDeps, config, db, failing, failureOf(), lockPool, logger, normal (+5 more)
 
 ### Community 143 - "Test-Driven Development"
 Cohesion: 0.15
 Nodes (10): Designing for Mockability, When to Mock, Anti-patterns, Rules of the loop, Seams: where tests go, Test-Driven Development, What a good test is, Bad Tests (+2 more)
 
 ### Community 144 - "catalog-document-deletion.ts"
-Cohesion: 0.20
-Nodes (5): deleteCatalogDocument(), DeletionPorts, ImpactPorts, impactToken(), readDeletionImpact()
+Cohesion: 0.21
+Nodes (4): deleteCatalogDocument(), DeletionPorts, ImpactPorts, readDeletionImpact()
 
 ### Community 145 - "check-project.mjs"
 Cohesion: 0.15
 Nodes (14): anchorSources, architectureFiles, documents, errors, manifests, markdown, markdownFiles(), packageManifests (+6 more)
 
-### Community 146 - "endpoint"
-Cohesion: 0.14
-Nodes (14): RouteEnv, ConnectionHttpOptions, NamedEndpoint, ConnectionSettingsApi, listDocumentPackages, packagesResponseSchema, endpoint, json() (+6 more)
+### Community 146 - "connections/api/mutations.ts"
+Cohesion: 0.12
+Nodes (18): ConnectionHttpOptions, connectionKeys, LlmSettingsInput, refreshLlmSettings(), useRevokeLlmSettings(), useSaveLlmSettings(), ConnectionSettingsApi, ADR-0008 (+10 more)
 
 ### Community 147 - "Process"
 Cohesion: 0.15
@@ -843,8 +847,8 @@ Cohesion: 0.13
 Nodes (8): browserStorageRules, ADR-0009, architectureRules, ioGlobals, restrictedIoGlobals, frontendLibrary, frontendTests, @eslint-community/eslint-plugin-eslint-comments
 
 ### Community 149 - "attachments.ts"
-Cohesion: 0.25
-Nodes (9): Candidates, attachmentCategories, attachmentCopyKinds, attachmentDescriptions(), AttachmentRow, packageAttachment(), packageAttachments, submittedAttachmentRows() (+1 more)
+Cohesion: 0.18
+Nodes (22): AttachmentSuggestion, attachmentSuggestions(), categories, copyKinds, Document, DocumentAttachment(), AttachmentReview(), Document (+14 more)
 
 ### Community 150 - "writing-for-agents/SKILL.md"
 Cohesion: 0.15
@@ -854,21 +858,21 @@ Nodes (11): Context pointers, Information hierarchy, Leading words, Invocation, 
 Cohesion: 0.29
 Nodes (8): Behavioral, not procedural, Complete acceptance criteria, Durability over precision, Explicit scope boundaries, Principles, paint(), schedule(), tick()
 
-### Community 152 - "audit/index.ts"
-Cohesion: 0.15
-Nodes (9): input, currentConnection(), LlmConfiguration, LlmSettingsInput, LlmSettingsStore, revokeConnection(), persistConnection(), saveConnection() (+1 more)
+### Community 152 - "clock.ts"
+Cohesion: 0.08
+Nodes (27): AuditModule, input, currentConnection(), LlmConfiguration, LlmSettingsInput, LlmSettingsStore, revokeConnection(), persistConnection() (+19 more)
 
-### Community 154 - "build-windows-portable.mjs"
-Cohesion: 0.33
-Nodes (3): env, lock, root
+### Community 154 - "errorReference"
+Cohesion: 0.37
+Nodes (7): WorkspaceUnavailable(), RootError(), GlobalError(), RecognitionError(), ConnectionsError(), WorksError(), errorReference()
 
 ### Community 155 - "Размещение основы в Dokploy"
 Cohesion: 0.40
 Nodes (5): Образы и ресурсы, Ограниченное чтение агентом, Приёмка на реальном сервере, Размещение основы в Dokploy, Хранение логов
 
 ### Community 156 - "start.ts"
-Cohesion: 0.10
-Nodes (20): E2E_QUEUE_PREFIX, parseE2eConfig(), schema, valid, agents, api, config, env (+12 more)
+Cohesion: 0.12
+Nodes (16): agents, api, config, env, events(), files, fixtureDb, fixturePool (+8 more)
 
 ### Community 157 - ""AnykoWorkspace""
 Cohesion: 0.16
@@ -882,29 +886,29 @@ Nodes (5): Глубина проверки по риску, Как доказа�
 Cohesion: 0.14
 Nodes (24): box_coordinates(), comparable_text(), continued_table_pages(), detect_image_boxes(), export_page_evidence(), markdown_row(), markdown_text(), match_scan_blocks() (+16 more)
 
-### Community 160 - "apps/api"
-Cohesion: 0.50
-Nodes (4): apps/api, Как добавлять, Правила, Устройство
+### Community 160 - "works/infrastructure/store.ts"
+Cohesion: 0.26
+Nodes (8): workSummarySchema, createChecklistStore(), createWorkDeletionStore(), Connection, createWorkStore(), worksStoreFor(), Connection, createUploadGroupsStore()
 
 ### Community 161 - "wayfinder/SKILL.md"
 Cohesion: 0.17
 Nodes (11): Chart the map, Fog of war, Invocation, Out of scope, Plan, don't do, Refer by name, The Map, The map body (+3 more)
 
 ### Community 162 - "WorkspaceScope"
-Cohesion: 0.09
-Nodes (23): Доверенный scope и права, works, DocumentsCommands, DocumentsQueries, GenerationCommands, WorkRuns, ProcessingQueries, WorksCommands (+15 more)
+Cohesion: 0.08
+Nodes (20): Доверенный scope и права, DocumentDeletionImpact, DocumentsCommands, DocumentsQueries, FactsCommands, GenerationCommands, GenerationQueries, WorkRuns (+12 more)
 
 ### Community 163 - "arbitration-court.ts"
 Cohesion: 0.17
-Nodes (14): addressKey(), addressMentionsTerritory(), cataloguePage, catalogueSchema, contactAddresses(), courtContactUrl(), CourtLookup, courtTerritorySchema (+6 more)
+Nodes (13): addressKey(), addressMentionsTerritory(), cataloguePage, catalogueSchema, contactAddresses(), courtContactUrl(), CourtLookup, courtTerritorySchema (+5 more)
 
 ### Community 164 - "packages/document-values"
 Cohesion: 0.50
 Nodes (4): packages/document-values, Как добавлять, Правила, Устройство
 
-### Community 165 - "finding-sources.tsx"
-Cohesion: 0.20
-Nodes (15): CandidateOption(), optionLabel(), Checked(), CourtSources, CreditorSource, Findings, FindingSources(), formatSourceDate (+7 more)
+### Community 165 - "ProcessingIo"
+Cohesion: 0.25
+Nodes (5): Выкат #22 в окно обслуживания, Выкат заданий и очередей, Выкат общего каталога (#44), IoSubject, ProcessingIo
 
 ### Community 166 - "to-spec/SKILL.md"
 Cohesion: 0.22
@@ -915,8 +919,8 @@ Cohesion: 0.28
 Nodes (4): DiskProjection, HoleFrame, createGalaxyRenderer(), createLensedSky()
 
 ### Community 168 - "catalog/schemas.ts"
-Cohesion: 0.14
-Nodes (13): pack, paragraph(), fieldDefinitions, FieldDefinition, fieldRowSchema, documentPackageSchema, documentTemplateSchema, generationFileSchema (+5 more)
+Cohesion: 0.13
+Nodes (14): pack, paragraph(), fieldDefinitions, listDocumentPackages, FieldDefinition, documentPackageSchema, documentTemplateSchema, generationFileSchema (+6 more)
 
 ### Community 169 - "Triage"
 Cohesion: 0.22
@@ -1011,20 +1015,20 @@ Cohesion: 0.33
 Nodes (5): Evidence, Guidance, Merge Danger, Sections, Summary
 
 ### Community 194 - "agent-github.mjs"
-Cohesion: 0.30
+Cohesion: 0.32
 Nodes (11): assertNoLocalAuthHeaders(), assertPermissions(), commandEnvironment(), commandTimeout(), main(), mintToken(), permissions, readResponse() (+3 more)
 
 ### Community 195 - "obligations.ts"
-Cohesion: 0.22
-Nodes (18): FieldRow, applyCreditorRegistryCandidate(), applyObligationCandidate(), canApplyCreditorRegistryCandidate(), contractNumber(), creditorIdentifiersConflict(), creditorName(), DebtRow (+10 more)
+Cohesion: 0.20
+Nodes (19): FieldRow, checklistWithContracts, applyCreditorRegistryCandidate(), applyObligationCandidate(), canApplyCreditorRegistryCandidate(), contractNumber(), creditorIdentifiersConflict(), creditorName() (+11 more)
 
-### Community 196 - "result-preview.tsx"
-Cohesion: 0.18
-Nodes (9): cyrillicMathMacros, schema, react-dom, react-markdown, rehype-katex, rehype-raw, rehype-sanitize, remark-gfm (+1 more)
+### Community 196 - "workspace-states.tsx"
+Cohesion: 0.46
+Nodes (4): WorkspaceLoading(), Loading(), Loading(), Loading()
 
-### Community 197 - "Бланки пакета банкротства"
-Cohesion: 0.67
-Nodes (3): Бланки пакета банкротства, Подготовка следующей версии, Что сейчас меняется в коде
+### Community 197 - "journey.test.ts"
+Cohesion: 0.29
+Nodes (3): run(), view(), availableWorkCommands
 
 ### Community 198 - "ProcessorReview"
 Cohesion: 0.15
@@ -1050,29 +1054,29 @@ Nodes (3): capture(), hitl-loop.template.sh script, step()
 Cohesion: 0.50
 Nodes (3): GLOSSARY.md Format, Rules, Structure
 
-### Community 214 - "Anyko"
-Cohesion: 0.50
-Nodes (4): Anyko, Запуск и диагностика, Локальная сборка для Windows, Разработка каркаса
+### Community 214 - "Задания"
+Cohesion: 0.18
+Nodes (9): RenderBoundary, Фоновые задания, Единый механизм запусков, Задания, parseJobEnvelope(), Anyko, Запуск и диагностика, Локальная сборка для Windows (+1 more)
 
 ### Community 215 - "Решение"
-Cohesion: 0.25
-Nodes (8): Архитектура web-приложения: уровни, маршруты рабочей области и общий UI-пакет, Общий UI-пакет, Отвергнуто, Последствия, Проверка сессии на сервере, Рабочая область в адресе, Разделы, Решение
+Cohesion: 0.22
+Nodes (9): Архитектура web-приложения: уровни, маршруты рабочей области и общий UI-пакет, Общий UI-пакет, Отвергнуто, Последствия, Проверка сессии на сервере, Рабочая область в адресе, Разделы, Решение (+1 more)
 
 ### Community 216 - "startBlackHole"
-Cohesion: 0.53
-Nodes (4): startBlackHole(), paint(), tick(), visibility()
+Cohesion: 0.39
+Nodes (5): startBlackHole(), paint(), tick(), visibility(), CosmicBackground()
 
 ### Community 217 - "Направления развития Anyko"
 Cohesion: 0.33
 Nodes (6): Агентский слой продукта, Когда разделять дальше, Коммерческая модель, Направления развития Anyko, Расширения и точки подключения, Что закладывается в первую реализацию
 
 ### Community 219 - "jobs/index.ts"
-Cohesion: 0.06
-Nodes (47): dispatchOutbox(), reconcileJobs(), startJobWorker(), Фоновые задания, Задания, Локальная трассировка модели, События и серверный журнал, idempotencyCleanupJob() (+39 more)
+Cohesion: 0.15
+Nodes (13): dispatchOutbox(), reconcileJobs(), currentEnvelope, identity, JobDelivery, JobRuntime, RetryPolicy, RunJob (+5 more)
 
 ### Community 220 - "ref_node_fs"
 Cohesion: 0.10
-Nodes (13): child, metadata, mineru, path, python, root, output, hook (+5 more)
+Nodes (9): assetTypes, output, links, marker, downloads, output, sources, result (+1 more)
 
 ### Community 221 - ""WorkGeneration""
 Cohesion: 0.26
@@ -1087,12 +1091,12 @@ Cohesion: 0.38
 Nodes (5): ChecklistItem, ChecklistRequirement, ChecklistSource, projectChecklist(), SourceStatus
 
 ### Community 225 - "journeys.spec.ts"
-Cohesion: 0.29
-Nodes (4): @playwright/test, ObservedEventSource, required(), signIn()
+Cohesion: 0.40
+Nodes (3): ObservedEventSource, required(), signIn()
 
-### Community 227 - "fingerprintInput"
-Cohesion: 0.16
-Nodes (11): HTTP и данные, Артефакт и изображения, Запуск, Первая вертикаль обработки документов, Проверка, Удаление, canonicalize(), fingerprintInput() (+3 more)
+### Community 227 - "bootstrap.mjs"
+Cohesion: 0.29
+Nodes (6): child, metadata, mineru, path, python, root
 
 ### Community 228 - "packages/contracts"
 Cohesion: 0.50
@@ -1102,45 +1106,45 @@ Nodes (4): packages/contracts, Как добавлять, Правила, Уст
 Cohesion: 0.33
 Nodes (4): "IdempotencyKey", IdempotencyKey_expiresAt_idx, IdempotencyKey_resource_idx, IdempotencyKey_resource_documents_idx
 
-### Community 230 - "[file]/route.ts"
-Cohesion: 0.33
-Nodes (4): assetTypes, GET(), LlmSettings, Подключение модели
+### Community 230 - "Runtime и диагностика"
+Cohesion: 0.40
+Nodes (5): Dokploy и доказательства, Runtime и диагностика, Конфигурация и жизненный цикл, Ответственность, Очередь
 
 ### Community 231 - "processor.py"
 Cohesion: 0.08
 Nodes (7): erase(), health(), parse(), parse_source(), prepare_visual_inputs(), OcrStartupReview, RasterRecoveryReview
 
 ### Community 233 - "ref_node_path"
-Cohesion: 0.16
-Nodes (7): config, bunTestPaths(), flagsWithValues, uncoveredBunTests(), links, marker, [target, link]
+Cohesion: 0.18
+Nodes (7): config, env, lock, root, bunTestPaths(), flagsWithValues, uncoveredBunTests()
 
 ### Community 234 - "scripts"
 Cohesion: 0.33
 Nodes (6): scripts, build, dev, start, test, typecheck
 
-### Community 235 - "Единая агентская сессия от исходников до чата"
-Cohesion: 0.33
-Nodes (6): Единая агентская сессия от исходников до чата, Интерфейс сессии, Контекст, стоимость и время, Обращение по шагам, Переход и проверка, Попытки и фиксация
-
 ### Community 236 - "smoke-windows-mineru.mjs"
 Cohesion: 0.14
 Nodes (8): components, env, metadata, python, pythonRelative, root, source, root
 
+### Community 237 - "RunDefinition"
+Cohesion: 0.40
+Nodes (3): CommonDefinition, RunDefinition, ScheduledDefinition
+
 ### Community 238 - "bfl/fields.ts"
-Cohesion: 0.07
-Nodes (45): generateDocument(), availablePackages(), knownPackages, requirePackage(), templateBytes(), DocumentPackage, bytes, requireTemplate() (+37 more)
+Cohesion: 0.06
+Nodes (49): generateDocument(), availablePackages(), knownPackages, { layoutPackage, revisedPackages }, requirePackage(), templateBytes(), DocumentPackage, bytes (+41 more)
 
 ### Community 239 - ""WorkDeletion""
 Cohesion: 0.60
 Nodes (4): Work_workspaceId_deletedAt_createdAt_id_idx, "WorkDeletion", WorkDeletion_completedAt_failedAt_createdAt_idx, WorkDeletion_workspaceId_completedAt_idx
 
-### Community 240 - "Профили обработки и описания пакетов"
-Cohesion: 0.40
-Nodes (5): Контекст, Отвергнуто, Последствия, Профили обработки и описания пакетов, Решение
+### Community 240 - "apps/worker"
+Cohesion: 0.50
+Nodes (4): apps/worker, Как добавлять, Правила, Устройство
 
-### Community 241 - "chat-model.ts"
-Cohesion: 0.40
-Nodes (4): chatModelFetch, completionRequest, userMessage, values
+### Community 241 - "FieldValue"
+Cohesion: 0.16
+Nodes (14): Candidate, CourtSource, FactsDraft, FactsFormChange, FactsRevision, Props, FieldKey, fieldRowSchema (+6 more)
 
 ### Community 242 - "packages/logger"
 Cohesion: 0.50
@@ -1150,13 +1154,13 @@ Nodes (4): packages/logger, Как добавлять, Правила, Устр�
 Cohesion: 0.67
 Nodes (3): packages/eslint-config, Как добавлять, Правила
 
-### Community 247 - "devDependencies"
-Cohesion: 0.40
-Nodes (5): devDependencies, @anyko/typescript-config, @types/bun, typescript, @typescript/native
+### Community 247 - "Работа агентов и независимая проверка"
+Cohesion: 0.50
+Nodes (4): Автор изменения, Изменение правил и инструкции, Проверяющий агент, Работа агентов и независимая проверка
 
 ### Community 251 - "Process"
-Cohesion: 0.25
-Nodes (6): 1. Scope the procedure, 2. Map each stage's journey, 3. Author the wizard, 4. Verify and hand off, Process, Wizard
+Cohesion: 0.33
+Nodes (5): 1. Scope the procedure, 2. Map each stage's journey, 4. Verify and hand off, Process, Wizard
 
 ### Community 252 - "Заполнение заявления о банкротстве гражданина"
 Cohesion: 0.20
@@ -1170,17 +1174,17 @@ Nodes (6): concreteProfileImports, { existsSync, readdirSync }, knownModules, mo
 Cohesion: 0.40
 Nodes (5): API и worker, Backend, Feature-based web и модульный backend с ports/adapters, Web, Последствия
 
-### Community 261 - "routes.ts"
-Cohesion: 0.13
-Nodes (19): LogoLink(), LegacyRecognitionPage(), HomePage(), NoWorkspacePage(), SignInScreen(), SignInPage(), LegacyWorkPage(), SignOut() (+11 more)
+### Community 261 - "server/session.ts"
+Cohesion: 0.17
+Nodes (10): LegacyRecognitionPage(), HomePage(), LegacyWorkPage(), getSession, hasSessionCookie(), readSession(), Call, session (+2 more)
 
 ### Community 265 - "Каталог HTTP API"
-Cohesion: 0.50
-Nodes (4): catalog, connections, session, Каталог HTTP API
+Cohesion: 0.40
+Nodes (5): catalog, connections, session, works, Каталог HTTP API
 
 ### Community 267 - "Issue tracker: GitHub"
-Cohesion: 0.50
-Nodes (4): Issue tracker: GitHub, Operations, Pull requests as a triage surface, Skill instructions
+Cohesion: 0.19
+Nodes (6): Issue tracker: GitHub, Operations, Pull requests as a triage surface, Skill instructions, TypeScript 7 и программный API, Версии и совместимость инструментов
 
 ### Community 269 - "packages/backend"
 Cohesion: 0.50
@@ -1188,23 +1192,23 @@ Nodes (4): packages/backend, Как добавлять, Правила, Устр
 
 ## Knowledge Gaps
 - **157 isolated node(s):** `ADR-0012`, `@anyko/backend`, `@anyko/logger`, `zod`, `@anyko/typescript-config` (+152 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2223 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **52 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 2224 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **51 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `HTTP` connect `common/index.ts` to `routes/documents/index.ts`, `fingerprintInput`, `Серверная часть`, `http/route.ts`, `LogReaderTests`?**
+- **Why does `HTTP` connect `http/route.ts` to `Серверная часть`, `LogReaderTests`, `access/index.ts`?**
   _High betweenness centrality (0.108) - this node is a cross-community bridge._
 - **Are the 4 inferred relationships involving `WorkspaceScope` (e.g. with `Доверенный scope и права` and `Последствия`) actually correct?**
   _`WorkspaceScope` has 4 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `ADR-0012`, `@anyko/backend`, `@anyko/logger` to the rest of the system?**
   _157 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `web/package.json` be split into smaller, more focused modules?**
-  _Cohesion score 0.08 - nodes in this community are weakly interconnected._
-- **Why does `AppError` connect `http/route.ts` to `routes/documents/index.ts`, `transactions/index.ts`, `WorkspaceScope`, `createLogger`, `access/index.ts`, `app.ts`, `processing/index.ts`, `common/index.ts`, `work-review/edit-values.ts`?**
-  _High betweenness centrality (0.039) - this node is a cross-community bridge._
+  _Cohesion score 0.06456456456456457 - nodes in this community are weakly interconnected._
+- **Why does `AppError` connect `http/route.ts` to `WorkStore`, `logger/src/index.ts`, `access/index.ts`, `app.ts`, `processing/index.ts`, `Серверная часть`, `work-review/edit-values.ts`?**
+  _High betweenness centrality (0.040) - this node is a cross-community bridge._
 - **Are the 11 inferred relationships involving `createBackend()` (e.g. with `Композиция процесса` and `Последствия`) actually correct?**
   _`createBackend()` has 11 INFERRED edges - model-reasoned connections that need verification._
 - **Should `package.json` be split into smaller, more focused modules?**
-  _Cohesion score 0.06060606060606061 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05714285714285714 - nodes in this community are weakly interconnected._
