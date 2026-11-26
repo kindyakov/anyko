@@ -786,9 +786,9 @@
     "semantic_hash": ""
   },
   "tests/integration/access.test.ts": {
-    "mtime": 1795691580.2017028,
-    "seen": 1795697302.431009,
-    "ast_hash": "bdc8bad8e927571f4c6d4cd9bc0a2a17",
+    "mtime": 1795697862.2835176,
+    "seen": 1795697914.6256695,
+    "ast_hash": "78f83202552055745d759acfba4b150e",
     "semantic_hash": ""
   },
   "tests/integration/tsconfig.json": {
