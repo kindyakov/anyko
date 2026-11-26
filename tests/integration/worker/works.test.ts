@@ -891,7 +891,7 @@ test('each debt claim package scopes saved evidence, decisions and the generated
           },
         );
         let status: string | undefined;
-        const afterChat = await until(input, async () => {
+        await until(input, async () => {
           const { items } = await chat.list(scope, {
             workId,
             page: 1,
@@ -903,6 +903,7 @@ test('each debt claim package scopes saved evidence, decisions and the generated
           );
         });
         expect(status).toBe(keys.length === 4 ? 'succeeded' : 'failed');
+        const afterChat = await views.get(scope, workId);
         expect(afterChat.facts.values.defendantInn).toBe(
           keys.length === 4 ? '7707083893' : undefined,
         );
