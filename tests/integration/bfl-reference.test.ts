@@ -2,17 +2,14 @@ import { expect, test } from 'bun:test';
 
 import { strFromU8, unzipSync } from 'fflate';
 
-import {
-  previewDocumentValues,
-  previewStatementValues,
-} from '../../apps/web/src/features/fact-review/model/preview';
 import { generateDocument } from '../../packages/backend/src/modules/generation';
 import {
   requirePackage,
   templateBytes,
-  templateData,
 } from '../../packages/backend/src/modules/templates';
 import { readFieldValues } from '../../packages/backend/src/profiles/bfl/fields';
+import { createProcessingProfiles } from '../../packages/backend/src/runtime/processing-profiles';
+import { prepareTemplate } from '../../packages/document-values/src/template-filling';
 import providerFixtures from '../fixtures/bfl-acceptance/provider-fixtures.json';
 
 const referenceDate = '2026-11-21';
@@ -55,6 +52,29 @@ const facts = readFieldValues({
     },
   ],
   businessDebts: [],
+});
+
+test('statement filling uses the explicit reference date when the draft has no filing date', () => {
+  const pack = requirePackage('bfl-bankruptcy-v14');
+  const document = pack.documents.find(({ id }) => id === 'statement');
+  if (!document) throw new Error('Missing statement');
+  const values = {
+    ...facts,
+    documentDate: null,
+    employmentHistory: [
+      { employer: 'ООО Пример', date: '01.11.2026', event: 'Приём' },
+      { employer: 'ООО Пример', date: '25.11.2026', event: 'Увольнение' },
+    ],
+  };
+  const definition = { fields: pack.fields, ...document };
+  expect(
+    prepareTemplate(definition, values, { referenceDate }).scalars
+      .employmentDetails,
+  ).toContain('осуществляю трудовую деятельность в ООО Пример');
+  expect(
+    prepareTemplate(definition, values, { referenceDate: '2026-11-30' }).scalars
+      .employmentDetails,
+  ).toBe('В настоящее время не осуществляю трудовую деятельность.');
 });
 
 function paragraphText(xml: string): string[] {
@@ -107,17 +127,15 @@ function docxTextAndTables(bytes: Uint8Array): string {
 }
 
 for (const version of ['bfl-bankruptcy-v12', 'bfl-bankruptcy-v14']) {
-  const pack = requirePackage(version);
+  const resolved = createProcessingProfiles(false).resolve(version);
+  const pack = resolved.description;
   for (const id of ['statement', 'inventory', 'creditors']) {
     const document = pack.documents.find((item) => item.id === id);
     if (!document) throw new Error(`Missing ${version} ${id}`);
     test(`${version} ${id} keeps the reference DOCX text and tables`, () => {
       const bytes = generateDocument(
         templateBytes(document.version),
-        templateData(facts, document.version, document.placeholders, {
-          fields: pack.fields,
-          referenceDate,
-        }),
+        resolved.templateData(facts, document, referenceDate),
       );
       expect(docxTextAndTables(bytes)).toMatchSnapshot();
     });
@@ -127,21 +145,17 @@ for (const version of ['bfl-bankruptcy-v12', 'bfl-bankruptcy-v14']) {
     function preview(id: string) {
       const document = pack.documents.find((item) => item.id === id);
       if (!document) throw new Error(`Missing ${version} ${id}`);
-      const result = previewDocumentValues(
-        document.version,
-        previewStatementValues(pack, id, facts),
-        pack.fields,
-      );
-      if (!result) throw new Error(`Missing ${version} ${id} preview values`);
-      return result;
+      return prepareTemplate({ ...document, fields: pack.fields }, facts, {
+        referenceDate,
+      });
     }
 
     const statement = preview('statement');
-    expect(statement.text('debtTotal')).toBe('12 000,50');
-    expect(statement.text('debtorAddress')).toBe('[не заполнено]');
+    expect(statement.scalars.debtTotal).toBe('12 000,50');
+    expect(statement.scalars.debtorAddress).toBe('[не заполнено]');
 
     const inventory = preview('inventory');
-    expect(inventory.value('apartments')).toMatchObject([
+    expect(inventory.repeating.apartments).toMatchObject([
       {
         rowNumber: '1',
         description:
@@ -158,18 +172,18 @@ for (const version of ['bfl-bankruptcy-v12', 'bfl-bankruptcy-v14']) {
         area: '42,8',
       },
     ]);
-    expect(inventory.value('cars')).toMatchObject([
+    expect(inventory.repeating.cars).toMatchObject([
       { rowNumber: '-', description: '[не заполнено]' },
     ]);
-    expect(inventory.value('houses')).toMatchObject([
+    expect(inventory.repeating.houses).toMatchObject([
       { rowNumber: '-', description: '-' },
     ]);
-    expect(inventory.value('cash')).toMatchObject([
+    expect(inventory.repeating.cash).toMatchObject([
       { description: 'Наличные денежные средства', amount: '21 000,00 руб.' },
     ]);
 
     const creditors = preview('creditors');
-    expect(creditors.value('debts')).toMatchObject([
+    expect(creditors.repeating.debts).toMatchObject([
       {
         name: 'АО «Тестовый Банк»',
         amount: '12 000,50',
@@ -177,7 +191,7 @@ for (const version of ['bfl-bankruptcy-v12', 'bfl-bankruptcy-v14']) {
           'по кредитному договору № TEST-87 от 01.03.2025 г. в размере 12 000,50 руб., подтверждение: [не заполнено]',
       },
     ]);
-    expect(creditors.value('businessDebts')).toMatchObject([
+    expect(creditors.repeating.businessDebts).toMatchObject([
       { rowNumber: '-', name: '-', type: '-', amount: '-' },
     ]);
   });

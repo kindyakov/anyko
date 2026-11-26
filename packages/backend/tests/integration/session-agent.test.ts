@@ -14,13 +14,10 @@ import { llmError } from '@anyko/llm';
 import { createDocumentAgents } from '../../src/modules/agents/infrastructure/mastra';
 import { emptyFacts, markSelectedCandidates } from '../../src/modules/facts';
 import { generateDocument } from '../../src/modules/generation';
-import {
-  requirePackage,
-  templateBytes,
-  templateData,
-} from '../../src/modules/templates';
+import { requirePackage, templateBytes } from '../../src/modules/templates';
 import { automaticValue } from '../../src/profiles/bfl/automatic-value';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
+import { templateData } from '../helpers/template-data';
 import { completionStream } from '../support/completion-stream';
 
 test('real extraction preserves candidates with valid citations when other fields or citations are invalid', async () => {

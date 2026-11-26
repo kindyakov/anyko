@@ -16,13 +16,14 @@ import {
   availablePackages,
   requirePackage,
   templateBytes,
-  templateData,
 } from '../src/modules/templates';
 import { candidateSchema } from '../src/profiles/bfl/candidate';
 import {
   emptyFieldValues,
   fieldValuesSchema,
 } from '../src/profiles/bfl/fields';
+
+import { templateData } from './helpers/template-data';
 
 test('the selectable BFL package stays on v14 and only v12 through v14 resolve', () => {
   const packages = availablePackages();

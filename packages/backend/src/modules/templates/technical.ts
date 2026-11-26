@@ -2,8 +2,6 @@ import { createHash } from 'node:crypto';
 
 import PizZip from 'pizzip';
 
-import { fieldDefinitions } from '../../profiles/bfl/fields';
-
 import type { DocumentPackage } from './schemas';
 
 const technicalTemplate = {
@@ -12,15 +10,24 @@ const technicalTemplate = {
   title: 'Технический шаблон документа',
   technical: true,
   fields: [
-    { key: 'personName', label: 'Имя в исходных документах', multiline: false },
-    { key: 'documentNumber', label: 'Номер документа', multiline: false },
-    { key: 'documentDate', label: 'Дата документа', multiline: false },
+    { key: 'personName', label: 'ФИО полностью', multiline: false },
+    {
+      key: 'documentNumber',
+      label: 'Серия и номер паспорта',
+      multiline: false,
+    },
+    {
+      key: 'documentDate',
+      label: 'Дата подписания',
+      multiline: false,
+      valueType: 'date',
+    },
     {
       key: 'observations',
-      label: 'Сведения и визуальные наблюдения',
+      label: 'Дополнительные сведения',
       multiline: true,
     },
-  ],
+  ] as const,
 };
 
 function requireTemplate(version: string) {
@@ -63,11 +70,12 @@ export function technicalBytes(version: string): Uint8Array {
 const bytes = technicalBytes('technical-document-v1');
 export const technicalPackage: DocumentPackage = {
   ...technicalTemplate,
-  fields: fieldDefinitions.filter((field) =>
-    ['personName', 'documentNumber', 'documentDate', 'observations'].includes(
-      field.key,
-    ),
-  ),
+  fields: technicalTemplate.fields.map((field) => ({
+    ...field,
+    kind: 'text',
+    limits: { maxLength: 12000 },
+    columns: [],
+  })),
   documents: [
     {
       id: 'technical-document',

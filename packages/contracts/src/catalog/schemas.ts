@@ -50,6 +50,17 @@ export const documentTemplateSchema = z.object({
     })
     .optional(),
   blocks: z.array(previewBlockSchema),
+  filling: z
+    .object({
+      functionId: z.literal('bfl-v1'),
+      contentVersion: z.enum([
+        'bfl-statement-v11',
+        'bfl-inventory-v2',
+        'bfl-creditors-v3',
+      ]),
+      splitAttachments: z.boolean().optional(),
+    })
+    .optional(),
   placeholders: z
     .array(
       z.union([

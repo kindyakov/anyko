@@ -15,16 +15,15 @@
 
 ## Что сейчас меняется в коде
 
-Пока описание пакета и одна функция заполнения ([ADR 0012](../../../../../../docs/adr/0012-processing-profiles-and-package-descriptions.md), #91, #92) не сделаны, выпуск новой версии бланка или пакета затрагивает несколько мест. По выпуску `bfl-bankruptcy-v14`:
+До перехода на декларативное описание пакета ([ADR 0012](../../../../../../docs/adr/0012-processing-profiles-and-package-descriptions.md), #92) выпуск версии бланка или пакета затрагивает несколько мест. По выпуску `bfl-bankruptcy-v14`:
 
 1. Новый DOCX в `assets/` и его запись в `assets/package.json`: версия, SHA-256, блоки предпросмотра.
 2. Миграция в `packages/database/prisma/migrations`: строка версии пакета, состав документов, копии `DocumentTemplatePlaceholder` и требований к исходникам с прежней версии, новые плейсхолдеры.
 3. `templates/index.ts`: какой пакет выбирается для новых работ.
-4. `templates/render-data.ts` и `packages/document-values` (`statement-layout.ts` и соседние): ветвления по версии бланка для новых слотов.
-5. `apps/web/src/features/fact-review/model/preview.ts`: та же подготовка для предпросмотра.
-6. `profiles/bfl/analysis-plan.ts`: план анализа для новой версии пакета.
-7. Тесты бланков в `packages/backend/tests` и эталоны `tests/fixtures/bfl-acceptance/goldens` (`ANYKO_BFL_ACCEPTANCE_WRITE_GOLDENS=1`, [README эталонов](../../../../../../tests/fixtures/bfl-acceptance/README.md)).
+4. `templates/bfl-catalog.ts`: выбор функции заполнения и её параметров для бланка. Web и DOCX используют общий результат `prepareTemplate` из `packages/document-values`.
+5. `profiles/bfl/analysis-plan.ts`: план анализа для новой версии пакета.
+6. Тесты бланков в `packages/backend/tests` и эталоны `tests/fixtures/bfl-acceptance/goldens` (`ANYKO_BFL_ACCEPTANCE_WRITE_GOLDENS=1`, [README эталонов](../../../../../../tests/fixtures/bfl-acceptance/README.md)).
 
-Новое ветвление по строке версии добавляйте только там, где без него выпуск невозможен, и рядом со старыми. Каждое такое место — долг, который снимают #91 и #92.
+Вариант заполнения передаётся в `template.filling`. Для поддерживаемых бланков БФЛ используется `bfl-v1` с вариантом раскладки и параметром `splitAttachments`. Прямые подстановки доступны при отсутствии `filling`.
 
 Текущие копии сохраняют структуру и оформление исходных OOXML-пакетов. Удалены заполненные строки и персональные обстоятельства, вместо них введены поля и повторяемые строки. Общие правовые формулировки взяты из предоставленного образца; техническая готовность не удостоверяет их юридическую актуальность.

@@ -2,32 +2,8 @@ import type { CSSProperties } from 'react';
 
 import type {
   DocumentTemplate,
-  FieldValues,
   PreviewParagraph,
 } from '@anyko/contracts/catalog';
-import { formatBankruptcyScalar } from '@anyko/document-values/bankruptcy-format';
-import { missingTemplateValue } from '@anyko/document-values/template-value';
-
-export function signerName(values: FieldValues, modern = false): string {
-  const surname =
-    typeof values.lastName === 'string'
-      ? (modern
-          ? formatBankruptcyScalar('lastName', values.lastName)
-          : values.lastName
-        ).trim()
-      : '';
-  const initials = [values.firstName, values.middleName]
-    .map((value) =>
-      typeof value === 'string'
-        ? value.trim().match(/^\p{L}/u)?.[0]
-        : undefined,
-    )
-    .flatMap((initial) => (initial ? [`${initial.toUpperCase()}.`] : []))
-    .join('');
-  return surname
-    ? `${surname}${initials ? ` ${initials}` : ''}`
-    : missingTemplateValue;
-}
 
 export function paperMargins(
   margins: DocumentTemplate['margins'],

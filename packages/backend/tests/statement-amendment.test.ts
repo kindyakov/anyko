@@ -7,9 +7,10 @@ import {
   availablePackages,
   requirePackage,
   templateBytes,
-  templateData,
 } from '../src/modules/templates';
 import { emptyFieldValues } from '../src/profiles/bfl/fields';
+
+import { templateData } from './helpers/template-data';
 
 test('the cadastral field is enabled only for new-package facts and inventory', () => {
   const archived = requirePackage('bfl-bankruptcy-v12');

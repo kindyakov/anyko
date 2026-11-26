@@ -12,12 +12,10 @@ import {
 } from '@anyko/document-values/bankruptcy-projection';
 
 import { generateDocument } from '../src/modules/generation';
-import {
-  requirePackage,
-  templateBytes,
-  templateData,
-} from '../src/modules/templates';
+import { requirePackage, templateBytes } from '../src/modules/templates';
 import { emptyFieldValues } from '../src/profiles/bfl/fields';
+
+import { templateData } from './helpers/template-data';
 
 test('keeps unknown debt visible while showing a dash for confirmed absence', () => {
   const values = {
