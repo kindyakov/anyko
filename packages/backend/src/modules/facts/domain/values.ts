@@ -7,10 +7,10 @@ import {
 } from '@anyko/document-values/obligations';
 import { comparableText } from '@anyko/document-values/text-value';
 
+import type { FactSourceText } from '../../../profiles/agent-policy';
 import {
   automaticValue,
   type debtSourceChecks,
-  type FactSourceText,
   valueWithRemainingEvidence,
 } from '../../../profiles/bfl/automatic-value';
 import { fieldDefinitions, fieldIdentity } from '../../../profiles/bfl/fields';

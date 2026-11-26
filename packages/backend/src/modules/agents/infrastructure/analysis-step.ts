@@ -8,15 +8,11 @@ import { createModelGateway, LlmError, llmError } from '@anyko/llm';
 import type { AnalysisStepInput, DocumentAgents, WorkFacts } from '..';
 import { isAppError } from '../../../platform/errors';
 import { literalSourceQuote } from '../../../platform/source-quote';
+import type { FactSourceText } from '../../../profiles/agent-policy';
 import {
   analysisDiscrepancySchema,
   analysisMissingFieldSchema,
 } from '../../../profiles/analysis-discrepancy';
-import {
-  automaticValue,
-  type FactSourceText,
-} from '../../../profiles/bfl/automatic-value';
-import { businessAbsenceRule } from '../../../profiles/bfl/business-absence';
 import { candidateSchema } from '../../../profiles/candidate';
 
 import {
@@ -30,7 +26,6 @@ import {
   reviewCourtCandidates,
 } from './court-lookup-tool';
 import {
-  authorisedCreditorQuery,
   createCreditorLookup,
   reviewCreditorCandidates,
 } from './creditor-lookup-tool';
@@ -98,7 +93,7 @@ export function createAnalysisStepAgent(options: {
         signal,
       );
       const budget = createWorkContextBudget(limits);
-      const available = modelFields(input.fields);
+      const available = modelFields(input.fields, input.policy.modelFields);
       const review = input.review;
       const writable = new Set(review?.fields ?? step.fields);
       const fields = available.filter(({ key }) => writable.has(key));
@@ -115,18 +110,21 @@ export function createAnalysisStepAgent(options: {
         listSourceMetadata: true,
         encodeValue: encodeModelFieldValue,
       });
+      const lookups = review
+        ? undefined
+        : input.policy.lookups?.steps[step.key];
       const court = createCourtLookupTool({
         ...input,
-        fields: step.lookups?.includes('court') ? fields : [],
+        fields,
         lookupCourt: options.lookupCourt,
+        evidence: lookups?.court,
       });
       const creditor = createCreditorLookup({
         ...input,
-        fields: step.lookups?.includes('creditor')
-          ? input.fields.filter(({ key }) => step.fields.includes(key))
-          : [],
+        fields,
         lookupCreditor: options.lookupCreditor,
-        authorisedQuery: (query) => authorisedCreditorQuery(input, query),
+        evidence: lookups?.creditor,
+        documents: input.documents,
       });
       const proposeFacts = createTool({
         id: 'propose-facts',
@@ -153,12 +151,8 @@ export function createAnalysisStepAgent(options: {
               statuses.push('invalid_candidate');
               continue;
             }
-            const directBusinessAbsence =
-              checked.data.origin === 'document' &&
-              Array.isArray(checked.data.value) &&
-              checked.data.value.length === 0 &&
-              businessAbsenceRule(checked.data.field);
-            const sources = directBusinessAbsence
+            const evidenceRule = input.policy.stepEvidence;
+            const sources = evidenceRule?.needsSourceText(checked.data)
               ? new Map<string, FactSourceText>()
               : undefined;
             const { evidence, missing } = await bindEvidence(
@@ -174,17 +168,15 @@ export function createAnalysisStepAgent(options: {
               continue;
             }
             const candidate = { ...checked.data, evidence };
-            if (
+            const rejection =
               sources &&
-              automaticValue(candidate, { sources: [...sources.values()] }) ===
-                null
-            ) {
-              statuses.push('business_absence_not_supported');
+              evidenceRule?.rejection(candidate, [...sources.values()]);
+            if (rejection) {
+              statuses.push(rejection);
               continue;
             }
             if (
-              (candidate.field === 'courtAddress' ||
-                candidate.field === 'courtName') &&
+              input.policy.courtInferenceFields?.includes(candidate.field) &&
               candidate.origin === 'inference'
             ) {
               const facts = (await input.currentFacts?.()) ?? input.facts;
@@ -465,7 +457,7 @@ export function createAnalysisStepAgent(options: {
         summary = reviewLimit
           ? 'Сверка остановлена по лимиту.'
           : 'Сверка завершена.';
-      if (step.lookups?.includes('creditor')) {
+      if (creditor.resolve) {
         const facts = (await input.currentFacts?.()) ?? input.facts;
         const verified = await reviewCreditorCandidates(
           { ...input, facts },

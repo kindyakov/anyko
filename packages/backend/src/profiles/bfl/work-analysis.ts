@@ -2,6 +2,7 @@ import { isDatedBankruptcyPackage } from '@anyko/document-values/statement-layou
 
 import type { FieldDefinition } from '../fields';
 
+import { bflAgentPolicy } from './agent-policy';
 import { bflAnalysisPlan } from './analysis-plan';
 
 export function resolveBflAnalysis(
@@ -17,5 +18,5 @@ export function resolveBflAnalysis(
     : undefined;
   const fields = pack.fields.filter(({ key }) => !excludedFields?.has(key));
   const plan = stepwise ? bflAnalysisPlan(pack.version, fields) : undefined;
-  return { fields, excludedFields, plan };
+  return { fields, excludedFields, plan, policy: bflAgentPolicy };
 }

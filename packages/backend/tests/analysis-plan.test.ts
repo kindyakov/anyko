@@ -65,18 +65,23 @@ test('a package must assign each automatic field to a writable step', () => {
 
 test('a checkpoint revision changes when the plan is reordered or its instructions change', () => {
   const {
-    analysis: { fields, plan },
+    analysis: { fields, plan, policy },
     profile,
   } = createProcessingProfiles(true).resolve(bflLayoutPackage);
   const [first, second, ...remaining] = plan?.steps ?? [];
   if (!plan || !first || !second) throw new Error('MISSING_ANALYSIS_PLAN');
 
-  const revision = workAnalysisRevision(fields, plan, profile);
-  expect(workAnalysisRevision(fields, structuredClone(plan), profile)).toBe(
-    revision,
-  );
+  const revision = workAnalysisRevision(fields, plan, profile, policy);
   expect(
-    workAnalysisRevision(fields, plan, { ...profile, revision: 'next' }),
+    workAnalysisRevision(fields, structuredClone(plan), profile, policy),
+  ).toBe(revision);
+  expect(
+    workAnalysisRevision(
+      fields,
+      plan,
+      { ...profile, revision: 'next' },
+      policy,
+    ),
   ).not.toBe(revision);
   expect(
     workAnalysisRevision(
@@ -86,6 +91,7 @@ test('a checkpoint revision changes when the plan is reordered or its instructio
         steps: [second, first, ...remaining],
       },
       profile,
+      policy,
     ),
   ).not.toBe(revision);
   expect(
@@ -100,6 +106,25 @@ test('a checkpoint revision changes when the plan is reordered or its instructio
         ],
       },
       profile,
+      policy,
     ),
   ).not.toBe(revision);
+});
+
+test('profile extraction instructions invalidate extraction without changing step checkpoints', () => {
+  const profiles = createProcessingProfiles(true);
+  const extraction = profiles.resolve('bfl-bankruptcy-v12');
+  const stepwise = profiles.resolve(bflLayoutPackage);
+  const revision = (pack: typeof extraction, instructions?: string) => {
+    const { fields, plan, policy } = pack.analysis;
+    return workAnalysisRevision(
+      fields,
+      plan,
+      pack.profile,
+      instructions ? { ...policy, extraction: () => instructions } : policy,
+    );
+  };
+  const updated = 'Извлеки номер договора с его титульной страницы.';
+  expect(revision(extraction, updated)).not.toBe(revision(extraction));
+  expect(revision(stepwise, updated)).toBe(revision(stepwise));
 });

@@ -1,12 +1,10 @@
 import { createTool } from '@mastra/core/tools';
 import type { z } from 'zod';
 
-import {
-  obligationFields,
-  sameObligation,
-} from '@anyko/document-values/obligations';
+import { sameObligation } from '@anyko/document-values/obligations';
 
 import type { WorkReadContext } from '..';
+import type { CreditorEvidence } from '../../../profiles/agent-policy';
 import { candidateSchema } from '../../../profiles/candidate';
 import type { FieldRow } from '../../../profiles/fields';
 
@@ -23,21 +21,28 @@ import {
 type Candidate = z.infer<typeof candidateSchema>;
 
 export function createCreditorLookup(
-  input: Pick<WorkReadContext, 'fields' | 'assertCurrent' | 'traceTool'> & {
+  input: Pick<
+    WorkReadContext,
+    | 'fields'
+    | 'assertCurrent'
+    | 'traceTool'
+    | 'facts'
+    | 'currentFacts'
+    | 'readSource'
+  > & {
     signal: AbortSignal;
     lookupCreditor: typeof findCreditor;
-    authorisedQuery?: (
-      query: CreditorQuery,
-    ) => Promise<CreditorQuery | undefined>;
+    evidence: CreditorEvidence | undefined;
+    documents?: readonly { id: string }[];
   },
 ) {
   const lookups = new Map<string, Promise<CreditorLookup>>();
-  const enabled = input.fields.some(
-    ({ key, columns }) =>
-      obligationFields.some((field) => field === key) &&
-      columns.some(({ key }) => key === 'creditorLegalName'),
+  const evidence = input.evidence;
+  const fields = evidence?.fields.filter((field) =>
+    input.fields.some(({ key }) => key === field),
   );
-  if (!enabled) return { tools: {}, resolve: undefined };
+  if (!evidence || !fields?.length)
+    return { tools: {}, resolve: undefined, evidence: undefined };
 
   const resolve = async (query: CreditorQuery) => {
     input.signal.throwIfAborted();
@@ -63,18 +68,36 @@ export function createCreditorLookup(
     lookups.set(key, pending);
     return pending;
   };
+  const documents = input.documents;
+  if (!documents)
+    return { tools: {}, resolve, evidence: { ...evidence, fields } };
   const lookup = createTool({
     id: 'lookup-creditor-registry',
     description:
       'Поиск реквизитов юридического лица по ИНН, ОГРН или официальному наименованию кредитора из документа. Выбери cbr для банка или МФО, fns для других юридических лиц или дополнительной сверки. Передавай только реквизиты организации.',
     inputSchema: creditorLookupInput,
     execute: async (query) => {
-      const authorised = await input.authorisedQuery?.(query);
+      input.signal.throwIfAborted();
+      await input.assertCurrent();
+      if (
+        query.source !== evidence.primaryRegistry &&
+        query.source !== evidence.fallbackRegistry
+      )
+        return { status: 'no_verified_creditor' };
+      const authorised = await authorisedCreditorQuery(
+        { ...input, documents },
+        fields,
+        query,
+      );
       if (!authorised) return { status: 'no_verified_creditor' };
       return (await resolve(authorised)) ?? { status: 'lookup_limit' };
     },
   });
-  return { tools: { lookupCreditorRegistry: lookup }, resolve };
+  return {
+    tools: { lookupCreditorRegistry: lookup },
+    resolve,
+    evidence: { ...evidence, fields },
+  };
 }
 
 function supportedQuery(
@@ -160,10 +183,11 @@ async function verifiedQuery(
   }
 }
 
-export async function authorisedCreditorQuery(
+async function authorisedCreditorQuery(
   input: Pick<WorkReadContext, 'facts' | 'currentFacts' | 'readSource'> & {
-    documents: { id: string }[];
+    documents: readonly { id: string }[];
   },
+  fields: CreditorEvidence['fields'],
   query: CreditorQuery,
 ) {
   const facts = (await input.currentFacts?.()) ?? input.facts;
@@ -171,7 +195,7 @@ export async function authorisedCreditorQuery(
     if (
       candidate.origin === 'inference' ||
       !Array.isArray(candidate.value) ||
-      !obligationFields.some((field) => field === candidate.field)
+      !fields.includes(candidate.field)
     )
       continue;
     for (const evidence of candidate.evidence) {
@@ -212,7 +236,7 @@ export async function reviewCreditorCandidates(
   lookup: ReturnType<typeof createCreditorLookup>,
   hasValidEvidence: (candidate: Candidate) => Promise<boolean>,
 ) {
-  const resolve = lookup.resolve;
+  const { resolve, evidence } = lookup;
   const candidates: Candidate[] = [];
   let unavailable = false;
   if (!resolve) return { candidates, unavailable };
@@ -224,7 +248,7 @@ export async function reviewCreditorCandidates(
     if (
       ground.origin === 'inference' ||
       !Array.isArray(ground.value) ||
-      !obligationFields.some((field) => field === ground.field)
+      !evidence.fields.includes(ground.field)
     )
       continue;
     for (const row of ground.value) {
@@ -241,8 +265,13 @@ export async function reviewCreditorCandidates(
         continue;
       if (!(await hasValidEvidence(ground))) continue;
       let query: CreditorQuery | undefined;
-      for (const evidence of ground.evidence) {
-        query = await verifiedQuery(row, evidence, 'cbr', input.readSource);
+      for (const fragment of ground.evidence) {
+        query = await verifiedQuery(
+          row,
+          fragment,
+          evidence.primaryRegistry,
+          input.readSource,
+        );
         if (query) break;
       }
       if (!query) continue;
@@ -250,7 +279,7 @@ export async function reviewCreditorCandidates(
       // FNS can corroborate identity when the financial registry cannot match it by name.
       const fallback =
         result?.status === 'not_found' || result?.status === 'unavailable'
-          ? await resolve({ ...query, source: 'fns' })
+          ? await resolve({ ...query, source: evidence.fallbackRegistry })
           : undefined;
       const found = fallback ?? result;
       if (!found) continue;

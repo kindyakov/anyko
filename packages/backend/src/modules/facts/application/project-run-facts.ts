@@ -1,9 +1,7 @@
 import { ZodError } from 'zod';
 
-import {
-  debtSourceChecks,
-  type FactSourceText,
-} from '../../../profiles/bfl/automatic-value';
+import type { FactSourceText } from '../../../profiles/agent-policy';
+import { debtSourceChecks } from '../../../profiles/bfl/automatic-value';
 import { usesBankObligations } from '../../../profiles/bfl/reconcile-obligations';
 import type { FieldDefinition, FieldKey } from '../../../profiles/fields';
 import {

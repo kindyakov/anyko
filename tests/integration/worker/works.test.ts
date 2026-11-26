@@ -1,4 +1,4 @@
-import { afterAll, expect, test } from 'bun:test';
+import { afterAll, beforeAll, expect, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -35,6 +35,7 @@ import {
 } from '../../../packages/backend/src/platform/ids';
 import { emptyFieldValues } from '../../../packages/backend/src/profiles/bfl/fields';
 import { createBackend } from '../../../packages/backend/src/runtime';
+import { completionStream } from '../../../packages/backend/tests/support/completion-stream';
 import { memberScope } from '../../../packages/backend/tests/support/scope';
 
 import { integrationConfig } from './support/composition';
@@ -102,6 +103,124 @@ let waitForExtraction:
   | undefined;
 let extractFixture: DocumentAgents['extract'] | undefined;
 let parseFixture: DocumentParser['parseDocument'] | undefined;
+test('debt claim analysis and chat have no bankruptcy instructions or lookup tools', async () => {
+  const requests: { instructions: string; tools: string[]; stage: string }[] =
+    [];
+  const model = createDocumentAgents({
+    pool: actualPool,
+    fetch: Object.assign(
+      async (url: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const body = z
+          .object({
+            stream: z.boolean().optional(),
+            messages: z.array(
+              z.object({ role: z.string(), content: z.unknown() }),
+            ),
+            tools: z
+              .array(z.object({ function: z.object({ name: z.string() }) }))
+              .optional(),
+          })
+          .parse(await new Request(url, init).json());
+        const instructions = JSON.stringify(
+          body.messages.filter(({ role }) => role === 'system'),
+        );
+        const stage = instructions.includes('последнего сообщения пользователя')
+          ? 'chat'
+          : instructions.includes('сопоставить документы')
+            ? 'reconciliation'
+            : 'extraction';
+        requests.push({
+          stage,
+          instructions,
+          tools: body.tools?.map(({ function: fn }) => fn.name) ?? [],
+        });
+        const content =
+          stage === 'chat'
+            ? 'Проверьте материалы работы.'
+            : JSON.stringify({
+                candidates: [],
+                ...(stage === 'reconciliation' && {
+                  summary: 'Источники проверены',
+                }),
+              });
+        const response = {
+          id: 'claim-policy',
+          object: 'chat.completion',
+          created: 1,
+          model: 'fixture',
+          usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 },
+          choices: [
+            {
+              index: 0,
+              message: { role: 'assistant', content },
+              finish_reason: 'stop',
+            },
+          ],
+        };
+        return body.stream
+          ? completionStream(response)
+          : Response.json(response);
+      },
+      { preconnect: fetch.preconnect },
+    ),
+  });
+  const input = await create('test-debt-claim-v2');
+  const lawyerId = await createChatActor(input.workspaceId);
+  actualAgents = model;
+  chatHook = (turn) => model.chat(turn);
+  parseFixture = () =>
+    Promise.resolve({
+      markdown: 'Суд: Мировой судья участка № 1.',
+      processorVersion: 'claim-policy',
+      images: [],
+    });
+  try {
+    await upload(input);
+    expect((await until(input, terminal)).runs[0]).toMatchObject({
+      status: 'succeeded',
+    });
+    const chat = apiBackend.workHttp.chat;
+    const { workId } = input;
+    const scope = memberScope(input.workspaceId, lawyerId);
+    const { runId } = await chat.send(scope, {
+      workId,
+      userText: 'Проверь подсудность.',
+      correlationId: crypto.randomUUID(),
+    });
+    let chatStatus: string | undefined;
+    await until(input, async () => {
+      const { items } = await chat.list(scope, {
+        workId,
+        page: 1,
+        pageSize: 15,
+      });
+      chatStatus = items.find(
+        (item) => item.kind === 'chat' && item.runId === runId,
+      )?.status;
+      return chatStatus === 'succeeded' || chatStatus === 'failed';
+    });
+    expect(chatStatus).toBe('succeeded');
+    expect(requests.map(({ stage }) => stage)).toEqual([
+      'extraction',
+      'reconciliation',
+      'chat',
+    ]);
+    for (const { instructions, tools } of requests) {
+      expect(instructions).not.toMatch(
+        /должник|кредитор|lookupArbitrationCourt|lookupCreditorRegistry/iu,
+      );
+      expect(tools).not.toContain('lookupArbitrationCourt');
+      expect(tools).not.toContain('lookupCreditorRegistry');
+    }
+  } finally {
+    chatHook = undefined;
+    actualAgents = undefined;
+    parseFixture = undefined;
+    await model.stop();
+    await db.user.delete({ where: { id: lawyerId } });
+  }
+});
+
 const agents: DocumentAgents = {
   chat(input) {
     if (chatHook) return chatHook(input);
@@ -731,7 +850,6 @@ async function rejects(operation: Promise<unknown>, code: string) {
 }
 
 test('each debt claim package scopes saved evidence, decisions and the generated DOCX', async () => {
-  await registerDebtClaim(db);
   expect(
     (await apiBackend.workHttp.views.packages()).map(({ version }) => version),
   ).toEqual(['bfl-bankruptcy-v14']);
@@ -1924,6 +2042,8 @@ test('recovery of a chat turn does not reapply a field value superseded before r
     await db.user.delete({ where: { id: userId } });
   }
 }, 30_000);
+
+beforeAll(() => registerDebtClaim(db));
 
 afterAll(async () => {
   await workerBackend.stop();
@@ -5351,7 +5471,7 @@ test('bank certificates retain evidence and a manual contract decision, and both
     if (
       !certificate ||
       !fields
-        ?.find(({ key }) => key === 'debts')
+        .find(({ key }) => key === 'debts')
         ?.columns.some(({ key }) => key === 'amountDate')
     )
       throw new Error('EXPECTED_BANK_FIELDS');
@@ -5600,8 +5720,8 @@ test('employment records and income certificates reach review and the downloaded
     return Promise.resolve({ markdown, processorVersion: 'fixture' });
   };
   extractFixture = ({ document, fields }) => {
-    expect(fields?.some(({ key }) => key === 'employmentHistory')).toBe(true);
-    expect(fields?.some(({ key }) => key === 'employmentIncome')).toBe(true);
+    expect(fields.some(({ key }) => key === 'employmentHistory')).toBe(true);
+    expect(fields.some(({ key }) => key === 'employmentIncome')).toBe(true);
     const evidence = (quote: string) => ({
       documentId: document.id,
       imagePath: null,

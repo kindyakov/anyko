@@ -78,6 +78,7 @@ export function createProcessingProfiles(
         description: pack,
         analysis: profile.analysis?.(pack, stepwise) ?? {
           fields: pack.fields,
+          policy: {},
           plan: undefined,
         },
         templateBytes: profile.templateBytes,

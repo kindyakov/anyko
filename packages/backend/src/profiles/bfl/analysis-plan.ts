@@ -68,7 +68,6 @@ export function bflAnalysisPlan(
       ],
       instructions:
         'Извлеки адрес регистрации. Для суда передай субъект РФ в официальный поиск и предложи подтверждённый вариант с основанием по адресу. Оставь выводы на проверку.',
-      lookups: ['court'],
     },
     {
       key: 'obligations',
@@ -85,7 +84,6 @@ export function bflAnalysisPlan(
         'businessRefunds',
       ],
       instructions: obligationInstructions(definitions),
-      lookups: ['creditor'],
     },
     {
       key: 'employment',

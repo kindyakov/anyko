@@ -34,6 +34,7 @@ export function createWorkChatRun(
     const work = await current();
     const {
       description: { fields },
+      analysis: { policy },
     } = deps.resolvePackage(work.packageVersion);
     const config = await readConnection();
     const session = await deps.agents.internal.get(workspaceId, workId);
@@ -151,6 +152,7 @@ export function createWorkChatRun(
           modelId: config.extractionModel,
           connection: config.connection,
           fields,
+          policy,
           facts,
           currentFacts: () => deps.facts.queries.forAnalysis(scope, fields),
           previousContext: session.context,

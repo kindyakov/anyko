@@ -19,6 +19,7 @@ import {
   templateBytes,
   templateData,
 } from '../../src/modules/templates';
+import { bflAgentPolicy } from '../../src/profiles/bfl/agent-policy';
 import { automaticValue } from '../../src/profiles/bfl/automatic-value';
 import { fieldDefinitions } from '../../src/profiles/bfl/fields';
 import { completionStream } from '../support/completion-stream';
@@ -104,6 +105,7 @@ test('real extraction preserves candidates with valid citations when other field
     const threadId = crypto.randomUUID();
     threads.push(threadId);
     return agents.extract({
+      policy: bflAgentPolicy,
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -428,6 +430,7 @@ test('extraction uses the published maximum, repairs wrapped JSON and never retr
     const threadId = crypto.randomUUID();
     threads.push(threadId);
     return agents.extract({
+      policy: bflAgentPolicy,
       connection: {
         id: 'routerai',
         baseURL: 'https://routerai.ru/api/v1',
@@ -616,6 +619,7 @@ test('real coordinator validates source evidence, keeps its scope, and removes p
     const threadId = crypto.randomUUID();
     threads.push(threadId);
     return agents.reconcile({
+      policy: bflAgentPolicy,
       connection: {
         id: 'routerai',
         baseURL: 'https://routerai.ru/api/v1',
@@ -798,6 +802,7 @@ test.each([131072, null])(
       const streamed: string[] = [];
       const result = await agents
         .chat({
+          policy: bflAgentPolicy,
           connection: {
             id: 'fixture',
             baseURL: 'https://fixture.invalid/v1',
@@ -865,6 +870,7 @@ test('provider failures do not leak document or provider bodies through SDK cons
     for (let attempt = 0; attempt < 2; attempt++) {
       const result = await agents
         .reconcile({
+          policy: bflAgentPolicy,
           connection: {
             id: 'fixture',
             baseURL: 'https://fixture.invalid/v1',
@@ -1072,6 +1078,7 @@ test('Mastra compacts a long tool history and continues from the accepted contex
     ),
   });
   const input = {
+    policy: bflAgentPolicy,
     connection: {
       id: 'routerai',
       baseURL: 'https://routerai.ru/api/v1',
@@ -1363,6 +1370,7 @@ test('reconciliation finalizes with cited candidates after a parallel batch exha
   try {
     await agents.ready();
     const result = await agents.reconcile({
+      policy: bflAgentPolicy,
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -1517,6 +1525,7 @@ test('court lookup uses only the territory and sends verified address alternativ
   try {
     await agents.ready();
     const result = await agents.reconcile({
+      policy: bflAgentPolicy,
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -1794,6 +1803,7 @@ test('official creditor details stay a proposal until selecting them for the lin
   const pack = requirePackage('bfl-bankruptcy-v12');
   const reconcile = () =>
     agents.reconcile({
+      policy: bflAgentPolicy,
       connection: {
         id: 'fixture',
         baseURL: 'https://fixture.invalid/v1',
@@ -1891,6 +1901,7 @@ test('official creditor details stay a proposal until selecting them for the lin
     chatMode = true;
     const chat = (documentIds: string[]) =>
       agents.chat({
+        policy: bflAgentPolicy,
         connection: {
           id: 'fixture',
           baseURL: 'https://fixture.invalid/v1',

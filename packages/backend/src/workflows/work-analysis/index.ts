@@ -122,11 +122,12 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       await readConnection();
     };
     const pack = deps.resolvePackage((await current()).packageVersion);
-    const { fields, excludedFields, plan: pilotPlan } = pack.analysis;
+    const { fields, excludedFields, policy, plan: pilotPlan } = pack.analysis;
     const analysisRevision = workAnalysisRevision(
       fields,
       pilotPlan,
       pack.profile,
+      policy,
     );
     const candidates: WorkFacts['candidates'] = [];
     const sources: ContinuationSource[] = [];
@@ -327,6 +328,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
                   connection: stepConnection.connection,
                   modelId: stepConnection.extractionModel,
                   fields,
+                  policy,
                   threadId,
                   resource: `${run.workspaceId}:${run.workId}`,
                   document: {
@@ -414,6 +416,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       attempt,
       settingsRevision: revision,
       analysisRevision,
+      policy,
       readConnection,
       ...(pilotPlan && { pilotPlan }),
       fields,

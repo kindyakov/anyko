@@ -12,10 +12,11 @@ import {
   sameObligation,
 } from '@anyko/document-values/obligations';
 
+import type { FactSourceText } from '../agent-policy';
+
 import {
   automaticValue,
   type debtSourceChecks,
-  type FactSourceText,
   hasUnambiguousBalanceDate,
 } from './automatic-value';
 import type { candidateSchema } from './candidate';

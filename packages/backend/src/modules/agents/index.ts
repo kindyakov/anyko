@@ -1,3 +1,4 @@
+import type { AgentPolicy } from '../../profiles/agent-policy';
 import type {
   AnalysisDiscrepancy,
   AnalysisMissingField,
@@ -61,6 +62,7 @@ export type AnalysisStepInput = WorkReadContext & {
   modelId: string;
   enableReasoning?: boolean;
   step: AnalysisGoal;
+  policy: AgentPolicy;
   sessionId: string;
   previousSummary: string | null;
   completedSteps: readonly { key: string; summary: string }[];
@@ -126,7 +128,8 @@ export interface DocumentAgents {
     onRejectedEvidence?(
       rejections: readonly { field: FieldKey; count: number }[],
     ): void;
-    fields?: FieldDefinition[];
+    fields: FieldDefinition[];
+    policy: AgentPolicy;
     connection: ModelConnection;
     modelId: string;
     enableReasoning?: boolean;
@@ -155,6 +158,7 @@ export interface DocumentAgents {
     workRevision: number;
     previousContext: AgentSessionContext | null;
     fields: FieldDefinition[];
+    policy: AgentPolicy;
     facts: WorkFacts;
     candidates: WorkFacts['candidates'];
     documents: {
@@ -184,6 +188,7 @@ export interface DocumentAgents {
       listSourceImages(documentId: string): Promise<string[]>;
       messages: AgentChatMessage[];
       userText: string;
+      policy: AgentPolicy;
       signal: AbortSignal;
       onDelta?: (delta: ChatDelta) => void;
       appliedFields: AgentFieldChange['field'][];

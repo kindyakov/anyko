@@ -15,9 +15,9 @@ import {
 import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
+import type { AgentPolicy, FactSourceText } from '../../profiles/agent-policy';
 import { missingFieldReasonLabels } from '../../profiles/analysis-discrepancy';
 import type { AnalysisPlan } from '../../profiles/analysis-plan';
-import type { FactSourceText } from '../../profiles/bfl/automatic-value';
 import type { FieldKey } from '../../profiles/fields';
 import type { WorkDependencies } from '../work-dependencies';
 import { logWorkFailure } from '../work-execution/failure';
@@ -46,6 +46,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
     attempt: WorkAttempt;
     settingsRevision: number | null;
     analysisRevision: string;
+    policy: AgentPolicy;
     readConnection(): ReturnType<
       WorkDependencies['connections']['internal']['connection']
     >;
@@ -164,6 +165,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
           modelId: config.extractionModel,
           connection: config.connection,
           fields: input.fields,
+          policy: input.policy,
           checklistRequirements: snapshot.requirements,
           workRevision: snapshot.work.revision,
           previousContext: snapshot.session.context,

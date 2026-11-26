@@ -21,6 +21,7 @@ import {
   obligationStatuses,
 } from '@anyko/document-values/obligations';
 
+import type { FactSourceText } from '../agent-policy';
 import type { FieldDefinition } from '../fields';
 import { attestedAmount, attestedDate, typedEvidence } from '../value-types';
 
@@ -515,11 +516,6 @@ function contractLines(lines: string[], number: string) {
     ),
     block,
   };
-}
-
-export interface FactSourceText {
-  documentId: string;
-  text: string;
 }
 
 /**

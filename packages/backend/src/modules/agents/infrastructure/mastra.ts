@@ -9,10 +9,6 @@ import { createModelGateway, LlmError, llmError } from '@anyko/llm';
 
 import type { DocumentAgents } from '..';
 import { literalSourceQuote } from '../../../platform/source-quote';
-import {
-  fieldDefinitions,
-  legacyFieldKeys,
-} from '../../../profiles/bfl/fields';
 import { extractedCandidateSchema } from '../../../profiles/candidate';
 import type { FieldKey } from '../../../profiles/fields';
 
@@ -201,16 +197,11 @@ export function createDocumentAgents(options: {
       const trace = gateway.trace(input.trace, input.modelId, input.connection);
       const { signal } = input;
       const text = input.document.text;
-      const fields =
-        input.fields ??
-        fieldDefinitions.filter(({ key }) =>
-          legacyFieldKeys.some((legacy) => legacy === key),
-        );
       const {
         candidate: extractionCandidateSchema,
         output: extractionSchema,
         instructions,
-      } = documentExtractionPolicy(fields);
+      } = documentExtractionPolicy(input.fields, input.policy);
       if (text.length > 64000) throw llmError(new Error('DOCUMENT_LIMIT'));
       try {
         const limits = await gateway.contextLimits(

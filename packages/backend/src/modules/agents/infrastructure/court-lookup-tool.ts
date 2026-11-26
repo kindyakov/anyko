@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
 import type { WorkReadContext } from '..';
+import type { CourtEvidence } from '../../../profiles/agent-policy';
 import { candidateSchema } from '../../../profiles/candidate';
 
 import {
@@ -15,14 +16,18 @@ export function createCourtLookupTool(
   input: Pick<WorkReadContext, 'fields' | 'assertCurrent' | 'traceTool'> & {
     signal: AbortSignal;
     lookupCourt: typeof findArbitrationCourt;
+    evidence: CourtEvidence | undefined;
   },
 ) {
   const lookups = new Map<string, Promise<CourtLookup>>();
   const results: { territory: string; result: CourtLookup }[] = [];
-  const enabled =
-    input.fields.some(({ key }) => key === 'courtName') &&
-    input.fields.some(({ key }) => key === 'courtAddress');
-  if (!enabled) return { tools: {}, results, resolve: undefined };
+  const { evidence } = input;
+  if (
+    !evidence ||
+    !input.fields.some(({ key }) => key === evidence.name) ||
+    !input.fields.some(({ key }) => key === evidence.address)
+  )
+    return { tools: {}, results, resolve: undefined, evidence: undefined };
 
   const resolve = async (territory: string) => {
     const toolInput = JSON.stringify({
@@ -58,7 +63,12 @@ export function createCourtLookupTool(
     execute: async ({ territory }) =>
       (await resolve(territory)) ?? { status: 'lookup_limit' },
   });
-  return { tools: { lookupArbitrationCourt: lookupCourt }, results, resolve };
+  return {
+    tools: { lookupArbitrationCourt: lookupCourt },
+    results,
+    resolve,
+    evidence,
+  };
 }
 
 type Candidate = z.infer<typeof candidateSchema>;
@@ -67,6 +77,7 @@ function courtCandidates(
   lookup: Awaited<ReturnType<typeof findArbitrationCourt>>,
   territory: string,
   evidence: Candidate['evidence'],
+  fields: CourtEvidence,
   explanation?: string,
 ) {
   const basis = `Территория места жительства: ${territory}. ${explanation ? `${explanation} ` : ''}`;
@@ -89,8 +100,8 @@ function courtCandidates(
       },
     };
     const proposals = [
-      { field: 'courtName', value: name },
-      ...addresses.map((value) => ({ field: 'courtAddress', value })),
+      { field: fields.name, value: name },
+      ...addresses.map((value) => ({ field: fields.address, value })),
     ];
     return proposals.flatMap((candidate) => {
       const parsed = candidateSchema.safeParse({ ...candidate, ...source });
@@ -105,16 +116,14 @@ export async function reviewCourtCandidates(
   courtClaims: Candidate[],
   hasValidEvidence: (candidate: Candidate) => Promise<boolean>,
 ) {
-  if (!lookup.resolve) return [];
+  const { evidence, resolve } = lookup;
+  if (!resolve) return [];
 
   const grounds = [
     ...new Set([...input.candidates, ...input.facts.candidates]),
   ].filter(
     ({ field, value, origin }) =>
-      (field === 'region' ||
-        field === 'registrationAddress' ||
-        field === 'city' ||
-        field === 'locality') &&
+      (field === evidence.region || evidence.addresses.includes(field)) &&
       origin !== 'inference' &&
       typeof value === 'string' &&
       ((!input.facts.manual.includes(field) &&
@@ -129,7 +138,7 @@ export async function reviewCourtCandidates(
   };
 
   for (const ground of grounds) {
-    if (ground.field !== 'region') continue;
+    if (ground.field !== evidence.region) continue;
     const parsed = courtTerritorySchema.safeParse(ground.value);
     if (
       parsed.success &&
@@ -138,7 +147,7 @@ export async function reviewCourtCandidates(
       ) &&
       (await verify(ground))
     ) {
-      await lookup.resolve(parsed.data);
+      await resolve(parsed.data);
     }
   }
 
@@ -153,14 +162,14 @@ export async function reviewCourtCandidates(
       if (await verify(ground)) {
         candidates.push(
           ...statedTerritories.flatMap(({ territory, result }) =>
-            courtCandidates(result, territory, ground.evidence),
+            courtCandidates(result, territory, ground.evidence, evidence),
           ),
         );
       }
       continue;
     }
 
-    if (ground.field === 'region') continue;
+    if (ground.field === evidence.region) continue;
     for (const claim of courtClaims) {
       const groundsMatch = claim.evidence.every((evidence) =>
         ground.evidence.some(
@@ -173,7 +182,7 @@ export async function reviewCourtCandidates(
       if (!groundsMatch) continue;
       const official = lookup.results.find(({ result }) =>
         result.courts.some(({ name, addresses }) =>
-          claim.field === 'courtName'
+          claim.field === evidence.name
             ? claim.value === name
             : addresses.some((address) => claim.value === address),
         ),
@@ -184,6 +193,7 @@ export async function reviewCourtCandidates(
             official.result,
             official.territory,
             ground.evidence,
+            evidence,
             claim.explanation,
           ),
         );
