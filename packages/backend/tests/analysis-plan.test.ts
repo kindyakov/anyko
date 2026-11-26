@@ -9,6 +9,28 @@ import {
 import { createProcessingProfiles } from '../src/runtime/processing-profiles';
 import { workAnalysisRevision } from '../src/workflows/work-analysis/revision';
 
+test('resolved BFL v12 analysis carries field roles and declared types', () => {
+  const { analysis } =
+    createProcessingProfiles(true).resolve('bfl-bankruptcy-v12');
+  const fields = new Map(analysis.fields.map((field) => [field.key, field]));
+  expect(fields.get('inn')).toMatchObject({ valueType: 'inn', role: 'debtor' });
+  expect(fields.get('documentNumber')).toMatchObject({
+    valueType: 'passport',
+    role: 'debtor',
+  });
+  expect(fields.get('courtAddress')).toMatchObject({
+    valueType: 'address',
+    role: 'court',
+  });
+  expect(fields.get('birthDate')?.valueType).toBe('date');
+  expect(fields.get('cashOnHand')?.valueType).toBe('money');
+  const debtColumns = new Map(
+    fields.get('debts')?.columns.map(({ key, valueType }) => [key, valueType]),
+  );
+  expect(debtColumns.get('contractDate')).toBe('date');
+  expect(debtColumns.get('amount')).toBe('money');
+});
+
 test('a package must assign each automatic field to a writable step', () => {
   const fields = ['plaintiffInn', 'defendantInn'];
   const collect = {

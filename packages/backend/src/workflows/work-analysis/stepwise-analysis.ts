@@ -42,11 +42,15 @@ function proposalResult(
   fields: Parameters<AnalysisStepInput['proposeFacts']>[3],
   proposals: Parameters<AnalysisStepInput['proposeFacts']>[1],
   facts: WorkFacts,
+  definitions: TurnInput['fields'],
 ): Awaited<ReturnType<AnalysisStepInput['proposeFacts']>> {
-  const selected = markSelectedCandidates({
-    ...facts,
-    candidates: proposals.map(({ candidate }) => candidate),
-  });
+  const selected = markSelectedCandidates(
+    {
+      ...facts,
+      candidates: proposals.map(({ candidate }) => candidate),
+    },
+    definitions,
+  );
   const byPosition = new Map(
     proposals.map(({ index }, i) => [index, selected[i]]),
   );
@@ -310,6 +314,7 @@ export async function runStepwiseAnalysis(input: {
                   fields,
                   proposals,
                   factsBefore(),
+                  turn.fields,
                 );
               const proposedFacts = input.projectFacts(
                 appendProposals(completed, pendingCandidates),
@@ -331,12 +336,14 @@ export async function runStepwiseAnalysis(input: {
                   fields,
                   proposals,
                   factsBefore(),
+                  turn.fields,
                 );
               const publication = proposalResult(
                 result,
                 fields,
                 proposals,
                 proposedFacts,
+                turn.fields,
               );
               await save({
                 ...checkpoint,

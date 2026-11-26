@@ -10,11 +10,18 @@ const technicalTemplate = {
   title: 'Технический шаблон документа',
   technical: true,
   fields: [
-    { key: 'personName', label: 'ФИО полностью', multiline: false },
+    {
+      key: 'personName',
+      label: 'ФИО полностью',
+      multiline: false,
+      role: 'debtor',
+    },
     {
       key: 'documentNumber',
       label: 'Серия и номер паспорта',
       multiline: false,
+      valueType: 'passport',
+      role: 'debtor',
     },
     {
       key: 'documentDate',

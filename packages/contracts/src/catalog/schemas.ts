@@ -89,7 +89,9 @@ export const documentPackageSchema = z.object({
       label: z.string(),
       multiline: z.boolean(),
       kind: z.enum(['text', 'rows']),
-      valueType: z.enum(['date', 'money']).optional(),
+      valueType: z
+        .enum(['inn', 'snils', 'passport', 'address', 'date', 'money'])
+        .optional(),
       limits: z.object({
         maxLength: z.number().int().positive().optional(),
         maxRows: z.number().int().positive().optional(),

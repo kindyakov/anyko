@@ -10,8 +10,11 @@ import {
   markSelectedCandidates,
   type WorkFacts,
 } from '..';
+import { memberScope } from '../../../../tests/support/scope';
+import { brandWorkId } from '../../../platform/ids';
 import { openTransaction } from '../../../platform/transactions';
 import { fieldDefinitions } from '../../../profiles/bfl/fields';
+import type { FieldDefinition } from '../../../profiles/fields';
 import { createFactsModule } from '../module';
 
 const ref = {
@@ -48,7 +51,10 @@ function tableCandidate(basis: string, amount: string): Candidate {
   };
 }
 
-function runFacts(initial = emptyFacts()) {
+function runFacts(
+  initial = emptyFacts(),
+  packageFields: readonly FieldDefinition[] = fieldDefinitions,
+) {
   let saved = initial;
   const tx = openTransaction({});
   const store: FactsStore = {
@@ -82,15 +88,112 @@ function runFacts(initial = emptyFacts()) {
         ...ref,
         ...input,
         fields: fields.map((key) => {
-          const field = fieldDefinitions.find((field) => field.key === key);
+          const field = packageFields.find((field) => field.key === key);
           if (!field) throw new Error(`Unknown fixture field ${key}`);
           return field;
         }),
-        packageFields: fieldDefinitions,
+        packageFields,
       }),
-    saved: () => facts.queries.forAnalysis(ref, fieldDefinitions),
+    saved: (fields = packageFields) => facts.queries.forAnalysis(ref, fields),
+    confirm: (fields: readonly FieldDefinition[]) =>
+      facts.in(tx).commands.confirm(memberScope(ref.workspaceId), {
+        workId: brandWorkId(ref.workId),
+        fields,
+      }),
   };
 }
+
+test('uses the same INN format for both parties and keeps their decisions and citations by key', async () => {
+  const fields = [
+    { key: 'plaintiffInn', role: 'plaintiff', label: 'ИНН истца' },
+    { key: 'defendantInn', role: 'defendant', label: 'ИНН ответчика' },
+  ].map((field) => ({
+    ...field,
+    valueType: 'inn' as const,
+    kind: 'text' as const,
+    multiline: false,
+    limits: {},
+    columns: [],
+  }));
+  const keys = ['plaintiffInn', 'defendantInn'];
+  const invalid = keys.map((key) => textCandidate(key, '500100732258'));
+  const facts = runFacts(emptyFacts(fields), fields);
+  const rejected = await facts.accept({
+    fields: keys,
+    confirmed: false,
+    candidates: invalid,
+  });
+  expect(rejected.missingFields).toEqual(keys);
+
+  const previous = emptyFacts(fields);
+  previous.values.plaintiffInn = '500100732259';
+  const reconsidered = runFacts(previous, fields);
+  await reconsidered.confirm(fields.filter(({ role }) => role === 'plaintiff'));
+  const plaintiff = textCandidate('plaintiffInn', '7707083893');
+  const defendant = textCandidate(
+    'defendantInn',
+    '7707083893',
+    otherDocumentId,
+  );
+  const result = await reconsidered.accept({
+    fields: keys,
+    confirmed: false,
+    candidates: [plaintiff, defendant],
+  });
+  expect(result.proposalOutcomes.map(({ status }) => status)).toEqual([
+    'review',
+    'applied',
+  ]);
+  const renamed = fields.map((field) => ({ ...field, label: 'Новая подпись' }));
+  expect(await reconsidered.saved(renamed)).toMatchObject({
+    values: { plaintiffInn: '500100732259', defendantInn: '7707083893' },
+    confirmed: ['plaintiffInn'],
+    candidates: [plaintiff, defendant],
+  });
+});
+
+test('BFL date and money definitions govern evidence and comparison under any key', async () => {
+  const fields = fieldDefinitions.flatMap((field) => {
+    if (field.key === 'birthDate') return [{ ...field, key: 'eventDay' }];
+    if (field.key === 'cashOnHand') return [{ ...field, key: 'eventAmount' }];
+    return [];
+  });
+  const facts = runFacts(emptyFacts(fields), fields);
+  const keys = ['eventDay', 'eventAmount'];
+  const wrongDay = textCandidate('eventDay', '31.02.2026');
+  const wrongCurrency = {
+    ...textCandidate('eventAmount', '120.05'),
+    evidence: [{ documentId, imagePath: null, quote: '120,05 доллара' }],
+  };
+  const rejected = await facts.accept({
+    fields: keys,
+    candidates: [wrongDay, wrongCurrency],
+    confirmed: false,
+  });
+  expect(rejected.missingFields).toEqual(keys);
+  expect(rejected.proposalOutcomes.map(({ status }) => status)).toEqual([
+    'review',
+    'review',
+  ]);
+
+  const valid = runFacts(emptyFacts(fields), fields);
+  const candidates = [
+    textCandidate('eventDay', '20 ноября 2026 года'),
+    textCandidate('eventDay', '2026-11-20', otherDocumentId),
+    textCandidate('eventAmount', '120 рублей 05 копеек'),
+    textCandidate('eventAmount', '120,05', otherDocumentId),
+  ];
+  const accepted = await valid.accept({
+    fields: keys,
+    candidates,
+    confirmed: false,
+  });
+  expect(accepted.discrepancyFields).toEqual([]);
+  expect(await valid.saved()).toMatchObject({
+    values: { eventDay: '20.11.2026', eventAmount: '120.05' },
+    candidates,
+  });
+});
 
 test('uses passport spelling and keeps all sources for equivalent text', async () => {
   const facts = runFacts();
