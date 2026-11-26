@@ -37,9 +37,9 @@ import {
 import {
   emptyFieldValues,
   fieldDefinitions,
-  type FieldValues,
   readFieldValues,
 } from '../../profiles/bfl/fields';
+import type { FieldValues } from '../../profiles/fields';
 
 import type { TemplatePlaceholder } from './schemas';
 
@@ -57,7 +57,7 @@ export function templateData(
   creditorHeaders?: FieldValues['debts'];
 } {
   const templateVersion = assetVersion && bflContentTemplate(assetVersion);
-  const values = readFieldValues(input);
+  const values: FieldValues = readFieldValues(input);
   if (
     (templateVersion === 'bfl-creditors-v3' ||
       templateVersion === 'bfl-inventory-v2') &&

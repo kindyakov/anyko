@@ -1,10 +1,10 @@
-import type { AnalysisGoal } from '../../profiles/analysis-plan';
 import type {
   AnalysisDiscrepancy,
   AnalysisMissingField,
   AnalysisProposalFeedback,
-} from '../../profiles/bfl/analysis-discrepancy';
-import type { FieldDefinition, FieldKey } from '../../profiles/bfl/fields';
+} from '../../profiles/analysis-discrepancy';
+import type { AnalysisGoal } from '../../profiles/analysis-plan';
+import type { FieldDefinition, FieldKey } from '../../profiles/fields';
 
 import type { AgentSessionContext, WorkFacts } from './schemas';
 export type { FieldDefinition, AgentSessionContext, WorkFacts };

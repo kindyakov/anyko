@@ -29,6 +29,7 @@ import {
   requestCatalogDeletion,
 } from '../../../packages/backend/src/runtime/documents/catalog-deletion';
 import { finishDocumentDeletion } from '../../../packages/backend/src/runtime/documents/unit-of-work';
+import { createProcessingProfiles } from '../../../packages/backend/src/runtime/processing-profiles';
 import { createUnitOfWork } from '../../../packages/backend/src/runtime/transactions';
 import { createDocumentDeletionWorkflow } from '../../../packages/backend/src/workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../../../packages/backend/src/workflows/document-ocr';
@@ -159,10 +160,17 @@ test('catalog deletion and claiming a replacement OCR run share the same lock or
       }),
     ]);
     const deletion = db.$transaction((tx) =>
-      requestCatalogDeletion(tx, workspaceId, documentId, 'fixture', {
-        canDeleteLinked: true,
-        token: impact.token,
-      }),
+      requestCatalogDeletion(
+        tx,
+        createProcessingProfiles(false).resolve,
+        workspaceId,
+        documentId,
+        'fixture',
+        {
+          canDeleteLinked: true,
+          token: impact.token,
+        },
+      ),
     );
     completed = Promise.allSettled([claim, deletion]);
     const deadline = Date.now() + 2500;

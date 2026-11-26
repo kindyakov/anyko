@@ -1,7 +1,7 @@
 import type { GenerationId, WorkId } from '../../platform/ids';
 import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { Tx } from '../../platform/transactions';
-import type { FieldValues } from '../../profiles/bfl/fields';
+import type { FieldValues } from '../../profiles/fields';
 
 import type { GenerationView } from './schemas';
 export { generateDocument } from './render';
@@ -114,4 +114,4 @@ export interface GenerationModule extends GenerationPorts {
   in(tx: Tx): GenerationPorts;
 }
 
-export type { FieldValues } from '../../profiles/bfl/fields';
+export type { FieldValues } from '../../profiles/fields';

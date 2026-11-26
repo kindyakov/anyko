@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 import { creditorRegistryColumns } from '@anyko/document-values/obligations';
 
-import { candidateSchema } from '../../../profiles/bfl/candidate';
-import type { FieldDefinition, FieldValue } from '../../../profiles/bfl/fields';
+import { candidateSchema } from '../../../profiles/candidate';
+import type { FieldDefinition, FieldValue } from '../../../profiles/fields';
 
 const evidenceEntry = candidateSchema.shape.evidence.element;
 const unpagedEvidence = evidenceEntry.omit({ page: true }).extend({

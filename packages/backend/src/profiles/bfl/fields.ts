@@ -5,6 +5,10 @@ import {
   obligationColumns,
 } from '@anyko/document-values/obligations';
 
+import type { FieldDefinition } from '../fields';
+
+export type { FieldDefinition } from '../fields';
+
 const scalar = (key: FieldKey, label: string, multiline = false) => ({
   key,
   label,
@@ -314,15 +318,6 @@ export const fieldKeySchema = z.enum([
   'submittedAttachments',
 ]);
 export type FieldKey = z.infer<typeof fieldKeySchema>;
-export interface FieldDefinition {
-  key: FieldKey;
-  label: string;
-  multiline: boolean;
-  kind: 'text' | 'rows';
-  valueType?: 'date' | 'money' | undefined;
-  limits: { maxLength?: number | undefined; maxRows?: number | undefined };
-  columns: { key: string; label: string; maxLength: number }[];
-}
 const dateFields = new Set([
   'documentDate',
   'birthDate',
@@ -335,7 +330,7 @@ export const isRublesField = (field: string) =>
 export const isRublesColumn = (field: string, column: string) =>
   field !== 'valuables' &&
   ['amount', 'arrears', 'penalties', 'interest'].includes(column);
-export const fieldDefinitions: FieldDefinition[] = [
+export const fieldDefinitions: (FieldDefinition & { key: FieldKey })[] = [
   ...Object.entries(scalarLabels).map(([key, label]) => ({
     ...scalar(
       fieldKeySchema.parse(key),

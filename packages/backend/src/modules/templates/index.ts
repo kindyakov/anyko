@@ -88,10 +88,11 @@ const layoutPackage = documentPackageSchema.parse({
 export function availablePackages(): DocumentPackage[] {
   return [layoutPackage];
 }
-const knownPackages = [layoutPackage, ...revisedPackages, technicalPackage];
-export function hasPackage(version: string): boolean {
-  return knownPackages.some((entry) => entry.version === version);
-}
+export const knownPackages = [
+  layoutPackage,
+  ...revisedPackages,
+  technicalPackage,
+];
 export function requirePackage(version: string): DocumentPackage {
   const pack = knownPackages.find((entry) => entry.version === version);
   if (!pack)

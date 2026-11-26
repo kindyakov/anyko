@@ -9,15 +9,16 @@ import {
 import {
   candidatesForContext,
   projectRunFacts,
+  selectPackageCandidates,
   type WorkFacts,
 } from '../../modules/facts';
 import type { WorkAttempt } from '../../modules/processing';
 import type { WorkSummary } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
+import { missingFieldReasonLabels } from '../../profiles/analysis-discrepancy';
 import type { AnalysisPlan } from '../../profiles/analysis-plan';
-import { missingFieldReasonLabels } from '../../profiles/bfl/analysis-discrepancy';
 import type { FactSourceText } from '../../profiles/bfl/automatic-value';
-import type { FieldKey } from '../../profiles/bfl/fields';
+import type { FieldKey } from '../../profiles/fields';
 import type { WorkDependencies } from '../work-dependencies';
 import { logWorkFailure } from '../work-execution/failure';
 import { analysisContextRevision } from '../work-execution/run-state';
@@ -50,6 +51,7 @@ export function createWorkContinuation(deps: WorkDependencies) {
     >;
     pilotPlan?: AnalysisPlan;
     fields: FieldDefinition[];
+    packageFields: readonly FieldDefinition[];
     excludedFields?: ReadonlySet<FieldKey> | undefined;
     candidates: WorkFacts['candidates'];
     sources: ContinuationSource[];
@@ -78,7 +80,9 @@ export function createWorkContinuation(deps: WorkDependencies) {
               work.revision,
               signal,
             );
-            const facts = await deps.facts.in(tx).queries.forAnalysis(run);
+            const facts = await deps.facts
+              .in(tx)
+              .queries.forAnalysis(run, input.packageFields);
             const session = await deps.agents
               .in(tx)
               .internal.ensure(run.workspaceId, run.workId);
@@ -91,8 +95,8 @@ export function createWorkContinuation(deps: WorkDependencies) {
         input.signal,
       );
       const found = candidatesForContext(
-        input.candidates,
-        snapshot.facts.candidates,
+        selectPackageCandidates(input.candidates, input.fields),
+        selectPackageCandidates(snapshot.facts.candidates, input.fields),
         run.documentIds,
         input.sources.map(({ id }) => id),
       );
@@ -220,7 +224,8 @@ export function createWorkContinuation(deps: WorkDependencies) {
                 projectRunFacts(snapshot.facts, {
                   candidates,
                   contextCandidates: normalizeContext(draft),
-                  fields: input.fields.map(({ key }) => key),
+                  fields: input.fields,
+                  packageFields: input.packageFields,
                   excludedFields: input.excludedFields,
                   confirmed:
                     snapshot.work.confirmedRevision === snapshot.work.revision,
@@ -335,7 +340,8 @@ export function createWorkContinuation(deps: WorkDependencies) {
             const acceptedFacts = await facts.acceptRunCandidates({
               workspaceId: run.workspaceId,
               workId: run.workId,
-              fields: input.fields.map(({ key }) => key),
+              fields: input.fields,
+              packageFields: input.packageFields,
               excludedFields: input.excludedFields,
               confirmed: work.confirmedRevision === work.revision,
               preserveExisting: run.automaticUpload === true,

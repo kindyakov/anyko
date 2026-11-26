@@ -4,11 +4,8 @@ import { calendarDatePlaceholders } from '@anyko/document-values/calendar-date';
 import { inventorySectionKeys } from '@anyko/document-values/inventory-layout';
 import { moneyPlaceholders } from '@anyko/document-values/money';
 
-import {
-  fieldKeySchema,
-  isCalendarDateField,
-  isRublesField,
-} from '../../profiles/bfl/fields';
+import { isCalendarDateField, isRublesField } from '../../profiles/bfl/fields';
+import { fieldKeySchema } from '../../profiles/fields';
 
 const paragraph = z.object({
   text: z.string(),

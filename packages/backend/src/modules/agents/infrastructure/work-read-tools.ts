@@ -7,7 +7,7 @@ import {
 } from '@anyko/document-values/employment';
 
 import type { WorkReadContext } from '..';
-import { fieldKeySchema } from '../../../profiles/bfl/fields';
+import { fieldKeySchema } from '../../../profiles/fields';
 
 import type { encodeModelFieldValue } from './model-field-value';
 
@@ -101,7 +101,7 @@ export function createWorkReadTools(
         const text = JSON.stringify({
           definition,
           value: encodeValue
-            ? encodeValue(facts.values[field], definition)
+            ? encodeValue(facts.values[field] ?? null, definition)
             : facts.values[field],
           manual: facts.manual.includes(field),
           confirmed: facts.confirmed.includes(field),

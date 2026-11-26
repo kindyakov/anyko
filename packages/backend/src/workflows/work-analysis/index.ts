@@ -2,7 +2,7 @@ import { LlmError } from '@anyko/llm';
 
 import { visionPromptRevision } from '../../modules/agents';
 import { DocumentError } from '../../modules/documents';
-import type { WorkFacts } from '../../modules/facts';
+import { selectPackageCandidates, type WorkFacts } from '../../modules/facts';
 import { stepOutputSchema, type WorkAttempt } from '../../modules/processing';
 import { isAppError } from '../../platform/errors';
 import type { WorkDependencies } from '../work-dependencies';
@@ -121,12 +121,13 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       await current();
       await readConnection();
     };
-    const {
+    const pack = deps.resolvePackage((await current()).packageVersion);
+    const { fields, excludedFields, plan: pilotPlan } = pack.analysis;
+    const analysisRevision = workAnalysisRevision(
       fields,
-      excludedFields,
-      plan: pilotPlan,
-    } = deps.resolveAnalysis((await current()).packageVersion);
-    const analysisRevision = workAnalysisRevision(fields, pilotPlan);
+      pilotPlan,
+      pack.profile,
+    );
     const candidates: WorkFacts['candidates'] = [];
     const sources: ContinuationSource[] = [];
     const sourceTexts: { documentId: string; text: string }[] = [];
@@ -336,7 +337,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
                   signal,
                 }),
             });
-            found.push(...result.candidates);
+            found.push(...selectPackageCandidates(result.candidates, fields));
             usage = addUsage(usage, result.usage);
             await step({ stage, documentId, status: 'running', usage });
           }
@@ -417,6 +418,7 @@ export function createWorkAnalysis(deps: WorkDependencies) {
       ...(pilotPlan && { pilotPlan }),
       fields,
       excludedFields,
+      packageFields: pack.description.fields,
       candidates,
       sources,
       ...(unreadable.size && {

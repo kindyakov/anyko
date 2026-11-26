@@ -11,7 +11,7 @@ import { WorkError } from '../../modules/works';
 import { AppError, isAppError } from '../../platform/errors';
 import { brandDocumentId, brandWorkId } from '../../platform/ids';
 import type { Tx } from '../../platform/transactions';
-import type { FieldDefinition } from '../../profiles/bfl/fields';
+import type { FieldDefinition } from '../../profiles/fields';
 import type { WorkDependencies } from '../work-dependencies';
 import { workLockKey } from '../work-guards';
 import { editChecklistLink } from '../work-review/edit-checklist';

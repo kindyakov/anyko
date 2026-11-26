@@ -76,6 +76,7 @@ export const updateRecognition =
     deps: Pick<
       WorkIntakeDeps,
       | 'works'
+      | 'resolvePackage'
       | 'facts'
       | 'documents'
       | 'processing'
@@ -149,6 +150,7 @@ export const updateRecognition =
               workspaceId,
               workId,
               recognitionEvidence(documentId, previous, next),
+              deps.resolvePackage(work.packageVersion).description.fields,
             );
           return {
             confirmed:

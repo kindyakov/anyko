@@ -4,7 +4,7 @@ import PizZip from 'pizzip';
 import { missingTemplateValue } from '@anyko/document-values/template-value';
 import type { LogEvent, Logger } from '@anyko/logger';
 
-import type { FieldValues } from '../../profiles/bfl/fields';
+import type { FieldValues } from '../../profiles/fields';
 
 import { cellLines } from './cell-line';
 

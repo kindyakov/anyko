@@ -15,16 +15,11 @@ import {
   valueWithRemainingEvidence,
 } from '../../../profiles/bfl/automatic-value';
 import {
-  emptyFieldValues,
   fieldDefinitions,
   fieldIdentity,
-  type FieldRow,
-  type FieldValue,
-  type FieldValues,
   isCalendarDateField,
   isRublesColumn,
   isRublesField,
-  readFieldValues,
 } from '../../../profiles/bfl/fields';
 import { isKnownObligationType } from '../../../profiles/bfl/obligation-type';
 import {
@@ -35,12 +30,39 @@ import {
   supersedesObligation,
   usesBankObligations,
 } from '../../../profiles/bfl/reconcile-obligations';
+import type {
+  FieldDefinition,
+  FieldRow,
+  FieldValue,
+  FieldValues,
+} from '../../../profiles/fields';
 import { factsSchema, type WorkFacts } from '../schemas';
 
-export function emptyFacts(): WorkFacts {
+export function packageFacts(
+  current: WorkFacts,
+  fields: readonly FieldDefinition[],
+): WorkFacts {
+  const keys = new Set(fields.map(({ key }) => key));
+  return {
+    ...current,
+    values: Object.fromEntries(
+      fields.map(({ key }) => [key, current.values[key] ?? null]),
+    ),
+    manual: current.manual.filter((key) => keys.has(key)),
+    confirmed: current.confirmed.filter((key) => keys.has(key)),
+    ...(current.needsReview && {
+      needsReview: current.needsReview.filter((key) => keys.has(key)),
+    }),
+    candidates: current.candidates.filter(({ field }) => keys.has(field)),
+  };
+}
+
+export function emptyFacts(
+  fields: readonly FieldDefinition[] = fieldDefinitions,
+): WorkFacts {
   return {
     version: 1,
-    values: emptyFieldValues(),
+    values: Object.fromEntries(fields.map(({ key }) => [key, null])),
     manual: [],
     confirmed: [],
     candidates: [],
@@ -56,10 +78,11 @@ export function mergeCandidates(
   passportIds?: ReadonlySet<string>,
   sourceChecks?: ReturnType<typeof debtSourceChecks>,
   sourceTexts?: readonly FactSourceText[],
+  fields: readonly FieldDefinition[] = fieldDefinitions,
 ): WorkFacts {
   const values = { ...current.values };
   const confirmedFields = new Set(current.confirmed);
-  for (const { key } of fieldDefinitions) {
+  for (const { key } of fields) {
     if (excludedFields?.has(key)) continue;
     const saved = values[key] ?? null;
     const isConfirmed = confirmed || confirmedFields.has(key);
@@ -163,8 +186,11 @@ function preferredPassportValue(
 }
 
 /** Расхождения определяются по сохранённым сведениям и сведённым кандидатам. */
-export function findFactDiscrepancies(current: WorkFacts) {
-  return fieldDefinitions
+export function findFactDiscrepancies(
+  current: WorkFacts,
+  fields: readonly FieldDefinition[] = fieldDefinitions,
+) {
+  return fields
     .filter(({ key }) => {
       const candidates = current.candidates.filter(
         (c) => c.field === key && reconcile(key, [c.value]) !== null,
@@ -306,13 +332,15 @@ function comparableFactValue(key: string, value: FieldValue): string {
 export function editFacts(
   current: WorkFacts,
   values: Partial<FieldValues>,
+  fields: readonly FieldDefinition[] = fieldDefinitions,
 ): WorkFacts {
   const manual = new Set(current.manual);
-  const next = readFieldValues({ ...current.values, ...values });
-  for (const { key } of fieldDefinitions) {
+  const next = { ...current.values };
+  for (const { key } of fields) {
     if (!Object.hasOwn(values, key)) continue;
     const previous = current.values[key] ?? null;
-    const value = next[key] ?? null;
+    const value = values[key] ?? null;
+    next[key] = value;
     if (
       typeof value === 'string' &&
       (isCalendarDateField(key) || isRublesField(key))
@@ -336,10 +364,13 @@ export function editFacts(
   return factsSchema.parse({ ...current, values: next, manual: [...manual] });
 }
 
-export function confirmFacts(current: WorkFacts): WorkFacts {
+export function confirmFacts(
+  current: WorkFacts,
+  fields: readonly FieldDefinition[] = fieldDefinitions,
+): WorkFacts {
   return factsSchema.parse({
     ...current,
-    confirmed: fieldDefinitions.map(({ key }) => key),
+    confirmed: fields.map(({ key }) => key),
     ...(current.needsReview && { needsReview: [] }),
   });
 }
@@ -411,7 +442,9 @@ function supportedParts(
 export function refreshFactEvidence(
   current: WorkFacts,
   refresh: (evidence: FactEvidence) => FactEvidence | null,
+  fields: readonly FieldDefinition[] = fieldDefinitions,
 ): WorkFacts {
+  const keys = new Set(fields.map(({ key }) => key));
   const lost = new Set<Candidate['field']>();
   const reduced = new Set<Candidate>();
   const candidates = current.candidates.flatMap((candidate) => {
@@ -429,7 +462,7 @@ export function refreshFactEvidence(
   const needsReview = new Set(current.needsReview);
   for (const field of lost) {
     const value = current.values[field];
-    if (value === null) continue;
+    if (value == null || !keys.has(field)) continue;
     const reviewed =
       current.manual.includes(field) || current.confirmed.includes(field);
     const before = supportedParts(field, value, current.candidates, reviewed);

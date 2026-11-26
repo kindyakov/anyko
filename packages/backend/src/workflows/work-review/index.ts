@@ -6,6 +6,7 @@ import { editValues, restoreField } from './edit-values';
 
 type WorkReviewDeps = Pick<
   WorkDependencies,
+  | 'resolvePackage'
   | 'uow'
   | 'works'
   | 'facts'

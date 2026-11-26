@@ -5,9 +5,9 @@ import {
   analysisDiscrepancySchema,
   analysisMissingFieldSchema,
   analysisProposalFeedbackSchema,
-} from '../../../profiles/bfl/analysis-discrepancy';
-import { candidateSchema } from '../../../profiles/bfl/candidate';
-import { fieldKeySchema } from '../../../profiles/bfl/fields';
+} from '../../../profiles/analysis-discrepancy';
+import { candidateSchema } from '../../../profiles/candidate';
+import { fieldKeySchema } from '../../../profiles/fields';
 
 const workStepSchema = z.object({
   id: z.uuid(),

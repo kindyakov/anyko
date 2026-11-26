@@ -27,6 +27,50 @@ const presentModules = existsSync(moduleRoot)
 // Известных нарушений feature-границ нет (список только сокращается).
 const webKnownFeatureViolations = [];
 
+// ADR 0012 / #88. Each entry permits only the concrete imports listed here.
+// Remove the corresponding entries when #89, #90 and #91 move these callers.
+const concreteProfileImports = {
+  // #89: stage instructions, model fallback and evidence policies.
+  'modules/agents/infrastructure/analysis-policy': [
+    'attachment-instructions',
+    'employment-instructions',
+    'fact-instructions',
+    'obligation-instructions',
+  ],
+  'modules/agents/infrastructure/analysis-step': [
+    'automatic-value',
+    'business-absence',
+  ],
+  'modules/agents/infrastructure/mastra': ['fields'],
+  'modules/agents/infrastructure/reconcile': [
+    'attachment-instructions',
+    'employment-instructions',
+    'fact-instructions',
+    'obligation-instructions',
+  ],
+  'workflows/work-analysis/identity-sources': ['passport-evidence'],
+  // #90: evidence, obligation reconciliation and value types.
+  'modules/facts/application/project-run-facts': [
+    'automatic-value',
+    'reconcile-obligations',
+  ],
+  'modules/facts/domain/values': [
+    'automatic-value',
+    'fields',
+    'obligation-type',
+    'reconcile-obligations',
+  ],
+  'workflows/work-analysis/continue-session': ['automatic-value'],
+  'workflows/work-view/checklist-contracts': ['automatic-value'],
+  // #91: existing package descriptions and template projection.
+  'modules/templates/index': ['fields'],
+  'modules/templates/render-data': ['fields'],
+  'modules/templates/schemas': ['fields'],
+  'modules/templates/technical': ['fields'],
+};
+const backendSource = '^packages/backend/src/';
+const concreteProfiles = `${backendSource}profiles/[^/]+/`;
+
 module.exports = {
   forbidden: [
     {
@@ -180,6 +224,29 @@ module.exports = {
         path: '^packages/(database|backend/src/(runtime|workflows|platform|modules/[^/]+/infrastructure))/',
       },
     },
+    {
+      name: 'common-backend-no-concrete-profile',
+      severity: 'error',
+      from: {
+        path: `${backendSource}(?:modules|workflows)/`,
+        pathNot: [
+          '\\.test\\.ts$',
+          ...Object.keys(concreteProfileImports).map(
+            (caller) => `${backendSource}${caller}\\.ts$`,
+          ),
+        ],
+      },
+      to: { path: concreteProfiles },
+    },
+    ...Object.entries(concreteProfileImports).map(([caller, supported]) => ({
+      name: 'common-backend-no-concrete-profile',
+      severity: 'error',
+      from: { path: `${backendSource}${caller}\\.ts$` },
+      to: {
+        path: concreteProfiles,
+        pathNot: `${backendSource}profiles/bfl/(?:${supported.join('|')})\\.ts$`,
+      },
+    })),
     {
       name: 'platform-no-business',
       severity: 'error',

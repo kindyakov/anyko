@@ -2,7 +2,6 @@ import { LlmError } from '@anyko/llm';
 
 import type { WorkspaceActorScope } from '../../modules/access';
 import type { WorkAttempt } from '../../modules/processing';
-import { requirePackage } from '../../modules/templates';
 import { WorkError } from '../../modules/works';
 import { isAppError } from '../../platform/errors';
 import { callModel } from '../work-analysis/model-call';
@@ -33,6 +32,9 @@ export function createWorkChatRun(
       return work.revision;
     };
     const work = await current();
+    const {
+      description: { fields },
+    } = deps.resolvePackage(work.packageVersion);
     const config = await readConnection();
     const session = await deps.agents.internal.get(workspaceId, workId);
     const chat = await deps.agents.internal.chat.get(ref);
@@ -45,7 +47,7 @@ export function createWorkChatRun(
       await requireActor();
     };
     const [facts, messages, links] = await Promise.all([
-      deps.facts.queries.forAnalysis(scope),
+      deps.facts.queries.forAnalysis(scope, fields),
       deps.agents.internal.chat.context({ ...scope, sessionId: session.id }),
       deps.works.internal.documents(workspaceId, workId),
     ]);
@@ -93,7 +95,6 @@ export function createWorkChatRun(
       provider: config.connection.id,
       model: config.extractionModel,
     });
-    const fields = requirePackage(work.packageVersion).fields;
     const requirements = await deps.templateRequirements(work.packageVersion);
     const checklistSources = links.filter(({ deleted }) => !deleted);
     const writer = await prepareChatWriter(deps, {
@@ -151,7 +152,7 @@ export function createWorkChatRun(
           connection: config.connection,
           fields,
           facts,
-          currentFacts: () => deps.facts.queries.forAnalysis(scope),
+          currentFacts: () => deps.facts.queries.forAnalysis(scope, fields),
           previousContext: session.context,
           documents: documents.map(({ id, filename }) => ({ id, filename })),
           messages,

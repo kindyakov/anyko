@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { candidateSchema } from '../../../profiles/bfl/candidate';
+import { candidateSchema } from '../../../profiles/candidate';
 import type { AgentSession, AgentSessionContext } from '../schemas';
 
 import type { AgentChatStore } from './chat';

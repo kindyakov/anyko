@@ -12,6 +12,7 @@ export const removeDocument =
     deps: Pick<
       WorkIntakeDeps,
       | 'works'
+      | 'resolvePackage'
       | 'locks'
       | 'processing'
       | 'uow'
@@ -66,6 +67,7 @@ export const removeDocument =
               scope.workspaceId,
               workId,
               documentId,
+              deps.resolvePackage(work.packageVersion).description.fields,
             );
           if (source.uploaded)
             await deps.redactWorkUploadResponses(tx, scope.workspaceId, [

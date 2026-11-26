@@ -17,12 +17,12 @@ import type {
 import type { WorksModule } from '../modules/works';
 import type { UnitOfWork } from '../platform/transactions';
 
-import type { WorkAnalysisDefinition } from './work-analysis/definition';
+import type { ResolveWorkPackage } from './work-package';
 
 // Зависимости исполнения работы: собирает runtime. Процессы получают фасады модулей и UnitOfWork,
 // а не наборы хранилищ; внешние вызовы модели (model) выполняются вне UnitOfWork.
 export interface WorkDependencies {
-  resolveAnalysis(version: string): WorkAnalysisDefinition;
+  resolvePackage: ResolveWorkPackage;
   chatProgress?: ChatProgressFeed;
   newId(): string;
   uow: UnitOfWork;

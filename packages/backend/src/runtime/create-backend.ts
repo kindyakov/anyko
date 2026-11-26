@@ -67,7 +67,6 @@ import {
   runDelivery,
 } from '../modules/processing/infrastructure/run-engine';
 import { createDocumentProcessingStore } from '../modules/processing/infrastructure/store';
-import { hasPackage } from '../modules/templates';
 import { createRetiredCatalogCleanup } from '../modules/templates/infrastructure/retired-catalog';
 import { createTemplatePlaceholders } from '../modules/templates/infrastructure/template-placeholders';
 import { createTemplateRequirements } from '../modules/templates/infrastructure/template-requirements';
@@ -83,7 +82,6 @@ import type { JobRuntime } from '../platform/jobs';
 import { openTransaction, transactionHandle } from '../platform/transactions';
 import { createDocumentDeletionWorkflow } from '../workflows/document-deletion';
 import { createDocumentOcrWorkflow } from '../workflows/document-ocr';
-import { resolveWorkAnalysis } from '../workflows/work-analysis/definition';
 import { createWorkChat, type WorkChat } from '../workflows/work-chat';
 import type { WorkDependencies } from '../workflows/work-dependencies';
 import { createWorkExecution } from '../workflows/work-execution';
@@ -113,6 +111,10 @@ import {
   finishDocumentDeletion,
 } from './documents/unit-of-work';
 import { createJobRegistry } from './jobs';
+import {
+  createProcessingProfiles,
+  type ProcessingProfile,
+} from './processing-profiles';
 import { createUnitOfWork } from './transactions';
 import {
   createResourceAwareIdempotencyStore,
@@ -122,8 +124,8 @@ import {
 import { createWorkProcessing } from './works/processing';
 
 /**
- * Test seams: each one replaces an external client. Production passes nothing, so the
- * defaults are the only clients the process creates.
+ * Test seams for external clients and additional processing profiles.
+ * Production uses the default composition.
  */
 interface BackendDependencies {
   createPool?(url: string): DatabasePool;
@@ -132,6 +134,7 @@ interface BackendDependencies {
   storage?: SourceStorage;
   parser?: DocumentParser;
   agents?: DocumentAgents;
+  processingProfiles?: readonly ProcessingProfile[];
   // Способ записи журнала действий: тест подменяет его, чтобы проверить откат транзакции.
   auditWriter?: AuditWriter;
 }
@@ -226,10 +229,14 @@ export function createBackend(
   const databaseEvents = auth
     ? createDatabaseEvents(listenPool ?? pool)
     : undefined;
+  const profiles = createProcessingProfiles(
+    worker?.stepwiseAnalysis ?? false,
+    dependencies.processingProfiles,
+  );
   const storage = dependencies.storage ?? createS3Storage(validated.storage);
   const io = createProcessingIo(db, uuidV7);
   const documents = createDocumentsModule({
-    store: createDocumentUnitOfWork(db),
+    store: createDocumentUnitOfWork(db, profiles.resolve),
     storage,
     artifacts: createArtifactRegistry(db),
     locks,
@@ -256,7 +263,7 @@ export function createBackend(
     storeFor: worksStoreFor,
     io,
     newId: uuidV7,
-    knownPackage: hasPackage,
+    knownPackage: profiles.has,
   });
   const facts = createFactsModule({
     store: createFactsStore(db),
@@ -312,8 +319,7 @@ export function createBackend(
     validated.works.chatRedisUrl &&
     createChatProgressFeed(validated.works.chatRedisUrl);
   const work: WorkDependencies = {
-    resolveAnalysis: (version) =>
-      resolveWorkAnalysis(version, validated.worker?.stepwiseAnalysis ?? false),
+    resolvePackage: profiles.resolve,
     ...(chatProgress && { chatProgress }),
     newId: uuidV7,
     uow,
@@ -378,6 +384,7 @@ export function createBackend(
       logger,
     });
     const workflows = {
+      resolvePackage: profiles.resolve,
       uow,
       works,
       facts,

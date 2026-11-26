@@ -6,6 +6,7 @@ import { createDocumentReadModel } from '../../modules/documents/infrastructure/
 import { createProcessingCommands } from '../../modules/processing/infrastructure/commands';
 import { eraseWorkAgentThreads } from '../../modules/processing/infrastructure/work-store';
 import { createCatalogWorkLinks } from '../../modules/works/infrastructure/catalog-sources';
+import type { ResolveWorkPackage } from '../../workflows/work-package';
 
 import {
   readCatalogDeletionImpact,
@@ -13,7 +14,10 @@ import {
 } from './catalog-deletion';
 
 /** Binds module-owned commands to the same short database transaction. */
-export function createDocumentUnitOfWork(db: Database): DocumentStore {
+export function createDocumentUnitOfWork(
+  db: Database,
+  resolvePackage: ResolveWorkPackage,
+): DocumentStore {
   const reads = createDocumentReadModel(db);
   const documents = createDocumentCommands(db);
   const links = createCatalogWorkLinks(db);
@@ -31,6 +35,7 @@ export function createDocumentUnitOfWork(db: Database): DocumentStore {
       db.$transaction((tx) =>
         requestCatalogDeletion(
           tx,
+          resolvePackage,
           workspaceId,
           documentId,
           actorId,

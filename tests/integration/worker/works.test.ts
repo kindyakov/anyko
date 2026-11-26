@@ -38,6 +38,11 @@ import { createBackend } from '../../../packages/backend/src/runtime';
 import { memberScope } from '../../../packages/backend/tests/support/scope';
 
 import { integrationConfig } from './support/composition';
+import {
+  debtClaimProfile,
+  registerDebtClaim,
+  unregisterDebtClaim,
+} from './support/debt-claim';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 if (
@@ -185,7 +190,7 @@ const testConfig = integrationConfig({
 const apiBackend = createBackend(testConfig, {
   logger,
   role: 'api',
-  dependencies: { storage, agents },
+  dependencies: { storage, agents, processingProfiles: [debtClaimProfile] },
 });
 const runtime = {
   saveSettings: (
@@ -201,6 +206,7 @@ const workerBackend = createBackend(testConfig, {
   dependencies: {
     storage,
     agents,
+    processingProfiles: [debtClaimProfile],
     parser: {
       parseDocument: async (...args) => {
         if (parseFixture) return parseFixture(...args);
@@ -723,6 +729,204 @@ async function rejects(operation: Promise<unknown>, code: string) {
   expect(failure).toBeInstanceOf(Error);
   expect(failure instanceof Error ? failure.message : '').toContain(code);
 }
+
+test('each debt claim package scopes saved evidence, decisions and the generated DOCX', async () => {
+  await registerDebtClaim(db);
+  expect(
+    (await apiBackend.workHttp.views.packages()).map(({ version }) => version),
+  ).toEqual(['bfl-bankruptcy-v14']);
+  const bfl = await create('bfl-bankruptcy-v12');
+  const bflView = await apiBackend.workHttp.views.get(
+    memberScope(bfl.workspaceId),
+    bfl.workId,
+  );
+  expect(bflView.facts.values).not.toHaveProperty('plaintiffInn');
+  expect(bflView.facts.values).not.toHaveProperty('defendantInn');
+  const evidence = {
+    courtName: 'Районный суд',
+    courtAddress: 'Улица Садовая, 7',
+    plaintiffInn: '7707083893',
+    defendantInn: '500100732259',
+    personName: 'Постороннее поле',
+  };
+  parseFixture = () =>
+    Promise.resolve({
+      markdown: Object.values(evidence).join('\n'),
+      processorVersion: 'debt-claim-fixture',
+      images: [],
+    });
+  extractFixture = ({ document }) =>
+    Promise.resolve({
+      candidates: Object.entries(evidence).map(([field, value]) => ({
+        field,
+        value,
+        evidence: [{ documentId: document.id, imagePath: null, quote: value }],
+      })),
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+  try {
+    for (const [version, keys] of [
+      ['test-debt-claim-v1', ['courtName', 'courtAddress', 'plaintiffInn']],
+      [
+        'test-debt-claim-v2',
+        ['courtName', 'courtAddress', 'plaintiffInn', 'defendantInn'],
+      ],
+    ] as const) {
+      const input = await create(version);
+      const scope = memberScope(input.workspaceId);
+      const { workId } = input;
+      const { review, views, generation } = apiBackend.workHttp;
+      const production = createBackend(testConfig, {
+        logger,
+        role: 'api',
+        dependencies: { storage, agents },
+      });
+      try {
+        await rejects(
+          production.workHttp.intake.createWork(scope, {
+            title: 'Тест выбора',
+            packageVersion: version,
+          }),
+          'INVALID_WORK_INPUT',
+        );
+      } finally {
+        await production.stop();
+      }
+      const documentId = brandDocumentId((await upload(input)).id);
+      const analyzed = await until(input, terminal);
+      expect(
+        analyzed.runs.some(
+          ({ kind, status }) => kind === 'analysis' && status === 'succeeded',
+        ),
+      ).toBe(true);
+      expect(Object.keys(analyzed.facts.values).sort()).toEqual(
+        [...keys].sort(),
+      );
+      expect(analyzed.facts.values.plaintiffInn).toBe(evidence.plaintiffInn);
+      expect(analyzed.facts.values.defendantInn).toBe(
+        keys.length === 4 ? evidence.defendantInn : undefined,
+      );
+      expect(
+        analyzed.facts.candidates.map(({ field }) => field).sort(),
+      ).toEqual([...keys].sort());
+      await rejects(
+        review.editValues(scope, {
+          workId,
+          revision: analyzed.work.revision,
+          values: { personName: 'Чужое поле' },
+        }),
+        'INVALID_WORK_INPUT',
+      );
+      await review.editValues(scope, {
+        workId,
+        revision: analyzed.work.revision,
+        values: { courtAddress: 'Проверенный адрес' },
+      });
+      const edited = await views.get(scope, workId);
+      await review.confirmFacts(scope, {
+        workId,
+        revision: edited.work.revision,
+      });
+      const confirmed = await views.get(scope, workId);
+      expect([...confirmed.facts.confirmed].sort()).toEqual([...keys].sort());
+      await analyze(input);
+      const rerun = await until(
+        input,
+        (view) => terminal(view) && view.runs.length > confirmed.runs.length,
+      );
+      expect(rerun.facts.values.courtAddress).toBe('Проверенный адрес');
+      expect(rerun.facts.values.plaintiffInn).toBe(evidence.plaintiffInn);
+      expect(rerun.facts.manual).toContain('courtAddress');
+      expect(rerun.facts.confirmed).toContain('plaintiffInn');
+      expect(rerun.discrepancyFields).toEqual(['courtAddress']);
+      await generation.startGeneration(scope, {
+        workId,
+        revision: rerun.work.revision,
+        correlationId: crypto.randomUUID(),
+      });
+      const generated = await until(
+        input,
+        (view) => view.generations[0]?.status === 'succeeded',
+      );
+      const record = generated.generations[0];
+      const file = record?.files[0];
+      if (!record || !file) throw new Error('MISSING_CLAIM_DOCX');
+      const { bytes } = await generation.downloadResult(scope, {
+        workId,
+        generationId: brandGenerationId(record.id),
+        fileId: brandFileId(file.id),
+      });
+      const content = unzipSync(bytes)['word/document.xml'];
+      if (!content) throw new Error('MISSING_CLAIM_DOCUMENT_XML');
+      const xml = strFromU8(content);
+      expect(xml).toContain('Проверенный адрес');
+      expect(xml).toContain(evidence.plaintiffInn);
+      expect(xml.includes(evidence.defendantInn)).toBe(keys.length === 4);
+
+      const lawyerId = await createChatActor(input.workspaceId);
+      try {
+        chatHook = async (turn) => {
+          const change = await turn.writeField(
+            { field: 'defendantInn', value: '7707083893' },
+            'fixture-chat-write',
+            turn.signal,
+          );
+          expect(change).toMatchObject(
+            keys.length === 4
+              ? { field: 'defendantInn', after: '7707083893' }
+              : { errorCode: 'INVALID_WORK_INPUT' },
+          );
+          return {
+            answer: 'Проверен ИНН ответчика.',
+            usage: { inputTokens: 1, outputTokens: 1 },
+          };
+        };
+        const chat = apiBackend.workHttp.chat;
+        const { runId } = await chat.send(
+          memberScope(input.workspaceId, lawyerId),
+          {
+            workId,
+            userText: 'Исправь ИНН ответчика.',
+            correlationId: crypto.randomUUID(),
+          },
+        );
+        let status: string | undefined;
+        const afterChat = await until(input, async () => {
+          const { items } = await chat.list(scope, {
+            workId,
+            page: 1,
+            pageSize: 1,
+          });
+          status = items.find((item) => item.runId === runId)?.status;
+          return (
+            status !== undefined && status !== 'queued' && status !== 'running'
+          );
+        });
+        expect(status).toBe(keys.length === 4 ? 'succeeded' : 'failed');
+        expect(afterChat.facts.values.defendantInn).toBe(
+          keys.length === 4 ? '7707083893' : undefined,
+        );
+      } finally {
+        chatHook = undefined;
+        await db.user.delete({ where: { id: lawyerId } });
+      }
+
+      const catalog = apiBackend.documentHttp.documents;
+      const impact = await catalog.queries.deletionImpact(scope, documentId);
+      await catalog.commands.remove(scope, documentId, impact.token);
+      const afterDeletion = await views.get(scope, workId);
+      expect(afterDeletion.facts.values.plaintiffInn).toBe(
+        evidence.plaintiffInn,
+      );
+      expect(afterDeletion.facts.needsReview).toContain('plaintiffInn');
+      expect(afterDeletion.facts.confirmed).not.toContain('plaintiffInn');
+      expect(afterDeletion.facts.candidates).toEqual([]);
+    }
+  } finally {
+    parseFixture = undefined;
+    extractFixture = undefined;
+  }
+});
 
 async function createChatActor(workspaceId: string) {
   const id = crypto.randomUUID();
@@ -1729,6 +1933,7 @@ afterAll(async () => {
   await db.workArtifact.deleteMany({ where });
   await db.workAgentThread.deleteMany({ where });
   await db.work.deleteMany({ where });
+  await unregisterDebtClaim(db);
   await db.workDeletion.deleteMany({ where });
   await db.idempotencyKey.deleteMany({ where });
   await db.llmSettings.deleteMany({ where });
@@ -2463,7 +2668,6 @@ test('a package generates three individually scoped DOCX files from one snapshot
         { name: 'Банк А', basis: 'Договор А', amount: '100.00' },
         { name: 'Банк Б', basis: 'Договор Б', amount: '200.00' },
       ],
-      requestsDetails: 'Ввести процедуру реструктуризации долгов',
     },
   });
   const saved = await apiBackend.workHttp.views.get(
@@ -2987,7 +3191,12 @@ test('deletion during model execution hides derivatives immediately and fences t
       input,
       (state) => !state.cleanupPending && !state.documents.length,
     );
-    expect(clean.facts.values).toEqual(emptyFieldValues());
+    expect(clean.facts.values).toEqual({
+      personName: null,
+      documentNumber: null,
+      documentDate: null,
+      observations: null,
+    });
     expect(await db.run.count({ where: { workId: input.workId } })).toBe(0);
     expect(
       await db.workAgentThread.count({ where: { workId: input.workId } }),

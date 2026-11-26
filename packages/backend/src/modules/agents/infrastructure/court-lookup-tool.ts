@@ -2,7 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
 import type { WorkReadContext } from '..';
-import { candidateSchema } from '../../../profiles/bfl/candidate';
+import { candidateSchema } from '../../../profiles/candidate';
 
 import {
   addressMentionsTerritory,

@@ -6,7 +6,7 @@ import {
 import type { WorkFacts } from '../../modules/facts';
 import type { ChecklistItem } from '../../modules/works';
 import { evidencedContract } from '../../profiles/bfl/automatic-value';
-import type { FieldRow } from '../../profiles/bfl/fields';
+import type { FieldRow } from '../../profiles/fields';
 
 type ChecklistWithContracts = ChecklistItem & {
   contracts?: {

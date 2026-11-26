@@ -7,10 +7,12 @@ import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
 import { changeWork } from '../change-work';
 import { workCommandPolicy } from '../work-command-guards';
+import type { ResolveWorkPackage } from '../work-package';
 
 // Подтверждение сведений по ожидаемой ревизии, когда у работы нет активного запуска.
 export const confirmFacts =
   (deps: {
+    resolvePackage: ResolveWorkPackage;
     uow: UnitOfWork;
     works: WorksModule;
     facts: FactsModule;
@@ -32,7 +34,11 @@ export const confirmFacts =
         advance: 'confirmed',
         event: 'facts.confirmed',
       },
-      () => (tx) =>
-        deps.facts.in(tx).commands.confirm(scope, { workId: input.workId }),
+      ({ work }) =>
+        (tx) =>
+          deps.facts.in(tx).commands.confirm(scope, {
+            workId: input.workId,
+            fields: deps.resolvePackage(work.packageVersion).description.fields,
+          }),
     );
   };

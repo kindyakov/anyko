@@ -6,7 +6,7 @@ import {
   type AnalysisPlan,
   validateAnalysisPlan,
 } from '../src/profiles/analysis-plan';
-import { resolveWorkAnalysis } from '../src/workflows/work-analysis/definition';
+import { createProcessingProfiles } from '../src/runtime/processing-profiles';
 import { workAnalysisRevision } from '../src/workflows/work-analysis/revision';
 
 test('a package must assign each automatic field to a writable step', () => {
@@ -42,26 +42,42 @@ test('a package must assign each automatic field to a writable step', () => {
 });
 
 test('a checkpoint revision changes when the plan is reordered or its instructions change', () => {
-  const { fields, plan } = resolveWorkAnalysis(bflLayoutPackage, true);
+  const {
+    analysis: { fields, plan },
+    profile,
+  } = createProcessingProfiles(true).resolve(bflLayoutPackage);
   const [first, second, ...remaining] = plan?.steps ?? [];
   if (!plan || !first || !second) throw new Error('MISSING_ANALYSIS_PLAN');
 
-  const revision = workAnalysisRevision(fields, plan);
-  expect(workAnalysisRevision(fields, structuredClone(plan))).toBe(revision);
+  const revision = workAnalysisRevision(fields, plan, profile);
+  expect(workAnalysisRevision(fields, structuredClone(plan), profile)).toBe(
+    revision,
+  );
   expect(
-    workAnalysisRevision(fields, {
-      ...plan,
-      steps: [second, first, ...remaining],
-    }),
+    workAnalysisRevision(fields, plan, { ...profile, revision: 'next' }),
   ).not.toBe(revision);
   expect(
-    workAnalysisRevision(fields, {
-      ...plan,
-      steps: [
-        { ...first, instructions: 'Уточни дату выдачи.' },
-        second,
-        ...remaining,
-      ],
-    }),
+    workAnalysisRevision(
+      fields,
+      {
+        ...plan,
+        steps: [second, first, ...remaining],
+      },
+      profile,
+    ),
+  ).not.toBe(revision);
+  expect(
+    workAnalysisRevision(
+      fields,
+      {
+        ...plan,
+        steps: [
+          { ...first, instructions: 'Уточни дату выдачи.' },
+          second,
+          ...remaining,
+        ],
+      },
+      profile,
+    ),
   ).not.toBe(revision);
 });

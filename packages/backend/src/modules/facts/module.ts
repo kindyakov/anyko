@@ -1,3 +1,5 @@
+import { hasSubmittedAttachments } from '@anyko/document-values/attachments';
+
 import type { Tx } from '../../platform/transactions';
 
 import { acceptRunCandidates } from './application/accept-run-candidates';
@@ -5,7 +7,7 @@ import { confirmValues } from './application/confirm-facts';
 import { editValues } from './application/edit-values';
 import { readAnalysisFacts } from './application/read-analysis-facts';
 import { readFacts } from './application/read-facts';
-import { refreshFactEvidence } from './domain/values';
+import { packageFacts, refreshFactEvidence } from './domain/values';
 
 import type { FactsModule, FactsPorts, FactsStore } from './index';
 
@@ -19,7 +21,8 @@ export function createFactsModule(deps: FactsDeps): FactsModule {
   const bind = (store: FactsStore): FactsPorts => ({
     internal: {
       erase: (workspaceId, workId) => store.erase(workspaceId, workId),
-      async removeSubmittedAttachment(workspaceId, workId, documentId) {
+      async removeSubmittedAttachment(workspaceId, workId, documentId, fields) {
+        if (!hasSubmittedAttachments(fields)) return;
         const facts = await store.get(workspaceId, workId);
         const rows = facts.values.submittedAttachments;
         if (!Array.isArray(rows)) return;
@@ -32,19 +35,20 @@ export function createFactsModule(deps: FactsDeps): FactsModule {
       },
       async defaultDocumentDate(workspaceId, workId, date) {
         const facts = await store.get(workspaceId, workId);
-        if (facts.values.documentDate === null)
+        if (facts.values.documentDate == null)
           await store.save(workspaceId, workId, {
             ...facts,
             values: { ...facts.values, documentDate: date },
           });
       },
-      async refreshEvidence(workspaceId, workId, refresh) {
+      async refreshEvidence(workspaceId, workId, refresh, fields) {
         const facts = refreshFactEvidence(
           await store.get(workspaceId, workId),
           refresh,
+          fields,
         );
         await store.save(workspaceId, workId, facts);
-        return facts;
+        return packageFacts(facts, fields);
       },
     },
     commands: {

@@ -10,7 +10,6 @@ import type { ResourceLocks } from '../../modules/documents';
 import type { FactsModule } from '../../modules/facts';
 import type { GenerationModule } from '../../modules/generation';
 import type { ProcessingModule } from '../../modules/processing';
-import { requirePackage } from '../../modules/templates';
 import { WorkError, type WorksModule } from '../../modules/works';
 import type { Clock } from '../../platform/clock';
 import type { WorkId } from '../../platform/ids';
@@ -18,10 +17,12 @@ import type { WorkspaceScope } from '../../platform/scope/workspace-scope';
 import type { UnitOfWork } from '../../platform/transactions';
 import { changeWork } from '../change-work';
 import { workCommandPolicy } from '../work-command-guards';
+import type { ResolveWorkPackage } from '../work-package';
 
 // Старт генерации: снимок сведений, результат, запуск и журнал в одной транзакции. Исполнение — в worker.
 export const startGeneration =
   (deps: {
+    resolvePackage: ResolveWorkPackage;
     uow: UnitOfWork;
     clock: Clock;
     works: WorksModule;
@@ -52,12 +53,15 @@ export const startGeneration =
             .in(tx)
             .internal.configuration(scope.workspaceId);
           const facts = deps.facts.in(tx);
+          const { description: pack } = deps.resolvePackage(
+            work.packageVersion,
+          );
           const { values, needsReview } = await facts.queries.get(
             scope,
             input.workId,
+            pack.fields,
           );
           if (needsReview?.length) throw new WorkError('NOT_READY');
-          const pack = requirePackage(work.packageVersion);
           if (hasSubmittedAttachments(pack.fields))
             values.submittedAttachments = submittedAttachmentRows(
               values.submittedAttachments,

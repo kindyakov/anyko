@@ -11,6 +11,7 @@ import {
   type WorkFacts,
 } from '..';
 import { openTransaction } from '../../../platform/transactions';
+import { fieldDefinitions } from '../../../profiles/bfl/fields';
 import { createFactsModule } from '../module';
 
 const ref = {
@@ -70,9 +71,24 @@ function runFacts(initial = emptyFacts()) {
     },
   });
   return {
-    accept: (input: Omit<AcceptRunCandidatesInput, keyof typeof ref>) =>
-      facts.in(tx).commands.acceptRunCandidates({ ...ref, ...input }),
-    saved: () => facts.queries.forAnalysis(ref),
+    accept: ({
+      fields,
+      ...input
+    }: Omit<
+      AcceptRunCandidatesInput,
+      keyof typeof ref | 'fields' | 'packageFields'
+    > & { fields: readonly string[] }) =>
+      facts.in(tx).commands.acceptRunCandidates({
+        ...ref,
+        ...input,
+        fields: fields.map((key) => {
+          const field = fieldDefinitions.find((field) => field.key === key);
+          if (!field) throw new Error(`Unknown fixture field ${key}`);
+          return field;
+        }),
+        packageFields: fieldDefinitions,
+      }),
+    saved: () => facts.queries.forAnalysis(ref, fieldDefinitions),
   };
 }
 

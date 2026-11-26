@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { fieldKeySchema, fieldValueSchema } from '../../../profiles/bfl/fields';
+import { fieldKeySchema, fieldValueSchema } from '../../../profiles/fields';
 
 import type { ChatProgress } from './chat-progress';
 

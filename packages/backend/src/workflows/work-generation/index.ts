@@ -7,11 +7,13 @@ import type { ProcessingModule } from '../../modules/processing';
 import type { WorksModule } from '../../modules/works';
 import type { Clock } from '../../platform/clock';
 import type { UnitOfWork } from '../../platform/transactions';
+import type { ResolveWorkPackage } from '../work-package';
 
 import { downloadResult } from './download-result';
 import { startGeneration } from './start-generation';
 
 export interface WorkGenerationDeps {
+  resolvePackage: ResolveWorkPackage;
   uow: UnitOfWork;
   clock: Clock;
   works: WorksModule;

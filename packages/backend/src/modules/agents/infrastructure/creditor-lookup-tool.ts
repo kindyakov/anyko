@@ -7,8 +7,8 @@ import {
 } from '@anyko/document-values/obligations';
 
 import type { WorkReadContext } from '..';
-import { candidateSchema } from '../../../profiles/bfl/candidate';
-import type { FieldRow } from '../../../profiles/bfl/fields';
+import { candidateSchema } from '../../../profiles/candidate';
+import type { FieldRow } from '../../../profiles/fields';
 
 import {
   type CreditorLookup,

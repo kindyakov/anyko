@@ -11,13 +11,13 @@ import { literalSourceQuote } from '../../../platform/source-quote';
 import {
   analysisDiscrepancySchema,
   analysisMissingFieldSchema,
-} from '../../../profiles/bfl/analysis-discrepancy';
+} from '../../../profiles/analysis-discrepancy';
 import {
   automaticValue,
   type FactSourceText,
 } from '../../../profiles/bfl/automatic-value';
 import { businessAbsenceRule } from '../../../profiles/bfl/business-absence';
-import { candidateSchema } from '../../../profiles/bfl/candidate';
+import { candidateSchema } from '../../../profiles/candidate';
 
 import {
   analysisProposalsSchema,

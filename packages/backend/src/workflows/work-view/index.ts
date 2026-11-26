@@ -12,6 +12,7 @@ import {
   type ReadTemplateRequirements,
 } from '../../modules/templates';
 import type { WorksModule } from '../../modules/works';
+import type { ResolveWorkPackage } from '../work-package';
 
 import { agentHistoryQueries } from './get-agent-history';
 import { getImage } from './get-image';
@@ -20,6 +21,7 @@ import { getSource } from './get-source';
 import { getWork } from './get-work';
 
 export interface WorkViewDeps {
+  resolvePackage: ResolveWorkPackage;
   works: WorksModule;
   facts: FactsModule;
   processing: ProcessingModule;

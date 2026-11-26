@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
 import { attachmentInstructions } from '../../../profiles/bfl/attachment-instructions';
-import { extractedCandidateSchema } from '../../../profiles/bfl/candidate';
 import { employmentInstructions } from '../../../profiles/bfl/employment-instructions';
 import { factInstructions } from '../../../profiles/bfl/fact-instructions';
-import type { FieldDefinition } from '../../../profiles/bfl/fields';
 import { obligationInstructions } from '../../../profiles/bfl/obligation-instructions';
+import { extractedCandidateSchema } from '../../../profiles/candidate';
+import type { FieldDefinition } from '../../../profiles/fields';
 
 import {
   modelCandidateSchema,

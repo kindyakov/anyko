@@ -8,12 +8,14 @@ import { sha256Hex } from '../platform/digest';
 
 import { finishSourceChange } from './change-work';
 import { workLockKey } from './work-guards';
+import type { ResolveWorkPackage } from './work-package';
 
 type AffectedWork = {
   id: string;
   title: string;
   revision: number;
   confirmedRevision: number | null;
+  packageVersion: string;
   busy: boolean;
 };
 
@@ -26,6 +28,7 @@ interface ImpactPorts {
 }
 
 interface DeletionPorts extends ImpactPorts {
+  resolvePackage: ResolveWorkPackage;
   lockSource(workspaceId: string, documentId: string): Promise<boolean>;
   isDeleted(workspaceId: string, documentId: string): Promise<boolean>;
   tryWorkLock(key: string): Promise<boolean>;
@@ -117,13 +120,22 @@ export async function deleteCatalogDocument(
       await ports.works.lockRevision(workspaceId, id, revision);
     await ports.unlink(workspaceId, documentId, workIds);
     await ports.eraseSteps(workspaceId, documentId, workIds);
-    for (const { id, revision, confirmedRevision } of works) {
+    for (const { id, revision, confirmedRevision, packageVersion } of works) {
+      const {
+        description: { fields },
+      } = ports.resolvePackage(packageVersion);
       const updated = await ports.facts.refreshEvidence(
         workspaceId,
         id,
         (entry) => (entry.documentId === documentId ? null : entry),
+        fields,
       );
-      await ports.facts.removeSubmittedAttachment(workspaceId, id, documentId);
+      await ports.facts.removeSubmittedAttachment(
+        workspaceId,
+        id,
+        documentId,
+        fields,
+      );
       await ports.eraseSession(workspaceId, id);
       threadIds.push(...(await ports.threads(workspaceId, id)));
       await finishSourceChange(

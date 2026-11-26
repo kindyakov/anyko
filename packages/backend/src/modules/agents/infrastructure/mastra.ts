@@ -9,12 +9,12 @@ import { createModelGateway, LlmError, llmError } from '@anyko/llm';
 
 import type { DocumentAgents } from '..';
 import { literalSourceQuote } from '../../../platform/source-quote';
-import { extractedCandidateSchema } from '../../../profiles/bfl/candidate';
 import {
   fieldDefinitions,
-  type FieldKey,
   legacyFieldKeys,
 } from '../../../profiles/bfl/fields';
+import { extractedCandidateSchema } from '../../../profiles/candidate';
+import type { FieldKey } from '../../../profiles/fields';
 
 import { documentExtractionPolicy } from './analysis-policy';
 import { createAnalysisStepAgent } from './analysis-step';

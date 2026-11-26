@@ -21,6 +21,7 @@ import {
   deleteCatalogDocument,
   readDeletionImpact,
 } from '../../workflows/catalog-document-deletion';
+import type { ResolveWorkPackage } from '../../workflows/work-package';
 import { redactDeletedDocumentResponses } from '../works/idempotency';
 
 type DeletionRead = Pick<
@@ -67,6 +68,7 @@ type DeletionTransaction = Omit<
 
 export function requestCatalogDeletion(
   tx: DeletionTransaction,
+  resolvePackage: ResolveWorkPackage,
   workspaceId: string,
   documentId: string,
   actorId: string,
@@ -80,6 +82,7 @@ export function requestCatalogDeletion(
   const sessions = createAgentSessionStore(tx, uuidV7);
   const ports: Parameters<typeof deleteCatalogDocument>[0] = {
     ...impactPorts(tx),
+    resolvePackage,
     lockSource: (workspaceId, documentId) =>
       documents.lock(workspaceId, documentId),
     isDeleted: (workspaceId, documentId) =>

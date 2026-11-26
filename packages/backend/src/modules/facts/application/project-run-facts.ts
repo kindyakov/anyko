@@ -4,14 +4,18 @@ import {
   debtSourceChecks,
   type FactSourceText,
 } from '../../../profiles/bfl/automatic-value';
-import type { FieldKey } from '../../../profiles/bfl/fields';
 import { usesBankObligations } from '../../../profiles/bfl/reconcile-obligations';
-import { combineCandidates } from '../domain/candidates';
+import type { FieldDefinition, FieldKey } from '../../../profiles/fields';
+import {
+  combineCandidates,
+  selectPackageCandidates,
+} from '../domain/candidates';
 import { mergeCandidates } from '../domain/values';
 import type { WorkFacts } from '../schemas';
 
 export interface RunProposals {
-  fields: readonly FieldKey[];
+  fields: readonly FieldDefinition[];
+  packageFields: readonly FieldDefinition[];
   excludedFields?: ReadonlySet<FieldKey> | undefined;
   confirmed: boolean;
   preserveExisting?: boolean;
@@ -27,6 +31,7 @@ export function projectRunFacts(
     candidates,
     contextCandidates,
     fields,
+    packageFields,
     excludedFields,
     confirmed,
     preserveExisting,
@@ -34,19 +39,17 @@ export function projectRunFacts(
     sourceTexts,
   }: RunProposals,
 ) {
-  if (excludedFields?.size) {
-    candidates = candidates.filter(({ field }) => !excludedFields.has(field));
-    contextCandidates = contextCandidates?.filter(
-      ({ field }) => !excludedFields.has(field),
-    );
-  }
-  let selected = preserveExisting
-    ? existing.candidates
-    : combineCandidates(candidates);
+  const allowed = packageFields.filter(({ key }) => !excludedFields?.has(key));
+  candidates = selectPackageCandidates(candidates, allowed);
+  if (contextCandidates)
+    contextCandidates = selectPackageCandidates(contextCandidates, allowed);
+  const keys = new Set(packageFields.map(({ key }) => key));
+  const previous = existing.candidates.filter(({ field }) => keys.has(field));
+  let selected = preserveExisting ? previous : combineCandidates(candidates);
   let extractionAccepted = !preserveExisting;
   let contextAccepted = false;
   try {
-    selected = combineCandidates(candidates, existing.candidates);
+    selected = combineCandidates(candidates, previous);
     extractionAccepted = true;
     if (contextCandidates !== undefined) {
       selected = combineCandidates(selected, contextCandidates);
@@ -76,11 +79,12 @@ export function projectRunFacts(
     passportIds,
     sourceChecks,
     sourceTexts,
+    packageFields,
   );
   if (!contextAccepted) {
     // Необязательная стадия не стирает известные значения без новых кандидатов.
-    for (const field of fields) {
-      const saved = existing.values[field];
+    for (const { key: field } of fields) {
+      const saved = existing.values[field] ?? null;
       const stale =
         usesBankObligations(field, [saved]) &&
         Array.isArray(saved) &&

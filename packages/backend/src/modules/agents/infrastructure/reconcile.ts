@@ -8,10 +8,10 @@ import { createModelGateway, llmError } from '@anyko/llm';
 import type { DocumentAgents } from '..';
 import { literalSourceQuote } from '../../../platform/source-quote';
 import { attachmentInstructions } from '../../../profiles/bfl/attachment-instructions';
-import { candidateSchema } from '../../../profiles/bfl/candidate';
 import { employmentInstructions } from '../../../profiles/bfl/employment-instructions';
 import { factInstructions } from '../../../profiles/bfl/fact-instructions';
 import { obligationInstructions } from '../../../profiles/bfl/obligation-instructions';
+import { candidateSchema } from '../../../profiles/candidate';
 import { checklistSuggestionSchema } from '../application/checklist';
 import { reconciliationSchema } from '../application/session';
 

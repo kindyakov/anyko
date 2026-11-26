@@ -52,9 +52,9 @@ export const acceptRunCandidates =
     return {
       contextAccepted,
       proposalOutcomes,
-      missingFields: fields.filter((field) => next.values[field] === null),
-      discrepancyFields: findFactDiscrepancies(next).filter((field) =>
-        fields.includes(field),
-      ),
+      missingFields: fields
+        .map(({ key }) => key)
+        .filter((key) => next.values[key] == null),
+      discrepancyFields: findFactDiscrepancies(next, fields),
     };
   };

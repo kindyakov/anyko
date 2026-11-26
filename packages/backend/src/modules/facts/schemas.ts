@@ -1,22 +1,12 @@
 import { z } from 'zod';
 
-import { candidateSchema } from '../../profiles/bfl/candidate';
-import {
-  fieldKeySchema,
-  fieldValuesSchema,
-  readFieldValues,
-} from '../../profiles/bfl/fields';
+import { candidateSchema } from '../../profiles/candidate';
+import { fieldKeySchema, storedFieldValuesSchema } from '../../profiles/fields';
 
 export const factsSchema = z
   .object({
     version: z.literal(1),
-    values: z.preprocess(
-      (input) =>
-        typeof input === 'object' && input !== null && !Array.isArray(input)
-          ? { ...readFieldValues({}), ...input }
-          : input,
-      fieldValuesSchema,
-    ),
+    values: storedFieldValuesSchema,
     manual: z.array(fieldKeySchema),
     confirmed: z.array(fieldKeySchema).default([]),
     needsReview: z.array(fieldKeySchema).optional(),
