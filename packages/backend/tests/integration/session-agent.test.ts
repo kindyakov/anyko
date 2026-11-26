@@ -1864,7 +1864,7 @@ test('official creditor details stay a proposal until selecting them for the lin
       'bfl-statement-v11',
     );
     expect(data.creditorHeaders?.[0]).toMatchObject({
-      name: fullName,
+      name: fullName + ' (ПАО ВТБ)',
       address,
       inn: '7702070139',
     });

@@ -79,8 +79,10 @@ test('BFL retirement retries generated file deletion and keeps retained packages
     }),
     { logger, role: 'worker', dependencies: { storage } },
   );
+  let created = false;
   try {
     await pool.query(`CREATE DATABASE ${fixtureName}`);
+    created = true;
     for (const name of (await readdir(migrations)).sort()) {
       if (!/^\d{12}_/.test(name) || name >= migration) continue;
       await isolatedPool.query(
@@ -90,16 +92,19 @@ test('BFL retirement retries generated file deletion and keeps retained packages
     await db.anykoWorkspace.create({
       data: { id: workspaceId, name: 'Migration fixture' },
     });
-    await db.documentPackageVersion.create({
-      data: {
-        version: 'bfl-bankruptcy-v110',
-        packageId: 'other',
-        title: 'Unrelated package',
-      },
+    await db.documentPackageVersion.createMany({
+      data: [
+        {
+          version: 'bfl-bankruptcy-v110',
+          packageId: 'bfl-bankruptcy',
+          title: 'Future BFL',
+        },
+        { version: 'other-v1', packageId: 'other', title: 'Unrelated package' },
+      ],
     });
     await db.packageDocument.create({
       data: {
-        packageVersion: 'bfl-bankruptcy-v110',
+        packageVersion: 'other-v1',
         templateVersion: 'bfl-statement-v10',
         position: 0,
       },
@@ -111,7 +116,8 @@ test('BFL retirement retries generated file deletion and keeps retained packages
           id: packageVersion,
           packageVersion,
         })),
-        { id: 'other', packageVersion: 'bfl-bankruptcy-v110' },
+        { id: 'future', packageVersion: 'bfl-bankruptcy-v110' },
+        { id: 'other', packageVersion: 'other-v1' },
       ].map((work) => ({
         ...work,
         workspaceId,
@@ -237,11 +243,10 @@ test('BFL retirement retries generated file deletion and keeps retained packages
       await Bun.file(new URL(`${migration}/migration.sql`, migrations)).text(),
     );
 
-    expect(
-      await db.work.findUniqueOrThrow({ where: { id: workId } }),
-    ).toMatchObject({
-      deletedAt: expect.any(Date),
+    const tombstone = await db.work.findUniqueOrThrow({
+      where: { id: workId },
     });
+    expect(tombstone.deletedAt).toBeInstanceOf(Date);
     expect(
       await db.run.findUniqueOrThrow({ where: { id: queuedRunId } }),
     ).toMatchObject({ status: 'cancelled' });
@@ -267,13 +272,11 @@ test('BFL retirement retries generated file deletion and keeps retained packages
     };
 
     await maintain();
-    expect(
-      await db.workDeletion.findUniqueOrThrow({ where: { id: workId } }),
-    ).toMatchObject({
-      documentIds: [],
-      completedAt: null,
-      failedAt: expect.any(Date),
+    const failed = await db.workDeletion.findUniqueOrThrow({
+      where: { id: workId },
     });
+    expect(failed).toMatchObject({ documentIds: [], completedAt: null });
+    expect(failed.failedAt).toBeInstanceOf(Date);
     expect(
       await db.workGenerationFile.findUniqueOrThrow({ where: { id: 'old' } }),
     ).toMatchObject({
@@ -290,12 +293,11 @@ test('BFL retirement retries generated file deletion and keeps retained packages
     await maintain();
     await maintain();
 
-    expect(
-      await db.workDeletion.findUniqueOrThrow({ where: { id: workId } }),
-    ).toMatchObject({
-      completedAt: expect.any(Date),
-      failedAt: null,
+    const completed = await db.workDeletion.findUniqueOrThrow({
+      where: { id: workId },
     });
+    expect(completed.completedAt).toBeInstanceOf(Date);
+    expect(completed.failedAt).toBeNull();
     expect(await db.workFacts.findUnique({ where: { workId } })).toBeNull();
     expect(await db.run.findUnique({ where: { id: queuedRunId } })).toBeNull();
     expect(
@@ -311,7 +313,7 @@ test('BFL retirement retries generated file deletion and keeps retained packages
     ).toBeNull();
     expect(
       (await db.work.findMany({ orderBy: { id: 'asc' } })).map(({ id }) => id),
-    ).toEqual([...retained, 'other']);
+    ).toEqual([...retained, 'future', 'other']);
     expect(
       (
         await db.documentPackageVersion.findMany({
@@ -319,11 +321,11 @@ test('BFL retirement retries generated file deletion and keeps retained packages
           orderBy: { version: 'asc' },
         })
       ).map(({ version }) => version),
-    ).toEqual(retained);
+    ).toEqual(['bfl-bankruptcy-v110', ...retained]);
     expect(
       (
         await db.packageDocument.findMany({
-          where: { packageVersion: 'bfl-bankruptcy-v110' },
+          where: { packageVersion: 'other-v1' },
         })
       ).map(({ templateVersion }) => templateVersion),
     ).toEqual(['bfl-statement-v10']);
@@ -356,7 +358,7 @@ test('BFL retirement retries generated file deletion and keeps retained packages
     await db.$disconnect();
     await isolatedPool.end();
     try {
-      await pool.query(`DROP DATABASE IF EXISTS ${fixtureName}`);
+      if (created) await pool.query(`DROP DATABASE IF EXISTS ${fixtureName}`);
     } finally {
       await pool.end();
     }

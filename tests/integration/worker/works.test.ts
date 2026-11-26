@@ -5277,11 +5277,11 @@ test('bank certificates retain evidence and a manual contract decision, and both
       const xml = strFromU8(
         unzipSync(result.bytes)['word/document.xml'] ?? new Uint8Array(),
       );
-      expect(xml).toContain('1434,21');
-      expect(xml).toContain('1234,15');
+      expect(xml).toContain('1 434,21');
+      expect(xml).toContain('1 234,15');
       expect(xml).toContain('200,06');
       expect(xml.match(/BANK-01/g)).toHaveLength(1);
-      expect(xml).not.toMatch(/BANK-03|BANK-04|7000,10|2222,10|8,15/);
+      expect(xml).not.toMatch(/BANK-03|BANK-04|7 000,10|2 222,10|8,15/);
       if (templateVersion === 'bfl-statement-v11') {
         const header = xml.slice(0, xml.indexOf('</w:tbl>'));
         expect(header.match(/Синтетический Банк/g)).toHaveLength(1);
@@ -5496,14 +5496,14 @@ test('employment records and income certificates reach review and the downloaded
       values: { ...reviewed.facts.values, documentDate: '14.03.2026' },
     });
     const active = await renderStatement(await until(input, terminal));
-    expect(active).toContain('В настоящее время работаю в ООО Юг.');
-    expect(active).toContain('60900,00 руб.');
+    expect(active).toContain('осуществляю трудовую деятельность в ООО Юг.');
+    expect(active).toContain('60 900,00');
     expect(active).not.toContain('ООО Север');
 
     await addSource('employment-termination');
     const terminated = await renderStatement(await until(input, terminal));
     expect(terminated).toContain('не осуществляю трудовую деятельность');
-    expect(terminated).not.toMatch(/ООО Юг|Средняя заработная плата|60900,00/);
+    expect(terminated).not.toMatch(/ООО Юг|Средняя заработная плата|60 900,00/);
   } finally {
     parseFixture = undefined;
     extractFixture = undefined;

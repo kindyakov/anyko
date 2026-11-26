@@ -30,12 +30,14 @@ test('the selectable BFL package stays on v14 and only v12 through v14 resolve',
   expect(packages[0]?.technical).toBe(false);
   expect(packages[0]?.version).toBe('bfl-bankruptcy-v14');
   for (const version of [12, 13, 14]) {
-    expect(requirePackage(`bfl-bankruptcy-v${version}`).documents).toHaveLength(
-      3,
-    );
+    expect(
+      requirePackage(`bfl-bankruptcy-v${String(version)}`).documents,
+    ).toHaveLength(3);
   }
   for (const version of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) {
-    expect(() => requirePackage(`bfl-bankruptcy-v${version}`)).toThrow();
+    expect(() =>
+      requirePackage(`bfl-bankruptcy-v${String(version)}`),
+    ).toThrow();
   }
 });
 
@@ -156,8 +158,10 @@ test('one saved date uses the format of each statement slot', () => {
       placeholder: 'D MMMM YYYY года',
     },
   ]);
-  expect(output.passportIssuedAt).toBe('30.08.2003');
-  expect(output.passportIssuedAtText).toBe('30 августа 2003 года');
+  expect(output).toMatchObject({
+    passportIssuedAt: '30.08.2003',
+    passportIssuedAtText: '30 августа 2003 года',
+  });
 });
 
 test('the same precise ruble amount is rendered numerically and in the requested case', () => {
