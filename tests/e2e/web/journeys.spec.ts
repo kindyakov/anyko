@@ -180,8 +180,8 @@ test('work goes from list through upload, automatic status and editable facts', 
   const history = agentPanel(page);
   await history.getByRole('tab', { name: 'Журнал' }).click();
   await history
-    .getByRole('button', { name: /Автоматический анализ/ })
-    .first()
+    .getByRole('list', { name: 'Запуски анализа' })
+    .getByRole('button', { name: /Автоматический анализ.*последний/ })
     .click();
   await history
     .getByRole('button', { name: /Сопоставление · Результат сохранён/ })
