@@ -17,13 +17,6 @@ const scalar = (key: FieldKey, label: string, multiline = false) => ({
   limits: { maxLength: 12000 },
   columns: [],
 });
-// These four keys keep previously saved technical works readable.
-export const legacyFieldKeys = [
-  'personName',
-  'documentNumber',
-  'documentDate',
-  'observations',
-] as const;
 const scalarFields = {
   personName: { label: 'ФИО полностью', role: 'debtor' },
   documentNumber: {

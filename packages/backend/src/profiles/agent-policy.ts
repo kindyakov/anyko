@@ -21,7 +21,7 @@ export interface CreditorEvidence {
   fallbackRegistry: 'cbr' | 'fns';
 }
 
-export interface AgentLookups {
+interface AgentLookups {
   court?: CourtEvidence;
   creditor?: CreditorEvidence;
 }
