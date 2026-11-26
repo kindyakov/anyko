@@ -34,6 +34,7 @@ import {
 } from '../../../packages/backend/src/platform/ids';
 import { emptyFieldValues } from '../../../packages/backend/src/profiles/bfl/fields';
 import { createBackend } from '../../../packages/backend/src/runtime';
+import { publishRegisteredPackages } from '../../../packages/backend/src/runtime/publish-packages';
 import { requirePackage } from '../../../packages/backend/src/runtime/template-assets';
 import { completionStream } from '../../../packages/backend/tests/support/completion-stream';
 import { memberScope } from '../../../packages/backend/tests/support/scope';
@@ -309,6 +310,7 @@ const testConfig = integrationConfig({
 const apiBackend = createBackend(testConfig, {
   logger,
   role: 'api',
+  packageCatalog: 'published',
   dependencies: { storage, agents, processingProfiles: [debtClaimProfile] },
 });
 const runtime = {
@@ -319,27 +321,30 @@ const runtime = {
   deps: { documents: apiBackend.documentHttp.documents },
   stop: () => apiBackend.stop(),
 };
-const workerBackend = createBackend(testConfig, {
-  logger,
-  role: 'worker',
-  dependencies: {
-    storage,
-    agents,
-    processingProfiles: [debtClaimProfile],
-    parser: {
-      parseDocument: async (...args) => {
-        if (parseFixture) return parseFixture(...args);
-        await pauseOcr?.();
-        return {
-          markdown: 'Имя: Анна. Номер: 42.',
-          processorVersion: 'fixture',
-          images: imageFixture,
-        };
+const createFixtureWorker = (packageCatalog?: 'published') =>
+  createBackend(testConfig, {
+    logger,
+    role: 'worker',
+    ...(packageCatalog && { packageCatalog }),
+    dependencies: {
+      storage,
+      agents,
+      processingProfiles: [debtClaimProfile],
+      parser: {
+        parseDocument: async (...args) => {
+          if (parseFixture) return parseFixture(...args);
+          await pauseOcr?.();
+          return {
+            markdown: 'Имя: Анна. Номер: 42.',
+            processorVersion: 'fixture',
+            images: imageFixture,
+          };
+        },
+        eraseAttempt: () => Promise.resolve(),
       },
-      eraseAttempt: () => Promise.resolve(),
     },
-  },
-});
+  });
+const workerBackend = createFixtureWorker('published');
 let worker: Awaited<ReturnType<typeof startJobWorker>> | undefined;
 const workerPrefix = `test-work-${crypto.randomUUID()}`;
 async function ready() {
@@ -897,9 +902,11 @@ test('each debt claim package scopes saved evidence, decisions and the generated
       const production = createBackend(testConfig, {
         logger,
         role: 'api',
+        packageCatalog: 'published',
         dependencies: { storage, agents },
       });
       try {
+        await production.ready();
         await rejects(
           production.workHttp.intake.createWork(scope, {
             title: 'Тест выбора',
@@ -2044,7 +2051,11 @@ test('recovery of a chat turn does not reapply a field value superseded before r
   }
 }, 30_000);
 
-beforeAll(() => registerDebtClaim(db));
+beforeAll(async () => {
+  await publishRegisteredPackages(db);
+  await registerDebtClaim(db);
+  await apiBackend.ready();
+});
 
 afterAll(async () => {
   await workerBackend.stop();
@@ -4684,6 +4695,7 @@ test('changed extraction declarations invalidate only extraction, and unversione
   if (!field || !template) throw new Error('MISSING_PACKAGE_FIXTURE');
   const label = field.label;
   const checksum = template.checksum;
+  let deployment: ReturnType<typeof createFixtureWorker> | undefined;
   let recognitions = 0;
   const images = [
     {
@@ -4709,7 +4721,13 @@ test('changed extraction declarations invalidate only extraction, and unversione
     expect(descriptionsByResource.get(resource)).toBe(1);
     expect(extractionDocuments.get(resource)).toEqual([source.id]);
 
-    // A deployment changes the declaration the agent receives for this field.
+    // Exercise revision changes in the fixture registry. Published packages keep
+    // their stored declaration when the code-owned description changes.
+    await worker?.stop();
+    worker = undefined;
+    deployment = createFixtureWorker();
+    await deployment.ready();
+    worker = await startJobWorker(deployment.jobs, { prefix: workerPrefix });
     field.label = 'Имя заявителя';
     await analyze(input);
     const refreshed = await until(
@@ -4753,6 +4771,10 @@ test('changed extraction declarations invalidate only extraction, and unversione
     ]);
     expect(recognitions).toBe(1);
   } finally {
+    if (deployment) {
+      await deployment.stop();
+      worker = undefined;
+    }
     field.label = label;
     template.checksum = checksum;
     parseFixture = undefined;

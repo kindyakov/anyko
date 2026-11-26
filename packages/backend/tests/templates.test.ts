@@ -17,16 +17,13 @@ import {
   emptyFieldValues,
   fieldValuesSchema,
 } from '../src/profiles/bfl/fields';
-import {
-  availablePackages,
-  requirePackage,
-  templateBytes,
-} from '../src/runtime/template-assets';
+import { createProcessingProfiles } from '../src/runtime/processing-profiles';
+import { requirePackage, templateBytes } from '../src/runtime/template-assets';
 
 import { templateData } from './helpers/template-data';
 
 test('the selectable BFL package stays on v14 and only v12 through v14 resolve', () => {
-  const packages = availablePackages();
+  const packages = createProcessingProfiles(false).available();
   expect(packages).toHaveLength(1);
   expect(packages[0]?.technical).toBe(false);
   expect(packages[0]?.version).toBe('bfl-bankruptcy-v14');

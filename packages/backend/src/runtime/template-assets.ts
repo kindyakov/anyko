@@ -6,14 +6,9 @@ import {
   technicalBytes,
   technicalDescription,
 } from '../modules/templates';
-import {
-  bflPackageDescriptions,
-  defaultBflPackage,
-} from '../profiles/bfl/package-descriptions';
+import { bflPackageDescriptions } from '../profiles/bfl/package-descriptions';
 import manifest from '../profiles/bfl/template-previews.json';
-export function availablePackages(): DocumentPackage[] {
-  return [defaultBflPackage.package];
-}
+
 const technicalPackage = technicalDescription.package;
 export const knownPackages = [
   ...bflPackageDescriptions.map(({ package: pack }) => pack),
@@ -31,6 +26,10 @@ export function requirePackage(version: string): DocumentPackage {
 }
 export function templateBytes(version: string): Uint8Array {
   if (version === technicalPackage.version) return technicalBytes(version);
+  return bflTemplateBytes(version);
+}
+
+export function bflTemplateBytes(version: string): Uint8Array {
   const template = manifest.find((item) => item.version === version);
   if (!template)
     throw new DiagnosticError({

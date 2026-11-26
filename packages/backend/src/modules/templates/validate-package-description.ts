@@ -5,15 +5,17 @@ import PizZip from 'pizzip';
 import { z } from 'zod';
 
 import { attachmentCategory } from '@anyko/document-values/attachments';
-import { prepareTemplate } from '@anyko/document-values/template-filling';
+import { templateFillingOutputs } from '@anyko/document-values/template-filling';
 
 import { validateAnalysisPlan } from '../../profiles/analysis-plan';
 import type { PackagePublication } from '../../profiles/package-description';
 import { documentPackageSchema } from '../../profiles/template-schema';
+import type { DocumentPackage } from '../../profiles/template-schema';
 
 const nonempty = z.string().trim().min(1);
 const publicationSchema = z.strictObject({
   profile: z.strictObject({ id: nonempty, revision: nonempty }),
+  scope: z.enum(['production', 'retained', 'internal']).optional(),
   package: documentPackageSchema,
   catalogTitles: z
     .strictObject({
@@ -72,6 +74,13 @@ export function canonicalJson(value: unknown): string {
 
 export function contentHash(value: unknown) {
   return createHash('sha256').update(canonicalJson(value)).digest('hex');
+}
+
+export function parsePackagePublication(input: unknown): PackagePublication {
+  const parsed = publicationSchema.parse(input);
+  if (canonicalJson(input) !== canonicalJson(parsed))
+    throw new Error('Invalid package description');
+  return parsed;
 }
 
 function unique(keys: readonly (string | number)[], source: string) {
@@ -141,14 +150,63 @@ function docxBindings(bytes: Uint8Array) {
   return tags;
 }
 
+function validatePreview(
+  document: DocumentPackage['documents'][number],
+  technical: boolean,
+  scalars: ReadonlySet<string>,
+  repeats: ReadonlyMap<string, readonly string[]>,
+) {
+  let hasContent = false;
+  const columns = (key: string) => {
+    const keys = repeats.get(key);
+    if (!keys)
+      throw new Error(`Invalid preview repeater ${key} in ${document.version}`);
+    return keys;
+  };
+  const paragraph = (text: string, row?: readonly string[]) => {
+    const markers = [...text.matchAll(/\{([#/])([^{}]+)\}/gu)];
+    if (markers.length) {
+      const [start, end] = markers;
+      if (
+        row ||
+        markers.length !== 2 ||
+        start?.[1] !== '#' ||
+        end?.[1] !== '/' ||
+        start[2] !== end[2] ||
+        !start[2]
+      )
+        throw new Error(`Invalid preview loop in ${document.version}`);
+      row = columns(start[2]);
+    }
+    for (const [, key = ''] of text.matchAll(/\{([^{}#/]+)\}/gu)) {
+      if (!(row ? row.includes(key) : scalars.has(key)))
+        throw new Error(`Invalid preview slot ${key} in ${document.version}`);
+    }
+    return !!text.replace(/\{[#/][^{}]+\}/gu, '').trim();
+  };
+  for (const block of document.blocks) {
+    if (block.kind === 'paragraph') {
+      hasContent = paragraph(block.paragraph.text) || hasContent;
+      continue;
+    }
+    for (const row of block.rows) {
+      const keys = row.repeat === null ? undefined : columns(row.repeat);
+      for (const cell of row.cells)
+        for (const item of cell.paragraphs)
+          if (cell.merge !== 'continue')
+            hasContent = paragraph(item.text, keys) || hasContent;
+    }
+  }
+  if (!technical && !hasContent)
+    throw new Error(`Missing preview in ${document.version}`);
+}
+
 export function validatePackageDescription(
   description: PackagePublication,
   readBytes: (version: string) => Uint8Array,
 ) {
   const { package: pack, analysis, requirements, catalogTitles } = description;
-  const parsed = publicationSchema.parse(description);
-  if (canonicalJson(description) !== canonicalJson(parsed))
-    throw new Error('Invalid package description');
+  parsePackagePublication(description);
   unique(
     pack.fields.map(({ key }) => key),
     'package fields',
@@ -242,54 +300,62 @@ export function validatePackageDescription(
       placeholders.map(({ tag }) => tag),
       version + ' placeholders',
     );
-    const prepared = prepareTemplate(
-      { ...document, fields: pack.fields, attachments },
-      {},
-      {
-        referenceDate: '2026-01-01',
-      },
-    );
-    const computedRows = new Set(prepared.computedRepeats);
-    const declared = new Set(placeholders.map(({ tag }) => tag));
-    for (const [tag, shape] of bindings) {
+    const computed = templateFillingOutputs(filling, pack.fields);
+    const scalars = new Set(computed?.scalars.keys());
+    const repeats = new Map(computed?.repeats);
+    for (const { key, columns } of fields.values()) {
       if (
-        (shape === 'loop' && !Object.hasOwn(prepared.repeating, tag)) ||
-        (shape === 'scalar' && !Object.hasOwn(prepared.scalars, tag))
+        scalars.has(key) ||
+        (repeats.has(key) && !computed?.ownFields.has(key))
       )
-        throw new Error(`Invalid DOCX tag type ${tag} in ${version}`);
-      if (!declared.has(tag) && !(shape === 'loop' && computedRows.has(tag)))
-        throw new Error(`Undeclared DOCX tag ${tag} in ${version}`);
+        throw new Error(`Output collides with field ${key} in ${version}`);
+      if (!columns.length) scalars.add(key);
+      else if (!repeats.has(key))
+        repeats.set(
+          key,
+          computed?.sourceRowColumns({ key, columns }) ??
+            columns.map((column) => column.key),
+        );
     }
+    const declared = new Set(placeholders.map(({ tag }) => tag));
     for (const { tag, field, placeholder } of placeholders) {
-      const [key = '', column] = field.split('.');
+      const [key = '', column, ...rest] = field.split('.');
       const definition = fields.get(key);
       let valid: boolean;
       if (placeholder !== 'identity') {
-        const valueType =
-          definition?.valueType ??
-          (key === 'debtTotal' && filling ? 'money' : undefined);
+        const valueType = definition?.valueType ?? computed?.scalars.get(key);
         valid =
+          !repeats.has(tag) &&
           valueType === (placeholder.startsWith('RUB_') ? 'money' : 'date');
+        if (valid) {
+          if (fields.has(tag) && (tag !== field || definition?.kind !== 'text'))
+            throw new Error(`Output collides with field ${tag} in ${version}`);
+          scalars.add(tag);
+        }
       } else if (column) {
-        const row = prepared.repeating[key]?.[0];
-        valid =
-          (row !== undefined && Object.hasOwn(row, column)) ||
-          definition?.columns.some(({ key }) => key === column) === true ||
-          (computedRows.has(key) &&
-            ((key === 'creditorHeaders' &&
-              ['name', 'inn', 'ogrn', 'address'].includes(column)) ||
-              (['attachments', 'attachmentTail', 'statementDebts'].includes(
-                key,
-              ) &&
-                column === 'description')));
+        valid = repeats.get(key)?.includes(column) === true;
       } else {
-        valid =
-          Object.hasOwn(prepared.scalars, key) ||
-          Object.hasOwn(prepared.repeating, key);
+        valid = scalars.has(key) || repeats.has(key);
       }
-      if (!valid || field.split('.').length > 2)
+      if (!valid || rest.length)
         throw new Error(`Invalid DOCX binding ${tag} in ${version}`);
     }
+    for (const [tag, shape] of bindings) {
+      const [key = '', column = ''] = tag.split('.');
+      const valid =
+        shape === 'loop'
+          ? repeats.has(tag)
+          : shape === 'scalar'
+            ? scalars.has(tag)
+            : repeats.get(key)?.includes(column);
+      if (!valid) throw new Error(`Invalid DOCX tag type ${tag} in ${version}`);
+      if (
+        !declared.has(tag) &&
+        !(shape === 'loop' && computed?.repeats.has(tag))
+      )
+        throw new Error(`Undeclared DOCX tag ${tag} in ${version}`);
+    }
+    validatePreview(document, pack.technical, scalars, repeats);
   }
   return contentHash(description);
 }

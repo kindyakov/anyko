@@ -18,7 +18,7 @@ import {
 } from './bankruptcy-statement';
 import { assessEmployment, hasEmploymentFields } from './employment';
 import { inventorySections } from './inventory-layout';
-import { obligationFields } from './obligations';
+import { obligationFields, obligationTemplate } from './obligations';
 import {
   filingMoneyWords,
   omittedStatementAttachments,
@@ -32,24 +32,119 @@ type Row = Record<string, string | null>;
 type Values = Readonly<Partial<Record<string, string | Row[] | null>>>;
 type FillingField = { key: string; columns: readonly { key: string }[] };
 
-export const bflFillingLayouts = [
-  'statement',
-  'inventory',
-  'creditors',
-] as const;
-type BflFilling = {
+const bflFillingLayouts = ['statement', 'inventory', 'creditors'] as const;
+export type TemplateFilling = {
   functionId: 'bfl-v1';
   layout: (typeof bflFillingLayouts)[number];
   splitAttachments?: boolean | undefined;
 };
 
 type Definition = {
-  filling?: BflFilling | undefined;
+  filling?: TemplateFilling | undefined;
   fields: readonly FillingField[];
   attachments?: readonly PackageAttachment[] | undefined;
   placeholders?:
     readonly { tag: string; field: string; placeholder: string }[] | undefined;
 };
+
+const creditorHeaderColumns = ['name', 'inn', 'ogrn', 'address'];
+const descriptionColumns = ['description'];
+
+const templateFillers = {
+  'bfl-v1': {
+    accepts(parameters: Record<string, unknown>) {
+      return (
+        bflFillingLayouts.some((layout) => layout === parameters.layout) &&
+        (parameters.splitAttachments === undefined ||
+          typeof parameters.splitAttachments === 'boolean') &&
+        Object.keys(parameters).every((key) =>
+          ['functionId', 'layout', 'splitAttachments'].includes(key),
+        )
+      );
+    },
+    outputs(filling: TemplateFilling, fields: readonly FillingField[]) {
+      const { layout, splitAttachments } = filling;
+      const scalars = new Map<string, 'money' | undefined>([
+        ['signerName', undefined],
+      ]);
+      const repeats = new Map<string, readonly string[]>();
+      const ownFields = new Set<string>();
+      if (obligationTemplate(layout)) {
+        scalars.set('debtTotal', 'money');
+        scalars.set('debtTotalWords', undefined);
+        repeats.set('creditorHeaders', creditorHeaderColumns);
+        for (const key of obligationFields) {
+          const columns =
+            fields.find((field) => field.key === key)?.columns ?? [];
+          repeats.set(key, [
+            ...columns.map((column) => column.key),
+            'rowNumber',
+          ]);
+          if (columns.length) ownFields.add(key);
+        }
+      }
+      if (bankruptcyStatement(layout)) {
+        if (hasEmploymentFields(fields))
+          scalars.set('employmentDetails', undefined);
+        for (const key of Object.keys({
+          ...statementRequestValues({}),
+          ...statementLayout(layout, {}),
+        }))
+          scalars.set(key, undefined);
+        repeats.set('attachments', descriptionColumns);
+        repeats.set('statementDebts', descriptionColumns);
+        const attachments = fields.find(({ key }) => key === 'attachments');
+        // Legacy BFL keeps this checklist field and projects it into the
+        // statement using the submitted attachment choices.
+        if (
+          attachments?.columns.length === 2 &&
+          attachments.columns.some(({ key }) => key === 'description') &&
+          attachments.columns.some(({ key }) => key === 'category')
+        )
+          ownFields.add('attachments');
+        if (splitAttachments) {
+          repeats.set('attachmentTail', descriptionColumns);
+          scalars.set('attachmentHeading', undefined);
+        }
+      }
+      for (const [key, rows] of Object.entries(
+        inventorySections(layout, {}, fields) ?? {},
+      ))
+        repeats.set(key, Object.keys(rows[0] ?? {}));
+      return {
+        scalars,
+        repeats,
+        ownFields,
+        sourceRowColumns({ key, columns }: FillingField) {
+          return [
+            ...collectionColumns(key, columns).map((column) => column.key),
+            'rowNumber',
+          ];
+        },
+      };
+    },
+  },
+};
+
+export function isTemplateFilling(value: unknown): value is TemplateFilling {
+  if (typeof value !== 'object' || !value || !('functionId' in value))
+    return false;
+  const { functionId } = value;
+  return (
+    typeof functionId === 'string' &&
+    Object.hasOwn(templateFillers, functionId) &&
+    templateFillers[functionId as keyof typeof templateFillers].accepts(value)
+  );
+}
+
+export function templateFillingOutputs(
+  filling: Definition['filling'],
+  fields: readonly FillingField[],
+) {
+  return (
+    filling && templateFillers[filling.functionId].outputs(filling, fields)
+  );
+}
 
 function signerName(values: Values, modern: boolean): string {
   const surname = typeof values.lastName === 'string' ? values.lastName : '';
@@ -66,6 +161,12 @@ function signerName(values: Values, modern: boolean): string {
   return last
     ? [last, initials].filter(Boolean).join(' ')
     : missingTemplateValue;
+}
+
+function collectionColumns(key: string, columns: FillingField['columns']) {
+  return columns.filter(
+    ({ key: column }) => key !== 'attachments' || column !== 'category',
+  );
 }
 
 function collectionSlots(
@@ -97,14 +198,10 @@ function collectionSlots(
       key,
       rows.map((row, index) => ({
         ...Object.fromEntries(
-          columns
-            .filter(
-              ({ key: cell }) => key !== 'attachments' || cell !== 'category',
-            )
-            .map(({ key: cell }) => [
-              cell,
-              bankruptcyCollectionCell(cell, row[cell], value, modern),
-            ]),
+          collectionColumns(key, columns).map(({ key: cell }) => [
+            cell,
+            bankruptcyCollectionCell(cell, row[cell], value, modern),
+          ]),
         ),
         rowNumber:
           row.rowNumber ??
@@ -148,7 +245,7 @@ export function prepareTemplate(
       ? employmentStatement(values, employment)
       : employment.statement
     : undefined;
-  if (employmentDetails !== undefined)
+  if (statement && employmentDetails !== undefined)
     values.employmentDetails = employmentDetails;
   if (layout === 'inventory' || layout === 'creditors') {
     if (typeof values.previousNames === 'string')
@@ -228,7 +325,7 @@ export function prepareTemplate(
       'creditorHeaders',
       obligations.creditorHeaders.map((row) =>
         Object.fromEntries(
-          ['name', 'inn', 'ogrn', 'address'].map((key) => [
+          creditorHeaderColumns.map((key) => [
             key,
             row[key] ?? missingTemplateValue,
           ]),

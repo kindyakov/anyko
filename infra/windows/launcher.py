@@ -419,6 +419,7 @@ def run():
         if output.strip() != b'1':
             command([pg/'createdb.exe', '-h', '127.0.0.1', '-p', str(pgport), '-U', config['dbuser'], config['dbname']], env)
         command([MIGRATOR/'bun.exe', MIGRATOR/'node_modules/prisma/build/index.js', 'migrate', 'deploy'], env, MIGRATOR/'packages/database')
+        command([COMPONENTS/'anyko-publish-packages.exe', '--adopt'], env)
         command([COMPONENTS/'anyko-provision-access.exe'], provision_env)
         redisdata = DATA/'redis'
         redisdata.mkdir(exist_ok=True)

@@ -14,7 +14,10 @@ export type ReadTemplateRequirements = (packageVersion: string) => Promise<
 >;
 
 export { technicalBytes, technicalDescription } from './technical';
-export { validatePackageDescription } from './validate-package-description';
+export {
+  parsePackagePublication,
+  validatePackageDescription,
+} from './validate-package-description';
 
 export function readTemplateAsset(file: string, checksum: string): Uint8Array {
   let bytes: Uint8Array;

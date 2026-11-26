@@ -83,13 +83,14 @@ try {
     `${process.env.S3_ENDPOINT ?? 'http://127.0.0.1:19020'}/health`,
     30000,
   );
-  for (const task of [
-    'db:generate',
-    'db:migrate',
-    'storage:prepare',
-    'access:provision-local',
+  for (const args of [
+    ['db:generate'],
+    ['db:migrate'],
+    ['db:publish-packages', '--adopt'],
+    ['storage:prepare'],
+    ['access:provision-local'],
   ])
-    await command('bun', ['run', task]);
+    await command('bun', ['run', ...args]);
   const mineruUrl = process.env.MINERU_BASE_URL ?? 'http://127.0.0.1:8020';
   if (!(await probe(`${mineruUrl}/v1/health`))) {
     if (process.platform !== 'win32')

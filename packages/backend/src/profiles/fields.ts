@@ -7,8 +7,9 @@ export const fieldKeySchema = z
   .regex(/^[^{}#/]+$/);
 export type FieldKey = z.infer<typeof fieldKeySchema>;
 
+export const columnKeySchema = z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/);
 const fieldRowSchema = z.record(
-  z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/),
+  columnKeySchema,
   z.string().max(4000).nullable(),
 );
 export const fieldValueSchema = z

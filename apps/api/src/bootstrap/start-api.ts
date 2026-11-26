@@ -27,7 +27,11 @@ export async function startApi() {
     });
     backend =
       mode === 'full'
-        ? createBackend(parseBackendEnv(process.env), { logger, role: 'api' })
+        ? createBackend(parseBackendEnv(process.env), {
+            logger,
+            role: 'api',
+            packageCatalog: 'published',
+          })
         : undefined;
     await backend?.ready();
     let ready = false;

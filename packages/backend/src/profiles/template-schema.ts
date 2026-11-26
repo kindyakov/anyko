@@ -1,11 +1,13 @@
 import { z } from 'zod';
 
 import { calendarDatePlaceholders } from '@anyko/document-values/calendar-date';
-import { inventorySectionKeys } from '@anyko/document-values/inventory-layout';
 import { moneyPlaceholders } from '@anyko/document-values/money';
-import { bflFillingLayouts } from '@anyko/document-values/template-filling';
+import {
+  isTemplateFilling,
+  type TemplateFilling,
+} from '@anyko/document-values/template-filling';
 
-import { fieldKeySchema, valueTypeSchema } from './fields';
+import { columnKeySchema, fieldKeySchema, valueTypeSchema } from './fields';
 
 const paragraph = z.object({
   text: z.string(),
@@ -28,7 +30,7 @@ const cell = z.object({
   merge: z.enum(['none', 'start', 'continue']),
 });
 const row = z.object({
-  repeat: z.union([fieldKeySchema, z.enum(inventorySectionKeys)]).nullable(),
+  repeat: fieldKeySchema.nullable(),
   cells: z.array(cell),
 });
 const block = z.discriminatedUnion('kind', [
@@ -78,13 +80,7 @@ const document = z.object({
     .optional(),
   blocks: z.array(block),
   placeholders: z.array(templatePlaceholderSchema).optional(),
-  filling: z
-    .object({
-      functionId: z.literal('bfl-v1'),
-      layout: z.enum(bflFillingLayouts),
-      splitAttachments: z.boolean().optional(),
-    })
-    .optional(),
+  filling: z.custom<TemplateFilling>(isTemplateFilling).optional(),
 });
 export const documentPackageSchema = z.object({
   id: z.string(),
@@ -117,7 +113,7 @@ export const documentPackageSchema = z.object({
       }),
       columns: z.array(
         z.object({
-          key: z.string(),
+          key: columnKeySchema,
           label: z.string(),
           maxLength: z.number().int().positive(),
           valueType: valueTypeSchema.optional(),

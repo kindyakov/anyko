@@ -26,6 +26,15 @@ volume; удаление volume при обновлении запрещено. 
 ни один host port. Документ не предполагает, что Compose обеспечивает atomic
 rolling release: порядок совместимых обновлений описан в [operations](operations.md).
 
+После миграций и до обновления API и worker запустите из образа нового API
+разовую команду публикации. `DATABASE_URL` передаётся из окружения
+оператора выпуска в контейнер в сети с доступом к PostgreSQL.
+
+```sh
+docker compose -f infra/compose/dokploy.yml run --rm --no-deps -e DATABASE_URL api \
+  bun /app/scripts/publish-packages.ts --adopt
+```
+
 В Dokploy добавить маршруты домена: `/api` с более высоким приоритетом ведёт
 в `api:3021`, остальные пути — в `web:3020`. Согласовать сохранение или
 удаление префикса с реальными API routes до smoke. Dokploy должен подключить

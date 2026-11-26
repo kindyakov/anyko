@@ -113,7 +113,7 @@ import {
   createProcessingProfiles,
   type ProcessingProfile,
 } from './processing-profiles';
-import { availablePackages } from './template-assets';
+import { loadPublishedProcessingProfiles } from './publish-packages';
 import { createUnitOfWork } from './transactions';
 import {
   createResourceAwareIdempotencyStore,
@@ -141,6 +141,7 @@ interface BackendDependencies {
 export interface BackendOptions<Role extends 'api' | 'worker'> {
   logger: Logger;
   role: Role;
+  packageCatalog?: 'published';
   dependencies?: BackendDependencies;
 }
 
@@ -228,10 +229,25 @@ export function createBackend(
   const databaseEvents = auth
     ? createDatabaseEvents(listenPool ?? pool)
     : undefined;
-  const profiles = createProcessingProfiles(
-    worker?.stepwiseAnalysis ?? false,
-    dependencies.processingProfiles,
-  );
+  const stepwise = worker?.stepwiseAnalysis ?? false;
+  const additionalProfiles = dependencies.processingProfiles;
+  const publishedCatalog = options.packageCatalog === 'published';
+  let catalog = publishedCatalog
+    ? undefined
+    : createProcessingProfiles(stepwise, additionalProfiles);
+  const currentCatalog = () => {
+    if (!catalog) throw new Error('PACKAGE_CATALOG_NOT_READY');
+    return catalog;
+  };
+  const profiles: Pick<
+    ReturnType<typeof createProcessingProfiles>,
+    'resolve' | 'has' | 'available' | 'requirements'
+  > = {
+    resolve: (version) => currentCatalog().resolve(version),
+    has: (version) => currentCatalog().has(version),
+    available: () => currentCatalog().available(),
+    requirements: (version) => currentCatalog().requirements(version),
+  };
   const storage = dependencies.storage ?? createS3Storage(validated.storage);
   const io = createProcessingIo(db, uuidV7);
   const documents = createDocumentsModule({
@@ -340,6 +356,11 @@ export function createBackend(
   const ready = async () => {
     await storage.ready?.();
     await db.$queryRaw`SELECT 1`;
+    catalog ??= await loadPublishedProcessingProfiles(
+      db,
+      stepwise,
+      additionalProfiles,
+    );
     if (role === 'worker') await work.agents.model.ready();
   };
   const stop = () =>
@@ -388,7 +409,7 @@ export function createBackend(
       processing: processingFacade,
       connections,
       generation,
-      availablePackages,
+      availablePackages: profiles.available,
       templateRequirements,
       audit,
       storage,

@@ -48,6 +48,10 @@ bun run build
 
 Локальные launcher API и worker загружают корневой `.env` и, при наличии, `.env` приложения. Команды `dev`, `build` и `start` web и диагностическая команда worker также загружают корневой `.env`. Переменные процесса имеют приоритет. Секреты не нужны для сборки сайта. Следующие команды позволяют запускать процессы отдельно; для полной PDF/OCR-вертикали используйте `bun run dev` и инструкцию выше.
 
+Перед отдельным запуском полного API или worker подготовьте
+[опубликованный каталог](docs/engineering/operations.md#выкат-опубликованных-пакетов-документов)
+после миграций. `bun run dev` выполняет этот шаг автоматически.
+
 ```sh
 docker compose --env-file .env -p anyko-runtime-test -f infra/compose/local.yml -f infra/compose/storage.yml up -d
 bun run storage:prepare

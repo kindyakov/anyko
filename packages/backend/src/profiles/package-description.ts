@@ -12,10 +12,12 @@ interface SourceRequirement {
 export interface PackageDescription {
   package: DocumentPackage;
   requirements: Readonly<Record<string, readonly SourceRequirement[]>>;
-  catalogTitles?: {
-    package: string;
-    templates: Readonly<Record<string, string>>;
-  };
+  catalogTitles?:
+    | {
+        package: string;
+        templates: Readonly<Record<string, string>>;
+      }
+    | undefined;
   analysis: {
     excludedFields: readonly string[];
     plan?: AnalysisPlan | undefined;
@@ -32,4 +34,5 @@ export interface PackageDescription {
 
 export interface PackagePublication extends PackageDescription {
   profile: { id: string; revision: string };
+  scope?: 'production' | 'retained' | 'internal' | undefined;
 }

@@ -4,6 +4,7 @@ import type { PackagePublication } from '../../../profiles/package-description';
 import {
   canonicalJson,
   contentHash,
+  parsePackagePublication,
   validatePackageDescription,
 } from '../validate-package-description';
 
@@ -16,9 +17,71 @@ function conflict(version: string): never {
   throw new Error(`Catalog version differs from its description: ${version}`);
 }
 
+function templateCatalogData(
+  description: PackagePublication,
+  template: PackagePublication['package']['documents'][number],
+) {
+  const { version } = template;
+  const templateTitle =
+    description.catalogTitles?.templates[version] ?? template.title;
+  const templateRequirements = [
+    ...(description.requirements[version] ?? []),
+  ].sort((a, b) => a.position - b.position);
+  const templateHash = contentHash({
+    template,
+    templateTitle,
+    templateRequirements,
+  });
+  return { templateTitle, templateRequirements, templateHash };
+}
+
+export async function readPublishedPackages(db: Database) {
+  const rows = await db.documentPackageVersion.findMany({
+    where: { descriptionHash: { not: null } },
+    include: {
+      documents: {
+        orderBy: { position: 'asc' },
+        include: { template: true },
+      },
+    },
+  });
+  return rows.map((row) => {
+    if (!row.description) return conflict(row.version);
+    const description = parsePackagePublication(JSON.parse(row.description));
+    const pack = description.package;
+    if (
+      row.version !== pack.version ||
+      row.packageId !== pack.id ||
+      row.title !== (description.catalogTitles?.package ?? pack.title) ||
+      row.description !== canonicalJson(description) ||
+      row.descriptionHash !== contentHash(description) ||
+      row.documents.length !== pack.documents.length
+    )
+      return conflict(row.version);
+    for (const [index, template] of pack.documents.entries()) {
+      const link = row.documents[index];
+      const { templateTitle, templateHash } = templateCatalogData(
+        description,
+        template,
+      );
+      if (
+        link?.position !== index ||
+        link.templateVersion !== template.version ||
+        link.template.templateId !== template.id ||
+        link.template.title !== templateTitle ||
+        link.template.checksum !== template.checksum ||
+        link.template.descriptionHash !== templateHash
+      )
+        return conflict(template.version);
+    }
+    return description;
+  });
+}
+
 export async function publishPackages(
   db: Database,
   publications: readonly RegisteredPublication[],
+  { adoptLegacy = true }: { adoptLegacy?: boolean } = {},
 ) {
   const validated = publications.map(({ description, templateBytes }) => {
     const snapshot = structuredClone(description);
@@ -38,7 +101,7 @@ export async function publishPackages(
       status: 'created' | 'adopted' | 'unchanged';
     }[] = [];
     for (const { description, hash } of validated) {
-      const { package: pack, catalogTitles, requirements } = description;
+      const { package: pack, catalogTitles } = description;
       const { version } = pack;
       const title = catalogTitles?.package ?? pack.title;
       const documents = pack.documents.map(
@@ -62,6 +125,7 @@ export async function publishPackages(
         (existing.title !== title ||
           existing.packageId !== pack.id ||
           canonicalJson(existing.documents) !== canonicalJson(documents) ||
+          (!adoptLegacy && existing.descriptionHash === null) ||
           (existing.descriptionHash !== null &&
             (existing.descriptionHash !== hash ||
               existing.description !== canonical)))
@@ -69,19 +133,11 @@ export async function publishPackages(
         conflict(version);
 
       for (const template of pack.documents) {
-        const templateTitle =
-          catalogTitles?.templates[template.version] ?? template.title;
+        const { templateTitle, templateRequirements, templateHash } =
+          templateCatalogData(description, template);
         const placeholders = [...(template.placeholders ?? [])].sort((a, b) =>
           a.tag < b.tag ? -1 : a.tag > b.tag ? 1 : 0,
         );
-        const templateRequirements = [
-          ...(requirements[template.version] ?? []),
-        ].sort((a, b) => a.position - b.position);
-        const templateHash = contentHash({
-          template,
-          templateTitle,
-          templateRequirements,
-        });
         const current = await tx.documentTemplateVersion.findUnique({
           where: { version: template.version },
           include: {
@@ -105,6 +161,7 @@ export async function publishPackages(
             current.templateId !== template.id ||
             current.title !== templateTitle ||
             current.checksum !== template.checksum ||
+            (!adoptLegacy && current.descriptionHash === null) ||
             canonicalJson(current.requirements) !==
               canonicalJson(templateRequirements) ||
             canonicalJson(

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 
+import { analysisPolicyRevisionInput } from '../src/modules/agents';
 import {
   type AnalysisPlan,
   validateAnalysisPlan,
@@ -111,18 +112,28 @@ test('a checkpoint revision changes when the plan is reordered or its instructio
 
 test('profile extraction instructions invalidate extraction without changing step checkpoints', () => {
   const profiles = createProcessingProfiles(true);
-  const extraction = profiles.resolve('bfl-bankruptcy-v12');
-  const stepwise = profiles.resolve('bfl-bankruptcy-v14');
-  const revision = (pack: typeof extraction, instructions?: string) => {
-    const { fields, plan, policy } = pack.analysis;
-    return workAnalysisRevision(
-      fields,
-      plan,
-      pack.profile,
-      instructions ? { ...policy, extraction: () => instructions } : policy,
-    );
-  };
   const updated = 'Извлеки номер договора с его титульной страницы.';
-  expect(revision(extraction, updated)).not.toBe(revision(extraction));
-  expect(revision(stepwise, updated)).toBe(revision(stepwise));
+  const descriptions = structuredClone(profiles.publications);
+  for (const { analysis } of descriptions)
+    if (analysis.instructions) analysis.instructions.extraction = updated;
+  const changed = createProcessingProfiles(true, [], descriptions);
+  const revision = (pack: ReturnType<typeof profiles.resolve>) => {
+    const { fields, plan, policy } = pack.analysis;
+    return workAnalysisRevision(fields, plan, pack.profile, policy);
+  };
+  const extraction = changed.resolve('bfl-bankruptcy-v12');
+  const { fields, policy } = extraction.analysis;
+  const prompt = analysisPolicyRevisionInput(
+    fields,
+    false,
+    policy,
+  ).instructions;
+  expect(prompt).toContain(updated);
+  expect(prompt).not.toContain('"key":"submittedAttachments"');
+  expect(revision(extraction)).not.toBe(
+    revision(profiles.resolve('bfl-bankruptcy-v12')),
+  );
+  expect(revision(changed.resolve('bfl-bankruptcy-v14'))).toBe(
+    revision(profiles.resolve('bfl-bankruptcy-v14')),
+  );
 });

@@ -45,7 +45,7 @@ export async function startWorker() {
               ? config.ANYKO_LLM_TRACE_DIR || undefined
               : undefined,
         }),
-        { logger, role: 'worker' },
+        { logger, role: 'worker', packageCatalog: 'published' },
       );
       await backend.ready();
       business = await startJobWorker(backend.jobs, {

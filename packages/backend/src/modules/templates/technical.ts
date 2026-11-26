@@ -48,7 +48,9 @@ function requireTemplate(version: string) {
 export function technicalBytes(version: string): Uint8Array {
   requireTemplate(version);
   const zip = new PizZip();
-  const date = new Date('2026-01-01T00:00:00Z');
+  // ZIP stores local wall-clock fields. Preserve the timestamp in the
+  // template checksum already recorded by the catalog migration.
+  const date = new Date(2026, 0, 1, 3);
   const files = {
     '[Content_Types].xml':
       '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',

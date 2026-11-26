@@ -4,11 +4,8 @@ import PizZip from 'pizzip';
 
 import { generateDocument } from '../src/modules/generation';
 import { emptyFieldValues } from '../src/profiles/bfl/fields';
-import {
-  availablePackages,
-  requirePackage,
-  templateBytes,
-} from '../src/runtime/template-assets';
+import { createProcessingProfiles } from '../src/runtime/processing-profiles';
+import { requirePackage, templateBytes } from '../src/runtime/template-assets';
 
 import { templateData } from './helpers/template-data';
 
@@ -58,7 +55,7 @@ test('the cadastral field is enabled only for new-package facts and inventory', 
 
 test('the pagination release keeps v13 pinned and renders v14 layout rules', () => {
   const archived = requirePackage('bfl-bankruptcy-v13');
-  const current = availablePackages()[0];
+  const current = createProcessingProfiles(false).available()[0];
   expect(current?.version).toBe('bfl-bankruptcy-v14');
   if (!current) throw new Error('Missing current package');
   expect(
