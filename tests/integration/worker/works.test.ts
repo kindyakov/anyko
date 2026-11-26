@@ -4415,6 +4415,7 @@ test('rerunning analysis refreshes changed vision and extraction prompts indepen
 
 test('logical session survives reopening, extends context with a new source, and keeps extraction cached', async () => {
   const input = await create();
+  const resource = `${input.workspaceId}:${input.workId}`;
   const first = await upload(input);
   const initial = await until(input, terminal);
   const sessionId = initial.session?.id;
@@ -4437,7 +4438,7 @@ test('logical session survives reopening, extends context with a new source, and
   } finally {
     await reopened.stop();
   }
-  const previousCalls = extractionCount;
+  expect(extractionDocuments.get(resource)).toEqual([first.id]);
   const second = await upload(input);
   reconcileHook = async (request) => {
     expect(request.sessionId).toBe(sessionId);
@@ -4472,7 +4473,7 @@ test('logical session survives reopening, extends context with a new source, and
     expect(next.facts.candidates.some((c) => c.origin === 'context')).toBe(
       true,
     );
-    expect(extractionCount - previousCalls).toBe(1);
+    expect(extractionDocuments.get(resource)).toEqual([first.id, second.id]);
     expect(
       await db.workAgentTurn.count({ where: { workId: input.workId } }),
     ).toBe(2);
