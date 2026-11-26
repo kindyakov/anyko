@@ -13,6 +13,7 @@
     "./money": "./src/money.ts",
     "./obligations": "./src/obligations.ts",
     "./statement-layout": "./src/statement-layout.ts",
+    "./template-filling": "./src/template-filling.ts",
     "./template-value": "./src/template-value.ts",
     "./text-value": "./src/text-value.ts"
   },

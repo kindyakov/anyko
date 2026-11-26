@@ -62,6 +62,24 @@ export function createTemplatePlaceholders(db: Database) {
                 { cause: parsed.error },
               );
             }
+            const { field, placeholder } = parsed.data;
+            if (placeholder !== 'identity') {
+              const definition = pack.fields.find(({ key }) => key === field);
+              const expected = placeholder.startsWith('RUB_')
+                ? 'money'
+                : 'date';
+              const valueType =
+                document.filling && field === 'debtTotal'
+                  ? 'money'
+                  : definition?.valueType;
+              if (valueType !== expected) {
+                throw new DiagnosticError({
+                  code: 'TEMPLATE_PLACEHOLDER_INVALID',
+                  message: 'Формат места шаблона не соответствует типу поля.',
+                  operation,
+                });
+              }
+            }
             return parsed.data;
           }),
       })),

@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { calendarDatePlaceholders } from '@anyko/document-values/calendar-date';
 import { inventorySectionKeys } from '@anyko/document-values/inventory-layout';
 import { moneyPlaceholders } from '@anyko/document-values/money';
+import { bflFillingLayouts } from '@anyko/document-values/template-filling';
 
-import { isCalendarDateField, isRublesField } from '../../profiles/bfl/fields';
 import { fieldKeySchema, valueTypeSchema } from '../../profiles/fields';
 
 const paragraph = z.object({
@@ -46,12 +46,12 @@ const bindingKey = z
 export const templatePlaceholderSchema = z.discriminatedUnion('placeholder', [
   z.object({
     tag: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/),
-    field: fieldKeySchema.refine(isCalendarDateField),
+    field: fieldKeySchema,
     placeholder: z.enum(calendarDatePlaceholders),
   }),
   z.object({
     tag: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,79}$/),
-    field: fieldKeySchema.refine(isRublesField),
+    field: fieldKeySchema,
     placeholder: z.enum(moneyPlaceholders),
   }),
   z
@@ -62,7 +62,6 @@ export const templatePlaceholderSchema = z.discriminatedUnion('placeholder', [
     })
     .refine(({ tag, field }) => tag === field),
 ]);
-export type TemplatePlaceholder = z.infer<typeof templatePlaceholderSchema>;
 const document = z.object({
   id: z.string(),
   version: z.string(),
@@ -79,6 +78,13 @@ const document = z.object({
     .optional(),
   blocks: z.array(block),
   placeholders: z.array(templatePlaceholderSchema).optional(),
+  filling: z
+    .object({
+      functionId: z.literal('bfl-v1'),
+      contentVersion: z.enum(bflFillingLayouts),
+      splitAttachments: z.boolean().optional(),
+    })
+    .optional(),
 });
 export const documentPackageSchema = z.object({
   id: z.string(),

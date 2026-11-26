@@ -130,6 +130,7 @@ test('the statement preview identifies attachment paragraphs omitted from the do
         ...pack.documents[0],
         id: 'statement',
         version: 'bfl-statement-v11',
+        filling: { functionId: 'bfl-v1', contentVersion: 'bfl-statement-v11' },
         blocks: [
           {
             kind: 'paragraph',
@@ -249,6 +250,10 @@ test.each([
         {
           ...pack.documents[0],
           id: 'statement',
+          filling: {
+            functionId: 'bfl-v1',
+            contentVersion: 'bfl-statement-v11',
+          },
           blocks: [{ kind: 'paragraph', paragraph: paragraph(signature) }],
         },
       ],
@@ -491,6 +496,7 @@ test('the latest statement preview groups creditors and shows only active contra
         ...pack.documents[0],
         id: 'statement',
         version: 'bfl-statement-v11',
+        filling: { functionId: 'bfl-v1', contentVersion: 'bfl-statement-v11' },
         blocks: [
           {
             kind: 'paragraph',
@@ -562,6 +568,7 @@ test('the approved statement updates the request from the same name and date the
         ...pack.documents[0],
         id: 'statement',
         version: 'bfl-statement-v11',
+        filling: { functionId: 'bfl-v1', contentVersion: 'bfl-statement-v11' },
         blocks: [
           'Я, {lastName} {firstName} {middleName}',
           'По состоянию на {documentDate}',
@@ -613,6 +620,15 @@ test('the approved statement updates the request from the same name and date the
     paper.getByDisplayValue('Другое объединение управляющих'),
   ).toBeTruthy();
   expect(paper.queryByDisplayValue(/Содружество/)).toBeNull();
+
+  rerender(<PackagePreview {...props} values={initial} />);
+  expect(
+    paper.getByText(
+      'Признать Синтетическую Ирину Ильиничну несостоятельной (банкротом)',
+    ),
+  ).toBeTruthy();
+  expect(paper.getAllByDisplayValue('20.11.2026')).toHaveLength(2);
+  expect(paper.getByDisplayValue(/Содружество/)).toBeTruthy();
 });
 
 test('the revised statement preview renders display formats and marks editable template defaults', () => {
@@ -635,6 +651,7 @@ test('the revised statement preview renders display formats and marks editable t
         ...pack.documents[0],
         id: 'statement',
         version: 'bfl-statement-v11',
+        filling: { functionId: 'bfl-v1', contentVersion: 'bfl-statement-v11' },
         blocks: [
           '{lastName}',
           '{liabilityDetails}',

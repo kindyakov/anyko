@@ -1,10 +1,10 @@
+import { prepareTemplate } from '@anyko/document-values/template-filling';
 import { DiagnosticError } from '@anyko/logger';
 
 import {
   type DocumentPackage,
   knownPackages,
   templateBytes,
-  templateData,
 } from '../modules/templates';
 import { resolveBflAnalysis } from '../profiles/bfl/work-analysis';
 import type { WorkAnalysisDefinition } from '../workflows/work-analysis/definition';
@@ -36,11 +36,14 @@ export function createProcessingProfiles(
     template,
     referenceDate,
     pack,
-  ) =>
-    templateData(values, template.version, template.placeholders, {
-      fields: pack.fields,
-      referenceDate,
-    });
+  ) => {
+    const { scalars, repeating } = prepareTemplate(
+      { ...template, fields: pack.fields },
+      values,
+      { referenceDate },
+    );
+    return { ...scalars, ...repeating };
+  };
   const profiles: readonly ProcessingProfile[] = [
     {
       id: 'bfl-bankruptcy',

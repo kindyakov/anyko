@@ -384,10 +384,6 @@ const fieldsByKey = new Map<string, FieldDefinition>(
   fieldDefinitions.map((field) => [field.key, field]),
 );
 export const bflField = (key: string) => fieldsByKey.get(key);
-export const isCalendarDateField = (key: string) =>
-  bflField(key)?.valueType === 'date';
-export const isRublesField = (key: string) =>
-  bflField(key)?.valueType === 'money';
 const fieldRowSchema = z.record(
   z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,39}$/),
   z.string().max(4000).nullable(),

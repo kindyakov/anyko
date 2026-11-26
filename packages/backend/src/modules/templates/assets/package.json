@@ -8972,7 +8972,7 @@
       {
         "kind": "paragraph",
         "paragraph": {
-          "text": "Приложения:",
+          "text": "{attachmentHeading}",
           "align": "justify",
           "bold": true,
           "fontSize": 12,
@@ -8995,6 +8995,22 @@
         "kind": "paragraph",
         "paragraph": {
           "text": "{#attachments}{description};\n{/attachments}",
+          "align": "justify",
+          "bold": false,
+          "fontSize": 10,
+          "indent": -18,
+          "after": 0,
+          "left": 35.45,
+          "marker": {
+            "list": "9",
+            "pattern": "%1."
+          }
+        }
+      },
+      {
+        "kind": "paragraph",
+        "paragraph": {
+          "text": "{#attachmentTail}{description};\n{/attachmentTail}",
           "align": "justify",
           "bold": false,
           "fontSize": 10,
